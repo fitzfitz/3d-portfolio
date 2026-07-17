@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
+import Atmosphere from "./Atmosphere";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { toroidalDistance } from "../../utils/toroidal";
@@ -220,7 +221,8 @@ export default function SpacePlanets() {
             emissiveIntensity={0.3}
           />
         </mesh>
-        
+        <Atmosphere radius={planets[0].size} color={planets[0].color} />
+
         {/* Glowing aura core */}
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[0].size, 16, 16]} />
@@ -255,6 +257,7 @@ export default function SpacePlanets() {
             emissiveIntensity={0.3}
           />
         </mesh>
+        <Atmosphere radius={planets[1].size} color={planets[1].color} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[1].size, 16, 16]} />
@@ -291,6 +294,7 @@ export default function SpacePlanets() {
             emissiveIntensity={0.3}
           />
         </mesh>
+        <Atmosphere radius={planets[2].size} color={planets[2].color} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[2].size, 16, 16]} />
