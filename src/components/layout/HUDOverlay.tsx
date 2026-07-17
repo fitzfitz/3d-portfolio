@@ -34,7 +34,7 @@ export default function HUDOverlay() {
   }, []);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-30 font-mono text-[10px] text-white/40 select-none">
+    <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
       <div className="absolute top-24 left-6 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-primary">
           <Terminal className="w-3.5 h-3.5" />

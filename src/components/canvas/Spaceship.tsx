@@ -36,7 +36,12 @@ export default function Spaceship() {
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
 
+  const hasMounted = useRef(false);
   useEffect(() => {
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
     if (!isOrbitLocked && pos.current.length() > 0.5) {
       const escapePush = new THREE.Vector3(
         -Math.sin(angle.current) * 2.8, 0, -Math.cos(angle.current) * 2.8
@@ -94,6 +99,8 @@ export default function Spaceship() {
       shipRef.current.rotation.z = roll.current;
       shipRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.1);
+      store.setWarping(false);
+      flight.speed = 0;
       return;
     }
 
@@ -177,7 +184,7 @@ export default function Spaceship() {
       attr.needsUpdate = true;
     }
 
-    // 4.5. Local dust streaks
+    // 4.5. Local warp streaks
     if (streaksRef.current) {
       const attr = streaksRef.current.geometry.attributes.position;
       const data = attr.array as Float32Array;
