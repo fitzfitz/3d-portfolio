@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 
+// Module-level timeout handles for cancellation on re-entry
+let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
+let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
 export interface FlightInput {
   forward: boolean;
   backward: boolean;
@@ -68,12 +72,14 @@ export const useSpaceStore = create<SpaceState>()(
       set((s) => ({ isLowPerf: v, lowPerfManual: s.lowPerfManual || manual })),
     setShowClassicCV: (v) => set({ showClassicCV: v }),
     breakOrbit: () => {
+      if (orbitCooldownTimer) clearTimeout(orbitCooldownTimer);
       set({ isOrbitLocked: false, activeZone: null, isOrbitCooldown: true });
-      setTimeout(() => set({ isOrbitCooldown: false }), 1800);
+      orbitCooldownTimer = setTimeout(() => set({ isOrbitCooldown: false }), 1800);
     },
     triggerTeleportFlash: () => {
+      if (teleportFlashTimer) clearTimeout(teleportFlashTimer);
       set({ isTeleporting: true });
-      setTimeout(() => set({ isTeleporting: false }), 380);
+      teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
     },
   }))
 );

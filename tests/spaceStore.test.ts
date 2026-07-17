@@ -45,4 +45,30 @@ describe("spaceStore", () => {
     expect(flight.x).toBe(42);
     flight.x = 0;
   });
+
+  it("breakOrbit called twice within cooldown cancels first timer and extends cooldown", () => {
+    vi.useFakeTimers();
+    useSpaceStore.getState().breakOrbit();
+    expect(useSpaceStore.getState().isOrbitCooldown).toBe(true);
+    vi.advanceTimersByTime(1000);
+    useSpaceStore.getState().breakOrbit(); // called again 1000ms later
+    vi.advanceTimersByTime(800); // now 1800ms from FIRST call
+    expect(useSpaceStore.getState().isOrbitCooldown).toBe(true); // should still be true (pending second timer)
+    vi.advanceTimersByTime(1000); // now 1800ms from SECOND call
+    expect(useSpaceStore.getState().isOrbitCooldown).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("triggerTeleportFlash called twice cancels first timer and extends flash duration", () => {
+    vi.useFakeTimers();
+    useSpaceStore.getState().triggerTeleportFlash();
+    expect(useSpaceStore.getState().isTeleporting).toBe(true);
+    vi.advanceTimersByTime(200);
+    useSpaceStore.getState().triggerTeleportFlash(); // called again 200ms later
+    vi.advanceTimersByTime(180); // now 380ms from FIRST call
+    expect(useSpaceStore.getState().isTeleporting).toBe(true); // should still be true (pending second timer)
+    vi.advanceTimersByTime(200); // now 380ms from SECOND call
+    expect(useSpaceStore.getState().isTeleporting).toBe(false);
+    vi.useRealTimers();
+  });
 });
