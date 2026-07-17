@@ -1519,3 +1519,21 @@ git add -A && git commit -m "docs: record verification results for smooth-space 
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
+
+## Verification (2026-07-18)
+
+Automated gates — all pass:
+- `npm run build`: pass (tsc + vite; only the standard chunk-size warning)
+- `npm run lint`: pass (oxlint, 0 issues)
+- `npm test`: 8/8 (toroidal distance ×2, spaceStore ×6 incl. timer re-entrancy)
+- Asset budget: public/models = 3.87MB actual bytes (was ~31.5MB); asteroid.glb 28.42MB → 2.02MB, vertex count unchanged (4,600), textures 2048²/2048²/1024² WebP per spec
+- Dev-server smoke test: /, asteroid.glb (2.12MB), earth.webp, spaceship.glb all HTTP 200
+
+Static verification (Task 5 review, opus): zero per-frame React setState paths remain; physics conversion arithmetic exact; guarded store setters confirmed.
+
+Pending human browser checks (cannot be automated here):
+1. WASD flight feel at 60Hz vs high-refresh displays; warp FOV kick (now 86)
+2. React DevTools profiler: zero renders during steady flight
+3. Orbit lock/break on all 3 planets + contact portal; plasma spawn on click
+4. Visual: asteroid close-up detail, atmosphere rims, engine trail, warp streaks/CA, IBL brightness (fallback: cut Lightformer intensities ~30% if washed out)
+5. Touch emulation: joystick, boost, modal taps while locked, classic-CV toggle mid-drag
