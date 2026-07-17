@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Preload, Html, AdaptiveDpr, PerformanceMonitor } from "@react-three/drei";
+import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer } from "@react-three/drei";
 import { Suspense, useRef, useMemo } from "react";
 import * as THREE from "three";
 import Spaceship from "./Spaceship";
@@ -130,8 +130,16 @@ export default function GlobalCanvas() {
             Initializing Star System...
           </Html>
         }>
+          {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
+          <Environment resolution={64} frames={1}>
+            <color attach="background" args={["#050310"]} />
+            <Lightformer form="rect" intensity={1.1} color="#3a4a8f" position={[0, 8, -10]} scale={[14, 7, 1]} />
+            <Lightformer form="rect" intensity={0.7} color="#ff5500" position={[9, -3, 4]} scale={[8, 4, 1]} />
+            <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
+          </Environment>
+
           {/* Ambient galactic backdrop lighting */}
-          <ambientLight intensity={0.35} />
+          <ambientLight intensity={0.15} />
 
           {/* Starfield particles */}
           <GalaxyStarfield />

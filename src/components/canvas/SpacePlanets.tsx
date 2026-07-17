@@ -1,5 +1,5 @@
-import { useRef, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useRef, useMemo, useEffect } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
@@ -122,6 +122,16 @@ export default function SpacePlanets() {
     "/models/jupiter.webp",
     "/models/mars.webp"
   ]);
+
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const maxAniso = gl.capabilities.getMaxAnisotropy();
+    for (const tex of [earthTex, jupiterTex, marsTex]) {
+      tex.anisotropy = maxAniso;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+    }
+  }, [earthTex, jupiterTex, marsTex, gl]);
 
   // Load custom stargate portal gateway model
   const { scene: portalScene } = useGLTF("/models/portal_gateway.glb");
