@@ -19,15 +19,23 @@ The site is a React Three Fiber "Space Flight CV" (pilot a ship, orbit planets t
 
 ## Design
 
-### 1. Asset pipeline (build-time)
+### 1. Asset pipeline (build-time) — zero detail loss
+
+Inspection results changed the plan: **no mesh simplification is needed anywhere.** The asteroid's geometry is only 4,600 vertices (178KB); the 28MB is three oversized PNG textures (4096² base color = 20.3MB, 4096² metallic-roughness = 6.7MB, 2048² normal = 2.6MB). The other models already use 1024² textures.
 
 Blender is not installed; `gltf-transform` v4 (works via `npx @gltf-transform/cli`) covers everything needed. New script `scripts/optimize-assets.mjs` + npm script `assets:optimize`:
 
 - Move originals to `assets-src/` (gitignored); optimized output overwrites `public/models/`.
-- `asteroid.glb`: weld → simplify (~75% triangle reduction — acceptable for tumbling background rocks) → resize embedded textures to 1024px WebP → quantize + **meshopt** compression. Target: **< 1MB**.
-- `portal_gateway.glb`, `space_crystal.glb`, `spaceship.glb`: same pipeline, lighter simplify (spaceship is player-facing: no simplify, compression only).
-- Planet textures `earth.jpg`, `jupiter.jpg`, `mars.jpg`: resize to 1024×512 WebP.
+- **Geometry: untouched on every model.** Only weld/dedup (lossless) + quantization + **meshopt** compression (visually lossless, spec-standard).
+- `asteroid.glb` textures, sized to what the GPU can actually sample at render distance (asteroids are background objects; 4096² is never sampled even at 1:1):
+  - base color 4096² PNG → 2048² WebP q90
+  - normal map: kept at 2048², WebP **near-lossless** (normal data is compression-sensitive)
+  - metallic-roughness 4096² → 1024² WebP (smooth low-frequency data)
+  - Expected: ~28MB → **~1.5–2MB** with no visible difference in-app; VRAM for the asteroid material drops ~200MB → ~30MB, which itself removes stutter on integrated GPUs.
+- `portal_gateway.glb`, `space_crystal.glb`, `spaceship.glb`: keep texture resolutions, convert PNG → WebP q92 + meshopt. Modest savings, zero visible change.
+- Planet textures (2048×1024 JPGs): keep resolution, convert to WebP q88.
 - Runtime: register `MeshoptDecoder` (ships with `three`) with `useGLTF`.
+- Acceptance check: A/B screenshot comparison at gameplay camera distance before/after for each model.
 
 ### 2. State architecture
 
@@ -55,12 +63,20 @@ Consequences:
 - Add drei `<AdaptiveDpr pixelated />` and `<PerformanceMonitor>`; on sustained low performance, auto-enable the existing low-perf mode (manual toggle stays authoritative once touched).
 - Delete dead components (`Vehicle`, `PlaygroundLevel`, `MarblesContainer`, `Scene`, `ProjectCarousel`, `HeroNodeNetwork` if unreferenced) and their orphaned assets/hooks.
 
-### 5. Visual polish
+### 5. Visual polish & quality uplift
+
+Asset *uplift* (models look better than today, not just smaller):
+
+- **Image-based lighting**: drei `<Environment>` with a subtle space/night preset — the single biggest PBR upgrade. Today only an `ambientLight` lights the scene, so the asteroid's normal/roughness maps and the ship's metallic hull barely read. An environment map makes that authored detail actually visible.
+- **Anisotropic filtering** (up to GPU max, typically 16×) on planet and asteroid textures — sharper detail at grazing angles, effectively free.
+- **Correct color spaces** verified on all textures (sRGB for color, linear for normal/roughness) — a common source of washed-out models.
+- **Planet atmospheres**: shared fresnel-glow `ShaderMaterial` shell (backside-rendered sphere, ~1.06× radius) tinted per-planet color.
+
+Motion polish:
 
 - **Engine trail**: drei `<Trail>` ribbon behind the ship; width/opacity scale with speed, boosted during warp.
 - **Warp streaks**: existing local dust points get velocity-stretched rendering during warp (elongate along -Z), stronger FOV kick already partially exists — tune to 86.
 - **Post-fx**: add `Vignette` (always, subtle) and `ChromaticAberration` (warp-only, animated in) to the existing `EffectComposer`; entire composer stays disabled in low-perf mode.
-- **Planet atmospheres**: shared fresnel-glow `ShaderMaterial` shell (backside-rendered sphere, ~1.06× radius) tinted per-planet color.
 
 ### 6. Touch controls
 
@@ -81,7 +97,7 @@ Consequences:
 ## Testing / verification
 
 1. `npm run build` and `npm run lint` pass.
-2. Asset budget: `public/models/` total < 2.5MB (from ~31.5MB).
+2. Asset budget: `public/models/` total < 4MB (from ~31.5MB), with A/B screenshots confirming no visible quality loss at gameplay distances.
 3. Dev-server flight test: React DevTools profiler shows **zero component renders during steady flight**; orbit lock/break, boundary wrap, plasma spawn, classic-CV toggle all work.
 4. Touch emulation (Chrome device mode): joystick steers, BOOST warps, HUD shows touch wording.
 5. Feel check at 60Hz vs 120Hz (if display available): identical traversal speed.
