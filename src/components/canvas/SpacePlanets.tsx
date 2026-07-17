@@ -137,9 +137,9 @@ export default function SpacePlanets({
 
   // Load planet textures maps
   const [earthTex, jupiterTex, marsTex] = useTexture([
-    "/models/earth.jpg",
-    "/models/jupiter.jpg",
-    "/models/mars.jpg"
+    "/models/earth.webp",
+    "/models/jupiter.webp",
+    "/models/mars.webp"
   ]);
 
   // Load custom stargate portal gateway model
