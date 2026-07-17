@@ -3,7 +3,9 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
-import { COSMIC_BOUNDS } from "../../App";
+import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { flight, useSpaceStore } from "../../store/spaceStore";
+import { toroidalDistance } from "../../utils/toroidal";
 
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
 const nebulaTexture = (() => {
@@ -101,28 +103,7 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
   );
 }
 
-interface PlanetData {
-  name: string;
-  pos: [number, number, number];
-  color: string;
-  size: number;
-}
-
-interface SpacePlanetsProps {
-  planets: PlanetData[];
-  vehiclePos: { x: number; z: number };
-  onZoneOverlay: (zone: string | null) => void;
-  setIsOrbitLocked: (val: boolean) => void;
-  isOrbitCooldown: boolean;
-}
-
-export default function SpacePlanets({
-  planets,
-  vehiclePos,
-  onZoneOverlay,
-  setIsOrbitLocked,
-  isOrbitCooldown,
-}: SpacePlanetsProps) {
+export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
   const agentPlanetRef = useRef<THREE.Mesh>(null);
@@ -191,48 +172,27 @@ export default function SpacePlanets({
       portalInnerCoreRef.current.scale.set(coreScale, coreScale, coreScale);
     }
 
-    // 2. Proximity check: did ship enter planet gravitational radius?
-    const currentPos = new THREE.Vector2(vehiclePos.x, vehiclePos.z);
+    // 2. Proximity: read mutable telemetry, write store only on change
+    const { isOrbitCooldown, setActiveZone, setOrbitLocked } = useSpaceStore.getState();
     let activeZone: string | null = null;
     let lockActive = false;
 
-    // Toroidal distance calculation helper
-    const getToroidalDistance = (p1: THREE.Vector2, p2: THREE.Vector2) => {
-      const dx = Math.abs(p1.x - p2.x);
-      const toroidalDx = dx > COSMIC_BOUNDS ? (COSMIC_BOUNDS * 2) - dx : dx;
-      const dy = Math.abs(p1.y - p2.y);
-      const toroidalDy = dy > COSMIC_BOUNDS ? (COSMIC_BOUNDS * 2) - dy : dy;
-      return Math.sqrt(toroidalDx * toroidalDx + toroidalDy * toroidalDy);
-    };
-
-    // Check distance to project planets
     planets.forEach((p) => {
-      const pPos = new THREE.Vector2(p.pos[0], p.pos[2]);
-      const dist = getToroidalDistance(currentPos, pPos);
-      
-      // Proximity attraction: attraction radius is relative to planet size
+      const dist = toroidalDistance(flight.x, flight.z, p.pos[0], p.pos[2], COSMIC_BOUNDS);
       if (dist < p.size * 1.8) {
         activeZone = p.name;
-        
-        // If speed is very low or they park inside the gravity well, lock orbit
-        if (dist < p.size * 1.3 && !isOrbitCooldown) {
-          lockActive = true;
-        }
+        if (dist < p.size * 1.3 && !isOrbitCooldown) lockActive = true;
       }
     });
 
-    // Check distance to contact portal star (at 0, 0, -160)
-    const portalPos = new THREE.Vector2(0, -160);
-    const portalDist = getToroidalDistance(currentPos, portalPos);
+    const portalDist = toroidalDistance(flight.x, flight.z, PORTAL_POS[0], PORTAL_POS[2], COSMIC_BOUNDS);
     if (portalDist < 2.2) {
       activeZone = "contact";
-      if (portalDist < 1.5 && !isOrbitCooldown) {
-        lockActive = true;
-      }
+      if (portalDist < 1.5 && !isOrbitCooldown) lockActive = true;
     }
 
-    onZoneOverlay(activeZone);
-    setIsOrbitLocked(lockActive);
+    setActiveZone(activeZone);
+    setOrbitLocked(lockActive);
   });
 
   return (
@@ -337,7 +297,7 @@ export default function SpacePlanets({
       </group>
 
       {/* 4. CONTACT PORTAL SUN STAR (at 0, 0, -160) */}
-      <group position={[0, 0.2, -160]}>
+      <group position={PORTAL_POS}>
         {/* 3D Custom Stargate Portal Gateway Frame */}
         <group ref={portalFrameRef}>
           <primitive object={portalScene} scale={0.85} rotation={[0, 0, 0]} />

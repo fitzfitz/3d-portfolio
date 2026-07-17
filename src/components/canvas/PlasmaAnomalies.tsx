@@ -2,6 +2,7 @@ import { useRef, useImperativeHandle, forwardRef, useState, useMemo } from "reac
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
+import { flight } from "../../store/spaceStore";
 
 interface Anomaly {
   id: number;
@@ -70,12 +71,8 @@ function AnomalyInstance({ a, scene }: AnomalyInstanceProps) {
   );
 }
 
-interface PlasmaAnomaliesProps {
-  vehiclePos: { x: number; z: number };
-}
-
-export const PlasmaAnomalies = forwardRef<AnomaliesRef, PlasmaAnomaliesProps>(
-  ({ vehiclePos }, ref) => {
+export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
+  (_props, ref) => {
     const { scene } = useGLTF("/models/space_crystal.glb");
     const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
     const nextId = useRef(0);
@@ -103,7 +100,7 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef, PlasmaAnomaliesProps>(
     useFrame(() => {
       if (anomalies.length === 0) return;
 
-      const shipPosVec = new THREE.Vector3(vehiclePos.x, 0, vehiclePos.z);
+      const shipPosVec = new THREE.Vector3(flight.x, 0, flight.z);
 
       setAnomalies((currentAnomalies) => {
         // Map and filter out absorbed ones

@@ -9,26 +9,7 @@ import type { AnomaliesRef } from "./PlasmaAnomalies";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
-
-interface PlanetData {
-  name: string;
-  pos: [number, number, number];
-  color: string;
-  size: number;
-}
-
-interface GlobalCanvasProps {
-  planets: PlanetData[];
-  vehiclePos: { x: number; z: number };
-  setVehiclePos: (pos: { x: number; z: number }) => void;
-  onZoneOverlay: (zone: string | null) => void;
-  isOrbitLocked: boolean;
-  setIsOrbitLocked: (val: boolean) => void;
-  isOrbitCooldown: boolean;
-  onWarpStatus: (val: boolean) => void;
-  isLowPerf: boolean;
-  onBoundaryWrap: () => void;
-}
+import { flight, useSpaceStore } from "../../store/spaceStore";
 
 // Glowing space starfield backdrop with multi-colored stars and twinkle effects
 function GalaxyStarfield() {
@@ -105,26 +86,23 @@ function GalaxyStarfield() {
   );
 }
 
-export default function GlobalCanvas({
-  planets,
-  vehiclePos,
-  setVehiclePos,
-  onZoneOverlay,
-  isOrbitLocked,
-  setIsOrbitLocked,
-  isOrbitCooldown,
-  onWarpStatus,
-  isLowPerf,
-  onBoundaryWrap,
-}: GlobalCanvasProps) {
-  const anomaliesRef = useRef<AnomaliesRef>(null);
+function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    if (ref.current) ref.current.position.set(flight.x, 0, flight.z);
+  });
+  return (
+    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]}
+      onPointerDown={(e) => { e.stopPropagation(); if (e.point) onSpawn(e.point.clone()); }}>
+      <planeGeometry args={[180, 180]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
+}
 
-  const handleGroundClick = (e: any) => {
-    e.stopPropagation();
-    if (e.point && anomaliesRef.current) {
-      anomaliesRef.current.spawn(new THREE.Vector3(e.point.x, e.point.y, e.point.z));
-    }
-  };
+export default function GlobalCanvas() {
+  const isLowPerf = useSpaceStore((s) => s.isLowPerf);
+  const anomaliesRef = useRef<AnomaliesRef>(null);
 
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
@@ -153,36 +131,19 @@ export default function GlobalCanvas({
           <GalaxyStarfield />
 
           {/* Spaceship craft */}
-          <Spaceship
-            onPositionUpdate={setVehiclePos}
-            onWarpStatus={onWarpStatus}
-            isOrbitLocked={isOrbitLocked}
-            onBoundaryWrap={onBoundaryWrap}
-          />
+          <Spaceship />
 
           {/* Orbiting planets */}
-          <SpacePlanets
-            planets={planets}
-            vehiclePos={vehiclePos}
-            onZoneOverlay={onZoneOverlay}
-            setIsOrbitLocked={setIsOrbitLocked}
-            isOrbitCooldown={isOrbitCooldown}
-          />
+          <SpacePlanets />
 
           {/* Scattered Deep Space Asteroids */}
           <Asteroids />
 
           {/* Energy Plasma particles spawner */}
-          <PlasmaAnomalies
-            ref={anomaliesRef}
-            vehiclePos={vehiclePos}
-          />
+          <PlasmaAnomalies ref={anomaliesRef} />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
-          <mesh position={[vehiclePos.x, 0, vehiclePos.z]} rotation={[-Math.PI / 2, 0, 0]} onPointerDown={handleGroundClick}>
-            <planeGeometry args={[180, 180]} />
-            <meshBasicMaterial visible={false} />
-          </mesh>
+          <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
         </Suspense>
 
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}

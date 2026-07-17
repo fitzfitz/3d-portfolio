@@ -1,63 +1,63 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw } from "lucide-react";
-import { COSMIC_BOUNDS } from "../../App";
+import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { flight, useSpaceStore } from "../../store/spaceStore";
 
-interface HUDOverlayProps {
-  activeZone: string | null;
-  vehiclePos: { x: number; z: number };
-  isWarping: boolean;
-  isLowPerf: boolean;
-  setIsLowPerf: (val: boolean) => void;
-  isOrbitLocked: boolean;
-}
+const ZONE_COLORS: Record<string, string> = {
+  saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
+};
 
-export default function HUDOverlay({
-  activeZone,
-  vehiclePos,
-  isWarping,
-  isLowPerf,
-  setIsLowPerf,
-  isOrbitLocked,
-}: HUDOverlayProps) {
-  const [speedVal, setSpeedVal] = useState(0);
+export default function HUDOverlay() {
+  const activeZone = useSpaceStore((s) => s.activeZone);
+  const isWarping = useSpaceStore((s) => s.isWarping);
+  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const isLowPerf = useSpaceStore((s) => s.isLowPerf);
+  const setLowPerf = useSpaceStore((s) => s.setLowPerf);
 
-  // Telemetry speeds
+  const locRef = useRef<HTMLDivElement>(null);
+  const velRef = useRef<HTMLDivElement>(null);
+
+  // Telemetry readout: rAF straight to the DOM — zero React renders.
   useEffect(() => {
-    const baseline = isWarping ? 120 : Math.abs(vehiclePos.x + vehiclePos.z) > 0.5 ? 40 : 0;
-    const randomNoise = Math.random() * 4;
-    setSpeedVal(parseFloat((baseline + randomNoise).toFixed(1)));
-  }, [vehiclePos, isWarping]);
+    let raf: number;
+    const tick = () => {
+      if (locRef.current)
+        locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Z(${flight.z.toFixed(2)})`;
+      if (velRef.current)
+        velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <div className="fixed inset-0 pointer-events-none z-30 font-mono text-[10px] text-white/40 select-none">
-      
-      {/* Top Left: Diagnostics HUD */}
       <div className="absolute top-24 left-6 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-primary">
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>
         </div>
-        <div>NAV.LOC: X({vehiclePos.x.toFixed(2)}) / Z({vehiclePos.z.toFixed(2)})</div>
+        <div ref={locRef}>NAV.LOC: X(0.00) / Z(18.00)</div>
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
-        <div>VELOCITY: {speedVal} KM/S</div>
+        <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
         <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
       </div>
 
-      {/* Top Right: Scanning check */}
       <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">
         <div className="flex items-center gap-1.5 text-secondary">
           <span>SCANNING_CELESTIALS</span>
           <Cpu className="w-3.5 h-3.5" />
         </div>
         <div className="text-[11px] font-bold">
-          TARGET: {" "}
+          TARGET:{" "}
           <span className={activeZone ? "text-primary animate-pulse" : "text-white/20"}>
             {activeZone ? `PLANET_${activeZone.toUpperCase()}` : "DEEP_SPACE"}
           </span>
         </div>
         {activeZone && (
           <div className="text-[8px] text-primary/70 animate-pulse">
-            {isOrbitLocked ? "&gt; [GRAVITY LOCK] ENTERING ORBIT..." : "&gt; [WARNING] GRAVITY FIELD DETECTED"}
+            {isOrbitLocked ? "> [GRAVITY LOCK] ENTERING ORBIT..." : "> [WARNING] GRAVITY FIELD DETECTED"}
           </div>
         )}
       </div>
@@ -80,16 +80,10 @@ export default function HUDOverlay({
         </div>
       </div>
 
-      {/* Bottom Left: Custom control tools */}
       <div className="absolute bottom-10 left-6 flex gap-2 pointer-events-auto">
-        <button
-          onClick={() => setIsLowPerf(!isLowPerf)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
-            isLowPerf
-              ? "border-red-500/25 bg-red-500/5 text-red-400"
-              : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"
-          }`}
-        >
+        <button onClick={() => setLowPerf(!isLowPerf, true)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
+            isLowPerf ? "border-red-500/25 bg-red-500/5 text-red-400"
+              : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"}`}>
           {isLowPerf ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           <span>{isLowPerf ? "ENABLE_BLOOM" : "LOW_PERF"}</span>
         </button>
@@ -105,27 +99,20 @@ export default function HUDOverlay({
         </button>
       </div>
 
-      {/* Bottom Right: Planets sector coordinates map */}
+      {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
       <div className="absolute bottom-10 right-6 flex flex-col gap-2 items-end">
-        <div className="text-[8px] text-white/20">// SECTOR_PLANETS</div>
-        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "saas" ? "text-primary" : "text-white/20"}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00ff87]" />
-          <span>PLANET_SAAS ([-35, 0, 35])</span>
-        </div>
-        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "video" ? "text-secondary" : "text-white/20"}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00f0ff]" />
-          <span>PLANET_VIDEO ([45, 0, -25])</span>
-        </div>
-        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "agent" ? "text-accent" : "text-white/20"}`}>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#bd00ff]" />
-          <span>PLANET_AGENT ([-40, 0, -45])</span>
-        </div>
-        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "contact" ? "text-pink-500" : "text-white/20"}`}>
+        <div className="text-[8px] text-white/20">{"// SECTOR_PLANETS"}</div>
+        {planets.map((p) => (
+          <div key={p.name} className={`flex items-center gap-1.5 transition-colors ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/20"}`}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+            <span>PLANET_{p.name.toUpperCase()} ([{p.pos.join(", ")}])</span>
+          </div>
+        ))}
+        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/20"}`}>
           <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
-          <span>PORTAL_SUN ([0, 0, -50])</span>
+          <span>PORTAL_SUN ([{PORTAL_POS.join(", ")}])</span>
         </div>
       </div>
-
     </div>
   );
 }

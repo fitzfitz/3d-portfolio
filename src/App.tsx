@@ -10,76 +10,20 @@ import HUDOverlay from "./components/layout/HUDOverlay";
 import GlobalCanvas from "./components/canvas/GlobalCanvas";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
-
-const projects = [
-  {
-    title: "Multi-Tenant SaaS Platform",
-    role: "Lead Architect",
-    duration: "2024 - Present",
-    short: "Subdomain multitenancy with automated Stripe fee splits.",
-    description:
-      "Architected a scalable, secure subscription platform handling schema-isolated client tenants, dynamic subdomain resolution, and custom platform fee distribution using Stripe Connect. The platform currently orchestrates billing flows for 15,000+ active subscriptions with sub-millisecond route resolution.",
-    tech: ["React", "TypeScript", "Hono", "PostgreSQL", "Stripe", "Docker"],
-    color: "#00ff87", // Neon Green
-  },
-  {
-    title: "Viral Video Generator",
-    role: "Core ML Engineer",
-    duration: "2023 - 2024",
-    short: "AI semantic scene parser and dynamic video clipper.",
-    description:
-      "Designed a Python-based processing pipeline parsing lengthy podcasts and webinars. Utilized OpenAI Whisper transcription matched with semantic scene analysis, facial framing detectors, and NLP emotion classifiers to clip high-retention vertical videos, exporting directly to social platform queues.",
-    tech: ["Python", "PyTorch", "Whisper API", "OpenCV", "FFmpeg", "Vite"],
-    color: "#00f0ff", // Neon Cyan
-  },
-  {
-    title: "Custom Multi-Agent Architecture",
-    role: "R&D AI Engineer",
-    duration: "2024",
-    short: "Closed-loop AI agent workflow automating local engineering.",
-    description:
-      "Built a custom multi-agent framework mapping hierarchy managers to coder and review agents. Operating within containerized workspaces, the system reads OpenSpec documents, plans feature files, runs local TDD cycles, and standardizes PR validation checks to optimize frontend engineering speeds.",
-    tech: ["TypeScript", "Python", "LangChain", "OpenSpec", "Docker", "Portainer"],
-    color: "#bd00ff", // Neon Purple
-  },
-];
-
-export const COSMIC_BOUNDS = 250;
-
-const planets = [
-  { name: "saas", pos: [-110, 0, 110] as [number, number, number], color: "#00ff87", size: 4.8 },
-  { name: "video", pos: [130, 0, -80] as [number, number, number], color: "#00f0ff", size: 4.8 },
-  { name: "agent", pos: [-120, 0, -130] as [number, number, number], color: "#bd00ff", size: 4.8 },
-];
+import { useSpaceStore } from "./store/spaceStore";
+import { useKeyboardInput } from "./hooks/useKeyboardInput";
+import { projects } from "./constants";
 
 export default function App() {
-  const [vehiclePos, setVehiclePos] = useState({ x: 0, z: 0 });
-  const [activeZone, setActiveZone] = useState<string | null>(null);
-  const [isWarping, setIsWarping] = useState(false);
-  const [isOrbitLocked, setIsOrbitLocked] = useState(false);
-  const [isOrbitCooldown, setIsOrbitCooldown] = useState(false);
-  const [isLowPerf, setIsLowPerf] = useState(false);
-  const [isTeleporting, setIsTeleporting] = useState(false);
-
-  // States to override game and display classic linear resume scrolling
-  const [showClassicCV, setShowClassicCV] = useState(false);
+  useKeyboardInput();
+  const activeZone = useSpaceStore((s) => s.activeZone);
+  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const isTeleporting = useSpaceStore((s) => s.isTeleporting);
+  const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
+  const showClassicCV = useSpaceStore((s) => s.showClassicCV);
+  const setShowClassicCV = useSpaceStore((s) => s.setShowClassicCV);
+  const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const [activeIndex, setActiveIndex] = useState(0);
-
-  const handleBoundaryWrap = () => {
-    setIsTeleporting(true);
-    setTimeout(() => {
-      setIsTeleporting(false);
-    }, 380);
-  };
-
-  const handleBreakOrbit = () => {
-    setIsOrbitLocked(false);
-    setActiveZone(null);
-    setIsOrbitCooldown(true);
-    setTimeout(() => {
-      setIsOrbitCooldown(false);
-    }, 1800);
-  };
 
   const getPlanetDetails = () => {
     if (activeZone === "saas") return projects[0];
@@ -111,32 +55,10 @@ export default function App() {
       {/* Global Interactive Layers */}
       <CustomCursor />
       
-      {!showClassicCV && (
-        <HUDOverlay
-          activeZone={activeZone}
-          vehiclePos={vehiclePos}
-          isWarping={isWarping}
-          isLowPerf={isLowPerf}
-          setIsLowPerf={setIsLowPerf}
-          isOrbitLocked={isOrbitLocked}
-        />
-      )}
+      {!showClassicCV && <HUDOverlay />}
 
       {/* Persistent WebGL space Flight Canvas */}
-      {!showClassicCV && (
-        <GlobalCanvas
-          planets={planets}
-          vehiclePos={vehiclePos}
-          setVehiclePos={setVehiclePos}
-          onZoneOverlay={setActiveZone}
-          isOrbitLocked={isOrbitLocked}
-          setIsOrbitLocked={setIsOrbitLocked}
-          isOrbitCooldown={isOrbitCooldown}
-          onWarpStatus={setIsWarping}
-          isLowPerf={isLowPerf}
-          onBoundaryWrap={handleBoundaryWrap}
-        />
-      )}
+      {!showClassicCV && <GlobalCanvas />}
 
       {/* Accessibility Classic CV Toggle Button */}
       <div className="fixed top-6 right-6 z-50 pointer-events-auto flex gap-3">
@@ -163,7 +85,7 @@ export default function App() {
         <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center p-6">
           <AnimatePresence mode="wait">
             {/* Startup Banner Info Card */}
-            {Math.abs(vehiclePos.x) < 0.2 && Math.abs(vehiclePos.z - 18) < 0.2 && !activeZone && (
+            {isNearSpawn && !activeZone && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -195,7 +117,7 @@ export default function App() {
               >
                 {/* Close modal / Break Orbit Button */}
                 <button
-                  onClick={handleBreakOrbit}
+                  onClick={breakOrbit}
                   className="absolute top-6 right-6 p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
                   title="Warp boost engine to break orbit"
                 >
@@ -250,7 +172,7 @@ export default function App() {
                 {/* controls */}
                 <div className="flex items-center justify-between border-t border-white/5 pt-6">
                   <button
-                    onClick={handleBreakOrbit}
+                    onClick={breakOrbit}
                     className="px-5 py-3 rounded-xl font-mono text-xs font-bold text-black cursor-pointer hover:shadow-lg transition-all"
                     style={{ backgroundColor: planetProject.color }}
                   >
@@ -280,7 +202,7 @@ export default function App() {
               >
                 <div className="absolute top-8 right-8 z-50">
                   <button
-                    onClick={handleBreakOrbit}
+                    onClick={breakOrbit}
                     className="p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-5 h-5" />
