@@ -7,6 +7,7 @@ import Contact from "./components/sections/Contact";
 import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
+import TouchControls from "./components/layout/TouchControls";
 import GlobalCanvas from "./components/canvas/GlobalCanvas";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
@@ -54,8 +55,9 @@ export default function App() {
 
       {/* Global Interactive Layers */}
       <CustomCursor />
-      
+
       {!showClassicCV && <HUDOverlay />}
+      {!showClassicCV && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas */}
       {!showClassicCV && <GlobalCanvas />}

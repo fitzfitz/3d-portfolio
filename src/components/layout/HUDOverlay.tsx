@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const ZONE_COLORS: Record<string, string> = {
   saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
@@ -13,6 +14,7 @@ export default function HUDOverlay() {
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const setLowPerf = useSpaceStore((s) => s.setLowPerf);
+  const isCoarse = useMediaQuery("(pointer: coarse)");
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
@@ -66,17 +68,17 @@ export default function HUDOverlay() {
       <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl flex gap-6 text-[9px] pointer-events-auto">
         <div className="flex flex-col">
           <span className="text-white/25">PILOT_STEER</span>
-          <span className="text-white">WASD / ARROWS</span>
+          <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
           <span className="text-white/25">WARP_DRIVE</span>
-          <span className="text-white">SPACEBAR</span>
+          <span className="text-white">{isCoarse ? "BOOST BUTTON" : "SPACEBAR"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
           <span className="text-white/25">SPAWN_PLASMA</span>
-          <span className="text-white">CLICK SPACE</span>
+          <span className="text-white">{isCoarse ? "TAP SPACE" : "CLICK SPACE"}</span>
         </div>
       </div>
 
