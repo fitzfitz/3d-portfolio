@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { flight } from "../../store/spaceStore";
+import { useEffect, useRef } from "react";
+import { flight, useSpaceStore } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const RADIUS = 56; // px travel of the joystick knob
@@ -7,18 +7,34 @@ const RADIUS = 56; // px travel of the joystick knob
 /** Virtual joystick (left half) + boost button. Writes flight.input directly. */
 export default function TouchControls() {
   const isCoarse = useMediaQuery("(pointer: coarse)");
+  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
+  const activePointerId = useRef<number | null>(null);
+  const boostPointerRef = useRef<number | null>(null);
 
-  if (!isCoarse) return null;
+  // Reset flight.input and clear pointer tracking when orbit lock engages mid-interaction
+  useEffect(() => {
+    if (isOrbitLocked) {
+      flight.input.steer = 0;
+      flight.input.thrust = 0;
+      flight.input.boost = false;
+      activePointerId.current = null;
+      boostPointerRef.current = null;
+    }
+  }, [isOrbitLocked]);
+
+  if (!isCoarse || isOrbitLocked) return null;
 
   const moveKnob = (dx: number, dy: number) => {
     if (knobRef.current) knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (activePointerId.current !== null) return; // Ignore second touches
     e.currentTarget.setPointerCapture(e.pointerId);
+    activePointerId.current = e.pointerId;
     origin.current = { x: e.clientX, y: e.clientY };
     if (baseRef.current) {
       baseRef.current.style.left = `${e.clientX - 72}px`;
@@ -28,7 +44,7 @@ export default function TouchControls() {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!origin.current) return;
+    if (e.pointerId !== activePointerId.current || !origin.current) return;
     const dx = Math.max(-RADIUS, Math.min(RADIUS, e.clientX - origin.current.x));
     const dy = Math.max(-RADIUS, Math.min(RADIUS, e.clientY - origin.current.y));
     flight.input.steer = dx / RADIUS;   // right = +1 (physics negates: stick right turns right)
@@ -36,7 +52,9 @@ export default function TouchControls() {
     moveKnob(dx, dy);
   };
 
-  const onPointerEnd = () => {
+  const onPointerEnd = (e: React.PointerEvent) => {
+    if (e.pointerId !== activePointerId.current) return;
+    activePointerId.current = null;
     origin.current = null;
     flight.input.steer = 0;
     flight.input.thrust = 0;
@@ -65,9 +83,22 @@ export default function TouchControls() {
       {/* Boost button */}
       <button
         className="fixed bottom-24 right-8 z-40 pointer-events-auto touch-none w-20 h-20 rounded-full border border-secondary/40 bg-black/50 font-mono text-[10px] text-secondary active:bg-secondary/20"
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); flight.input.boost = true; }}
-        onPointerUp={() => { flight.input.boost = false; }}
-        onPointerCancel={() => { flight.input.boost = false; }}
+        onPointerDown={(e) => {
+          if (boostPointerRef.current !== null) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          boostPointerRef.current = e.pointerId;
+          flight.input.boost = true;
+        }}
+        onPointerUp={(e) => {
+          if (e.pointerId !== boostPointerRef.current) return;
+          boostPointerRef.current = null;
+          flight.input.boost = false;
+        }}
+        onPointerCancel={(e) => {
+          if (e.pointerId !== boostPointerRef.current) return;
+          boostPointerRef.current = null;
+          flight.input.boost = false;
+        }}
       >
         BOOST
       </button>
