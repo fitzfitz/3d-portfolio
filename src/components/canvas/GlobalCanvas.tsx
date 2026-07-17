@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Preload, Html } from "@react-three/drei";
+import { Preload, Html, AdaptiveDpr, PerformanceMonitor } from "@react-three/drei";
 import { Suspense, useRef, useMemo } from "react";
 import * as THREE from "three";
 import Spaceship from "./Spaceship";
@@ -112,13 +112,19 @@ export default function GlobalCanvas() {
           antialias: true,
           alpha: true,
           powerPreference: "high-performance",
-          preserveDrawingBuffer: true,
         }}
         camera={{ position: [0, 5, 8], fov: 60 }}
         style={{ pointerEvents: "auto" }} // Listen for click spawning
         eventSource={document.getElementById("root") || undefined}
         eventPrefix="client"
       >
+        <AdaptiveDpr pixelated />
+        <PerformanceMonitor
+          onDecline={() => {
+            const s = useSpaceStore.getState();
+            if (!s.lowPerfManual && !s.isLowPerf) s.setLowPerf(true);
+          }}
+        />
         <Suspense fallback={
           <Html center className="text-primary font-mono text-xs tracking-widest uppercase animate-pulse select-none pointer-events-none whitespace-nowrap">
             Initializing Star System...
