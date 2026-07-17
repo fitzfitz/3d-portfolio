@@ -25,6 +25,13 @@ export default function TouchControls() {
     }
   }, [isOrbitLocked]);
 
+  // Reset flight.input on unmount to prevent stuck inputs when component is removed
+  useEffect(() => () => {
+    flight.input.steer = 0;
+    flight.input.thrust = 0;
+    flight.input.boost = false;
+  }, []);
+
   if (!isCoarse || isOrbitLocked) return null;
 
   const moveKnob = (dx: number, dy: number) => {
