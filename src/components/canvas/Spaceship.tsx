@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
@@ -67,19 +67,20 @@ export default function Spaceship() {
   }, []);
   const particlesRef = useRef<THREE.Points>(null);
 
-  const dustCount = 80;
-  const dustGeometry = useMemo(() => {
+  const streakCount = 60;
+  const streakGeometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
-    const posArr = new Float32Array(dustCount * 3);
-    for (let i = 0; i < dustCount; i++) {
-      posArr[i * 3] = (Math.random() - 0.5) * 8.0;
-      posArr[i * 3 + 1] = (Math.random() - 0.5) * 6.0;
-      posArr[i * 3 + 2] = (Math.random() - 0.5) * 10.0;
+    const posArr = new Float32Array(streakCount * 2 * 3);
+    for (let i = 0; i < streakCount; i++) {
+      const x = (Math.random() - 0.5) * 8.0;
+      const y = (Math.random() - 0.5) * 6.0;
+      const z = (Math.random() - 0.5) * 10.0;
+      posArr.set([x, y, z, x, y, z - 0.05], i * 6);
     }
     geom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
     return geom;
   }, []);
-  const dustRef = useRef<THREE.Points>(null);
+  const streaksRef = useRef<THREE.LineSegments>(null);
 
   useFrame((state, delta) => {
     if (!shipRef.current) return;
@@ -177,19 +178,23 @@ export default function Spaceship() {
     }
 
     // 4.5. Local dust streaks
-    if (dustRef.current) {
-      const attr = dustRef.current.geometry.attributes.position;
+    if (streaksRef.current) {
+      const attr = streaksRef.current.geometry.attributes.position;
       const data = attr.array as Float32Array;
       const speed = vel.current.length();
       const zSpeed = (warpActive ? 0.38 : 0.02 + (speed / 60) * 1.5) * dt * 60;
-      for (let i = 0; i < dustCount; i++) {
-        const idx = i * 3;
-        data[idx + 2] += zSpeed;
-        if (data[idx + 2] > 5.0) {
-          data[idx] = (Math.random() - 0.5) * 8.0;
-          data[idx + 1] = (Math.random() - 0.5) * 6.0;
-          data[idx + 2] = -5.0;
+      const stretch = warpActive ? 2.2 : Math.min(0.6, 0.05 + speed * 0.04);
+      for (let i = 0; i < streakCount; i++) {
+        const head = i * 6;
+        data[head + 2] += zSpeed;
+        if (data[head + 2] > 5.0) {
+          data[head] = (Math.random() - 0.5) * 8.0;
+          data[head + 1] = (Math.random() - 0.5) * 6.0;
+          data[head + 2] = -5.0;
         }
+        data[head + 3] = data[head];
+        data[head + 4] = data[head + 1];
+        data[head + 5] = data[head + 2] - stretch;
       }
       attr.needsUpdate = true;
     }
@@ -231,14 +236,25 @@ export default function Spaceship() {
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.35} />
         </mesh>
       </group>
+      <Trail
+        width={1.4}
+        length={5}
+        color="#00f0ff"
+        attenuation={(t) => t * t}
+      >
+        <mesh position={[0, -0.04, -0.6]}>
+          <sphereGeometry args={[0.02, 4, 4]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      </Trail>
       <points ref={particlesRef} geometry={particleGeometry}>
         <pointsMaterial color="#00f0ff" size={0.06} transparent={true} opacity={0.8}
           blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
-      <points ref={dustRef} geometry={dustGeometry}>
-        <pointsMaterial color="#00f0ff" size={0.038} transparent={true} opacity={0.55}
+      <lineSegments ref={streaksRef} geometry={streakGeometry}>
+        <lineBasicMaterial color="#00f0ff" transparent={true} opacity={0.5}
           blending={THREE.AdditiveBlending} depthWrite={false} />
-      </points>
+      </lineSegments>
       <pointLight position={[0, 0, -0.6]} color="#00f0ff" intensity={0.4} distance={1.2} />
     </group>
   );

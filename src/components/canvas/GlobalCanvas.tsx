@@ -6,7 +6,7 @@ import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import { flight, useSpaceStore } from "../../store/spaceStore";
@@ -102,6 +102,7 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
 
 export default function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
+  const isWarping = useSpaceStore((s) => s.isWarping);
   const anomaliesRef = useRef<AnomaliesRef>(null);
 
   return (
@@ -170,6 +171,8 @@ export default function GlobalCanvas() {
                 luminanceSmoothing={0.9}
                 mipmapBlur={true}
               />
+              <Vignette eskil={false} offset={0.28} darkness={0.72} />
+              <ChromaticAberration offset={isWarping ? [0.0022, 0.0014] : [0, 0]} />
             </EffectComposer>
           </SafeErrorBoundary>
         )}
