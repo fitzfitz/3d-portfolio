@@ -25,3 +25,4 @@ assets-src/
 *.njsproj
 *.sln
 *.sw?
+.superpowers/
