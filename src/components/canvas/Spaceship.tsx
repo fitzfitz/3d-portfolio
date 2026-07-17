@@ -36,13 +36,12 @@ export default function Spaceship() {
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
 
-  const hasMounted = useRef(false);
+  const prevOrbitLocked = useRef(false);
   useEffect(() => {
-    if (!hasMounted.current) {
-      hasMounted.current = true;
-      return;
-    }
-    if (!isOrbitLocked && pos.current.length() > 0.5) {
+    const wasLocked = prevOrbitLocked.current;
+    prevOrbitLocked.current = isOrbitLocked;
+    if (!wasLocked || isOrbitLocked) return; // only true→false = real orbit break
+    if (pos.current.length() > 0.5) {
       const escapePush = new THREE.Vector3(
         -Math.sin(angle.current) * 2.8, 0, -Math.cos(angle.current) * 2.8
       );
