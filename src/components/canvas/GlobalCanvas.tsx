@@ -7,7 +7,7 @@ import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
-import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays } from "@react-three/postprocessing";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
@@ -98,7 +98,6 @@ export default function GlobalCanvas() {
   const isWarping = useSpaceStore((s) => s.isWarping);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
-  void sunMesh; // consumed in god-rays task
 
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
@@ -172,14 +171,20 @@ export default function GlobalCanvas() {
         {!isLowPerf && (
           <SafeErrorBoundary>
             <EffectComposer>
-              <Bloom
-                intensity={1.2}
-                luminanceThreshold={0.2}
-                luminanceSmoothing={0.9}
-                mipmapBlur={true}
-              />
-              <Vignette eskil={false} offset={0.28} darkness={0.72} />
-              <ChromaticAberration offset={isWarping ? [0.0022, 0.0014] : [0, 0]} />
+              {(() => {
+                const effects = [
+                  <Bloom key="bloom" intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />,
+                  <Vignette key="vignette" eskil={false} offset={0.28} darkness={0.72} />,
+                  <ChromaticAberration key="ca" offset={isWarping ? [0.0022, 0.0014] : [0, 0]} />,
+                ];
+                if (sunMesh) {
+                  effects.push(
+                    <GodRays key="rays" sun={sunMesh} samples={60} density={0.9} decay={0.94}
+                      weight={0.25} exposure={0.28} clampMax={1} blur={true} />
+                  );
+                }
+                return effects;
+              })()}
             </EffectComposer>
           </SafeErrorBoundary>
         )}
