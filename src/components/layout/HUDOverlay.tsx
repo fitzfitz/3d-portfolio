@@ -4,6 +4,7 @@ import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
+import RadioChatter from "./RadioChatter";
 
 const ZONE_COLORS: Record<string, string> = {
   saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
@@ -39,6 +40,7 @@ export default function HUDOverlay() {
   return (
     <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
       <RadarMap />
+      <RadioChatter />
       <div className="absolute top-24 left-6 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-primary">
           <Terminal className="w-3.5 h-3.5" />
