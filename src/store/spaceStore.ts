@@ -60,6 +60,7 @@ interface SpaceState {
   isNearSpawn: boolean;
   isTeleporting: boolean;
   isMuted: boolean;
+  cometNear: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -69,6 +70,7 @@ interface SpaceState {
   setNearSpawn: (v: boolean) => void;
   triggerTeleportFlash: () => void;
   setMuted: (v: boolean) => void;
+  setCometNear: (v: boolean) => void;
 }
 
 export const useSpaceStore = create<SpaceState>()(
@@ -83,12 +85,14 @@ export const useSpaceStore = create<SpaceState>()(
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
+    cometNear: false,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
     setOrbitLocked: (v) => { if (get().isOrbitLocked !== v) set({ isOrbitLocked: v }); },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
+    setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
     setLowPerf: (v, manual = false) =>
       set((s) => ({ isLowPerf: v, lowPerfManual: s.lowPerfManual || manual })),
     setShowClassicCV: (v) => set({ showClassicCV: v }),

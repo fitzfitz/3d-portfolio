@@ -6,6 +6,7 @@ beforeEach(() => {
     activeZone: null, isOrbitLocked: false, isOrbitCooldown: false,
     isWarping: false, isLowPerf: false, lowPerfManual: false,
     showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
+    cometNear: false,
   });
 });
 
@@ -84,5 +85,15 @@ describe("spaceStore", () => {
     useSpaceStore.getState().setMuted(false);
     expect(store["fitz-sound-muted"]).toBe("0");
     vi.unstubAllGlobals();
+  });
+
+  it("setCometNear does not notify subscribers for identical values", () => {
+    const spy = vi.fn();
+    const unsub = useSpaceStore.subscribe(spy);
+    useSpaceStore.getState().setCometNear(false); // already false
+    expect(spy).not.toHaveBeenCalled();
+    useSpaceStore.getState().setCometNear(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    unsub();
   });
 });

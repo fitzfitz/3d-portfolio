@@ -6,6 +6,7 @@ const pools: ChatterPools = {
   zones: { saas: ["saas-1", "saas-2"], video: ["video-1"] },
   warp: ["warp-1", "warp-2"],
   wrap: ["wrap-1"],
+  comet: ["comet-1", "comet-2"],
 };
 
 describe("ChatterScheduler", () => {
@@ -33,5 +34,9 @@ describe("ChatterScheduler", () => {
     const hi = new ChatterScheduler(pools, () => 0.9999999);
     expect(lo.nextDelayMs()).toBe(18000);
     expect(hi.nextDelayMs()).toBeLessThanOrEqual(35000);
+  });
+  it("picks from the comet pool for comet events", () => {
+    const s = new ChatterScheduler(pools, () => 0);
+    expect(s.pick("comet")).toBe("comet-1");
   });
 });

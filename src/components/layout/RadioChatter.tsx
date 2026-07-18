@@ -53,6 +53,10 @@ export default function RadioChatter() {
         (s) => s.isTeleporting,
         (flash) => { if (flash) typeLine(scheduler.pick("wrap")); }
       ),
+      useSpaceStore.subscribe(
+        (s) => s.cometNear,
+        (near) => { if (near) typeLine(scheduler.pick("comet")); }
+      ),
     ];
 
     typeLine(scheduler.pick("ambient"));

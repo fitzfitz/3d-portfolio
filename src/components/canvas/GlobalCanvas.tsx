@@ -16,6 +16,7 @@ import ShootingStars from "./ShootingStars";
 import DistantGalaxies from "./DistantGalaxies";
 import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
+import Comets from "./Comets";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -174,6 +175,9 @@ export default function GlobalCanvas() {
 
           {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
           <SpaceJellyfish />
+
+          {/* Comets with anti-sunward tails */}
+          <Comets />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
