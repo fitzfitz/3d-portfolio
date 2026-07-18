@@ -13,6 +13,8 @@ export default function TouchControls() {
   const origin = useRef<{ x: number; y: number } | null>(null);
   const activePointerId = useRef<number | null>(null);
   const boostPointerRef = useRef<number | null>(null);
+  const risepointer = useRef<number | null>(null);
+  const divepointer = useRef<number | null>(null);
 
   // Reset flight.input and clear pointer tracking when orbit lock engages mid-interaction
   useEffect(() => {
@@ -20,8 +22,12 @@ export default function TouchControls() {
       flight.input.steer = 0;
       flight.input.thrust = 0;
       flight.input.boost = false;
+      flight.input.ascend = false;
+      flight.input.descend = false;
       activePointerId.current = null;
       boostPointerRef.current = null;
+      risepointer.current = null;
+      divepointer.current = null;
     }
   }, [isOrbitLocked]);
 
@@ -30,6 +36,10 @@ export default function TouchControls() {
     flight.input.steer = 0;
     flight.input.thrust = 0;
     flight.input.boost = false;
+    flight.input.ascend = false;
+    flight.input.descend = false;
+    risepointer.current = null;
+    divepointer.current = null;
   }, []);
 
   if (!isCoarse || isOrbitLocked) return null;
@@ -86,6 +96,54 @@ export default function TouchControls() {
           <div ref={knobRef} className="w-14 h-14 rounded-full bg-primary/25 border border-primary/60" />
         </div>
       </div>
+
+      {/* Rise button */}
+      <button
+        className="fixed bottom-64 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          risepointer.current = e.pointerId;
+          flight.input.ascend = true;
+        }}
+        onPointerUp={(e) => {
+          if (e.pointerId === risepointer.current) {
+            risepointer.current = null;
+            flight.input.ascend = false;
+          }
+        }}
+        onPointerCancel={(e) => {
+          if (e.pointerId === risepointer.current) {
+            risepointer.current = null;
+            flight.input.ascend = false;
+          }
+        }}
+      >
+        ▲ RISE
+      </button>
+
+      {/* Dive button */}
+      <button
+        className="fixed bottom-48 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          divepointer.current = e.pointerId;
+          flight.input.descend = true;
+        }}
+        onPointerUp={(e) => {
+          if (e.pointerId === divepointer.current) {
+            divepointer.current = null;
+            flight.input.descend = false;
+          }
+        }}
+        onPointerCancel={(e) => {
+          if (e.pointerId === divepointer.current) {
+            divepointer.current = null;
+            flight.input.descend = false;
+          }
+        }}
+      >
+        ▼ DIVE
+      </button>
 
       {/* Boost button */}
       <button
