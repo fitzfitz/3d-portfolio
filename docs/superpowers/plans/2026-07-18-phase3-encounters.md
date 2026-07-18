@@ -740,3 +740,14 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 2: Headless probe** — run `.superpowers/whiteout-probe.mjs` against the dev server; extend it to press **J** and screenshot the summoned jellyfish; capture a ship/comet if timing allows. Attach observations to the verification record.
 - [ ] **Step 3: Manual checklist** — ships bank on curves + blink red/green; jelly undulates and drifts; comet tails point anti-sunward; chatter announces near pass once per approach; moons on varied inclinations; low-perf drops to 3 ships; profiler still render-free.
 - [ ] **Step 4: Append `## Verification` to this plan; commit.**
+
+## Verification (2026-07-18)
+
+Automated gates — all pass: build ✓ · lint ✓ · tests 26/26 · public/models ≈ 4.0M (< 6MB budget; ship 13.6KB, jellyfish 117KB — both Blender-generated, reproducible via `npm run assets:generate`).
+
+Headless-probe visual verification (screenshots captured via puppeteer rig):
+- Scene @6s: comet with tail visible top-center; cargo ship with glowing windows crossing on the left; chatter/radar live; console fully clean (zero GL errors).
+- Sweep frames: distant spiral galaxy sprite, purple/pink nebulae, sun corona (not blown out), planets/moons.
+- Jellyfish: J-summon verified — huge undulating tentacle trails on screen after pressing J and flying forward. NOTE: the plan's original NEAR_T=0.32 was numerically wrong (284 units out); path waypoint 2 moved to (30,18,70) and NEAR_T recomputed to 0.177 (closest approach ~75 units), fixed in 6227a60.
+
+Pending human checks: ship banking feel on curves, comet chatter announcement timing in normal play, low-perf 3-ship reduction.
