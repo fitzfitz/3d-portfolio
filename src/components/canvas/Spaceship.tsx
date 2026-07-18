@@ -130,8 +130,21 @@ export default function Spaceship() {
     if (!shipRef.current) return;
     const dt = Math.min(delta, 0.05); // clamp tab-switch spikes
     const store = useSpaceStore.getState();
-    const input = flight.input;
     const time = state.clock.getElapsedTime();
+
+    if (store.photoMode) {
+      // Photo mode: freeze input/physics/camera/shake entirely so OrbitControls
+      // owns the camera. The ship just idles in place — bob + a low idle
+      // thruster glow + its existing Trail — at whatever pos.current was when
+      // photo mode was toggled on. flight.x/y/z are republished from the same
+      // frozen pos.current, so they hold steady (nothing here advances them).
+      shipRef.current.position.y = pos.current.y + Math.sin(time * 2) * 0.05;
+      if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.4);
+      flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
+      return;
+    }
+
+    const input = flight.input;
 
     // Chase-cam follow + FOV, shared by free flight and orbit lock so the
     // camera keeps framing the ship in both states.

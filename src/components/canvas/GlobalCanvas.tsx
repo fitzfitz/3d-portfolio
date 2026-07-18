@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer } from "@react-three/drei";
+import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import { Suspense, useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import Spaceship from "./Spaceship";
@@ -102,8 +102,15 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
 export default function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const isWarping = useSpaceStore((s) => s.isWarping);
+  const photoMode = useSpaceStore((s) => s.photoMode);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
+  // Snapshot the ship's position the instant photo mode flips true so the orbit
+  // target stays fixed for the session — deliberately NOT re-snapshotting every
+  // frame (that would fight the user's orbit drag). Re-runs only when photoMode
+  // itself toggles, not when flight.x/y/z change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const photoTarget = useMemo(() => new THREE.Vector3(flight.x, flight.y, flight.z), [photoMode]);
 
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
@@ -190,6 +197,9 @@ export default function GlobalCanvas() {
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
         </Suspense>
+
+        {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
+        {photoMode && <OrbitControls makeDefault enableDamping target={photoTarget} />}
 
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}
         {!isLowPerf && (

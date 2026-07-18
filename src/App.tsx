@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
@@ -12,7 +12,7 @@ import GlobalCanvas from "./components/canvas/GlobalCanvas";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
 import { useSpaceStore } from "./store/spaceStore";
-import { useKeyboardInput } from "./hooks/useKeyboardInput";
+import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
 import { projects } from "./constants";
 
@@ -26,7 +26,19 @@ export default function App() {
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const setShowClassicCV = useSpaceStore((s) => s.setShowClassicCV);
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
+  const photoMode = useSpaceStore((s) => s.photoMode);
+  const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "KeyP") return;
+      if (isEditableTarget(e.target as HTMLElement | null)) return;
+      setPhotoMode(!useSpaceStore.getState().photoMode);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setPhotoMode]);
 
   const getPlanetDetails = () => {
     if (activeZone === "saas") return projects[0];
@@ -58,34 +70,43 @@ export default function App() {
       {/* Global Interactive Layers */}
       <CustomCursor />
 
-      {!showClassicCV && <HUDOverlay />}
-      {!showClassicCV && <TouchControls />}
+      {!photoMode && !showClassicCV && <HUDOverlay />}
+      {!photoMode && !showClassicCV && <TouchControls />}
 
-      {/* Persistent WebGL space Flight Canvas */}
+      {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}
       {!showClassicCV && <GlobalCanvas />}
 
+      {/* Photo mode: minimal chrome, orbitable clean frame */}
+      {photoMode && (
+        <div className="fixed top-6 left-6 z-50 font-mono text-[10px] text-white/50 pointer-events-none">
+          PHOTO_MODE — [P] EXIT
+        </div>
+      )}
+
       {/* Accessibility Classic CV Toggle Button */}
-      <div className="fixed top-6 right-6 z-50 pointer-events-auto flex gap-3">
-        <button
-          onClick={() => setShowClassicCV(!showClassicCV)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-black/80 hover:bg-primary/20 hover:border-primary transition-all duration-300 shadow-neonGreen cursor-pointer"
-        >
-          {showClassicCV ? (
-            <>
-              <X className="w-4 h-4" />
-              <span>RETURN_TO_PILOT_CABIN</span>
-            </>
-          ) : (
-            <>
-              <FileText className="w-4 h-4" />
-              <span>VIEW_CLASSIC_RESUME</span>
-            </>
-          )}
-        </button>
-      </div>
+      {!photoMode && (
+        <div className="fixed top-6 right-6 z-50 pointer-events-auto flex gap-3">
+          <button
+            onClick={() => setShowClassicCV(!showClassicCV)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-black/80 hover:bg-primary/20 hover:border-primary transition-all duration-300 shadow-neonGreen cursor-pointer"
+          >
+            {showClassicCV ? (
+              <>
+                <X className="w-4 h-4" />
+                <span>RETURN_TO_PILOT_CABIN</span>
+              </>
+            ) : (
+              <>
+                <FileText className="w-4 h-4" />
+                <span>VIEW_CLASSIC_RESUME</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* -------------------- DYNAMIC SPACE INTERACTION MODALS -------------------- */}
-      {!showClassicCV && (
+      {!photoMode && !showClassicCV && (
         <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center p-6">
           <AnimatePresence mode="wait">
             {/* Startup Banner Info Card */}
@@ -234,7 +255,7 @@ export default function App() {
       )}
 
       {/* -------------------- CLASSIC SCROLLABLE RESUME MODE -------------------- */}
-      {showClassicCV && (
+      {!photoMode && showClassicCV && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
