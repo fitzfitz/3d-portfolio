@@ -78,6 +78,7 @@ export default function AsteroidBelt() {
         ref={meshRef}
         args={[geometry, material, count]}
         frustumCulled={false}
+        dispose={null}
       />
     </group>
   );

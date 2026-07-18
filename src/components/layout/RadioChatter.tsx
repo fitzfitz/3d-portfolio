@@ -28,9 +28,11 @@ export default function RadioChatter() {
         if (chars < full.length) raf = requestAnimationFrame(type);
       };
       raf = requestAnimationFrame(type);
+      scheduleAmbient();
     };
 
     const scheduleAmbient = () => {
+      if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         const s = useSpaceStore.getState();
         typeLine(
@@ -38,7 +40,6 @@ export default function RadioChatter() {
             ? scheduler.pick("warp")
             : scheduler.pick(s.activeZone ? "zone" : "ambient", s.activeZone)
         );
-        scheduleAmbient();
       }, scheduler.nextDelayMs());
     };
 
@@ -55,7 +56,6 @@ export default function RadioChatter() {
     ];
 
     typeLine(scheduler.pick("ambient"));
-    scheduleAmbient();
 
     return () => {
       disposed = true;
@@ -66,7 +66,7 @@ export default function RadioChatter() {
   }, []);
 
   return (
-    <div className="absolute bottom-10 left-1/2 -translate-x-1/2 max-w-[60vw] pointer-events-none">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 max-w-[60vw] pointer-events-none">
       <div ref={lineRef} className="font-mono text-[9px] text-primary/60 whitespace-nowrap overflow-hidden text-ellipsis" />
     </div>
   );

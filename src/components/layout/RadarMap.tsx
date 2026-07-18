@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
+import { worldToRadar } from "../../utils/radarTransform";
 
 const SIZE = 148;
 const RANGE = 120; // world units mapped to radar radius
@@ -23,6 +24,11 @@ export default function RadarMap() {
     const c = SIZE / 2;
     const rimR = c - 6;
     const scale = rimR / RANGE;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = SIZE * dpr;
+    canvas.height = SIZE * dpr;
+    ctx.scale(dpr, dpr);
 
     const draw = () => {
       const now = performance.now() / 1000;
@@ -49,15 +55,11 @@ export default function RadarMap() {
 
       // Blips (heading-up: rotate world deltas by ship heading)
       const a = flight.heading;
-      const cosA = Math.cos(a);
-      const sinA = Math.sin(a);
       const activeZone = useSpaceStore.getState().activeZone;
       for (const t of targets) {
         const dx = wrapDelta(flight.x, t.x, COSMIC_BOUNDS);
         const dz = wrapDelta(flight.z, t.z, COSMIC_BOUNDS);
-        // right = (cosA, -sinA), forward = (sinA, cosA)
-        const sx = dx * cosA - dz * sinA;
-        const up = dx * sinA + dz * cosA;
+        const { x: sx, up } = worldToRadar(dx, dz, a);
         let px = sx * scale;
         let py = -up * scale;
         const dist = Math.hypot(px, py);
@@ -92,7 +94,7 @@ export default function RadarMap() {
 
   return (
     <div className="absolute bottom-24 left-6 pointer-events-none rounded-full border border-primary/20 bg-black/50" style={{ width: SIZE, height: SIZE }}>
-      <canvas ref={canvasRef} width={SIZE} height={SIZE} />
+      <canvas ref={canvasRef} width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} />
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] text-primary/50 font-mono">RADAR.SYS</div>
     </div>
   );

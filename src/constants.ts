@@ -8,6 +8,7 @@ export interface PlanetData {
 
 export const COSMIC_BOUNDS = 250;
 export const PORTAL_POS: [number, number, number] = [0, 0.2, -160];
+export const SHIP_MAX_SPEED = 10.8;
 
 export const projects: Project[] = [
   {

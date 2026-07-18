@@ -2,12 +2,12 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
-import { COSMIC_BOUNDS } from "../../constants";
+import { COSMIC_BOUNDS, SHIP_MAX_SPEED } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
-const MAX_SPEED = 10.8;     // was 0.18/frame
+const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
 const WARP_SPEED = 39;      // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis

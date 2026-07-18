@@ -24,8 +24,9 @@ const cloudTexture = (() => {
       // draw twice offset by width so the seam tiles horizontally
       ctx.fillRect(0, 0, 256, 256);
       ctx.save();
-      ctx.translate(x < 128 ? 256 : -256, 0);
-      ctx.fillRect(0, 0, 256, 256);
+      const s = x < 128 ? 256 : -256;
+      ctx.translate(s, 0);
+      ctx.fillRect(-s, 0, 256, 256);
       ctx.restore();
     }
   }

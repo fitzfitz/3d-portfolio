@@ -5,6 +5,23 @@ import { subscribeWithSelector } from "zustand/middleware";
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
+// localStorage can throw (e.g. SecurityError when cookies/storage are blocked) —
+// guard both accesses so a blocked store degrades to in-memory rather than crashing.
+function safeGetMuted(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem("fitz-sound-muted") === "1";
+  } catch {
+    return false;
+  }
+}
+function safeSetMuted(v: boolean) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface FlightInput {
   forward: boolean;
   backward: boolean;
@@ -65,9 +82,7 @@ export const useSpaceStore = create<SpaceState>()(
     showClassicCV: false,
     isNearSpawn: true,
     isTeleporting: false,
-    isMuted:
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("fitz-sound-muted") === "1",
+    isMuted: safeGetMuted(),
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -79,9 +94,7 @@ export const useSpaceStore = create<SpaceState>()(
     setShowClassicCV: (v) => set({ showClassicCV: v }),
     setMuted: (v) => {
       set({ isMuted: v });
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
-      }
+      safeSetMuted(v);
     },
     breakOrbit: () => {
       if (orbitCooldownTimer) clearTimeout(orbitCooldownTimer);

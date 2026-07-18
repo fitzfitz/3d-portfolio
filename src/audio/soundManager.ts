@@ -1,4 +1,5 @@
 import { flight, useSpaceStore } from "../store/spaceStore";
+import { SHIP_MAX_SPEED } from "../constants";
 
 /**
  * Fully synthesized Web Audio soundscape. No assets, no React.
@@ -90,7 +91,7 @@ class SoundManager {
     const tick = () => {
       if (this.ctx && this.engineFilter && this.engineGain && this.warpGain) {
         const t = this.ctx.currentTime;
-        const speedNorm = Math.min(1, flight.speed / 10.8);
+        const speedNorm = Math.min(1, flight.speed / SHIP_MAX_SPEED);
         this.engineFilter.frequency.setTargetAtTime(200 + speedNorm * 700, t, 0.1);
         this.engineGain.gain.setTargetAtTime(speedNorm * 0.08, t, 0.15);
         const warping = useSpaceStore.getState().isWarping;

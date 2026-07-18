@@ -71,5 +71,5 @@ export default function Asteroids() {
     meshRef.current.instanceMatrix.needsUpdate = true;
   });
 
-  return <instancedMesh ref={meshRef} args={[geometry, material, COUNT]} frustumCulled={false} />;
+  return <instancedMesh ref={meshRef} args={[geometry, material, COUNT]} frustumCulled={false} dispose={null} />;
 }
