@@ -329,3 +329,9 @@ Implementation notes: read `shardsCollected` inside the frame loop via `getState
 - [ ] Probe: fly to the spawn-adjacent shard → pickup line + counter; ram the nearest big asteroid → shake frame + impact line; hold E at a planet → ring + report; orbit-lock → mid-orbit screenshot; press P → clean frame screenshot.
 - [ ] Manual checklist: persistence across reload; collect-all fanfare (localStorage pre-seed 9 shards to test quickly); touch SCAN/RISE/DIVE/BOOST coexistence; photo-mode restore.
 - [ ] Append `## Verification`; commit.
+
+## Verification (2026-07-18)
+
+Gates: build ✓ · lint ✓ (one informational fast-refresh note on Scanner.tsx) · tests 57/57 · assets unchanged 4.8M.
+Probe-verified (screenshots): scanner full loop — target acquisition ("PLANET_VIDEO" label + ring UI), completed hold → project-flavored SCAN report typed on the radio; photo mode — clean frame, orbit-drag to a side profile, PHOTO_MODE tag only; SHARDS: 0/10 HUD counter live; cratered moons + cloud layer visible on approach. Zero page errors across runs.
+Pending human: shard pickup + collect-all fanfare (fly to one; pre-seed localStorage fitz-shards with 9 indices to test the fanfare fast), asteroid ram feel (bounce/shake/boom + 0.5s cooldown grinding), orbit-entry circling behind the dossier, touch SCAN button on device.
