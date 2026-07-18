@@ -194,8 +194,12 @@ export default function GlobalCanvas() {
           {/* Headless: drives proximity scan targeting/progress/report dispatch */}
           <Scanner />
 
-          {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
-          <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
+          {/* Clickable space trigger plane (follows ship and expanded to cover viewport).
+              Unmounted in photo mode: R3F synthetic pointer events and OrbitControls
+              share the same eventSource, so a drag-to-orbit pointerdown would also
+              spawn a plasma anomaly into the clean frame — stopPropagation doesn't
+              help across sibling listeners. */}
+          {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
