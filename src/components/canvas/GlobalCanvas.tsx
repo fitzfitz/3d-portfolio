@@ -11,6 +11,7 @@ import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays } from "@
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
+import CargoTraffic from "./CargoTraffic";
 import ShootingStars from "./ShootingStars";
 import DistantGalaxies from "./DistantGalaxies";
 import WarpTunnel from "./WarpTunnel";
@@ -157,6 +158,9 @@ export default function GlobalCanvas() {
 
           {/* Asteroid Belt */}
           <AsteroidBelt />
+
+          {/* NPC Cargo Traffic */}
+          <CargoTraffic />
 
           {/* Energy Plasma particles spawner */}
           <PlasmaAnomalies ref={anomaliesRef} />
