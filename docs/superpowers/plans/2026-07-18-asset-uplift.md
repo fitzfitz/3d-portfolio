@@ -431,3 +431,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 2: Probe close-ups** — extend the puppeteer rig to park near a trade route and screenshot a passing ship (dish spinning across two frames = different dish angle), a moon at a planet, a comet head. Compare against Phase 3 screenshots.
 - [ ] **Step 3: `npm run assets:generate` full re-run from clean assets-src regenerates everything (reproducibility check).**
 - [ ] **Step 4: Append `## Verification`; commit.**
+
+## Verification (2026-07-18)
+
+Gates: build ✓ · lint ✓ · tests 45/45 · public/models 4.8M (< 8MB). Name survival verified post-optimize via gltf-transform API: nodes CargoShip + RadarDish; materials HullBaked/Windows/EngineGlow/NavRed/NavGreen/Accent.
+Asset sizes: cargo_ship 202KB (baked 1024 color×AO webp), moon 39.5KB, comet_head 4.1KB.
+Probe: cratered moon visible orbiting with real surface shading near the video planet (two frames apart — orbital + textured); orbit-lock at warp approach still works; zone chatter fired.
+Pending human: close-up of a passing cargo ship (dish spin + greebles — they cross the play area every ~30s), comet head close-up, moon metallic-ness sanity (bake_utils sets metal 0.55 — flagged by Task 2 review).
