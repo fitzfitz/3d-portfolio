@@ -6,7 +6,7 @@ beforeEach(() => {
     activeZone: null, isOrbitLocked: false, isOrbitCooldown: false,
     isWarping: false, isLowPerf: false, lowPerfManual: false,
     showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
-    cometNear: false,
+    cometNear: false, altitudeWarn: false,
   });
 });
 
@@ -93,6 +93,16 @@ describe("spaceStore", () => {
     useSpaceStore.getState().setCometNear(false); // already false
     expect(spy).not.toHaveBeenCalled();
     useSpaceStore.getState().setCometNear(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+
+  it("setAltitudeWarn does not notify subscribers for identical values", () => {
+    const spy = vi.fn();
+    const unsub = useSpaceStore.subscribe(spy);
+    useSpaceStore.getState().setAltitudeWarn(false);
+    expect(spy).not.toHaveBeenCalled();
+    useSpaceStore.getState().setAltitudeWarn(true);
     expect(spy).toHaveBeenCalledTimes(1);
     unsub();
   });

@@ -28,6 +28,8 @@ export interface FlightInput {
   left: boolean;
   right: boolean;
   boost: boolean;
+  ascend: boolean;
+  descend: boolean;
   /** Analog steering from touch joystick, -1 (left) .. 1 (right). 0 = keyboard only. */
   steer: number;
   /** Analog thrust from touch joystick, -1 (brake) .. 1 (full). 0 = keyboard only. */
@@ -41,11 +43,12 @@ export interface FlightInput {
 export const flight = {
   x: 0,
   z: 18,
+  y: 0, // altitude, written by Spaceship each frame
   speed: 0, // world units / second
   heading: 0, // yaw in radians, written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
-    boost: false, steer: 0, thrust: 0,
+    boost: false, ascend: false, descend: false, steer: 0, thrust: 0,
   } as FlightInput,
 };
 
@@ -61,6 +64,7 @@ interface SpaceState {
   isTeleporting: boolean;
   isMuted: boolean;
   cometNear: boolean;
+  altitudeWarn: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -71,6 +75,7 @@ interface SpaceState {
   triggerTeleportFlash: () => void;
   setMuted: (v: boolean) => void;
   setCometNear: (v: boolean) => void;
+  setAltitudeWarn: (v: boolean) => void;
 }
 
 export const useSpaceStore = create<SpaceState>()(
@@ -86,6 +91,7 @@ export const useSpaceStore = create<SpaceState>()(
     isTeleporting: false,
     isMuted: safeGetMuted(),
     cometNear: false,
+    altitudeWarn: false,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -110,5 +116,6 @@ export const useSpaceStore = create<SpaceState>()(
       set({ isTeleporting: true });
       teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
     },
+    setAltitudeWarn: (v) => { if (get().altitudeWarn !== v) set({ altitudeWarn: v }); },
   }))
 );

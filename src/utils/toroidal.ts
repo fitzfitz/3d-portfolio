@@ -16,3 +16,12 @@ export function wrapDelta(from: number, to: number, bounds: number): number {
   else if (d < -bounds) d += span;
   return d;
 }
+
+/** 3D distance: toroidal in xz, plain in y. */
+export function toroidalDistance3(
+  ax: number, az: number, ay: number,
+  bx: number, bz: number, by: number,
+  bounds: number
+): number {
+  return Math.hypot(toroidalDistance(ax, az, bx, bz, bounds), by - ay);
+}
