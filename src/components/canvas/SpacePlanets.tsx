@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
 import Atmosphere from "./Atmosphere";
+import CloudLayer from "./CloudLayer";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { toroidalDistance } from "../../utils/toroidal";
@@ -222,6 +223,7 @@ export default function SpacePlanets() {
           />
         </mesh>
         <Atmosphere radius={planets[0].size} color={planets[0].color} />
+        <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
 
         {/* Glowing aura core */}
         <mesh scale={0.94}>
@@ -258,6 +260,7 @@ export default function SpacePlanets() {
           />
         </mesh>
         <Atmosphere radius={planets[1].size} color={planets[1].color} />
+        <CloudLayer radius={planets[1].size} tint="#bff5ff" speed={0.112} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[1].size, 16, 16]} />
@@ -295,6 +298,7 @@ export default function SpacePlanets() {
           />
         </mesh>
         <Atmosphere radius={planets[2].size} color={planets[2].color} />
+        <CloudLayer radius={planets[2].size} tint="#ffd9c2" speed={0.224} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[2].size, 16, 16]} />
