@@ -127,7 +127,6 @@ export default function SpacePlanets() {
   const portalInnerAuraRef = useRef<THREE.Mesh>(null);
   const portalInnerCoreRef = useRef<THREE.Mesh>(null);
   const portalFrameRef = useRef<THREE.Group>(null);
-  const sunPlanetRef = useRef<THREE.Mesh>(null);
 
   // Load planet textures maps
   const [earthTex, jupiterTex, marsTex] = useTexture([
@@ -157,7 +156,6 @@ export default function SpacePlanets() {
     if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.12;
     if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = time * 0.08;
     if (agentPlanetRef.current) agentPlanetRef.current.rotation.y = time * 0.16;
-    if (sunPlanetRef.current) sunPlanetRef.current.rotation.y = time * 0.03;
 
     // Spin Stargate Portal Frame infinitely
     if (portalFrameRef.current) {
@@ -354,18 +352,6 @@ export default function SpacePlanets() {
           <sphereGeometry args={[0.42, 16, 16]} />
           <meshBasicMaterial color="#ffe600" />
         </mesh>
-      </group>
-
-      {/* 5. CENTRAL SOL SUN (at 0, 0, 0) */}
-      <group position={[0, 0, 0]}>
-        {/* Core sphere */}
-        <mesh ref={sunPlanetRef}>
-          <sphereGeometry args={[2.5, 32, 32]} />
-          <meshStandardMaterial color="#ff5500" emissive="#ff3300" emissiveIntensity={3.2} roughness={0.15} metalness={0.1} />
-        </mesh>
-        
-        {/* Strong point light acting as solar light for system */}
-        <pointLight color="#ffffff" intensity={4.8} distance={260} decay={0.8} castShadow={true} />
       </group>
 
       {/* 6. GASEOUS NEBULA DEEP SPACE CLOUDS (Parallax Atmosphere) */}

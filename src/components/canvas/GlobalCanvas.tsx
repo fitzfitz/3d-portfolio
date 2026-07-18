@@ -1,9 +1,10 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer } from "@react-three/drei";
-import { Suspense, useRef, useMemo } from "react";
+import { Suspense, useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
+import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
@@ -96,6 +97,8 @@ export default function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const isWarping = useSpaceStore((s) => s.isWarping);
   const anomaliesRef = useRef<AnomaliesRef>(null);
+  const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
+  void sunMesh; // consumed in god-rays task
 
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
@@ -145,6 +148,9 @@ export default function GlobalCanvas() {
 
           {/* Orbiting planets */}
           <SpacePlanets />
+
+          {/* Central sun core + corona/flare shell */}
+          <Sun onSunReady={setSunMesh} />
 
           {/* Scattered Deep Space Asteroids */}
           <Asteroids />
