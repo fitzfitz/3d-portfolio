@@ -9,6 +9,7 @@ import type { AnomaliesRef } from "./PlasmaAnomalies";
 import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-three/postprocessing";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
+import AsteroidBelt from "./AsteroidBelt";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 // Glowing space starfield backdrop with multi-colored stars and twinkle effects
@@ -153,6 +154,9 @@ export default function GlobalCanvas() {
 
           {/* Scattered Deep Space Asteroids */}
           <Asteroids />
+
+          {/* Asteroid Belt */}
+          <AsteroidBelt />
 
           {/* Energy Plasma particles spawner */}
           <PlasmaAnomalies ref={anomaliesRef} />
