@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { flight, type FlightInput } from "../store/spaceStore";
 
-type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend";
+type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend" | "scan";
 
 const KEYMAP: Record<string, BoolKey> = {
   KeyW: "forward", ArrowUp: "forward",
@@ -11,6 +11,7 @@ const KEYMAP: Record<string, BoolKey> = {
   Space: "ascend",
   KeyC: "descend", KeyX: "descend",
   ShiftLeft: "boost", ShiftRight: "boost",
+  KeyE: "scan",
 };
 
 /** True when the event target is a text-entry element — flight keys must not fire there. */

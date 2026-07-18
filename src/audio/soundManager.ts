@@ -140,6 +140,24 @@ class SoundManager {
   uiTick() {
     this.blip("square", 880, 0.04, 0.025);
   }
+  /** Shard collected: two-note rising chime */
+  pickup() {
+    this.blip("sine", 880, 0.08, 0.09);
+    setTimeout(() => this.blip("sine", 1174, 0.1, 0.09), 60);
+  }
+  /** All shards collected: 4-note fanfare */
+  fanfare() {
+    const notes = [523, 659, 784, 1046];
+    notes.forEach((freq, i) => setTimeout(() => this.blip("sine", freq, 0.18, 0.1), i * 110));
+  }
+  /** Asteroid/sun collision thump */
+  impact() {
+    this.blip("triangle", 70, 0.35, 0.18);
+  }
+  /** Scanner ping */
+  scanBeep() {
+    this.blip("square", 1320, 0.06, 0.05);
+  }
 }
 
 export const soundManager = new SoundManager();

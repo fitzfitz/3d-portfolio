@@ -5,9 +5,10 @@ export interface ChatterPools {
   wrap: string[];
   comet: string[];
   altitude: string[];
+  impact: string[];
 }
 
-export type ChatterKind = "ambient" | "zone" | "warp" | "wrap" | "comet" | "altitude";
+export type ChatterKind = "ambient" | "zone" | "warp" | "wrap" | "comet" | "altitude" | "impact";
 
 /** Pure line-selection + pacing logic. Injectable RNG for tests. */
 export class ChatterScheduler {
@@ -27,6 +28,7 @@ export class ChatterScheduler {
     else if (kind === "wrap") pool = this.pools.wrap;
     else if (kind === "comet") pool = this.pools.comet;
     else if (kind === "altitude") pool = this.pools.altitude;
+    else if (kind === "impact") pool = this.pools.impact;
     else pool = this.pools.deepSpace;
 
     const candidates = pool.length > 1 ? pool.filter((l) => l !== this.lastLine) : pool;

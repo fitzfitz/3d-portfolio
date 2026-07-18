@@ -22,6 +22,24 @@ function safeSetMuted(v: boolean) {
   }
 }
 
+function safeGetJSON<T>(key: string, fallback: T): T {
+  try {
+    if (typeof localStorage === "undefined") return fallback;
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+function safeSetJSON(key: string, value: unknown) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface FlightInput {
   forward: boolean;
   backward: boolean;
@@ -34,6 +52,7 @@ export interface FlightInput {
   steer: number;
   /** Analog thrust from touch joystick, -1 (brake) .. 1 (full). 0 = keyboard only. */
   thrust: number;
+  scan: boolean;
 }
 
 /**
@@ -48,7 +67,7 @@ export const flight = {
   heading: 0, // yaw in radians, written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
-    boost: false, ascend: false, descend: false, steer: 0, thrust: 0,
+    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
   } as FlightInput,
 };
 
@@ -65,6 +84,11 @@ interface SpaceState {
   isMuted: boolean;
   cometNear: boolean;
   altitudeWarn: boolean;
+  shardsCollected: number[];
+  broadcast: { id: number; text: string } | null;
+  impactCount: number;
+  scanTarget: string | null;
+  photoMode: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -76,6 +100,11 @@ interface SpaceState {
   setMuted: (v: boolean) => void;
   setCometNear: (v: boolean) => void;
   setAltitudeWarn: (v: boolean) => void;
+  collectShard: (i: number) => void;
+  sendBroadcast: (text: string) => void;
+  bumpImpact: () => void;
+  setScanTarget: (v: string | null) => void;
+  setPhotoMode: (v: boolean) => void;
 }
 
 export const useSpaceStore = create<SpaceState>()(
@@ -92,6 +121,11 @@ export const useSpaceStore = create<SpaceState>()(
     isMuted: safeGetMuted(),
     cometNear: false,
     altitudeWarn: false,
+    shardsCollected: safeGetJSON<number[]>("fitz-shards", []),
+    broadcast: null,
+    impactCount: 0,
+    scanTarget: null,
+    photoMode: false,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -117,5 +151,16 @@ export const useSpaceStore = create<SpaceState>()(
       teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
     },
     setAltitudeWarn: (v) => { if (get().altitudeWarn !== v) set({ altitudeWarn: v }); },
+    collectShard: (i) => {
+      const cur = get().shardsCollected;
+      if (cur.includes(i)) return;
+      const next = [...cur, i];
+      set({ shardsCollected: next });
+      safeSetJSON("fitz-shards", next);
+    },
+    sendBroadcast: (text) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text } }),
+    bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
+    setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
+    setPhotoMode: (v) => set({ photoMode: v }),
   }))
 );

@@ -7,6 +7,7 @@ beforeEach(() => {
     isWarping: false, isLowPerf: false, lowPerfManual: false,
     showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
     cometNear: false, altitudeWarn: false,
+    shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
   });
 });
 
@@ -105,5 +106,30 @@ describe("spaceStore", () => {
     useSpaceStore.getState().setAltitudeWarn(true);
     expect(spy).toHaveBeenCalledTimes(1);
     unsub();
+  });
+
+  it("collectShard is idempotent and persists", () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = v; },
+    });
+    useSpaceStore.getState().collectShard(3);
+    useSpaceStore.getState().collectShard(3);
+    expect(useSpaceStore.getState().shardsCollected).toEqual([3]);
+    expect(JSON.parse(store["fitz-shards"])).toEqual([3]);
+    vi.unstubAllGlobals();
+  });
+  it("sendBroadcast retriggers identical text via incrementing id", () => {
+    useSpaceStore.getState().sendBroadcast("HELLO");
+    const first = useSpaceStore.getState().broadcast;
+    useSpaceStore.getState().sendBroadcast("HELLO");
+    const second = useSpaceStore.getState().broadcast;
+    expect(first!.text).toBe("HELLO");
+    expect(second!.id).toBeGreaterThan(first!.id);
+  });
+  it("bumpImpact increments", () => {
+    useSpaceStore.getState().bumpImpact();
+    expect(useSpaceStore.getState().impactCount).toBe(1);
   });
 });
