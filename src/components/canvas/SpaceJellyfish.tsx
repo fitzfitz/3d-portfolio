@@ -2,9 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-
-const LOOP_SECONDS = 400;
-const NEAR_T = 0.177; // numerically computed closest-approach phase (~75 units from center)
+import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfishPath";
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
@@ -44,20 +42,6 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
-// Far drifting loop; two segments pass within sight of the play area.
-const PATH = new THREE.CatmullRomCurve3(
-  [
-    new THREE.Vector3(300, 40, 0),
-    new THREE.Vector3(30, 18, 70),
-    new THREE.Vector3(-320, 10, 120),
-    new THREE.Vector3(-120, 55, -300),
-    new THREE.Vector3(120, 20, -140),
-  ],
-  true,
-  "catmullrom",
-  0.6
-);
-
 export default function SpaceJellyfish() {
   const { scene } = useGLTF("/models/creature.glb");
   const groupRef = useRef<THREE.Group>(null);
@@ -80,20 +64,29 @@ export default function SpaceJellyfish() {
   useEffect(() => () => material.dispose(), [material]);
 
   const geometry = useMemo(() => {
-    let g: THREE.BufferGeometry | undefined;
+    let src: THREE.Mesh | undefined;
     scene.traverse((o) => {
-      if (!g && o instanceof THREE.Mesh) g = o.geometry;
+      if (!src && o instanceof THREE.Mesh) src = o;
     });
-    if (!g) throw new Error("creature.glb contains no mesh");
+    if (!src) throw new Error("creature.glb contains no mesh");
+    // Bake the node's dequantization transform (KHR_mesh_quantization) so the
+    // shader's y-based masks operate on authored coordinates, and regeneration
+    // can't silently rescale the creature.
+    src.updateMatrix();
+    const g = src.geometry.clone();
+    g.applyMatrix4(src.matrix);
     return g;
   }, [scene]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   // Debug/easter-egg summon: J fast-forwards the loop phase so the jelly appears nearby.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "KeyJ") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
       const now = timeRef.current;
-      tOffset.current = NEAR_T - ((now / LOOP_SECONDS) % 1);
+      tOffset.current = JELLY_NEAR_T - ((now / JELLY_LOOP_SECONDS) % 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -104,14 +97,14 @@ export default function SpaceJellyfish() {
     const time = state.clock.getElapsedTime();
     timeRef.current = time;
     material.uniforms.uTime.value = time;
-    const t = ((time / LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
-    PATH.getPointAt(t, groupRef.current.position);
-    const tangent = PATH.getTangentAt(t);
+    const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
+    JELLY_PATH.getPointAt(t, groupRef.current.position);
+    const tangent = JELLY_PATH.getTangentAt(t);
     groupRef.current.rotation.set(tangent.z * 0.12, 0, -tangent.x * 0.12); // gentle tilt into drift
   });
 
   return (
-    <group ref={groupRef} scale={18}>
+    <group ref={groupRef} scale={6}>
       <mesh geometry={geometry} material={material} frustumCulled={false} />
     </group>
   );

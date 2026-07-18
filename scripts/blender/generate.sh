@@ -1,6 +1,7 @@
 #!/bin/bash
 # Regenerates Blender-authored assets into assets-src/, then optimizes into public/models/.
 set -e
+# Note: meshopt re-encoding is non-deterministic — regenerating produces byte-different (functionally identical) GLBs.
 BLENDER="${BLENDER:-/Users/fitzgeral/Applications/Blender.app/Contents/MacOS/Blender}"
 cd "$(dirname "$0")/../.."
 mkdir -p assets-src
