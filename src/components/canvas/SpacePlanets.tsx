@@ -8,6 +8,7 @@ import CloudLayer from "./CloudLayer";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { toroidalDistance } from "../../utils/toroidal";
+import { driftedHue } from "../../utils/nebulaHue";
 
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
 const nebulaTexture = (() => {
@@ -57,6 +58,13 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
     return data;
   }, [size]);
 
+  // Capture base HSL from color once
+  const baseHSL = useMemo(() => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    new THREE.Color(color).getHSL(hsl);
+    return hsl;
+  }, [color]);
+
   // Animate the buffer geometry positions inside useFrame
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
@@ -76,6 +84,9 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
         }
         posAttr.needsUpdate = true;
       }
+      // Re-tint the material color with drifted hue
+      const mat = pointsRef.current.material as THREE.PointsMaterial;
+      mat.color.setHSL(driftedHue(baseHSL.h * 360, time) / 360, baseHSL.s, baseHSL.l);
     }
   });
 
