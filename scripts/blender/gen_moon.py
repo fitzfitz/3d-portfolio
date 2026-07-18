@@ -41,7 +41,7 @@ for m in list(moon.modifiers):
 bpy.ops.object.shade_smooth()
 
 img = bake_utils.bake_color_ao([moon], "moon_baked", size=1024, ao_samples=32)
-bake_utils.apply_baked_material([moon], img, "MoonBaked")
+bake_utils.apply_baked_material([moon], img, "MoonBaked", metallic=0.0, roughness=0.9)
 
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "moon.glb"))
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True)

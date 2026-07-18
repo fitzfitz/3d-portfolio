@@ -26,3 +26,6 @@ assets-src/
 *.sln
 *.sw?
 .superpowers/
+
+# Python bytecode cache (Blender scripts)
+__pycache__/

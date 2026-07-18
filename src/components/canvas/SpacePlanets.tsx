@@ -156,7 +156,6 @@ export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
   const agentPlanetRef = useRef<THREE.Mesh>(null);
-  const videoMoonRef = useRef<THREE.Group>(null);
   const saasRingRef = useRef<THREE.Mesh>(null);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
@@ -200,7 +199,6 @@ export default function SpacePlanets() {
 
     // Rotate accessories
     if (saasRingRef.current) saasRingRef.current.rotation.z = -time * 0.06;
-    if (videoMoonRef.current) videoMoonRef.current.rotation.y = time * 0.5;
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
 
     // Stargate Portal Aura animations (Organic high-frequency fire flicker)
@@ -308,19 +306,12 @@ export default function SpacePlanets() {
         <Atmosphere radius={planets[1].size} color={planets[1].color} />
         <CloudLayer radius={planets[1].size} tint="#bff5ff" speed={0.112} />
         <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
+        <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[1].size, 16, 16]} />
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.25} />
         </mesh>
-
-        {/* Orbital group for Moon */}
-        <group ref={videoMoonRef}>
-          <mesh position={[planets[1].size * 1.38, 0, 0]} castShadow={true}>
-            <sphereGeometry args={[planets[1].size * 0.12, 8, 8]} />
-            <meshStandardMaterial color="#00f0ff" emissive="#00f0ff" emissiveIntensity={0.8} />
-          </mesh>
-        </group>
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>

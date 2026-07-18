@@ -1,5 +1,5 @@
 # Shared Cycles bake helper: smart-UV + DIFFUSE/AO bakes -> one combined image.
-# Emissive materials must be excluded by the caller (bake only matte parts).
+# Emissive materials are auto-excluded by apply_baked_material (bake only matte parts).
 import bpy
 
 
@@ -89,13 +89,13 @@ def bake_color_ao(objects, image_name, size=1024, ao_samples=32):
     return combined
 
 
-def apply_baked_material(objects, image, name):
+def apply_baked_material(objects, image, name, metallic=0.55, roughness=0.45):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nt = mat.node_tree
     bsdf = nt.nodes["Principled BSDF"]
-    bsdf.inputs["Metallic"].default_value = 0.55
-    bsdf.inputs["Roughness"].default_value = 0.45
+    bsdf.inputs["Metallic"].default_value = metallic
+    bsdf.inputs["Roughness"].default_value = roughness
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = image
     nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
