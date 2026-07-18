@@ -116,6 +116,28 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
   );
 }
 
+interface OrbitingMoonProps {
+  distance: number; speed: number; inclination: number;
+  size: number; color: string; phase?: number;
+}
+
+function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0 }: OrbitingMoonProps) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (ref.current) ref.current.rotation.y = phase + state.clock.getElapsedTime() * speed;
+  });
+  return (
+    <group rotation={[inclination, 0, 0]}>
+      <group ref={ref}>
+        <mesh position={[distance, 0, 0]}>
+          <sphereGeometry args={[size, 12, 12]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
@@ -233,6 +255,7 @@ export default function SpacePlanets() {
         </mesh>
         <Atmosphere radius={planets[0].size} color={planets[0].color} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
+        <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
 
         {/* Glowing aura core */}
         <mesh scale={0.94}>
@@ -270,6 +293,7 @@ export default function SpacePlanets() {
         </mesh>
         <Atmosphere radius={planets[1].size} color={planets[1].color} />
         <CloudLayer radius={planets[1].size} tint="#bff5ff" speed={0.112} />
+        <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[1].size, 16, 16]} />
@@ -308,6 +332,8 @@ export default function SpacePlanets() {
         </mesh>
         <Atmosphere radius={planets[2].size} color={planets[2].color} />
         <CloudLayer radius={planets[2].size} tint="#ffd9c2" speed={0.224} />
+        <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
+        <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[2].size, 16, 16]} />
