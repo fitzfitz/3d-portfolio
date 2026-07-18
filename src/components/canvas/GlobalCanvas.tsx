@@ -15,6 +15,7 @@ import CargoTraffic from "./CargoTraffic";
 import ShootingStars from "./ShootingStars";
 import DistantGalaxies from "./DistantGalaxies";
 import WarpTunnel from "./WarpTunnel";
+import SpaceJellyfish from "./SpaceJellyfish";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -170,6 +171,9 @@ export default function GlobalCanvas() {
 
           {/* Warp tunnel around the ship during boost */}
           {!isLowPerf && <WarpTunnel />}
+
+          {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
+          <SpaceJellyfish />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
