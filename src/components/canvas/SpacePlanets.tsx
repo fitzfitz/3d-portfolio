@@ -152,7 +152,7 @@ export default function SpacePlanets() {
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
 
-    // 1. Slowly rotate planets & Sun
+    // 1. Slowly rotate planets
     if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.12;
     if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = time * 0.08;
     if (agentPlanetRef.current) agentPlanetRef.current.rotation.y = time * 0.16;

@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { flight, useSpaceStore } from "../../store/spaceStore";
@@ -47,6 +47,8 @@ export default function WarpTunnel() {
       }),
     []
   );
+
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
