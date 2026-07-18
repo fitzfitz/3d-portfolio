@@ -45,6 +45,8 @@ export default function Spaceship() {
   const vy = useRef(0);
   const lastVerticalInput = useRef(0);
   const shake = useRef(0);
+  const lastImpactAt = useRef(-1);
+  const warpSuppressUntil = useRef(-1);
 
   const prevOrbitLocked = useRef(false);
   useEffect(() => {
@@ -101,6 +103,7 @@ export default function Spaceship() {
     const dt = Math.min(delta, 0.05); // clamp tab-switch spikes
     const store = useSpaceStore.getState();
     const input = flight.input;
+    const time = state.clock.getElapsedTime();
 
     if (isOrbitLocked) {
       vel.current.set(0, 0, 0);
@@ -130,7 +133,9 @@ export default function Spaceship() {
     angle.current += turnVelocity.current * dt;
 
     // 2. Warp vs impulse. Touch thrust is analog (0..1 forward, <0 brakes).
-    const warpActive = input.boost;
+    // Briefly suppressed right after an impact so the reflected velocity can
+    // actually push the ship away instead of being overwritten by warp speed.
+    const warpActive = input.boost && time > warpSuppressUntil.current;
     store.setWarping(warpActive);
     const thrustInput = input.forward ? 1 : Math.max(0, input.thrust);
     const braking = input.backward || input.thrust < -0.2;
@@ -148,8 +153,6 @@ export default function Spaceship() {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
-
-    const time = state.clock.getElapsedTime();
 
     pos.current.x += vel.current.x * dt;
     pos.current.z += vel.current.z * dt;
@@ -185,9 +188,13 @@ export default function Spaceship() {
         pos.current.set(hit.px, hit.py, hit.pz);
         vel.current.x = hit.vx; vel.current.z = hit.vz;
         vy.current = hit.vy;
-        shake.current = 0.5;
-        soundManager.impact();
-        store.bumpImpact();
+        warpSuppressUntil.current = time + 0.45; // let the reflection push us away
+        if (time - lastImpactAt.current > 0.5) {
+          lastImpactAt.current = time;
+          shake.current = 0.5;
+          soundManager.impact();
+          store.bumpImpact();
+        }
         break;
       }
     }
@@ -280,6 +287,9 @@ export default function Spaceship() {
     const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
     state.camera.lookAt(pos.current.clone().add(lookOffset));
 
+    // Shake intentionally freezes while orbit-locked (early return above skips
+    // this block entirely) and resumes decaying from wherever it left off
+    // once orbit breaks.
     if (shake.current > 0.001) {
       state.camera.position.x += (Math.random() - 0.5) * shake.current;
       state.camera.position.y += (Math.random() - 0.5) * shake.current;
