@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { verticalStep } from "../../utils/verticalFlight";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -35,6 +36,7 @@ export default function Spaceship() {
   const roll = useRef(0);
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
+  const vy = useRef(0);
 
   const prevOrbitLocked = useRef(false);
   useEffect(() => {
@@ -94,6 +96,7 @@ export default function Spaceship() {
 
     if (isOrbitLocked) {
       vel.current.set(0, 0, 0);
+      vy.current = 0;
       roll.current = THREE.MathUtils.lerp(roll.current, 0, frameLerp(0.1, dt));
       shipRef.current.rotation.z = roll.current;
       shipRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
@@ -135,10 +138,26 @@ export default function Spaceship() {
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
     const time = state.clock.getElapsedTime();
-    pitch.current = Math.sin(time * 2) * 0.03;
 
     pos.current.x += vel.current.x * dt;
     pos.current.z += vel.current.z * dt;
+
+    // Vertical channel (pure step; auto-level only outside gravity zones)
+    const vRes = verticalStep(
+      pos.current.y,
+      vy.current,
+      {
+        ascend: input.ascend,
+        descend: input.descend,
+        autoLevel: !input.ascend && !input.descend && !store.activeZone,
+      },
+      dt
+    );
+    pos.current.y = vRes.y;
+    vy.current = vRes.vy;
+    store.setAltitudeWarn(Math.abs(pos.current.y) > 48);
+
+    pitch.current = Math.sin(time * 2) * 0.03 + THREE.MathUtils.clamp(-vy.current * 0.045, -0.3, 0.3);
 
     // Toroidal boundary wrap
     const bounds = COSMIC_BOUNDS;
@@ -218,16 +237,21 @@ export default function Spaceship() {
       -Math.sin(angle.current) * camDistance, camHeight, -Math.cos(angle.current) * camDistance
     );
     const targetCamPos = pos.current.clone().add(camOffset);
-    state.camera.position.lerp(targetCamPos, frameLerp(0.05, dt));
-    const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2, Math.cos(angle.current) * 1.5);
+    const fXZ = frameLerp(0.05, dt);
+    const fY = frameLerp(0.03, dt);
+    state.camera.position.x += (targetCamPos.x - state.camera.position.x) * fXZ;
+    state.camera.position.z += (targetCamPos.z - state.camera.position.z) * fXZ;
+    state.camera.position.y += (targetCamPos.y - state.camera.position.y) * fY;
+    const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
     state.camera.lookAt(pos.current.clone().add(lookOffset));
 
     // 6. Publish telemetry (mutable — no React involvement)
     flight.x = pos.current.x;
     flight.z = pos.current.z;
+    flight.y = pos.current.y;
     flight.speed = vel.current.length();
     flight.heading = angle.current;
-    store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6);
+    store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6 && Math.abs(pos.current.y) < 3);
   });
 
   return (

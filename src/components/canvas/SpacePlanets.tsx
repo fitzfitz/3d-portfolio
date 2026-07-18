@@ -7,7 +7,7 @@ import Atmosphere from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { toroidalDistance } from "../../utils/toroidal";
+import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
@@ -221,14 +221,14 @@ export default function SpacePlanets() {
     let lockActive = false;
 
     planets.forEach((p) => {
-      const dist = toroidalDistance(flight.x, flight.z, p.pos[0], p.pos[2], COSMIC_BOUNDS);
+      const dist = toroidalDistance3(flight.x, flight.z, flight.y, p.pos[0], p.pos[2], p.pos[1], COSMIC_BOUNDS);
       if (dist < p.size * 1.8) {
         activeZone = p.name;
         if (dist < p.size * 1.3 && !isOrbitCooldown) lockActive = true;
       }
     });
 
-    const portalDist = toroidalDistance(flight.x, flight.z, PORTAL_POS[0], PORTAL_POS[2], COSMIC_BOUNDS);
+    const portalDist = toroidalDistance3(flight.x, flight.z, flight.y, PORTAL_POS[0], PORTAL_POS[2], PORTAL_POS[1], COSMIC_BOUNDS);
     if (portalDist < 2.2) {
       activeZone = "contact";
       if (portalDist < 1.5 && !isOrbitCooldown) lockActive = true;
