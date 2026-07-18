@@ -23,7 +23,8 @@ const coronaFragment = /* glsl */ `
     return sin(p.x * 5.1 + uTime * 1.7) * sin(p.y * 4.3 - uTime * 1.1) * sin(p.z * 6.7 + uTime * 2.3);
   }
   void main() {
-    float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 2.0);
+    // clamp: |dot| can exceed 1.0 by float epsilon and pow(negative, x) is NaN on some GPUs
+    float rim = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 2.0);
     float n = 0.5 + 0.5 * vnoise(vNormal * 2.0);
     float flicker = 0.65 + 0.35 * vnoise(vNormal * 4.0 + vec3(0.0, uTime * 0.2, 0.0));
     vec3 col = mix(vec3(1.0, 0.33, 0.0), vec3(1.0, 0.75, 0.35), n);
