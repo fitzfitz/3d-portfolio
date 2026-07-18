@@ -8,7 +8,7 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, prune, weld, quantize, meshopt, textureCompress } from "@gltf-transform/functions";
 import { MeshoptEncoder } from "meshoptimizer";
 import sharp from "sharp";
-import { statSync } from "node:fs";
+import { statSync, existsSync } from "node:fs";
 
 const SRC = "assets-src";
 const OUT = "public/models";
@@ -37,7 +37,11 @@ await processGlb("asteroid", [
 ]);
 
 // Player-facing / already-1K models: format conversion only, no resize.
-for (const name of ["spaceship", "portal_gateway", "space_crystal"]) {
+for (const name of ["spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature"]) {
+  if (!existsSync(`${SRC}/${name}.glb`)) {
+    console.log(`skip ${name}.glb (not in assets-src)`);
+    continue;
+  }
   await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", quality: 92 })]);
 }
 

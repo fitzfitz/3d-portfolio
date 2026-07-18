@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "assets:optimize": "node scripts/optimize-assets.mjs",
+    "assets:generate": "scripts/blender/generate.sh",
     "test": "vitest run"
   },
   "dependencies": {
