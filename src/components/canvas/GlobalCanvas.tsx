@@ -183,8 +183,11 @@ export default function GlobalCanvas() {
                 ];
                 if (sunMesh) {
                   effects.push(
-                    <GodRays key="rays" sun={sunMesh} samples={60} density={0.9} decay={0.94}
-                      weight={0.25} exposure={0.28} clampMax={1} blur={true} />
+                    // Accumulator budget: HDR sun (emissive 3.2) x weight x decay-series(~10) x exposure
+                    // must stay well under 1.0 or the clamp saturates to a white wash (seen at spawn
+                    // where the sun is dead-center). 3.2 x 0.08 x 10 x 0.18 = 0.46 peak.
+                    <GodRays key="rays" sun={sunMesh} samples={60} density={0.8} decay={0.9}
+                      weight={0.08} exposure={0.18} clampMax={0.8} blur={true} />
                   );
                 }
                 return effects;
