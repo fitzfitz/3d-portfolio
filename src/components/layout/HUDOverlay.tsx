@@ -18,6 +18,7 @@ export default function HUDOverlay() {
   const setLowPerf = useSpaceStore((s) => s.setLowPerf);
   const isMuted = useSpaceStore((s) => s.isMuted);
   const setMuted = useSpaceStore((s) => s.setMuted);
+  const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const isCoarse = useMediaQuery("(pointer: coarse)");
 
   const locRef = useRef<HTMLDivElement>(null);
@@ -50,6 +51,7 @@ export default function HUDOverlay() {
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
         <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div>SHARDS: {shardsCollected.length}/10</div>
       </div>
 
       <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">

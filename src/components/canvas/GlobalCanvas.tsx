@@ -17,6 +17,7 @@ import DistantGalaxies from "./DistantGalaxies";
 import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
 import Comets from "./Comets";
+import DataShards from "./DataShards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -178,6 +179,9 @@ export default function GlobalCanvas() {
 
           {/* Comets with anti-sunward tails */}
           <Comets />
+
+          {/* Collectible data shards scattered across the system */}
+          <DataShards />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />

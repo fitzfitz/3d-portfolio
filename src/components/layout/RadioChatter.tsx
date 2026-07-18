@@ -61,6 +61,14 @@ export default function RadioChatter() {
         (s) => s.altitudeWarn,
         (warn) => { if (warn) typeLine(scheduler.pick("altitude")); }
       ),
+      useSpaceStore.subscribe(
+        (s) => s.broadcast,
+        (b) => { if (b) typeLine(b.text); }
+      ),
+      useSpaceStore.subscribe(
+        (s) => s.impactCount,
+        () => typeLine(scheduler.pick("impact"))
+      ),
     ];
 
     typeLine(scheduler.pick("ambient"));
