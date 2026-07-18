@@ -34,6 +34,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "KeyP") return;
       if (isEditableTarget(e.target as HTMLElement | null)) return;
+      if (useSpaceStore.getState().showClassicCV) return;
       setPhotoMode(!useSpaceStore.getState().photoMode);
     };
     window.addEventListener("keydown", onKey);
