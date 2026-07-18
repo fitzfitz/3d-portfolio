@@ -1,6 +1,7 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 const TAIL_POINTS = 50;
@@ -16,6 +17,20 @@ const away = new THREE.Vector3();
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const tailRefs = useRef<(THREE.Points<any> | null)[]>([null, null]);
+
+  const { scene } = useGLTF("/models/comet_head.glb");
+
+  const { headGeometry, headMaterial } = useMemo(() => {
+    let g: THREE.BufferGeometry | undefined;
+    let m: THREE.Material | undefined;
+    scene.traverse((o) => {
+      if (!g && o instanceof THREE.Mesh) {
+        g = o.geometry;
+        m = o.material;
+      }
+    });
+    return { headGeometry: g, headMaterial: m };
+  }, [scene]);
 
   const tails = useMemo(
     () =>
@@ -39,7 +54,10 @@ export default function Comets() {
       const ang = (time / c.periodSeconds) * Math.PI * 2 + c.phase;
       head.set(Math.cos(ang) * c.a, Math.sin(ang) * c.tiltY, Math.sin(ang) * c.b);
       const mesh = headRefs.current[i];
-      if (mesh) mesh.position.copy(head);
+      if (mesh) {
+        mesh.position.copy(head);
+        mesh.rotation.set(time * (0.4 + i * 0.17), time * (0.31 + i * 0.11), 0);
+      }
 
       // Tail points away from the sun (origin), longer when closer to the sun
       away.copy(head).normalize();
@@ -73,10 +91,7 @@ export default function Comets() {
     <>
       {COMETS.map((_, i) => (
         <group key={i}>
-          <mesh ref={(m) => { headRefs.current[i] = m; }}>
-            <sphereGeometry args={[0.8, 12, 12]} />
-            <meshStandardMaterial color="#eaffff" emissive="#bff5ff" emissiveIntensity={2.6} />
-          </mesh>
+          <mesh ref={(m) => { headRefs.current[i] = m; }} geometry={headGeometry} material={headMaterial} scale={0.8} />
           <points ref={(p) => { tailRefs.current[i] = p; }} geometry={tails[i].geom} frustumCulled={false}>
             <pointsMaterial color="#bff5ff" size={0.5} transparent={true} opacity={0.55}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
