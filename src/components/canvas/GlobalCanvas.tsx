@@ -13,78 +13,67 @@ import AsteroidBelt from "./AsteroidBelt";
 import ShootingStars from "./ShootingStars";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
-// Glowing space starfield backdrop with multi-colored stars and twinkle effects
-function GalaxyStarfield() {
+interface StarLayerProps {
+  count: number;
+  radiusMin: number;
+  radiusMax: number;
+  size: number;
+  opacity: number;
+  /** rad/s around Y; sign controls direction */
+  speed: number;
+  twinkle?: boolean;
+}
+
+function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle = false }: StarLayerProps) {
   const pointsRef = useRef<THREE.Points>(null);
-  const starsCount = 2500;
 
   const [positions, colors] = useMemo(() => {
-    const posArr = new Float32Array(starsCount * 3);
-    const colArr = new Float32Array(starsCount * 3);
-    for (let i = 0; i < starsCount; i++) {
+    const posArr = new Float32Array(count * 3);
+    const colArr = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 20 + Math.random() * 250;
+      const radius = radiusMin + Math.random() * (radiusMax - radiusMin);
       posArr[i * 3] = Math.sin(angle) * radius;
       posArr[i * 3 + 1] = (Math.random() - 0.5) * 120;
       posArr[i * 3 + 2] = Math.cos(angle) * radius;
-
-      // Color variation (75% white, 15% blue stars, 10% red-orange stars)
       const rand = Math.random();
-      if (rand < 0.75) {
-        colArr[i * 3] = 1.0;
-        colArr[i * 3 + 1] = 1.0;
-        colArr[i * 3 + 2] = 1.0;
-      } else if (rand < 0.9) {
-        colArr[i * 3] = 0.72;
-        colArr[i * 3 + 1] = 0.88;
-        colArr[i * 3 + 2] = 1.0;
-      } else {
-        colArr[i * 3] = 1.0;
-        colArr[i * 3 + 1] = 0.78;
-        colArr[i * 3 + 2] = 0.58;
-      }
+      if (rand < 0.75) colArr.set([1, 1, 1], i * 3);
+      else if (rand < 0.9) colArr.set([0.72, 0.88, 1.0], i * 3);
+      else colArr.set([1.0, 0.78, 0.58], i * 3);
     }
     return [posArr, colArr];
-  }, []);
+  }, [count, radiusMin, radiusMax]);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
     const time = state.clock.getElapsedTime();
-    // Drifting rotation of stars
-    pointsRef.current.rotation.y = time * 0.003;
-
-    // Twinkling animation size modulation
-    const mat = pointsRef.current.material as THREE.PointsMaterial;
-    mat.size = 0.045 + Math.sin(time * 2.5) * 0.015;
+    pointsRef.current.rotation.y = time * speed;
+    if (twinkle) {
+      const mat = pointsRef.current.material as THREE.PointsMaterial;
+      mat.size = size + Math.sin(time * 2.5) * size * 0.3;
+    }
   });
 
   return (
     <points ref={pointsRef}>
       <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          args={[positions, 3]}
-          count={starsCount}
-          array={positions}
-          itemSize={3}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          args={[colors, 3]}
-          count={starsCount}
-          array={colors}
-          itemSize={3}
-        />
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} count={count} array={positions} itemSize={3} />
+        <bufferAttribute attach="attributes-color" args={[colors, 3]} count={count} array={colors} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial
-        vertexColors={true}
-        size={0.05}
-        transparent={true}
-        opacity={0.45}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
+      <pointsMaterial vertexColors={true} size={size} transparent={true} opacity={opacity}
+        blending={THREE.AdditiveBlending} depthWrite={false} />
     </points>
+  );
+}
+
+// Three-depth parallax sky: far slow, mid counter-rotating, near faster + twinkling.
+function GalaxyStarfield() {
+  return (
+    <>
+      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.0015} />
+      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.003} />
+      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.006} twinkle={true} />
+    </>
   );
 }
 
