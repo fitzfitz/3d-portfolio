@@ -5,7 +5,7 @@ beforeEach(() => {
   useSpaceStore.setState({
     activeZone: null, isOrbitLocked: false, isOrbitCooldown: false,
     isWarping: false, isLowPerf: false, lowPerfManual: false,
-    showClassicCV: false, isNearSpawn: true, isTeleporting: false,
+    showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
   });
 });
 
@@ -70,5 +70,19 @@ describe("spaceStore", () => {
     vi.advanceTimersByTime(200); // now 380ms from SECOND call
     expect(useSpaceStore.getState().isTeleporting).toBe(false);
     vi.useRealTimers();
+  });
+
+  it("setMuted persists to localStorage", () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = v; },
+    });
+    useSpaceStore.getState().setMuted(true);
+    expect(useSpaceStore.getState().isMuted).toBe(true);
+    expect(store["fitz-sound-muted"]).toBe("1");
+    useSpaceStore.getState().setMuted(false);
+    expect(store["fitz-sound-muted"]).toBe("0");
+    vi.unstubAllGlobals();
   });
 });

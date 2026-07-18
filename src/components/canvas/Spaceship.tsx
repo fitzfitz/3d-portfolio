@@ -226,6 +226,7 @@ export default function Spaceship() {
     flight.x = pos.current.x;
     flight.z = pos.current.z;
     flight.speed = vel.current.length();
+    flight.heading = angle.current;
     store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6);
   });
 

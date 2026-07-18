@@ -25,6 +25,7 @@ export const flight = {
   x: 0,
   z: 18,
   speed: 0, // world units / second
+  heading: 0, // yaw in radians, written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
     boost: false, steer: 0, thrust: 0,
@@ -41,6 +42,7 @@ interface SpaceState {
   showClassicCV: boolean;
   isNearSpawn: boolean;
   isTeleporting: boolean;
+  isMuted: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -49,6 +51,7 @@ interface SpaceState {
   setShowClassicCV: (v: boolean) => void;
   setNearSpawn: (v: boolean) => void;
   triggerTeleportFlash: () => void;
+  setMuted: (v: boolean) => void;
 }
 
 export const useSpaceStore = create<SpaceState>()(
@@ -62,6 +65,9 @@ export const useSpaceStore = create<SpaceState>()(
     showClassicCV: false,
     isNearSpawn: true,
     isTeleporting: false,
+    isMuted:
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem("fitz-sound-muted") === "1",
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -71,6 +77,12 @@ export const useSpaceStore = create<SpaceState>()(
     setLowPerf: (v, manual = false) =>
       set((s) => ({ isLowPerf: v, lowPerfManual: s.lowPerfManual || manual })),
     setShowClassicCV: (v) => set({ showClassicCV: v }),
+    setMuted: (v) => {
+      set({ isMuted: v });
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
+      }
+    },
     breakOrbit: () => {
       if (orbitCooldownTimer) clearTimeout(orbitCooldownTimer);
       set({ isOrbitLocked: false, activeZone: null, isOrbitCooldown: true });
