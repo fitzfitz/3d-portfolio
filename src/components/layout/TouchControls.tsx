@@ -35,6 +35,14 @@ export default function TouchControls() {
     }
   }, [isOrbitLocked]);
 
+  // Reset scan input/pointer when the target leaves range mid-hold (button unmounts underneath the finger)
+  useEffect(() => {
+    if (scanTarget === null) {
+      flight.input.scan = false;
+      scanPointerRef.current = null;
+    }
+  }, [scanTarget]);
+
   // Reset flight.input on unmount to prevent stuck inputs when component is removed
   useEffect(() => () => {
     flight.input.steer = 0;
