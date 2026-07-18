@@ -62,6 +62,7 @@ export default function SpaceJellyfish() {
   const { scene } = useGLTF("/models/creature.glb");
   const groupRef = useRef<THREE.Group>(null);
   const tOffset = useRef(0);
+  const timeRef = useRef(0);
 
   const material = useMemo(
     () =>
@@ -91,7 +92,7 @@ export default function SpaceJellyfish() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "KeyJ") return;
-      const now = performance.now() / 1000;
+      const now = timeRef.current;
       tOffset.current = NEAR_T - ((now / LOOP_SECONDS) % 1);
     };
     window.addEventListener("keydown", onKey);
@@ -101,6 +102,7 @@ export default function SpaceJellyfish() {
   useFrame((state) => {
     if (!groupRef.current) return;
     const time = state.clock.getElapsedTime();
+    timeRef.current = time;
     material.uniforms.uTime.value = time;
     const t = ((time / LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
     PATH.getPointAt(t, groupRef.current.position);
