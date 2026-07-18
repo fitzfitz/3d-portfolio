@@ -101,6 +101,7 @@ export default function TouchControls() {
       <button
         className="fixed bottom-64 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
         onPointerDown={(e) => {
+          if (risepointer.current !== null) return;
           e.currentTarget.setPointerCapture(e.pointerId);
           risepointer.current = e.pointerId;
           flight.input.ascend = true;
@@ -125,6 +126,7 @@ export default function TouchControls() {
       <button
         className="fixed bottom-48 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
         onPointerDown={(e) => {
+          if (divepointer.current !== null) return;
           e.currentTarget.setPointerCapture(e.pointerId);
           divepointer.current = e.pointerId;
           flight.input.descend = true;
