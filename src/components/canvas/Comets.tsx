@@ -60,6 +60,7 @@ export default function Comets() {
         attr.needsUpdate = true;
       }
 
+      // xz-only by design — vertical NPC/comet reactions are out of scope (spec).
       const dx = head.x - flight.x;
       const dz = head.z - flight.z;
       if (dx * dx + dz * dz < 3600) anyNear = true;

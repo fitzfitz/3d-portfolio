@@ -83,7 +83,7 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
         const randomColor = colors[Math.floor(Math.random() * colors.length)];
         const newAnomaly: Anomaly = {
           id: nextId.current++,
-          position: new THREE.Vector3(point.x, (Math.random() - 0.5) * 0.5, point.z),
+          position: new THREE.Vector3(point.x, point.y + (Math.random() - 0.5) * 0.5, point.z),
           velocity: new THREE.Vector3(
             (Math.random() - 0.5) * 0.015,
             (Math.random() - 0.5) * 0.005,
@@ -100,7 +100,7 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
     useFrame(() => {
       if (anomalies.length === 0) return;
 
-      const shipPosVec = new THREE.Vector3(flight.x, 0, flight.z);
+      const shipPosVec = new THREE.Vector3(flight.x, flight.y, flight.z);
 
       setAnomalies((currentAnomalies) => {
         // Map and filter out absorbed ones

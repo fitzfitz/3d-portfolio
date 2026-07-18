@@ -3,6 +3,7 @@ import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar } from "../../utils/radarTransform";
+import { V_CEIL } from "../../utils/verticalFlight";
 
 const SIZE = 148;
 const RANGE = 120; // world units mapped to radar radius
@@ -96,7 +97,7 @@ export default function RadarMap() {
       ctx.moveTo(barX - 4, barTop + barH / 2);
       ctx.lineTo(barX + 4, barTop + barH / 2);
       ctx.stroke();
-      const yNorm = Math.max(-1, Math.min(1, flight.y / 55));
+      const yNorm = Math.max(-1, Math.min(1, flight.y / V_CEIL));
       ctx.fillStyle = "#00ff87";
       ctx.beginPath();
       ctx.arc(barX, barTop + barH / 2 - yNorm * (barH / 2), 2.2, 0, Math.PI * 2);

@@ -86,13 +86,13 @@ function GalaxyStarfield() {
 function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(() => {
-    if (ref.current) ref.current.position.set(flight.x, 0, flight.z);
+    if (ref.current) ref.current.position.set(flight.x, flight.y, flight.z);
   });
   return (
     <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]}
       onPointerDown={(e) => { e.stopPropagation(); if (e.point) onSpawn(e.point.clone()); }}>
       <planeGeometry args={[180, 180]} />
-      <meshBasicMaterial visible={false} />
+      <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
     </mesh>
   );
 }

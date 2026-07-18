@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfishPath";
+import { isEditableTarget } from "../../hooks/useKeyboardInput";
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
@@ -84,7 +85,7 @@ export default function SpaceJellyfish() {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "KeyJ") return;
       const t = e.target as HTMLElement | null;
-      if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
+      if (isEditableTarget(t)) return;
       const now = timeRef.current;
       tOffset.current = JELLY_NEAR_T - ((now / JELLY_LOOP_SECONDS) % 1);
     };

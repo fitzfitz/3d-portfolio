@@ -61,7 +61,7 @@ export default function WarpTunnel() {
     const visible = intensity.current > 0.01;
     meshRef.current.visible = visible;
     if (visible) {
-      meshRef.current.position.set(flight.x, 0, flight.z);
+      meshRef.current.position.set(flight.x, flight.y, flight.z);
       meshRef.current.rotation.set(Math.PI / 2, flight.heading, 0, "YXZ");
     }
   });

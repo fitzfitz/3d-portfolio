@@ -89,7 +89,7 @@ export default function HUDOverlay() {
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
           <span className="text-white/25">SPAWN_PLASMA</span>
-          <span className="text-white">{isCoarse ? "TAP SPACE" : "CLICK SPACE"}</span>
+          <span className="text-white">{isCoarse ? "TAP VOID" : "CLICK VOID"}</span>
         </div>
       </div>
 

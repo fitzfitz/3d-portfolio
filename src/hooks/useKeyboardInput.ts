@@ -13,6 +13,11 @@ const KEYMAP: Record<string, BoolKey> = {
   ShiftLeft: "boost", ShiftRight: "boost",
 };
 
+/** True when the event target is a text-entry element — flight keys must not fire there. */
+export function isEditableTarget(el: { tagName?: string; isContentEditable?: boolean } | null): boolean {
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable === true);
+}
+
 /** Writes key state straight into flight.input — zero React re-renders. */
 export function useKeyboardInput() {
   useEffect(() => {
@@ -21,8 +26,10 @@ export function useKeyboardInput() {
       if (key) (flight.input as FlightInput)[key] = value;
     };
     const down = (e: KeyboardEvent) => {
+      // keydown only: guarding keyup too would leave a key stuck ON if it's
+      // released while focus sits in a form field (e.g. held W, click input, release).
       const el = e.target as HTMLElement | null;
-      if (el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el.isContentEditable)) return;
+      if (isEditableTarget(el)) return;
       set(e.code, true);
     };
     const up = (e: KeyboardEvent) => set(e.code, false);

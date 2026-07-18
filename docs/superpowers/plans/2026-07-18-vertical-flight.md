@@ -416,3 +416,5 @@ Gates: build ✓ · lint ✓ · tests 40/40 (12 new: verticalStep ×7, toroidalD
 Probe-verified (screenshots): hold-Space climb to Y(28.7) with radar altitude marker up + vertical engine trail; 12s idle auto-level back to Y(0.4) with spawn card reappearing (3D spawn check); Shift-warp fires the full warp stack (tunnel + CA + chatter + 144 KM/S). New 4-cell HUD card (ALTITUDE: SPACE/C · WARP_DRIVE: SHIFT) rendering. Zero page errors.
 
 Pending human: climb/dive feel, C/X descend key comfort, touch RISE/DIVE on device, altitude-bar vs dead-ahead-blip overlap aesthetics (flagged by Task 3 review — looked acceptable in probe shots).
+
+Note: auto-level implemented as y *= 0.7^dt (~2s half-life) — matches spec intent; spec's "~8s"/0.915 wording was self-contradictory.

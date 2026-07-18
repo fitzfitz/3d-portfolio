@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { verticalStep } from "../../utils/verticalFlight";
+import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -99,7 +99,11 @@ export default function Spaceship() {
       vy.current = 0;
       roll.current = THREE.MathUtils.lerp(roll.current, 0, frameLerp(0.1, dt));
       shipRef.current.rotation.z = roll.current;
-      shipRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
+      // Ease the held altitude toward the planet plane and bob around it —
+      // no vertical teleport on lock or on break-orbit.
+      pos.current.y += (0 - pos.current.y) * frameLerp(0.04, dt);
+      shipRef.current.position.y = pos.current.y + Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
+      flight.y = pos.current.y;
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.1);
       store.setWarping(false);
       flight.speed = 0;
@@ -155,7 +159,7 @@ export default function Spaceship() {
     );
     pos.current.y = vRes.y;
     vy.current = vRes.vy;
-    store.setAltitudeWarn(Math.abs(pos.current.y) > 48);
+    store.setAltitudeWarn(Math.abs(pos.current.y) > V_CEIL - 7);
 
     pitch.current = Math.sin(time * 2) * 0.03 + THREE.MathUtils.clamp(-vy.current * 0.045, -0.3, 0.3);
 
@@ -249,7 +253,7 @@ export default function Spaceship() {
     flight.x = pos.current.x;
     flight.z = pos.current.z;
     flight.y = pos.current.y;
-    flight.speed = vel.current.length();
+    flight.speed = Math.hypot(vel.current.length(), vy.current);
     flight.heading = angle.current;
     store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6 && Math.abs(pos.current.y) < 3);
   });
