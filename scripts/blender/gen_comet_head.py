@@ -15,14 +15,28 @@ bpy.context.view_layer.objects.active = head
 bpy.ops.object.modifier_apply(modifier="disp")
 bpy.ops.object.shade_smooth()
 
-mat = bpy.data.materials.new("Ice")
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bake_utils
+
+# Rocky-ice surface: patterned via a second crater displace + baked color+AO.
+vor = bpy.data.textures.new("pits", type="VORONOI")
+vor.noise_scale = 0.35
+d2 = head.modifiers.new("pits", "DISPLACE")
+d2.texture = vor
+d2.strength = -0.12
+d2.mid_level = 0.4
+bpy.ops.object.modifier_apply(modifier="pits")
+
+mat = bpy.data.materials.new("IceRock")
 mat.use_nodes = True
 bsdf = mat.node_tree.nodes["Principled BSDF"]
-bsdf.inputs["Base Color"].default_value = (0.85, 0.97, 1.0, 1.0)
-bsdf.inputs["Roughness"].default_value = 0.25
-bsdf.inputs["Emission Color"].default_value = (0.75, 0.96, 1.0, 1.0)
-bsdf.inputs["Emission Strength"].default_value = 2.5
+bsdf.inputs["Base Color"].default_value = (0.55, 0.66, 0.72, 1.0)
+bsdf.inputs["Roughness"].default_value = 0.85
 head.data.materials.append(mat)
+
+img = bake_utils.bake_color_ao([head], "comet_baked", size=512, ao_samples=32)
+bake_utils.apply_baked_material([head], img, "CometBaked", metallic=0.05, roughness=0.85)
 
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "comet_head.glb"))
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True)

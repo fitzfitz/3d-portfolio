@@ -1,23 +1,64 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { setScannable } from "../../utils/scannables";
+import { keplerPosition } from "../../utils/kepler";
 
 const TAIL_POINTS = 50;
-interface CometDef { a: number; b: number; tiltY: number; periodSeconds: number; phase: number }
-const COMETS: CometDef[] = [
-  { a: 150, b: 95, tiltY: 18, periodSeconds: 140, phase: 0 },
-  { a: 210, b: 130, tiltY: -14, periodSeconds: 220, phase: 2.1 },
+// Keplerian orbits: sun at the focus — comets whip past perihelion (~54 units,
+// tail blazing) and crawl out to aphelion. Periods long enough to feel like events.
+const COMETS = [
+  { a: 140, e: 0.62, periodSeconds: 380, phase: 0, tilt: 0.18 },
+  { a: 155, e: 0.65, periodSeconds: 620, phase: 2.1, tilt: -0.14 },
 ];
 
 const head = new THREE.Vector3();
 const away = new THREE.Vector3();
 
+// "Fire beam" coma: flickering fresnel shell, warm core fading to icy fringe.
+const comaVertex = /* glsl */ `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vNormal = normalize(normalMatrix * normal);
+    vViewDir = normalize(-mv.xyz);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const comaFragment = /* glsl */ `
+  uniform float uTime;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float rim = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 1.5);
+    float flick = 0.72 + 0.28 * sin(uTime * 9.0 + vNormal.x * 7.0) * sin(uTime * 6.3 + vNormal.y * 5.0);
+    vec3 col = mix(vec3(1.0, 0.72, 0.35), vec3(0.72, 0.95, 1.0), rim); // warm core -> icy fringe
+    gl_FragColor = vec4(col, rim * flick * 0.85);
+  }
+`;
+
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
+  const comaRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const tailRefs = useRef<(THREE.Points<any> | null)[]>([null, null]);
+
+  const comaMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: comaVertex,
+        fragmentShader: comaFragment,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        depthWrite: false,
+      }),
+    []
+  );
+  useEffect(() => () => comaMaterial.dispose(), [comaMaterial]);
 
   const { scene } = useGLTF("/models/comet_head.glb");
 
@@ -27,10 +68,9 @@ export default function Comets() {
     scene.traverse((o) => {
       if (!g && o instanceof THREE.Mesh) {
         g = o.geometry;
-        // Clone before taming the glow: at the GLB's emissive 2.5, bloom
-        // whites the tumbling icy chunk into a featureless ball.
+        // Baked rocky-ice material ships in the GLB now (no emissive) — the
+        // coma shell provides the glow. Clone so disposal stays component-owned.
         m = (o.material as THREE.MeshStandardMaterial).clone();
-        m.emissiveIntensity = 1.05;
       }
     });
     return { headGeometry: g, headMaterial: m };
@@ -59,17 +99,20 @@ export default function Comets() {
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
     const store = useSpaceStore.getState();
+    comaMaterial.uniforms.uTime.value = time;
     let anyNear = false;
 
     COMETS.forEach((c, i) => {
-      const ang = (time / c.periodSeconds) * Math.PI * 2 + c.phase;
-      head.set(Math.cos(ang) * c.a, Math.sin(ang) * c.tiltY, Math.sin(ang) * c.b);
+      const kp = keplerPosition(time, c);
+      head.set(kp.x, kp.y, kp.z);
       setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
       const mesh = headRefs.current[i];
       if (mesh) {
         mesh.position.copy(head);
         mesh.rotation.set(time * (0.4 + i * 0.17), time * (0.31 + i * 0.11), 0);
       }
+      const coma = comaRefs.current[i];
+      if (coma) coma.position.copy(head);
 
       // Tail points away from the sun (origin), longer when closer to the sun
       away.copy(head).normalize();
@@ -112,7 +155,15 @@ export default function Comets() {
     <>
       {COMETS.map((_, i) => (
         <group key={i}>
-          <mesh ref={(m) => { headRefs.current[i] = m; }} geometry={headGeometry} material={headMaterial} scale={0.8} />
+          {/* Ribbon trail like the ship's engine wake — long at perihelion speed */}
+          <Trail width={3.2} length={7} color="#9feaff" attenuation={(t) => t * t}>
+            <mesh ref={(m) => { headRefs.current[i] = m; }} geometry={headGeometry} material={headMaterial} scale={0.8} />
+          </Trail>
+          {/* Fire coma */}
+          <mesh ref={(m) => { comaRefs.current[i] = m; }} material={comaMaterial} scale={1.5}>
+            <sphereGeometry args={[1, 20, 20]} />
+          </mesh>
+          {/* Anti-sunward shimmer stream (the ion tail) */}
           <points ref={(p) => { tailRefs.current[i] = p; }} geometry={tails[i].geom} frustumCulled={false}>
             <pointsMaterial vertexColors={true} size={0.55} transparent={true} opacity={0.9}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
