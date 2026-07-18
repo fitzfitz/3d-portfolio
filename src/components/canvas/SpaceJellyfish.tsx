@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfishPath";
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
+import { setScannable } from "../../utils/scannables";
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
@@ -102,6 +103,7 @@ export default function SpaceJellyfish() {
     JELLY_PATH.getPointAt(t, groupRef.current.position);
     const tangent = JELLY_PATH.getTangentAt(t);
     groupRef.current.rotation.set(tangent.z * 0.12, 0, -tangent.x * 0.12); // gentle tilt into drift
+    setScannable("jellyfish", groupRef.current.position.x, groupRef.current.position.y, groupRef.current.position.z, "UNKNOWN_LIFEFORM");
   });
 
   return (

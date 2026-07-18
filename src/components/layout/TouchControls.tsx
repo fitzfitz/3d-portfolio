@@ -8,6 +8,7 @@ const RADIUS = 56; // px travel of the joystick knob
 export default function TouchControls() {
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const scanTarget = useSpaceStore((s) => s.scanTarget);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
@@ -15,6 +16,7 @@ export default function TouchControls() {
   const boostPointerRef = useRef<number | null>(null);
   const risepointer = useRef<number | null>(null);
   const divepointer = useRef<number | null>(null);
+  const scanPointerRef = useRef<number | null>(null);
 
   // Reset flight.input and clear pointer tracking when orbit lock engages mid-interaction
   useEffect(() => {
@@ -24,10 +26,12 @@ export default function TouchControls() {
       flight.input.boost = false;
       flight.input.ascend = false;
       flight.input.descend = false;
+      flight.input.scan = false;
       activePointerId.current = null;
       boostPointerRef.current = null;
       risepointer.current = null;
       divepointer.current = null;
+      scanPointerRef.current = null;
     }
   }, [isOrbitLocked]);
 
@@ -38,8 +42,10 @@ export default function TouchControls() {
     flight.input.boost = false;
     flight.input.ascend = false;
     flight.input.descend = false;
+    flight.input.scan = false;
     risepointer.current = null;
     divepointer.current = null;
+    scanPointerRef.current = null;
   }, []);
 
   if (!isCoarse || isOrbitLocked) return null;
@@ -146,6 +152,33 @@ export default function TouchControls() {
       >
         ▼ DIVE
       </button>
+
+      {/* Scan button — only shown while a scannable target is in range */}
+      {scanTarget !== null && (
+        <button
+          className="fixed bottom-80 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-secondary/40 bg-black/50 font-mono text-[10px] text-secondary active:bg-secondary/20"
+          onPointerDown={(e) => {
+            if (scanPointerRef.current !== null) return;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            scanPointerRef.current = e.pointerId;
+            flight.input.scan = true;
+          }}
+          onPointerUp={(e) => {
+            if (e.pointerId === scanPointerRef.current) {
+              scanPointerRef.current = null;
+              flight.input.scan = false;
+            }
+          }}
+          onPointerCancel={(e) => {
+            if (e.pointerId === scanPointerRef.current) {
+              scanPointerRef.current = null;
+              flight.input.scan = false;
+            }
+          }}
+        >
+          SCAN
+        </button>
+      )}
 
       {/* Boost button */}
       <button

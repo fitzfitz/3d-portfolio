@@ -9,6 +9,7 @@ import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
+import { setScannable } from "../../utils/scannables";
 
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
 const nebulaTexture = (() => {
@@ -182,6 +183,12 @@ export default function SpacePlanets() {
 
   // Load custom stargate portal gateway model
   const { scene: portalScene } = useGLTF("/models/portal_gateway.glb");
+
+  // Register static scan targets (planets + contact portal) once — positions never move.
+  useEffect(() => {
+    planets.forEach((p) => setScannable(p.name, p.pos[0], p.pos[1], p.pos[2], "PLANET_" + p.name.toUpperCase()));
+    setScannable("contact", PORTAL_POS[0], PORTAL_POS[1], PORTAL_POS[2], "PORTAL_SUN");
+  }, []);
 
   // Proximity attraction logic
   useFrame((state) => {

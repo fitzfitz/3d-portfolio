@@ -2,7 +2,8 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { asteroidInstances } from "../../data/asteroids";
+import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
+import { setScannable } from "../../utils/scannables";
 
 const COUNT = asteroidInstances.length;
 const dummy = new THREE.Object3D();
@@ -31,6 +32,11 @@ export default function Asteroids() {
       if (tex) { tex.anisotropy = maxAniso; tex.needsUpdate = true; }
     }
   }, [material, gl]);
+
+  // Register static scan targets once — asteroid positions never move.
+  useEffect(() => {
+    ASTEROID_COLLIDERS.forEach((c) => setScannable(c.id, c.x, c.y, c.z, c.id.toUpperCase()));
+  }, []);
 
   useFrame((state) => {
     if (!meshRef.current) return;

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { setScannable } from "../../utils/scannables";
 
 const TAIL_POINTS = 50;
 interface CometDef { a: number; b: number; tiltY: number; periodSeconds: number; phase: number }
@@ -53,6 +54,7 @@ export default function Comets() {
     COMETS.forEach((c, i) => {
       const ang = (time / c.periodSeconds) * Math.PI * 2 + c.phase;
       head.set(Math.cos(ang) * c.a, Math.sin(ang) * c.tiltY, Math.sin(ang) * c.b);
+      setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
       const mesh = headRefs.current[i];
       if (mesh) {
         mesh.position.copy(head);

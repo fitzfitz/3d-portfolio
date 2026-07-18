@@ -18,6 +18,7 @@ import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
 import Comets from "./Comets";
 import DataShards from "./DataShards";
+import Scanner from "./Scanner";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -182,6 +183,9 @@ export default function GlobalCanvas() {
 
           {/* Collectible data shards scattered across the system */}
           <DataShards />
+
+          {/* Headless: drives proximity scan targeting/progress/report dispatch */}
+          <Scanner />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
