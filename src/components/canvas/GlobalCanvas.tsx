@@ -174,7 +174,10 @@ export default function GlobalCanvas() {
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}
         {!isLowPerf && (
           <SafeErrorBoundary>
-            <EffectComposer>
+            {/* multisampling=0: the GodRays depth passes' buffer formats are incompatible
+                with the MSAA resolve blit (GL_INVALID_OPERATION every frame -> white canvas).
+                Bloom smooths edges anyway, so MSAA here bought nothing. */}
+            <EffectComposer multisampling={0}>
               {(() => {
                 const effects = [
                   <Bloom key="bloom" intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />,
