@@ -10,6 +10,7 @@ import { EffectComposer, Bloom, Vignette, ChromaticAberration } from "@react-thr
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
+import ShootingStars from "./ShootingStars";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 // Glowing space starfield backdrop with multi-colored stars and twinkle effects
@@ -160,6 +161,9 @@ export default function GlobalCanvas() {
 
           {/* Energy Plasma particles spawner */}
           <PlasmaAnomalies ref={anomaliesRef} />
+
+          {/* Pooled shooting star streaks */}
+          {!isLowPerf && <ShootingStars />}
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
