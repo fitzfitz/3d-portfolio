@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { SHARDS } from "../../data/shards";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -53,7 +54,7 @@ export default function HUDOverlay() {
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
         <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
-        <div>SHARDS: {shardsCollected.length}/10</div>
+        <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
       </div>
 
       <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">

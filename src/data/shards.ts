@@ -17,7 +17,7 @@ export const SHARDS: Shard[] = [
   { pos: [6, -34, -10], fact: "DATA_SHARD 5/10 // DOWN HERE IT'S DARK, COLD, AND FULL OF UNIT TESTS" },
   // Near the agent planet
   { pos: [-36, 3, -30], fact: "DATA_SHARD 6/10 // 3 AI CODE REVIEWERS APPROVED THIS UNIVERSE. A FOURTH IS STILL THINKING" },
-  // Near the portal / contact sun
+  // Near the sun
   { pos: [4, 4, 8], fact: "DATA_SHARD 7/10 // THE MULTI-AGENT TDD FRAMEWORK WRITES THE FAILING TEST FIRST. SO DOES THIS SENTENCE" },
   // Mid-belt gap
   { pos: [-60, 26, 40], fact: "DATA_SHARD 8/10 // ASTEROIDS DO NOT HAVE STANDUPS. THE PILOT ENVIES THIS" },

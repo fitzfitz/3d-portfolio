@@ -10,6 +10,17 @@ export const COSMIC_BOUNDS = 250;
 export const PORTAL_POS: [number, number, number] = [0, 0.2, -160];
 export const SHIP_MAX_SPEED = 10.8;
 
+// Orbit-lock geometry: ORBIT must stay well inside RETAIN or the lock
+// self-destructs one frame after engaging (see tests/orbitInvariant.test.ts).
+export const ZONE_FACTOR = 1.8;        // gravity-tip radius = size * this
+export const LOCK_ENGAGE_FACTOR = 1.3; // lock engages inside size * this
+export const LOCK_RETAIN_FACTOR = 1.9; // once locked, retained until size * this
+export const ORBIT_RADIUS_FACTOR = 1.5; // orbit-entry ring = size * this
+export const PORTAL_ZONE_R = 2.2;
+export const PORTAL_LOCK_R = 1.5;
+export const PORTAL_RETAIN_R = 3.4;
+export const PORTAL_ORBIT_R = 2.6;
+
 export const projects: Project[] = [
   {
     title: "Multi-Tenant SaaS Platform",

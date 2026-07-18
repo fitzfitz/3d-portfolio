@@ -68,7 +68,7 @@ export default function DataShards() {
         store.collectShard(i);
         soundManager.pickup();
         store.sendBroadcast(SHARDS[i].fact);
-        if (useSpaceStore.getState().shardsCollected.length === 10) {
+        if (useSpaceStore.getState().shardsCollected.length === SHARDS.length) {
           soundManager.fanfare();
           store.sendBroadcast(
             "ALL SHARDS RECOVERED // TRANSMISSION COMPLETE. THE PILOT THANKS YOU — NOW GO PRESS P AND TAKE A VICTORY PHOTO"

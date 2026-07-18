@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
 import { resolveCollision } from "../../utils/collision";
@@ -49,7 +49,8 @@ export default function Spaceship() {
   const warpSuppressUntil = useRef(-1);
 
   const lockedCenter = useRef(new THREE.Vector3());
-  const lockRadius = useRef(6);
+  const targetLockRadius = useRef(6);
+  const orbitRadius = useRef(6); // eased ring radius — starts at arrival distance, eases toward targetLockRadius
   const orbitAngle = useRef(0);
 
   const prevOrbitLocked = useRef(false);
@@ -64,15 +65,21 @@ export default function Spaceship() {
       const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
       if (planet) {
         lockedCenter.current.set(...planet.pos);
-        lockRadius.current = planet.size * 1.5;
+        targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
       } else if (activeZone === "contact") {
         lockedCenter.current.set(...PORTAL_POS);
-        lockRadius.current = 2.6;
+        targetLockRadius.current = PORTAL_ORBIT_R;
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
-        lockRadius.current = 6;
+        targetLockRadius.current = 6;
       }
+      // Ease the ring out/in from wherever the ship arrived, rather than
+      // snapping straight to the target radius (see tests/orbitInvariant.test.ts).
+      orbitRadius.current = Math.hypot(
+        pos.current.x - lockedCenter.current.x,
+        pos.current.z - lockedCenter.current.z
+      );
       orbitAngle.current = Math.atan2(
         pos.current.x - lockedCenter.current.x,
         pos.current.z - lockedCenter.current.z
@@ -140,6 +147,7 @@ export default function Spaceship() {
       // frozen pos.current, so they hold steady (nothing here advances them).
       shipRef.current.position.y = pos.current.y + Math.sin(time * 2) * 0.05;
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.4);
+      store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       return;
     }
@@ -171,9 +179,10 @@ export default function Spaceship() {
     };
 
     if (isOrbitLocked) {
+      orbitRadius.current += (targetLockRadius.current - orbitRadius.current) * frameLerp(0.03, dt);
       orbitAngle.current += dt * 0.25;
-      pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * lockRadius.current;
-      pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * lockRadius.current;
+      pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;
+      pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * orbitRadius.current;
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
       angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
       roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
@@ -186,7 +195,7 @@ export default function Spaceship() {
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.heading = angle.current;
-      flight.speed = lockRadius.current * 0.25; // tangential speed for the HUD
+      flight.speed = orbitRadius.current * 0.25; // tangential speed for the HUD
 
       applyChaseCam(false);
       return;

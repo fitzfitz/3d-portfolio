@@ -5,7 +5,11 @@ import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
 import Atmosphere from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
-import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import {
+  COSMIC_BOUNDS, PORTAL_POS, planets,
+  ZONE_FACTOR, LOCK_ENGAGE_FACTOR, LOCK_RETAIN_FACTOR,
+  PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
+} from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
@@ -234,23 +238,37 @@ export default function SpacePlanets() {
       portalInnerCoreRef.current.scale.set(coreScale, coreScale, coreScale);
     }
 
-    // 2. Proximity: read mutable telemetry, write store only on change
-    const { isOrbitCooldown, setActiveZone, setOrbitLocked } = useSpaceStore.getState();
+    // 2. Proximity: read mutable telemetry, write store only on change.
+    // Hysteresis: once locked onto a body, retain the zone/lock at a wider
+    // radius than the one that engaged it, so the orbit ring (which sits
+    // further out than the engage threshold) doesn't immediately break the
+    // lock it just entered — see tests/orbitInvariant.test.ts.
+    const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked } = useSpaceStore.getState();
     let activeZone: string | null = null;
     let lockActive = false;
 
     planets.forEach((p) => {
       const dist = toroidalDistance3(flight.x, flight.z, flight.y, p.pos[0], p.pos[2], p.pos[1], COSMIC_BOUNDS);
-      if (dist < p.size * 1.8) {
+      if (lockedNow && zoneNow === p.name) {
+        if (dist < p.size * LOCK_RETAIN_FACTOR) {
+          activeZone = p.name;
+          lockActive = true;
+        }
+      } else if (dist < p.size * ZONE_FACTOR) {
         activeZone = p.name;
-        if (dist < p.size * 1.3 && !isOrbitCooldown) lockActive = true;
+        if (dist < p.size * LOCK_ENGAGE_FACTOR && !isOrbitCooldown) lockActive = true;
       }
     });
 
     const portalDist = toroidalDistance3(flight.x, flight.z, flight.y, PORTAL_POS[0], PORTAL_POS[2], PORTAL_POS[1], COSMIC_BOUNDS);
-    if (portalDist < 2.2) {
+    if (lockedNow && zoneNow === "contact") {
+      if (portalDist < PORTAL_RETAIN_R) {
+        activeZone = "contact";
+        lockActive = true;
+      }
+    } else if (portalDist < PORTAL_ZONE_R) {
       activeZone = "contact";
-      if (portalDist < 1.5 && !isOrbitCooldown) lockActive = true;
+      if (portalDist < PORTAL_LOCK_R && !isOrbitCooldown) lockActive = true;
     }
 
     setActiveZone(activeZone);
@@ -290,7 +308,7 @@ export default function SpacePlanets() {
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[0].size * 1.8, planets[0].size * 1.84, 32]} />
+          <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.3} />
         </mesh>
         
@@ -322,7 +340,7 @@ export default function SpacePlanets() {
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[1].size * 1.8, planets[1].size * 1.84, 32]} />
+          <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.3} />
         </mesh>
 
@@ -354,7 +372,7 @@ export default function SpacePlanets() {
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[2].size * 1.8, planets[2].size * 1.84, 32]} />
+          <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.3} />
         </mesh>
 

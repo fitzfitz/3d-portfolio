@@ -13,12 +13,28 @@ export default function Scanner() {
   // Latches after a completed scan so holding the key/button doesn't immediately
   // restart another scan — released only once the input goes low.
   const latched = useRef(false);
+  // Tracks the previously-targeted scannable so a mid-hold target swap (e.g.
+  // drifting from one planet's range into another's) restarts progress
+  // instead of crediting the new target with the old one's partial scan.
+  const prevTargetId = useRef<string | null>(null);
 
   useFrame((_, dt) => {
+    if (useSpaceStore.getState().photoMode) {
+      scanState.progress = 0;
+      scanState.label = "";
+      return;
+    }
     const near = nearestScannable(flight.x, flight.y, flight.z, 22);
     const store = useSpaceStore.getState();
     store.setScanTarget(near?.id ?? null);
     scanState.label = near?.label ?? "";
+
+    const nearId = near?.id ?? null;
+    if (nearId !== prevTargetId.current) {
+      scanState.progress = 0;
+      latched.current = false;
+    }
+    prevTargetId.current = nearId;
 
     if (near && flight.input.scan && !latched.current) {
       scanState.progress = Math.min(1, scanState.progress + dt / 1.6);
