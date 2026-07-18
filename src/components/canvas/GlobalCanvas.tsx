@@ -13,6 +13,7 @@ import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
 import ShootingStars from "./ShootingStars";
 import DistantGalaxies from "./DistantGalaxies";
+import WarpTunnel from "./WarpTunnel";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -162,6 +163,9 @@ export default function GlobalCanvas() {
 
           {/* Pooled shooting star streaks */}
           {!isLowPerf && <ShootingStars />}
+
+          {/* Warp tunnel around the ship during boost */}
+          {!isLowPerf && <WarpTunnel />}
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport) */}
           <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />
