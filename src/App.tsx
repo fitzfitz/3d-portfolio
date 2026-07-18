@@ -13,10 +13,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
 import { useSpaceStore } from "./store/spaceStore";
 import { useKeyboardInput } from "./hooks/useKeyboardInput";
+import { useSound } from "./hooks/useSound";
 import { projects } from "./constants";
 
 export default function App() {
   useKeyboardInput();
+  useSound();
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);

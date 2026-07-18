@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Cpu, Eye, EyeOff, RotateCcw } from "lucide-react";
+import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -14,6 +14,8 @@ export default function HUDOverlay() {
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const setLowPerf = useSpaceStore((s) => s.setLowPerf);
+  const isMuted = useSpaceStore((s) => s.isMuted);
+  const setMuted = useSpaceStore((s) => s.setMuted);
   const isCoarse = useMediaQuery("(pointer: coarse)");
 
   const locRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,18 @@ export default function HUDOverlay() {
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>RESET_SECTOR</span>
+        </button>
+
+        <button
+          onClick={() => setMuted(!isMuted)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
+            isMuted
+              ? "border-white/5 bg-white/2 text-white/30"
+              : "border-primary/25 bg-primary/5 text-primary"
+          }`}
+        >
+          {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          <span>{isMuted ? "SOUND_OFF" : "SOUND_ON"}</span>
         </button>
       </div>
 
