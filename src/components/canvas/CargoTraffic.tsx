@@ -53,7 +53,8 @@ export default function CargoTraffic() {
             }
           }
         });
-        return { group, navMats };
+        const dish = model.getObjectByName("RadarDish") ?? null;
+        return { group, navMats, dish };
       }),
     [scene]
   );
@@ -68,6 +69,7 @@ export default function CargoTraffic() {
       const t = (time / def.loopSeconds + def.phase) % 1;
 
       curve.getPointAt(t, ship.group.position);
+      ship.group.position.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
       curve.getPointAt((t + 0.003) % 1, lookTarget);
       ship.group.lookAt(lookTarget);
 
@@ -84,6 +86,9 @@ export default function CargoTraffic() {
       // Nav lights: sharp blink, per-ship phase
       const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 8 : 0.4;
       for (const m of ship.navMats) m.emissiveIntensity = blink;
+
+      // Radar dish: constant spin
+      if (ship.dish) ship.dish.rotation.z += 1.2 * dt;
     }
   });
 

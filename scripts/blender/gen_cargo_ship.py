@@ -4,8 +4,14 @@
 import bpy
 import math
 import os
+import random
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bake_utils
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
+random.seed(7)
 
 
 def make_material(name, color, metallic=0.7, roughness=0.35, emission=None, strength=0.0):
@@ -79,6 +85,49 @@ add_cyl("nozzle_r", 0.10, 0.06, (0.28, -1.52, 0.0), (math.radians(90), 0, 0), EN
 add_sphere("nav_red", 0.06, (-0.92, -0.2, 0.05), NAV_RED)
 add_sphere("nav_green", 0.06, (0.92, -0.2, 0.05), NAV_GREEN)
 
+# --- detail pass (after the v1 parts, before joining) ---
+# Greebles: seeded boxes scattered on hull + containers
+for g in range(40):
+    x = random.uniform(-0.24, 0.24)
+    y = random.uniform(-1.1, 1.15)
+    z = 0.19 if random.random() < 0.5 else random.uniform(0.42, 0.5)
+    s = (random.uniform(0.03, 0.09), random.uniform(0.04, 0.14), random.uniform(0.02, 0.05))
+    add_box(f"greeble_{g}", s, (x, y, z), HULL if g % 3 else ACCENT)
+# Antenna mast + tip
+add_cyl("antenna", 0.015, 0.55, (0.12, 0.7, 0.62), (0, 0, 0), ACCENT, vertices=6)
+add_sphere("antenna_tip", 0.03, (0.12, 0.7, 0.9), ACCENT)
+# Engine detail rings
+add_cyl("ring_l", 0.17, 0.05, (-0.28, -1.42, 0.0), (math.radians(90), 0, 0), HULL)
+add_cyl("ring_r", 0.17, 0.05, (0.28, -1.42, 0.0), (math.radians(90), 0, 0), HULL)
+
+
+def _is_emissive(ob):
+    for slot in ob.material_slots:
+        m = slot.material
+        if m is not None and m.use_nodes and "Principled BSDF" in m.node_tree.nodes:
+            if m.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value > 0:
+                return True
+    return False
+
+
+# Bevel every matte part for worn-edge shading (before join).
+# NOTE (deviation from brief): bpy.ops.object.join() only keeps the ACTIVE
+# object's modifier stack -- modifiers left on the other selected objects are
+# silently dropped when their geometry is merged in. So each bevel is applied
+# immediately (object_apply) while that part is still its own object, baking
+# the beveled geometry into the mesh before the join collapses everything.
+for p in parts:
+    if not _is_emissive(p):
+        bpy.ops.object.select_all(action="DESELECT")
+        p.select_set(True)
+        bpy.context.view_layer.objects.active = p
+        bev = p.modifiers.new("bevel", "BEVEL")
+        bev.width = 0.008
+        bev.segments = 2
+        bpy.ops.object.modifier_apply(modifier=bev.name)
+
+# join as before -> ship named CargoShip
+bpy.ops.object.select_all(action="DESELECT")
 for p in parts:
     p.select_set(True)
 bpy.context.view_layer.objects.active = parts[0]
@@ -86,6 +135,20 @@ bpy.ops.object.join()
 ship = bpy.context.object
 ship.name = "CargoShip"
 
+# --- RadarDish: separate object, NOT joined ---
+bpy.ops.mesh.primitive_uv_sphere_add(radius=0.11, segments=12, ring_count=6, location=(-0.12, 0.75, 0.55))
+dish = bpy.context.object
+dish.name = "RadarDish"
+dish.scale = (1.0, 1.0, 0.35)
+dish.data.materials.append(ACCENT)
+
+# --- bake hull color+AO and apply ---
+img = bake_utils.bake_color_ao([ship], "cargo_ship_baked", size=1024, ao_samples=32)
+bake_utils.apply_baked_material([ship], img, "HullBaked")
+
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "cargo_ship.glb"))
-bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True)
+
+# export BOTH objects (ship + dish)
+bpy.ops.object.select_all(action="SELECT")
+bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True, use_selection=True)
 print("wrote", out)
