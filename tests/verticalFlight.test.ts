@@ -39,3 +39,11 @@ describe("verticalStep", () => {
     expect(s.y).toBeGreaterThanOrEqual(-V_CEIL);
   });
 });
+
+describe("auto-level pacing", () => {
+  it("drifts with roughly an 8-second half-life (cruise-friendly)", () => {
+    const r = verticalStep(20, 0, { ascend: false, descend: false, autoLevel: true }, 8);
+    expect(r.y).toBeGreaterThan(9);
+    expect(r.y).toBeLessThan(11);
+  });
+});

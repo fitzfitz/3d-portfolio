@@ -37,6 +37,7 @@ export default function Spaceship() {
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
   const vy = useRef(0);
+  const lastVerticalInput = useRef(0);
 
   const prevOrbitLocked = useRef(false);
   useEffect(() => {
@@ -146,14 +147,17 @@ export default function Spaceship() {
     pos.current.x += vel.current.x * dt;
     pos.current.z += vel.current.z * dt;
 
-    // Vertical channel (pure step; auto-level only outside gravity zones)
+    // Vertical channel (pure step; auto-level only outside gravity zones,
+    // and only after a grace period so pilots can cruise at altitude)
+    if (input.ascend || input.descend) lastVerticalInput.current = time;
+    const graceOver = time - lastVerticalInput.current > 4;
     const vRes = verticalStep(
       pos.current.y,
       vy.current,
       {
         ascend: input.ascend,
         descend: input.descend,
-        autoLevel: !input.ascend && !input.descend && !store.activeZone,
+        autoLevel: !input.ascend && !input.descend && !store.activeZone && graceOver,
       },
       dt
     );

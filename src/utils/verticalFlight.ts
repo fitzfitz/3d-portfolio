@@ -21,7 +21,9 @@ export function verticalStep(
   else if (input.descend) vy -= V_ACCEL * dt;
   else {
     vy *= Math.pow(0.94, dt * 60);
-    if (input.autoLevel) y *= Math.pow(0.7, dt);
+    // Gentle drift home: ~8s half-life so pilots can cruise at altitude;
+    // the caller additionally applies a grace period after vertical input.
+    if (input.autoLevel) y *= Math.pow(0.5, dt / 8);
   }
   vy = Math.max(-V_MAX, Math.min(V_MAX, vy));
 
