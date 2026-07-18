@@ -177,7 +177,9 @@ export default function Spaceship() {
     }
 
     shipRef.current.position.copy(pos.current);
-    shipRef.current.rotation.set(pitch.current, angle.current, roll.current);
+    // YXZ: yaw first, then pitch about the yawed axis — with the default XYZ,
+    // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
+    shipRef.current.rotation.set(pitch.current, angle.current, roll.current, "YXZ");
 
     // 3. Thruster scale
     if (thrusterRef.current) {
