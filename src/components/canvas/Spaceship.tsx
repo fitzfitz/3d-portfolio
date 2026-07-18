@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
-import { COSMIC_BOUNDS, SHIP_MAX_SPEED } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
 import { resolveCollision } from "../../utils/collision";
@@ -48,10 +48,38 @@ export default function Spaceship() {
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
 
+  const lockedCenter = useRef(new THREE.Vector3());
+  const lockRadius = useRef(6);
+  const orbitAngle = useRef(0);
+
   const prevOrbitLocked = useRef(false);
   useEffect(() => {
     const wasLocked = prevOrbitLocked.current;
     prevOrbitLocked.current = isOrbitLocked;
+
+    if (!wasLocked && isOrbitLocked) {
+      // Lock entry: resolve the locked body and start the orbit from wherever
+      // the ship arrived (no snap).
+      const activeZone = useSpaceStore.getState().activeZone;
+      const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
+      if (planet) {
+        lockedCenter.current.set(...planet.pos);
+        lockRadius.current = planet.size * 1.5;
+      } else if (activeZone === "contact") {
+        lockedCenter.current.set(...PORTAL_POS);
+        lockRadius.current = 2.6;
+      } else {
+        // Shouldn't happen, but never crash: orbit in place.
+        lockedCenter.current.copy(pos.current);
+        lockRadius.current = 6;
+      }
+      orbitAngle.current = Math.atan2(
+        pos.current.x - lockedCenter.current.x,
+        pos.current.z - lockedCenter.current.z
+      );
+      return;
+    }
+
     if (!wasLocked || isOrbitLocked) return; // only true→false = real orbit break
     if (pos.current.length() > 0.5) {
       const escapePush = new THREE.Vector3(
@@ -105,19 +133,49 @@ export default function Spaceship() {
     const input = flight.input;
     const time = state.clock.getElapsedTime();
 
+    // Chase-cam follow + FOV, shared by free flight and orbit lock so the
+    // camera keeps framing the ship in both states.
+    const applyChaseCam = (warpActive: boolean) => {
+      const camDistance = warpActive ? 6.8 : 4.8;
+      const camHeight = warpActive ? 2.8 : 1.8;
+      const targetFov = warpActive ? 86 : 60;
+      const perspCam = state.camera as THREE.PerspectiveCamera;
+      if (Math.abs(perspCam.fov - targetFov) > 0.01) {
+        perspCam.fov = THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
+        perspCam.updateProjectionMatrix();
+      }
+      const camOffset = new THREE.Vector3(
+        -Math.sin(angle.current) * camDistance, camHeight, -Math.cos(angle.current) * camDistance
+      );
+      const targetCamPos = pos.current.clone().add(camOffset);
+      const fXZ = frameLerp(0.05, dt);
+      const fY = frameLerp(0.03, dt);
+      state.camera.position.x += (targetCamPos.x - state.camera.position.x) * fXZ;
+      state.camera.position.z += (targetCamPos.z - state.camera.position.z) * fXZ;
+      state.camera.position.y += (targetCamPos.y - state.camera.position.y) * fY;
+      const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
+      state.camera.lookAt(pos.current.clone().add(lookOffset));
+    };
+
     if (isOrbitLocked) {
+      orbitAngle.current += dt * 0.25;
+      pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * lockRadius.current;
+      pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * lockRadius.current;
+      pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
+      angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
+      roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
       vel.current.set(0, 0, 0);
       vy.current = 0;
-      roll.current = THREE.MathUtils.lerp(roll.current, 0, frameLerp(0.1, dt));
-      shipRef.current.rotation.z = roll.current;
-      // Ease the held altitude toward the planet plane and bob around it —
-      // no vertical teleport on lock or on break-orbit.
-      pos.current.y += (0 - pos.current.y) * frameLerp(0.04, dt);
-      shipRef.current.position.y = pos.current.y + Math.sin(state.clock.getElapsedTime() * 2) * 0.05;
-      flight.y = pos.current.y;
-      if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.1);
+      shipRef.current.position.copy(pos.current);
+      shipRef.current.position.y += Math.sin(time * 2) * 0.05; // bob
+      shipRef.current.rotation.set(0, angle.current, roll.current, "YXZ");
+      if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.35);
       store.setWarping(false);
-      flight.speed = 0;
+      flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
+      flight.heading = angle.current;
+      flight.speed = lockRadius.current * 0.25; // tangential speed for the HUD
+
+      applyChaseCam(false);
       return;
     }
 
@@ -267,25 +325,7 @@ export default function Spaceship() {
     }
 
     // 5. Camera follow + FOV
-    const camDistance = warpActive ? 6.8 : 4.8;
-    const camHeight = warpActive ? 2.8 : 1.8;
-    const targetFov = warpActive ? 86 : 60;
-    const perspCam = state.camera as THREE.PerspectiveCamera;
-    if (Math.abs(perspCam.fov - targetFov) > 0.01) {
-      perspCam.fov = THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
-      perspCam.updateProjectionMatrix();
-    }
-    const camOffset = new THREE.Vector3(
-      -Math.sin(angle.current) * camDistance, camHeight, -Math.cos(angle.current) * camDistance
-    );
-    const targetCamPos = pos.current.clone().add(camOffset);
-    const fXZ = frameLerp(0.05, dt);
-    const fY = frameLerp(0.03, dt);
-    state.camera.position.x += (targetCamPos.x - state.camera.position.x) * fXZ;
-    state.camera.position.z += (targetCamPos.z - state.camera.position.z) * fXZ;
-    state.camera.position.y += (targetCamPos.y - state.camera.position.y) * fY;
-    const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
-    state.camera.lookAt(pos.current.clone().add(lookOffset));
+    applyChaseCam(warpActive);
 
     // Shake intentionally freezes while orbit-locked (early return above skips
     // this block entirely) and resumes decaying from wherever it left off
