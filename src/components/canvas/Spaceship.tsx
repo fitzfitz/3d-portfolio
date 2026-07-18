@@ -5,6 +5,9 @@ import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED } from "../../constants";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
+import { resolveCollision } from "../../utils/collision";
+import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
+import { soundManager } from "../../audio/soundManager";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -16,6 +19,9 @@ const BRAKE = 0.92;         // per-frame decay basis
 
 // Frame-rate independent lerp: equivalent to lerp(a, b, k) once per frame at 60fps.
 const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
+
+// Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
+const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
 export default function Spaceship() {
   const { scene } = useGLTF("/models/spaceship.glb");
@@ -38,6 +44,7 @@ export default function Spaceship() {
   const turnVelocity = useRef(0); // rad/second
   const vy = useRef(0);
   const lastVerticalInput = useRef(0);
+  const shake = useRef(0);
 
   const prevOrbitLocked = useRef(false);
   useEffect(() => {
@@ -167,6 +174,24 @@ export default function Spaceship() {
 
     pitch.current = Math.sin(time * 2) * 0.03 + THREE.MathUtils.clamp(-vy.current * 0.045, -0.3, 0.3);
 
+    // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
+    for (const c of COLLIDERS) {
+      const hit = resolveCollision(
+        pos.current.x, pos.current.y, pos.current.z,
+        vel.current.x, vy.current, vel.current.z,
+        c.x, c.y, c.z, c.r
+      );
+      if (hit) {
+        pos.current.set(hit.px, hit.py, hit.pz);
+        vel.current.x = hit.vx; vel.current.z = hit.vz;
+        vy.current = hit.vy;
+        shake.current = 0.5;
+        soundManager.impact();
+        store.bumpImpact();
+        break;
+      }
+    }
+
     // Toroidal boundary wrap
     const bounds = COSMIC_BOUNDS;
     let wrapOffsetX = 0, wrapOffsetZ = 0, didWrap = false;
@@ -254,6 +279,13 @@ export default function Spaceship() {
     state.camera.position.y += (targetCamPos.y - state.camera.position.y) * fY;
     const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
     state.camera.lookAt(pos.current.clone().add(lookOffset));
+
+    if (shake.current > 0.001) {
+      state.camera.position.x += (Math.random() - 0.5) * shake.current;
+      state.camera.position.y += (Math.random() - 0.5) * shake.current;
+      state.camera.position.z += (Math.random() - 0.5) * shake.current;
+      shake.current *= Math.pow(0.03, dt);
+    }
 
     // 6. Publish telemetry (mutable — no React involvement)
     flight.x = pos.current.x;
