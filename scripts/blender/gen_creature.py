@@ -18,21 +18,30 @@ tex = bpy.data.textures.new("lumps", type="CLOUDS")
 tex.noise_scale = 0.55
 disp = bell.modifiers.new("disp", "DISPLACE")
 disp.texture = tex
-disp.strength = 0.16
+disp.strength = 0.22
 
 parts = [bell]
-# Tentacles: tapered cones hanging -Z, ring of 6, alternating lengths, slight outward tilt
-for i in range(6):
-    a = i / 6.0 * 2.0 * math.pi
-    ring_r = 0.45
-    depth = 2.6 + (i % 3) * 0.5
+# Tentacles: tapered cones hanging -Z, ring of 8, varied lengths/radii.
+# CRITICAL: a raw Blender cone has only TWO vertex rings (top/bottom) — the
+# in-app undulation shader cannot bend a two-ring tube. A SIMPLE-subdivision
+# modifier adds rings along the length so traveling waves have geometry to move.
+for i in range(8):
+    a = i / 8.0 * 2.0 * math.pi
+    ring_r = 0.42 + 0.08 * (i % 2)
+    depth = 2.4 + (i % 4) * 0.45
     bpy.ops.mesh.primitive_cone_add(
-        radius1=0.09, radius2=0.015, depth=depth, vertices=8,
+        radius1=0.085 + 0.02 * (i % 3 == 0), radius2=0.012, depth=depth, vertices=8,
         location=(math.cos(a) * ring_r, math.sin(a) * ring_r, -0.4 - depth / 2.0),
     )
     t = bpy.context.object
     t.name = f"tentacle_{i}"
     t.rotation_euler = (math.radians(7) * math.sin(a), math.radians(-7) * math.cos(a), 0)
+    seg = t.modifiers.new("segments", "SUBSURF")
+    seg.subdivision_type = "SIMPLE"
+    seg.levels = 2
+    seg.render_levels = 2
+    bpy.context.view_layer.objects.active = t
+    bpy.ops.object.modifier_apply(modifier="segments")
     parts.append(t)
 
 for p in parts:
