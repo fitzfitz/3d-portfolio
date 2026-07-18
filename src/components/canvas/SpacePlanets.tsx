@@ -118,21 +118,35 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
 
 interface OrbitingMoonProps {
   distance: number; speed: number; inclination: number;
-  size: number; color: string; phase?: number;
+  size: number; color: string; phase?: number; spin?: number;
 }
 
-function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0 }: OrbitingMoonProps) {
-  const ref = useRef<THREE.Group>(null);
+function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, spin = 0.15 }: OrbitingMoonProps) {
+  const { scene } = useGLTF("/models/moon.glb");
+  const orbitRef = useRef<THREE.Group>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const { geometry, material } = useMemo(() => {
+    let g: THREE.BufferGeometry | undefined;
+    let m: THREE.MeshStandardMaterial | undefined;
+    scene.traverse((o) => {
+      if (!g && o instanceof THREE.Mesh) { g = o.geometry; m = (o.material as THREE.MeshStandardMaterial).clone(); }
+    });
+    if (!g || !m) throw new Error("moon.glb contains no mesh");
+    m.color.multiply(new THREE.Color(color)); // per-moon tint over the baked gray
+    return { geometry: g, material: m };
+  }, [scene, color]);
+  useEffect(() => () => material.dispose(), [material]);
+
   useFrame((state) => {
-    if (ref.current) ref.current.rotation.y = phase + state.clock.getElapsedTime() * speed;
+    const t = state.clock.getElapsedTime();
+    if (orbitRef.current) orbitRef.current.rotation.y = phase + t * speed;
+    if (meshRef.current) meshRef.current.rotation.y = t * spin;
   });
   return (
     <group rotation={[inclination, 0, 0]}>
-      <group ref={ref}>
-        <mesh position={[distance, 0, 0]}>
-          <sphereGeometry args={[size, 12, 12]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
-        </mesh>
+      <group ref={orbitRef}>
+        <mesh ref={meshRef} position={[distance, 0, 0]} scale={size} geometry={geometry} material={material} />
       </group>
     </group>
   );

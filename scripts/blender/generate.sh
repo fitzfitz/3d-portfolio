@@ -7,4 +7,6 @@ cd "$(dirname "$0")/../.."
 mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_cargo_ship.py
 [ -f scripts/blender/gen_creature.py ] && "$BLENDER" --background --python scripts/blender/gen_creature.py
+[ -f scripts/blender/gen_moon.py ] && "$BLENDER" --background --python scripts/blender/gen_moon.py
+[ -f scripts/blender/gen_comet_head.py ] && "$BLENDER" --background --python scripts/blender/gen_comet_head.py
 npm run assets:optimize

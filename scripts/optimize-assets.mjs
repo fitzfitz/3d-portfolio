@@ -37,7 +37,7 @@ await processGlb("asteroid", [
 ]);
 
 // Player-facing / already-1K models: format conversion only, no resize.
-for (const name of ["spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature"]) {
+for (const name of ["spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
   if (!existsSync(`${SRC}/${name}.glb`)) {
     console.log(`skip ${name}.glb (not in assets-src)`);
     continue;
