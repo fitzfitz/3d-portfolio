@@ -16,6 +16,7 @@ export default function RadioChatter() {
 
     const typeLine = (text: string) => {
       if (disposed || !lineRef.current) return;
+      cancelAnimationFrame(raf);
       soundManager.uiTick();
       const el = lineRef.current;
       const full = `> ${text}`;
