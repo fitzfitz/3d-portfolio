@@ -57,6 +57,10 @@ export default function RadioChatter() {
         (s) => s.cometNear,
         (near) => { if (near) typeLine(scheduler.pick("comet")); }
       ),
+      useSpaceStore.subscribe(
+        (s) => s.altitudeWarn,
+        (warn) => { if (warn) typeLine(scheduler.pick("altitude")); }
+      ),
     ];
 
     typeLine(scheduler.pick("ambient"));

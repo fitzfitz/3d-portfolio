@@ -86,6 +86,22 @@ export default function RadarMap() {
       ctx.lineTo(c + 4, c + 4);
       ctx.stroke();
 
+      // Altitude bar (right edge): ±V_CEIL mapped to bar height, zero-line at middle
+      const barX = SIZE - 7;
+      const barTop = 14;
+      const barH = SIZE - 28;
+      ctx.strokeStyle = "rgba(0,255,135,0.25)";
+      ctx.strokeRect(barX - 1.5, barTop, 3, barH);
+      ctx.beginPath(); // zero line
+      ctx.moveTo(barX - 4, barTop + barH / 2);
+      ctx.lineTo(barX + 4, barTop + barH / 2);
+      ctx.stroke();
+      const yNorm = Math.max(-1, Math.min(1, flight.y / 55));
+      ctx.fillStyle = "#00ff87";
+      ctx.beginPath();
+      ctx.arc(barX, barTop + barH / 2 - yNorm * (barH / 2), 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);

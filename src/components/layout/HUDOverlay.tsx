@@ -28,7 +28,7 @@ export default function HUDOverlay() {
     let raf: number;
     const tick = () => {
       if (locRef.current)
-        locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Z(${flight.z.toFixed(2)})`;
+        locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
       raf = requestAnimationFrame(tick);
@@ -46,7 +46,7 @@ export default function HUDOverlay() {
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>
         </div>
-        <div ref={locRef}>NAV.LOC: X(0.00) / Z(18.00)</div>
+        <div ref={locRef}>NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
         <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
@@ -78,8 +78,13 @@ export default function HUDOverlay() {
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
+          <span className="text-white/25">ALTITUDE</span>
+          <span className="text-white">{isCoarse ? "RISE / DIVE" : "SPACE / C"}</span>
+        </div>
+        <div className="w-[1px] bg-white/5" />
+        <div className="flex flex-col">
           <span className="text-white/25">WARP_DRIVE</span>
-          <span className="text-white">{isCoarse ? "BOOST BUTTON" : "SPACEBAR"}</span>
+          <span className="text-white">{isCoarse ? "BOOST BUTTON" : "SHIFT"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
