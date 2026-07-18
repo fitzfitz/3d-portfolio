@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 
 const LOOP_SECONDS = 400;
-const NEAR_T = 0.32; // path phase where the loop passes closest to the play area
+const NEAR_T = 0.177; // numerically computed closest-approach phase (~75 units from center)
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
@@ -48,7 +48,7 @@ const fragmentShader = /* glsl */ `
 const PATH = new THREE.CatmullRomCurve3(
   [
     new THREE.Vector3(300, 40, 0),
-    new THREE.Vector3(80, 25, 260),
+    new THREE.Vector3(30, 18, 70),
     new THREE.Vector3(-320, 10, 120),
     new THREE.Vector3(-120, 55, -300),
     new THREE.Vector3(120, 20, -140),
