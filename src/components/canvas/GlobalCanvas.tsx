@@ -11,6 +11,7 @@ import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
 import ShootingStars from "./ShootingStars";
+import DistantGalaxies from "./DistantGalaxies";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 interface StarLayerProps {
@@ -135,6 +136,9 @@ export default function GlobalCanvas() {
 
           {/* Starfield particles */}
           <GalaxyStarfield />
+
+          {/* Distant procedural spiral galaxies */}
+          <DistantGalaxies />
 
           {/* Spaceship craft */}
           <Spaceship />
