@@ -80,3 +80,12 @@ Most design decisions; spec each item carefully before building.
 ## Process per phase
 
 Each phase: short design spec (details + open decisions) → user approval → implementation plan (bite-sized tasks, TDD where logic is pure) → subagent-driven build with per-task review → whole-phase review → merge. Same pipeline as the smooth-space upgrade.
+
+---
+
+## Status: COMPLETE (2026-07-18)
+
+All four phases shipped and merged to main, plus vertical flight and the asset uplift pass:
+- Phase 1 Ambient Life ✅ · Phase 2 Deep Sky ✅ · Phase 3 Encounters ✅ · Phase 4 Hands On ✅
+- Final state: 59 tests, 4.8MB assets (all reproducible via `npm run assets:generate`), zero per-frame React renders in steady flight.
+- Closing verification (autopilot probe): 10th-shard pickup + collect-all fanfare broadcast confirmed on screen; asteroid ram bounced at collider surface (dist 5.0 vs r 4.84+skin) with impact chatter; scanner/photo-mode/orbit-lock verified earlier same day.
