@@ -408,3 +408,11 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 2: Probe** — extend the puppeteer rig: hold Space 4s → screenshot (world below, radar altitude marker up, advisory line typed at ceiling); release → wait 10s → screenshot (auto-level brought y near 0). Press Shift+W → warp streaks confirm Shift-warp works.
 - [ ] **Step 3: Manual** — feel of climb/dive; can't orbit-lock from above a planet; contact-form typing doesn't fly the ship; touch buttons on emulation.
 - [ ] **Step 4: Append `## Verification`; commit.**
+
+## Verification (2026-07-18)
+
+Gates: build ✓ · lint ✓ · tests 40/40 (12 new: verticalStep ×7, toroidalDistance3 ×3, altitude pool, setAltitudeWarn guard).
+
+Probe-verified (screenshots): hold-Space climb to Y(28.7) with radar altitude marker up + vertical engine trail; 12s idle auto-level back to Y(0.4) with spawn card reappearing (3D spawn check); Shift-warp fires the full warp stack (tunnel + CA + chatter + 144 KM/S). New 4-cell HUD card (ALTITUDE: SPACE/C · WARP_DRIVE: SHIFT) rendering. Zero page errors.
+
+Pending human: climb/dive feel, C/X descend key comfort, touch RISE/DIVE on device, altitude-bar vs dead-ahead-blip overlap aesthetics (flagged by Task 3 review — looked acceptable in probe shots).
