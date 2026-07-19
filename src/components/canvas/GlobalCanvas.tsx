@@ -148,6 +148,9 @@ export default function GlobalCanvas() {
 
           {/* Ambient galactic backdrop lighting */}
           <ambientLight intensity={0.15} />
+          {/* The sun: single dominant light at the origin — gives every body a
+              real day side and terminator (realistic-planets spec G2) */}
+          <pointLight position={[0, 0, 0]} intensity={2.0} decay={0} color="#fff4e0" />
 
           {/* Starfield particles */}
           <GalaxyStarfield />
