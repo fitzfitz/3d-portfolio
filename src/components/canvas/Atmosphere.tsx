@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
 const vertexShader = /* glsl */ `
@@ -33,8 +34,13 @@ const fragmentShader = /* glsl */ `
 interface AtmosphereProps {
   radius: number;
   color: string;
-  /** planet's world position — the sun sits at the origin */
-  planetPos?: [number, number, number];
+  /**
+   * Planet's world position — the sun sits at the origin. The planet orbits,
+   * so this is the same mutable `bodies[name]` object SpacePlanets writes
+   * every frame (not a fresh array), read here each frame so the Rayleigh
+   * gradient keeps pointing at the origin as the planet moves.
+   */
+  planetPos?: { x: number; y: number; z: number };
   /** overall strength; earth-like ~1, thin mars haze ~0.4 */
   intensity?: number;
   /** shell thickness multiplier (1.12 = earth-like, 1.05 = thin haze) */
@@ -45,7 +51,7 @@ interface AtmosphereProps {
 export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12 }: AtmosphereProps) {
   const material = useMemo(() => {
     const sunDir = planetPos
-      ? new THREE.Vector3(-planetPos[0], -planetPos[1], -planetPos[2]).normalize()
+      ? new THREE.Vector3(-planetPos.x, -planetPos.y, -planetPos.z).normalize()
       : new THREE.Vector3(0, 1, 0);
     return new THREE.ShaderMaterial({
       uniforms: {
@@ -60,7 +66,20 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
       side: THREE.BackSide,
       depthWrite: false,
     });
-  }, [color, planetPos, intensity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- planetPos is a
+    // stable mutated-in-place object; only its identity (not its contents)
+    // should retrigger material creation.
+  }, [color, intensity]);
+
+  // Planet moves every frame (SpacePlanets writes into the same object) — the
+  // sun-facing gradient must track it live rather than freeze at mount time.
+  useFrame(() => {
+    if (!planetPos) return;
+    (material.uniforms.uSunDir.value as THREE.Vector3)
+      .set(-planetPos.x, -planetPos.y, -planetPos.z)
+      .normalize();
+  });
+
   return (
     <mesh material={material}>
       <sphereGeometry args={[radius * thickness, 32, 32]} />

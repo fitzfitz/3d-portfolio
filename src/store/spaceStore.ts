@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import { planets } from "../constants";
+import { orbitPosition } from "../utils/orbits";
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -65,11 +67,21 @@ export const flight = {
   y: 0, // altitude, written by Spaceship each frame
   speed: 0, // world units / second
   heading: 0, // yaw in radians, written by Spaceship each frame
+  pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
     boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
   } as FlightInput,
 };
+
+/**
+ * Live positions of orbiting bodies, written once per frame by SpacePlanets'
+ * useFrame and read by Spaceship (lock center), RadarMap, HUD, and the
+ * scannable registry. Mutable outside React — same pattern as `flight`.
+ */
+export const bodies: Record<string, { x: number; y: number; z: number }> = Object.fromEntries(
+  planets.map((p) => [p.name, orbitPosition(p.orbit, 0)])
+);
 
 interface SpaceState {
   activeZone: string | null;

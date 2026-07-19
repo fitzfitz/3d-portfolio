@@ -17,11 +17,15 @@ export function wrapDelta(from: number, to: number, bounds: number): number {
   return d;
 }
 
-/** 3D distance: toroidal in xz, plain in y. */
+/** 3D distance on a 3-torus: every axis wraps at ±bounds. */
 export function toroidalDistance3(
   ax: number, az: number, ay: number,
   bx: number, bz: number, by: number,
   bounds: number
 ): number {
-  return Math.hypot(toroidalDistance(ax, az, bx, bz, bounds), by - ay);
+  return Math.hypot(
+    wrapDelta(ax, bx, bounds),
+    wrapDelta(az, bz, bounds),
+    wrapDelta(ay, by, bounds)
+  );
 }

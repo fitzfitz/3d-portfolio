@@ -1,17 +1,12 @@
 import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
-import { worldToRadar } from "../../utils/radarTransform";
-import { V_CEIL } from "../../utils/verticalFlight";
+import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
 
 const SIZE = 148;
-const RANGE = 120; // world units mapped to radar radius
-const targets = [
-  ...planets.map((p) => ({ name: p.name, x: p.pos[0], z: p.pos[2], color: p.color })),
-  { name: "contact", x: PORTAL_POS[0], z: PORTAL_POS[2], color: "#ec4899" },
-  { name: "sun", x: 0, z: 0, color: "#ff5500" },
-];
+const RANGE = 160; // world units mapped to radar radius
+const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -57,6 +52,14 @@ export default function RadarMap() {
       // Blips (heading-up: rotate world deltas by ship heading)
       const a = flight.heading;
       const activeZone = useSpaceStore.getState().activeZone;
+      const targets = [
+        ...PLANET_COLORS.map((p) => {
+          const b = bodies[p.name];
+          return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
+        }),
+        { name: "contact", x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2], color: "#ec4899" },
+        { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
+      ];
       for (const t of targets) {
         const dx = wrapDelta(flight.x, t.x, COSMIC_BOUNDS);
         const dz = wrapDelta(flight.z, t.z, COSMIC_BOUNDS);
@@ -75,6 +78,19 @@ export default function RadarMap() {
         ctx.beginPath();
         ctx.arc(c + px, c + py, (t.name === "sun" ? 3 : 2.4) * pulse, 0, Math.PI * 2);
         ctx.fill();
+        // Relative-altitude chevron: ▲ target above, ▼ below (Y-wrap aware)
+        const dy = wrapDelta(flight.y, t.y, COSMIC_BOUNDS);
+        const cue = altitudeCue(dy);
+        if (cue.dir !== 0) {
+          ctx.globalAlpha = cue.alpha * (onRim ? 0.45 : 0.9);
+          const by = c + py - cue.dir * 6; // apex offset from the blip
+          ctx.beginPath();
+          ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
+          ctx.lineTo(c + px, by);
+          ctx.lineTo(c + px + 2.5, by + cue.dir * 2.5);
+          ctx.closePath();
+          ctx.fill();
+        }
         ctx.globalAlpha = 1;
       }
 
@@ -87,20 +103,20 @@ export default function RadarMap() {
       ctx.lineTo(c + 4, c + 4);
       ctx.stroke();
 
-      // Altitude bar (right edge): ±V_CEIL mapped to bar height, zero-line at middle
+      // Pitch ladder (right edge): nose angle −90°…+90°, notch at level flight
       const barX = SIZE - 7;
       const barTop = 14;
       const barH = SIZE - 28;
       ctx.strokeStyle = "rgba(0,255,135,0.25)";
       ctx.strokeRect(barX - 1.5, barTop, 3, barH);
-      ctx.beginPath(); // zero line
+      ctx.beginPath(); // level-flight notch
       ctx.moveTo(barX - 4, barTop + barH / 2);
       ctx.lineTo(barX + 4, barTop + barH / 2);
       ctx.stroke();
-      const yNorm = Math.max(-1, Math.min(1, flight.y / V_CEIL));
+      const pitchNorm = Math.max(-1, Math.min(1, flight.pitch / (Math.PI / 2)));
       ctx.fillStyle = "#00ff87";
       ctx.beginPath();
-      ctx.arc(barX, barTop + barH / 2 - yNorm * (barH / 2), 2.2, 0, Math.PI * 2);
+      ctx.arc(barX, barTop + barH / 2 - pitchNorm * (barH / 2), 2.2, 0, Math.PI * 2);
       ctx.fill();
 
       raf = requestAnimationFrame(draw);

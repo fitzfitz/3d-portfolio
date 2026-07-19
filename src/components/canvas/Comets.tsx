@@ -10,8 +10,8 @@ import { keplerPosition } from "../../utils/kepler";
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
 // tail, curved white dust tail, all activity scaled by heliocentric distance.
 const COMETS = [
-  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, tilt: 0.18 },
-  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, tilt: -0.14 },
+  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, inclination: 0.9, node: 0.6 },   // ~52° diver
+  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, inclination: -1.15, node: 2.4 }, // ~66° retrograde-feel
 ];
 
 const ION_POINTS = 72;
@@ -74,8 +74,8 @@ const comaFragment = /* glsl */ `
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const comaRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
-  const ionRefs = useRef<(THREE.Points | null)[]>([null, null]);
-  const dustRefs = useRef<(THREE.Points | null)[]>([null, null]);
+  const ionRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
+  const dustRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
 
   // One coma material per comet — each drives uAct from its own solar distance.
   const comaMaterials = useMemo(
@@ -238,10 +238,11 @@ export default function Comets() {
         colAttr.needsUpdate = true;
       }
 
-      // xz-only by design — vertical NPC/comet reactions are out of scope (spec).
+      // Full 3D proximity — comets dive through the ecliptic now (spec §5)
       const dx = head.x - flight.x;
+      const dy = head.y - flight.y;
       const dz = head.z - flight.z;
-      if (dx * dx + dz * dz < 3600) anyNear = true;
+      if (dx * dx + dy * dy + dz * dz < 3600) anyNear = true;
     });
 
     store.setCometNear(anyNear);
@@ -258,12 +259,12 @@ export default function Comets() {
             <sphereGeometry args={[1, 24, 24]} />
           </mesh>
           {/* Blue ion tail — straight, anti-sunward */}
-          <points ref={(p) => { ionRefs.current[i] = p; }} geometry={ions[i].geom} frustumCulled={false}>
+          <points ref={(p) => { ionRefs.current[i] = p as THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null; }} geometry={ions[i].geom} frustumCulled={false}>
             <pointsMaterial vertexColors={true} size={0.95} map={particleSprite} transparent={true} opacity={0.9}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
           </points>
           {/* White dust tail — broad, curved along the orbit */}
-          <points ref={(p) => { dustRefs.current[i] = p; }} geometry={dusts[i].geom} frustumCulled={false}>
+          <points ref={(p) => { dustRefs.current[i] = p as THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null; }} geometry={dusts[i].geom} frustumCulled={false}>
             <pointsMaterial vertexColors={true} size={1.4} map={particleSprite} transparent={true} opacity={0.8}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
           </points>

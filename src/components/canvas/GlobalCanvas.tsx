@@ -39,11 +39,14 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
     const posArr = new Float32Array(count * 3);
     const colArr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
+      // Uniform on the sphere: y = cos(polar) uniform in [-1, 1)
+      const u = Math.random() * 2 - 1;
+      const az = Math.random() * Math.PI * 2;
+      const sr = Math.sqrt(1 - u * u);
       const radius = radiusMin + Math.random() * (radiusMax - radiusMin);
-      posArr[i * 3] = Math.sin(angle) * radius;
-      posArr[i * 3 + 1] = (Math.random() - 0.5) * 120;
-      posArr[i * 3 + 2] = Math.cos(angle) * radius;
+      posArr[i * 3] = sr * Math.cos(az) * radius;
+      posArr[i * 3 + 1] = u * radius;
+      posArr[i * 3 + 2] = sr * Math.sin(az) * radius;
       const rand = Math.random();
       if (rand < 0.75) colArr.set([1, 1, 1], i * 3);
       else if (rand < 0.9) colArr.set([0.72, 0.88, 1.0], i * 3);
@@ -55,6 +58,9 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
   useFrame((state) => {
     if (!pointsRef.current) return;
     const time = state.clock.getElapsedTime();
+    // The shells are the infinite sky: they translate with the ship (no positional
+    // parallax — the DustField supplies that) and keep their slow rotation drift.
+    pointsRef.current.position.set(flight.x, flight.y, flight.z);
     pointsRef.current.rotation.y = time * speed;
     if (twinkle) {
       const mat = pointsRef.current.material as THREE.PointsMaterial;
@@ -74,24 +80,71 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
   );
 }
 
+const DUST_COUNT = 350;
+const DUST_CUBE = 120;
+const DUST_HALF = DUST_CUBE / 2;
+
+/**
+ * Near-field "dust" stars: world-anchored points wrapped modulo a cube that
+ * rides with the ship — free parallax speed cues on every axis (spec §4).
+ */
+function DustField() {
+  const pointsRef = useRef<THREE.Points>(null);
+  const seeds = useMemo(() => {
+    const a = new Float32Array(DUST_COUNT * 3);
+    for (let i = 0; i < a.length; i++) a[i] = Math.random() * DUST_CUBE;
+    return a;
+  }, []);
+  const positions = useMemo(() => new Float32Array(DUST_COUNT * 3), []);
+
+  useFrame(() => {
+    if (!pointsRef.current) return;
+    pointsRef.current.position.set(flight.x, flight.y, flight.z);
+    const ship = [flight.x, flight.y, flight.z];
+    const attr = pointsRef.current.geometry.attributes.position;
+    const arr = attr.array as Float32Array;
+    for (let i = 0; i < arr.length; i++) {
+      let d = (seeds[i] - ship[i % 3]) % DUST_CUBE;
+      if (d < -DUST_HALF) d += DUST_CUBE;
+      else if (d >= DUST_HALF) d -= DUST_CUBE;
+      arr[i] = d;
+    }
+    attr.needsUpdate = true;
+  });
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]}
+          count={DUST_COUNT} array={positions} itemSize={3} />
+      </bufferGeometry>
+      <pointsMaterial color="#9fb4d8" size={0.05} transparent={true} opacity={0.5}
+        blending={THREE.AdditiveBlending} depthWrite={false} />
+    </points>
+  );
+}
+
 // Three-depth parallax sky: far slow, mid counter-rotating, near faster + twinkling.
-function GalaxyStarfield() {
+function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   return (
     <>
       <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.0015} />
       <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.003} />
       <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.006} twinkle={true} />
+      {!isLowPerf && <DustField />}
     </>
   );
 }
 
 function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
   const ref = useRef<THREE.Mesh>(null);
-  useFrame(() => {
-    if (ref.current) ref.current.position.set(flight.x, flight.y, flight.z);
+  useFrame(({ camera }) => {
+    if (!ref.current) return;
+    ref.current.position.set(flight.x, flight.y, flight.z);
+    ref.current.quaternion.copy(camera.quaternion); // face the camera at any pitch
   });
   return (
-    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]}
+    <mesh ref={ref}
       onPointerDown={(e) => { e.stopPropagation(); if (e.point) onSpawn(e.point.clone()); }}>
       <planeGeometry args={[180, 180]} />
       <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
@@ -153,7 +206,7 @@ export default function GlobalCanvas() {
           <pointLight position={[0, 0, 0]} intensity={2.0} decay={0} color="#fff4e0" />
 
           {/* Starfield particles */}
-          <GalaxyStarfield />
+          <GalaxyStarfield isLowPerf={isLowPerf} />
 
           {/* Distant procedural spiral galaxies */}
           <DistantGalaxies />
