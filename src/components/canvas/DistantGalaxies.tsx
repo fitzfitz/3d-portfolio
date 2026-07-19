@@ -30,8 +30,9 @@ function makeGalaxyTexture(hueBase: number): THREE.CanvasTexture | null {
 }
 
 const GALAXIES = [
-  { pos: [180, 60, -160] as const, scale: 60, hue: 255, spin: 0.006 },
-  { pos: [-200, -40, 120] as const, scale: 42, hue: 190, spin: -0.004 },
+  { pos: [180, 80, -160] as const, scale: 60, hue: 255, spin: 0.006 },
+  { pos: [-200, -80, 120] as const, scale: 42, hue: 190, spin: -0.004 },
+  { pos: [30, 210, -60] as const, scale: 50, hue: 320, spin: 0.005 }, // high above the pole
 ];
 
 export default function DistantGalaxies() {

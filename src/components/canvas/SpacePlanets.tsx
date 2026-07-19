@@ -469,16 +469,16 @@ export default function SpacePlanets() {
       {/* 6. GASEOUS NEBULA DEEP SPACE CLOUDS (Parallax Atmosphere) */}
       <group ref={nebulaeGroupRef}>
         {/* Nebula Cloud 1: Purple */}
-        <NebulaCluster position={[120, -10, -120]} color="#bd00ff" size={35} opacity={0.038} />
-        
+        <NebulaCluster position={[120, 100, -120]} color="#bd00ff" size={35} opacity={0.038} />
+
         {/* Nebula Cloud 2: Cyan */}
-        <NebulaCluster position={[-130, 20, 110]} color="#00f0ff" size={40} opacity={0.038} />
+        <NebulaCluster position={[-130, -95, 110]} color="#00f0ff" size={40} opacity={0.038} />
 
         {/* Nebula Cloud 3: Pink */}
         <NebulaCluster position={[140, -30, 130]} color="#ec4899" size={45} opacity={0.035} />
 
         {/* Nebula Cloud 4: Green */}
-        <NebulaCluster position={[-120, -20, -140]} color="#00ff87" size={30} opacity={0.035} />
+        <NebulaCluster position={[-120, 40, -140]} color="#00ff87" size={30} opacity={0.035} />
 
         {/* Nebula Cloud 5: Golden orange */}
         <NebulaCluster position={[0, 30, -180]} color="#ffa500" size={55} opacity={0.04} />
