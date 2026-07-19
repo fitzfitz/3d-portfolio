@@ -27,13 +27,18 @@ export default function Spaceship() {
   const { scene } = useGLTF("/models/spaceship.glb");
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
 
-  useMemo(() => {
+  // Dim decorative emissives, but keep the engine material hot — it paints the
+  // ship's three real nozzle spots, and the frame loop drives it with throttle.
+  const engineMat = useMemo(() => {
+    let engine: THREE.MeshStandardMaterial | null = null;
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat.emissive) mat.emissiveIntensity = 0.08;
+        if (/engine/i.test(mat.name)) engine = mat;
+        else if (mat.emissive) mat.emissiveIntensity = 0.08;
       }
     });
+    return engine;
   }, [scene]);
 
   const pos = useRef(new THREE.Vector3(0, 0, 18));
@@ -107,9 +112,10 @@ export default function Spaceship() {
     const posArr = new Float32Array(particleCount * 3);
     const vArr = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
-      posArr[i * 3] = (Math.random() - 0.5) * 0.1;
-      posArr[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
-      posArr[i * 3 + 2] = -0.5 - Math.random() * 0.5;
+      // seed each particle behind one of the three nozzles
+      posArr[i * 3] = [-0.204, 0, 0.204][i % 3] + (Math.random() - 0.5) * 0.06;
+      posArr[i * 3 + 1] = -0.068 + (Math.random() - 0.5) * 0.06;
+      posArr[i * 3 + 2] = -1.25 - Math.random() * 0.5;
       vArr[i * 3] = (Math.random() - 0.5) * 0.02;
       vArr[i * 3 + 1] = (Math.random() - 0.5) * 0.02;
       vArr[i * 3 + 2] = -0.05 - Math.random() * 0.05;
@@ -309,6 +315,11 @@ export default function Spaceship() {
       const targetGlow = (warpActive ? 6 : 0.5 + thrustInput * 2.5) * (0.92 + Math.sin(time * 21) * 0.08);
       engineLightRef.current.intensity = THREE.MathUtils.lerp(engineLightRef.current.intensity, targetGlow, frameLerp(0.25, dt));
     }
+    // The three nozzle spots themselves: emissive burn follows throttle
+    if (engineMat) {
+      const targetBurn = (warpActive ? 14 : 2 + thrustInput * 6) * (0.94 + Math.sin(time * 23) * 0.06);
+      engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
+    }
 
     // 4. Exhaust particles (velocities were per-frame — scale by dt*60)
     if (particlesRef.current) {
@@ -320,10 +331,10 @@ export default function Spaceship() {
         data[idx] += particleVelocities[idx] * step;
         data[idx + 1] += particleVelocities[idx + 1] * step;
         data[idx + 2] += particleVelocities[idx + 2] * step;
-        if (data[idx + 2] < -2.2) {
-          data[idx] = (Math.random() - 0.5) * 0.15;
-          data[idx + 1] = (Math.random() - 0.5) * 0.15;
-          data[idx + 2] = -0.4;
+        if (data[idx + 2] < -3.0) {
+          data[idx] = [-0.204, 0, 0.204][i % 3] + (Math.random() - 0.5) * 0.08;
+          data[idx + 1] = -0.068 + (Math.random() - 0.5) * 0.08;
+          data[idx + 2] = -1.2;
         }
       }
       attr.needsUpdate = true;
@@ -376,16 +387,17 @@ export default function Spaceship() {
   return (
     <group ref={shipRef}>
       <primitive object={scene} scale={0.35} rotation={[0, Math.PI, 0]} position={[0, -0.05, 0]} />
-      <pointLight ref={engineLightRef} position={[0, 0, -0.9]} color="#00f0ff" intensity={0.6} distance={7} decay={2} />
+      {/* Positions derived from the GLB's Engine_Emissive clusters: nozzles at
+          (±0.582, -0.05, 3.25) in model space -> (±0.204, -0.068, -1.14) here,
+          exhaust exit plane at z ≈ -1.23. */}
+      <pointLight ref={engineLightRef} position={[0, -0.068, -1.5]} color="#00f0ff" intensity={0.6} distance={7} decay={2} />
       <group ref={thrusterRef}>
-        <mesh position={[-0.14, -0.04, -0.62]} rotation={[-Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.04, 0.22, 8]} />
-          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.35} />
-        </mesh>
-        <mesh position={[0.14, -0.04, -0.62]} rotation={[-Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.04, 0.22, 8]} />
-          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.35} />
-        </mesh>
+        {[-0.204, 0, 0.204].map((x) => (
+          <mesh key={x} position={[x, -0.068, -1.32]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.04, 0.22, 8]} />
+            <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.35} />
+          </mesh>
+        ))}
       </group>
       <Trail
         width={1.4}
@@ -393,7 +405,7 @@ export default function Spaceship() {
         color="#00f0ff"
         attenuation={(t) => t * t}
       >
-        <mesh position={[0, -0.04, -0.6]}>
+        <mesh position={[0, -0.068, -1.25]}>
           <sphereGeometry args={[0.02, 4, 4]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
