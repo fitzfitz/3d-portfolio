@@ -1,7 +1,7 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -43,6 +43,7 @@ export default function CargoTraffic() {
         const group = new THREE.Group();
         group.add(model);
         const navMats: THREE.MeshStandardMaterial[] = [];
+        const engineMats: THREE.MeshStandardMaterial[] = [];
         model.traverse((o) => {
           if (o instanceof THREE.Mesh) {
             const m = o.material as THREE.MeshStandardMaterial;
@@ -50,11 +51,15 @@ export default function CargoTraffic() {
               const c = m.clone();
               o.material = c;
               navMats.push(c);
+            } else if (m.name === "EngineGlow") {
+              const c = m.clone();
+              o.material = c;
+              engineMats.push(c);
             }
           }
         });
         const dish = model.getObjectByName("RadarDish") ?? null;
-        return { group, navMats, dish };
+        return { group, navMats, engineMats, dish };
       }),
     [scene]
   );
@@ -87,6 +92,10 @@ export default function CargoTraffic() {
       const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 8 : 0.4;
       for (const m of ship.navMats) m.emissiveIntensity = blink;
 
+      // Engine burn: uneven thruster flicker, per-ship phase
+      const burn = 5 + Math.sin(time * 7.3 + i * 2.3) * 1.1 + Math.sin(time * 13.7 + i) * 0.6;
+      for (const m of ship.engineMats) m.emissiveIntensity = burn;
+
       // Radar dish: constant spin
       if (ship.dish) ship.dish.rotation.z += 1.2 * dt;
     }
@@ -97,6 +106,11 @@ export default function CargoTraffic() {
       {ships.slice(0, count).map((s, i) => (
         <primitive key={i} object={s.group} scale={1.6} />
       ))}
+      {/* Faint engine wake, gated off in low-perf mode */}
+      {!isLowPerf &&
+        ships.slice(0, count).map((s, i) => (
+          <Trail key={`t${i}`} target={s.group} width={1.1} length={3.5} color="#7fd8ff" attenuation={(t) => t * t} />
+        ))}
     </>
   );
 }

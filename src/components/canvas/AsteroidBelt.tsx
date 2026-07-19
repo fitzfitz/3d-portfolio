@@ -24,19 +24,23 @@ interface BeltRock {
 }
 
 export default function AsteroidBelt() {
-  const { scene } = useGLTF("/models/asteroid.glb");
+  const { scene } = useGLTF("/models/asteroids.glb");
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? COUNT_LOW : COUNT_FULL;
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
+  // Belt pebbles reuse the lowest-poly sculpted variant (the shard). Bake the
+  // quantized GLB's node matrix into a geometry clone before instancing.
   const { geometry, material } = useMemo(() => {
-    let g: THREE.BufferGeometry | undefined;
-    let m: THREE.Material | undefined;
+    let src: THREE.Mesh | undefined;
     scene.traverse((c) => {
-      if (!g && c instanceof THREE.Mesh) { g = c.geometry; m = c.material as THREE.Material; }
+      if (!src && c instanceof THREE.Mesh && c.name.startsWith("Asteroid1")) src = c;
     });
-    if (!g || !m) throw new Error("asteroid.glb contains no mesh");
-    return { geometry: g, material: m };
+    if (!src) throw new Error("asteroids.glb is missing mesh Asteroid1");
+    src.updateMatrix();
+    const g = src.geometry.clone();
+    g.applyMatrix4(src.matrix);
+    return { geometry: g, material: src.material as THREE.Material };
   }, [scene]);
 
   const rocks = useMemo<BeltRock[]>(() => {
