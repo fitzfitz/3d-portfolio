@@ -74,8 +74,8 @@ const comaFragment = /* glsl */ `
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const comaRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
-  const ionRefs = useRef<(THREE.Points | null)[]>([null, null]);
-  const dustRefs = useRef<(THREE.Points | null)[]>([null, null]);
+  const ionRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
+  const dustRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
 
   // One coma material per comet — each drives uAct from its own solar distance.
   const comaMaterials = useMemo(
@@ -258,12 +258,12 @@ export default function Comets() {
             <sphereGeometry args={[1, 24, 24]} />
           </mesh>
           {/* Blue ion tail — straight, anti-sunward */}
-          <points ref={(p) => { ionRefs.current[i] = p; }} geometry={ions[i].geom} frustumCulled={false}>
+          <points ref={(p) => { ionRefs.current[i] = p as THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null; }} geometry={ions[i].geom} frustumCulled={false}>
             <pointsMaterial vertexColors={true} size={0.95} map={particleSprite} transparent={true} opacity={0.9}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
           </points>
           {/* White dust tail — broad, curved along the orbit */}
-          <points ref={(p) => { dustRefs.current[i] = p; }} geometry={dusts[i].geom} frustumCulled={false}>
+          <points ref={(p) => { dustRefs.current[i] = p as THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null; }} geometry={dusts[i].geom} frustumCulled={false}>
             <pointsMaterial vertexColors={true} size={1.4} map={particleSprite} transparent={true} opacity={0.8}
               blending={THREE.AdditiveBlending} depthWrite={false} sizeAttenuation={true} />
           </points>

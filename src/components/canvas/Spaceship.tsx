@@ -38,7 +38,7 @@ export default function Spaceship() {
         else if (mat.emissive) mat.emissiveIntensity = 0.08;
       }
     });
-    return engine;
+    return engine as THREE.MeshStandardMaterial | null;
   }, [scene]);
 
   const pos = useRef(new THREE.Vector3(0, 0, 18));

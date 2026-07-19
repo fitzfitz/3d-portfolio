@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
@@ -59,7 +59,8 @@ export default function CargoTraffic() {
           }
         });
         const dish = model.getObjectByName("RadarDish") ?? null;
-        return { group, navMats, engineMats, dish };
+        const trailTarget: RefObject<THREE.Object3D> = { current: group };
+        return { group, navMats, engineMats, dish, trailTarget };
       }),
     [scene]
   );
@@ -109,7 +110,7 @@ export default function CargoTraffic() {
       {/* Faint engine wake, gated off in low-perf mode */}
       {!isLowPerf &&
         ships.slice(0, count).map((s, i) => (
-          <Trail key={`t${i}`} target={s.group} width={1.1} length={3.5} color="#7fd8ff" attenuation={(t) => t * t} />
+          <Trail key={`t${i}`} target={s.trailTarget} width={1.1} length={3.5} color="#7fd8ff" attenuation={(t) => t * t} />
         ))}
     </>
   );
