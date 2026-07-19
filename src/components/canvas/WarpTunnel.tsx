@@ -62,7 +62,10 @@ export default function WarpTunnel() {
     meshRef.current.visible = visible;
     if (visible) {
       meshRef.current.position.set(flight.x, flight.y, flight.z);
-      meshRef.current.rotation.set(Math.PI / 2, flight.heading, 0, "YXZ");
+      // Follow both heading and pitch (R_y(heading)·R_x(π/2−pitch) on the cylinder's
+      // +Y long axis == noseDirection(yaw, pitch)) — yaw-only left a pitched warp
+      // flying out through the tunnel wall.
+      meshRef.current.rotation.set(Math.PI / 2 - flight.pitch, flight.heading, 0, "YXZ");
     }
   });
 

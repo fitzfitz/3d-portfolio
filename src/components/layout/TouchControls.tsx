@@ -133,7 +133,7 @@ export default function TouchControls() {
           }
         }}
       >
-        ▲ RISE
+        ▲ PITCH
       </button>
 
       {/* Dive button */}
@@ -158,7 +158,7 @@ export default function TouchControls() {
           }
         }}
       >
-        ▼ DIVE
+        ▼ PITCH
       </button>
 
       {/* Scan button — only shown while a scannable target is in range */}

@@ -12,12 +12,20 @@ bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=4, radius=1.0)
 moon = bpy.context.object
 moon.name = "Moon"
 
+basin = bpy.data.textures.new("basins", type="VORONOI")
+basin.noise_scale = 1.1
+basin.contrast = 1.4
+d0 = moon.modifiers.new("basins", "DISPLACE")
+d0.texture = basin
+d0.strength = -0.11
+d0.mid_level = 0.32
+
 vor = bpy.data.textures.new("craters", type="VORONOI")
 vor.noise_scale = 0.45
 vor.distance_metric = "DISTANCE"
 d1 = moon.modifiers.new("craters", "DISPLACE")
 d1.texture = vor
-d1.strength = -0.14
+d1.strength = -0.22
 d1.mid_level = 0.35
 
 cl = bpy.data.textures.new("rough", type="CLOUDS")
@@ -44,6 +52,15 @@ img = bake_utils.bake_color_ao([moon], "moon_baked", size=1024, ao_samples=32)
 baked = bake_utils.apply_baked_material([moon], img, "MoonBaked", metallic=0.0, roughness=0.9)
 # Sculpt-detail normal bake: hi-poly duplicate -> tangent normal map on the lo mesh
 hi = bake_utils.make_hipoly_detail(moon, subsurf_levels=2, noise_scale=0.1, noise_strength=0.03)
+microcraters = bpy.data.textures.new("microcraters", type="VORONOI")
+microcraters.noise_scale = 0.09
+microcraters.contrast = 1.3
+mc = hi.modifiers.new("microcraters", "DISPLACE")
+mc.texture = microcraters
+mc.strength = -0.035
+mc.mid_level = 0.3
+bpy.context.view_layer.objects.active = hi
+bpy.ops.object.modifier_apply(modifier=mc.name)
 nimg = bake_utils.bake_normal_from_hipoly(moon, hi, "moon_normal", size=1024)
 bake_utils.attach_normal_map(baked, nimg)
 bpy.data.objects.remove(hi, do_unlink=True)

@@ -28,16 +28,10 @@ async function processGlb(name, textureTransforms) {
   console.log(`${name}.glb  ${mb(src)} -> ${mb(out)}`);
 }
 
-// Asteroid: 4K textures for a background rock. Resize to what's actually
-// sampled at gameplay distance; normal map kept full-res near-lossless.
-await processGlb("asteroid", [
-  textureCompress({ encoder: sharp, targetFormat: "webp", quality: 90, resize: [2048, 2048], slots: /baseColor/i }),
-  textureCompress({ encoder: sharp, targetFormat: "webp", nearLossless: true, slots: /normal/i }),
-  textureCompress({ encoder: sharp, targetFormat: "webp", quality: 90, resize: [1024, 1024], slots: /metallicRoughness/i }),
-]);
-
-// Player-facing / already-1K models: format conversion only, no resize.
-for (const name of ["spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
+// Player-facing / already-baked models: format conversion only, no resize.
+// (asteroids.glb = 4 sculpted variants with 512px bakes, replaces the old
+// single 4K-textured asteroid.glb)
+for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
   if (!existsSync(`${SRC}/${name}.glb`)) {
     console.log(`skip ${name}.glb (not in assets-src)`);
     continue;

@@ -1,16 +1,17 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-// Three closed trade loops threading the planets and portal at varied heights.
+// Three trade loops threading the volume: a climbing run (−80 → +110 with a
+// return dive), a belt-gap weaver, and a high ring at portal altitude (spec §5).
 const ROUTES = [
-  [v(-110, 8, 80), v(-20, 14, 150), v(130, 6, -40), v(30, -6, -170), v(-140, 10, -70)],
-  [v(150, -8, 60), v(60, 4, 180), v(-160, -4, 140), v(-90, 12, -30), v(40, 2, -120)],
-  [v(0, 20, -200), v(170, 14, -100), v(200, 6, 80), v(0, -10, 120), v(-190, 16, -20)],
+  [v(-110, -80, 80), v(-20, -30, 150), v(130, 20, -40), v(30, 65, -170), v(-140, 110, -70)],
+  [v(150, -40, 60), v(60, 10, 180), v(-160, -25, 140), v(-90, 30, -30), v(40, -10, -120)],
+  [v(0, 95, -200), v(170, 80, -100), v(200, 60, 80), v(0, 110, 120), v(-190, 90, -20)],
 ].map((pts) => new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5));
 
 interface ShipDef { route: number; phase: number; loopSeconds: number }
@@ -43,6 +44,7 @@ export default function CargoTraffic() {
         const group = new THREE.Group();
         group.add(model);
         const navMats: THREE.MeshStandardMaterial[] = [];
+        const engineMats: THREE.MeshStandardMaterial[] = [];
         model.traverse((o) => {
           if (o instanceof THREE.Mesh) {
             const m = o.material as THREE.MeshStandardMaterial;
@@ -50,11 +52,16 @@ export default function CargoTraffic() {
               const c = m.clone();
               o.material = c;
               navMats.push(c);
+            } else if (m.name === "EngineGlow") {
+              const c = m.clone();
+              o.material = c;
+              engineMats.push(c);
             }
           }
         });
         const dish = model.getObjectByName("RadarDish") ?? null;
-        return { group, navMats, dish };
+        const trailTarget: RefObject<THREE.Object3D> = { current: group };
+        return { group, navMats, engineMats, dish, trailTarget };
       }),
     [scene]
   );
@@ -78,14 +85,19 @@ export default function CargoTraffic() {
       curve.getTangentAt((t + 0.01) % 1, tanB);
       let targetRoll = THREE.MathUtils.clamp(tanA.cross(tanB).y * 60, -0.5, 0.5);
       const dx = ship.group.position.x - flight.x;
+      const dy = ship.group.position.y - flight.y;
       const dz = ship.group.position.z - flight.z;
-      if (dx * dx + dz * dz < 144) targetRoll += Math.sign(dx || 1) * 0.35;
+      if (dx * dx + dy * dy + dz * dz < 144) targetRoll += Math.sign(dx || 1) * 0.35;
       rolls.current[i] += (targetRoll - rolls.current[i]) * (1 - Math.pow(0.01, dt));
       ship.group.rotateZ(rolls.current[i]);
 
       // Nav lights: sharp blink, per-ship phase
-      const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 8 : 0.4;
+      const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 4.5 : 0.3;
       for (const m of ship.navMats) m.emissiveIntensity = blink;
+
+      // Engine burn: uneven thruster flicker, per-ship phase
+      const burn = 2.6 + Math.sin(time * 7.3 + i * 2.3) * 0.6 + Math.sin(time * 13.7 + i) * 0.3;
+      for (const m of ship.engineMats) m.emissiveIntensity = burn;
 
       // Radar dish: constant spin
       if (ship.dish) ship.dish.rotation.z += 1.2 * dt;
@@ -97,6 +109,11 @@ export default function CargoTraffic() {
       {ships.slice(0, count).map((s, i) => (
         <primitive key={i} object={s.group} scale={1.6} />
       ))}
+      {/* Faint engine wake, gated off in low-perf mode */}
+      {!isLowPerf &&
+        ships.slice(0, count).map((s, i) => (
+          <Trail key={`t${i}`} target={s.trailTarget} width={1.1} length={3.5} color="#7fd8ff" attenuation={(t) => t * t} />
+        ))}
     </>
   );
 }

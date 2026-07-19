@@ -9,7 +9,7 @@ const NOSE = new THREE.Vector3(0, 0, 1);
 
 describe("ship pitch euler order", () => {
   it("YXZ keeps pitch lifting the nose at 90-degree headings", () => {
-    const noseUpPitch = -0.3; // climbing: pitch.current = -vy*0.045 < 0
+    const noseUpPitch = -0.3; // climbing: rotation.x = -flight.pitch < 0
     const e = new THREE.Euler(noseUpPitch, Math.PI / 2, 0, "YXZ");
     const nose = NOSE.clone().applyEuler(e);
     expect(nose.y).toBeGreaterThan(0.25); // nose genuinely points up

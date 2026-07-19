@@ -3,14 +3,15 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
-import Atmosphere from "./Atmosphere";
+import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import {
   COSMIC_BOUNDS, PORTAL_POS, planets,
   ZONE_FACTOR, LOCK_ENGAGE_FACTOR, LOCK_RETAIN_FACTOR,
   PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
 } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { orbitPosition } from "../../utils/orbits";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
@@ -32,6 +33,34 @@ const nebulaTexture = (() => {
   }
   return new THREE.CanvasTexture(canvas);
 })();
+
+// Animated energy membrane for the stargate: spiral bands swirling into a hot
+// core, replacing the GLB's static portal_glow texture.
+const membraneVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const membraneFragment = /* glsl */ `
+  uniform float uTime;
+  varying vec2 vUv;
+  void main() {
+    vec2 p = vUv - 0.5;
+    float r = length(p) * 2.0;
+    float a = atan(p.y, p.x);
+    // three spiral arms drifting inward, plus a slow counter-swirl for depth
+    float swirl = sin(a * 3.0 + r * 9.0 - uTime * 2.6) * 0.5 + 0.5;
+    float counter = sin(a * 5.0 - r * 14.0 + uTime * 1.7) * 0.5 + 0.5;
+    float bands = swirl * 0.7 + counter * 0.3;
+    float core = smoothstep(0.55, 0.0, r);
+    vec3 col = mix(vec3(0.45, 0.05, 0.55), vec3(1.0, 0.25, 0.75), bands); // deep violet -> neon pink
+    col = mix(col, vec3(1.0, 0.9, 0.6), core * (0.6 + bands * 0.4));       // white-hot center
+    float alpha = (0.35 + bands * 0.5) * smoothstep(1.05, 0.8, r) + core * 0.5;
+    gl_FragColor = vec4(col * (0.8 + core), alpha);
+  }
+`;
 
 interface NebulaClusterProps {
   position: [number, number, number];
@@ -161,6 +190,7 @@ export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
   const agentPlanetRef = useRef<THREE.Mesh>(null);
+  const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
@@ -188,9 +218,29 @@ export default function SpacePlanets() {
   // Load custom stargate portal gateway model
   const { scene: portalScene } = useGLTF("/models/portal_gateway.glb");
 
-  // Register static scan targets (planets + contact portal) once — positions never move.
+  // Swap the GLB's static membrane texture for the animated swirl shader.
+  const membraneMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: membraneVertex,
+        fragmentShader: membraneFragment,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    []
+  );
   useEffect(() => {
-    planets.forEach((p) => setScannable(p.name, p.pos[0], p.pos[1], p.pos[2], "PLANET_" + p.name.toUpperCase()));
+    portalScene.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.name.startsWith("PortalMembrane")) o.material = membraneMaterial;
+    });
+    return () => membraneMaterial.dispose();
+  }, [portalScene, membraneMaterial]);
+
+  // Portal is static; planets are re-registered every frame (they orbit).
+  useEffect(() => {
     setScannable("contact", PORTAL_POS[0], PORTAL_POS[1], PORTAL_POS[2], "PORTAL_SUN");
   }, []);
 
@@ -198,15 +248,26 @@ export default function SpacePlanets() {
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
 
+    // 0. Orbit drive: single writer of `bodies` (spec §3)
+    planets.forEach((p, i) => {
+      const pos = orbitPosition(p.orbit, time);
+      const b = bodies[p.name];
+      b.x = pos.x; b.y = pos.y; b.z = pos.z;
+      const g = planetGroupRefs.current[i];
+      if (g) g.position.set(pos.x, pos.y, pos.z);
+      setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase());
+    });
+
     // 1. Slowly rotate planets
-    if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.12;
-    if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = time * 0.08;
-    if (agentPlanetRef.current) agentPlanetRef.current.rotation.y = time * 0.16;
+    if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.1;
+    if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = time * 0.3;
+    if (agentPlanetRef.current) agentPlanetRef.current.rotation.y = time * 0.13;
 
     // Spin Stargate Portal Frame infinitely
     if (portalFrameRef.current) {
       portalFrameRef.current.rotation.z = time * 0.08;
     }
+    membraneMaterial.uniforms.uTime.value = time;
 
     // Rotate accessories
     if (saasRingRef.current) saasRingRef.current.rotation.z = -time * 0.06;
@@ -243,12 +304,18 @@ export default function SpacePlanets() {
     // radius than the one that engaged it, so the orbit ring (which sits
     // further out than the engage threshold) doesn't immediately break the
     // lock it just entered — see tests/orbitInvariant.test.ts.
-    const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked } = useSpaceStore.getState();
+    const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked, photoMode } = useSpaceStore.getState();
+    // Photo mode freezes the ship but bodies/scannables above keep orbiting; if we
+    // let a moving planet drift past LOCK_RETAIN while frozen, the lock breaks and
+    // Spaceship's escape-push effect (Spaceship.tsx:96-100) jolts the ship mid-photo.
+    // Skip only the zone/lock writes here — mirrors Scanner.tsx:22's self-gate.
+    if (photoMode) return;
     let activeZone: string | null = null;
     let lockActive = false;
 
     planets.forEach((p) => {
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, p.pos[0], p.pos[2], p.pos[1], COSMIC_BOUNDS);
+      const b = bodies[p.name];
+      const dist = toroidalDistance3(flight.x, flight.z, flight.y, b.x, b.z, b.y, COSMIC_BOUNDS);
       if (lockedNow && zoneNow === p.name) {
         if (dist < p.size * LOCK_RETAIN_FACTOR) {
           activeZone = p.name;
@@ -278,26 +345,20 @@ export default function SpacePlanets() {
   return (
     <group>
       {/* 1. SAAS PLANET (Neon Green, Rings) */}
-      <group position={planets[0].pos}>
+      <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={saasPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[0].size, 32, 32]} />
-          <meshStandardMaterial
-            map={earthTex}
-            roughness={0.25}
-            metalness={0.8}
-            emissive="#00ff87"
-            emissiveIntensity={0.3}
-          />
+          <meshStandardMaterial map={earthTex} roughness={0.5} metalness={0.0} />
         </mesh>
-        <Atmosphere radius={planets[0].size} color={planets[0].color} />
+        <Atmosphere radius={planets[0].size} color="#6fd8ff" planetPos={bodies[planets[0].name]} intensity={1.2} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
         <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
 
         {/* Glowing aura core */}
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[0].size, 16, 16]} />
-          <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.2} />
+          <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.06} />
         </mesh>
 
         {/* Orbit Grid Ring */}
@@ -312,30 +373,24 @@ export default function SpacePlanets() {
           <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.3} />
         </mesh>
         
-        <pointLight color="#00ff87" intensity={2.5} distance={planets[0].size * 4.5} />
+        <pointLight color="#00ff87" intensity={0.6} distance={planets[0].size * 4.5} />
       </group>
 
       {/* 2. VIRAL VIDEO PLANET (Neon Cyan, Moon) */}
-      <group position={planets[1].pos}>
+      <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={videoPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[1].size, 32, 32]} />
-          <meshStandardMaterial
-            map={jupiterTex}
-            roughness={0.3}
-            metalness={0.7}
-            emissive="#00f0ff"
-            emissiveIntensity={0.3}
-          />
+          <meshStandardMaterial map={jupiterTex} roughness={0.95} metalness={0.0} />
         </mesh>
-        <Atmosphere radius={planets[1].size} color={planets[1].color} />
-        <CloudLayer radius={planets[1].size} tint="#bff5ff" speed={0.112} />
+        <LimbDarkening radius={planets[1].size} strength={0.8} />
+        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
         <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
         <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[1].size, 16, 16]} />
-          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.25} />
+          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.06} />
         </mesh>
 
         {/* Proximity Gravity Field Dotted circle */}
@@ -344,30 +399,23 @@ export default function SpacePlanets() {
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.3} />
         </mesh>
 
-        <pointLight color="#00f0ff" intensity={2.5} distance={planets[1].size * 4.5} />
+        <pointLight color="#00f0ff" intensity={0.6} distance={planets[1].size * 4.5} />
       </group>
 
       {/* 3. MULTI-AGENT PLANET (Neon Purple, Banded Grid Clouds) */}
-      <group position={planets[2].pos}>
+      <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={agentPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[2].size, 32, 32]} />
-          <meshStandardMaterial
-            map={marsTex}
-            roughness={0.4}
-            metalness={0.6}
-            emissive="#bd00ff"
-            emissiveIntensity={0.3}
-          />
+          <meshStandardMaterial map={marsTex} roughness={0.95} metalness={0.0} />
         </mesh>
-        <Atmosphere radius={planets[2].size} color={planets[2].color} />
-        <CloudLayer radius={planets[2].size} tint="#ffd9c2" speed={0.224} />
+        <Atmosphere radius={planets[2].size} color="#e8b48a" planetPos={bodies[planets[2].name]} intensity={0.4} thickness={1.05} />
         <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
         <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
 
         <mesh scale={0.94}>
           <sphereGeometry args={[planets[2].size, 16, 16]} />
-          <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.2} />
+          <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.06} />
         </mesh>
 
         {/* Proximity Gravity Field Dotted circle */}
@@ -376,8 +424,21 @@ export default function SpacePlanets() {
           <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.3} />
         </mesh>
 
-        <pointLight color="#bd00ff" intensity={2.5} distance={planets[2].size * 4.5} />
+        <pointLight color="#bd00ff" intensity={0.6} distance={planets[2].size * 4.5} />
       </group>
+
+      {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}
+      {planets.map((p) => (
+        <group key={`ring-${p.name}`} rotation={[0, p.orbit.node, 0]}>
+          <group rotation={[p.orbit.inclination, 0, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[p.orbit.radius - 0.15, p.orbit.radius + 0.15, 128]} />
+              <meshBasicMaterial color={p.color} transparent={true} opacity={0.22}
+                side={THREE.DoubleSide} depthWrite={false} />
+            </mesh>
+          </group>
+        </group>
+      ))}
 
       {/* 4. CONTACT PORTAL SUN STAR (at 0, 0, -160) */}
       <group position={PORTAL_POS}>
@@ -413,16 +474,16 @@ export default function SpacePlanets() {
       {/* 6. GASEOUS NEBULA DEEP SPACE CLOUDS (Parallax Atmosphere) */}
       <group ref={nebulaeGroupRef}>
         {/* Nebula Cloud 1: Purple */}
-        <NebulaCluster position={[120, -10, -120]} color="#bd00ff" size={35} opacity={0.038} />
-        
+        <NebulaCluster position={[120, 100, -120]} color="#bd00ff" size={35} opacity={0.038} />
+
         {/* Nebula Cloud 2: Cyan */}
-        <NebulaCluster position={[-130, 20, 110]} color="#00f0ff" size={40} opacity={0.038} />
+        <NebulaCluster position={[-130, -95, 110]} color="#00f0ff" size={40} opacity={0.038} />
 
         {/* Nebula Cloud 3: Pink */}
         <NebulaCluster position={[140, -30, 130]} color="#ec4899" size={45} opacity={0.035} />
 
         {/* Nebula Cloud 4: Green */}
-        <NebulaCluster position={[-120, -20, -140]} color="#00ff87" size={30} opacity={0.035} />
+        <NebulaCluster position={[-120, 40, -140]} color="#00ff87" size={30} opacity={0.035} />
 
         {/* Nebula Cloud 5: Golden orange */}
         <NebulaCluster position={[0, 30, -180]} color="#ffa500" size={55} opacity={0.04} />

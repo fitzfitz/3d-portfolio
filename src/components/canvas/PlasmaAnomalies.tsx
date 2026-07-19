@@ -138,11 +138,15 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
         // Air drag in magnetic fields
         nextVel.multiplyScalar(0.985);
 
-        // Boundary reflection checking
-        const limit = 26;
+        // Boundary reflection: a roomy 3D box around the play space (spec §5)
+        const limit = 60;
         if (Math.abs(nextPos.x) >= limit) {
           nextPos.x = Math.sign(nextPos.x) * limit;
           nextVel.x = -nextVel.x * 0.8;
+        }
+        if (Math.abs(nextPos.y) >= limit) {
+          nextPos.y = Math.sign(nextPos.y) * limit;
+          nextVel.y = -nextVel.y * 0.8;
         }
         if (Math.abs(nextPos.z) >= limit) {
           nextPos.z = Math.sign(nextPos.z) * limit;

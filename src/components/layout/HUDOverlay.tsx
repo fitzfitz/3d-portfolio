@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
@@ -25,6 +25,7 @@ export default function HUDOverlay() {
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
+  const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
   useEffect(() => {
@@ -34,6 +35,12 @@ export default function HUDOverlay() {
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      for (const p of planets) {
+        const el = planetRowRefs.current[p.name];
+        const b = bodies[p.name];
+        if (el && b) el.textContent =
+          `PLANET_${p.name.toUpperCase()} ([${b.x.toFixed(0)}, ${b.y.toFixed(0)}, ${b.z.toFixed(0)}])`;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -83,8 +90,8 @@ export default function HUDOverlay() {
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
-          <span className="text-white/25">ALTITUDE</span>
-          <span className="text-white">{isCoarse ? "RISE / DIVE" : "SPACE / C"}</span>
+          <span className="text-white/25">PITCH</span>
+          <span className="text-white">{isCoarse ? "PITCH ▲ / ▼" : "SPACE / C"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
@@ -135,7 +142,9 @@ export default function HUDOverlay() {
         {planets.map((p) => (
           <div key={p.name} className={`flex items-center gap-1.5 transition-colors ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/20"}`}>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-            <span>PLANET_{p.name.toUpperCase()} ([{p.pos.join(", ")}])</span>
+            <span ref={(el) => { planetRowRefs.current[p.name] = el; }}>
+              PLANET_{p.name.toUpperCase()}
+            </span>
           </div>
         ))}
         <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/20"}`}>

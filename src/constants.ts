@@ -1,13 +1,16 @@
+import type { OrbitalElements } from "./utils/orbits";
+
 export interface Project {
   title: string; role: string; duration: string; short: string;
   description: string; tech: string[]; color: string;
 }
 export interface PlanetData {
-  name: string; pos: [number, number, number]; color: string; size: number;
+  name: string; orbit: OrbitalElements; color: string; size: number;
 }
 
 export const COSMIC_BOUNDS = 250;
-export const PORTAL_POS: [number, number, number] = [0, 0.2, -160];
+// Off-plane destination: pilots must climb to reach the contact portal (spec §3).
+export const PORTAL_POS: [number, number, number] = [0, 95, -150];
 export const SHIP_MAX_SPEED = 10.8;
 
 // Orbit-lock geometry: ORBIT must stay well inside RETAIN or the lock
@@ -54,8 +57,20 @@ export const projects: Project[] = [
   },
 ];
 
+// Inclined living orbits around the sun at origin (spec §3). Periods are
+// minutes-slow: orbital speed stays ≪ ship speed so orbit-lock tracking is
+// trivial (tests/orbitInvariant.test.ts).
 export const planets: PlanetData[] = [
-  { name: "saas", pos: [-110, 0, 110] as [number, number, number], color: "#00ff87", size: 4.8 },
-  { name: "video", pos: [130, 0, -80] as [number, number, number], color: "#00f0ff", size: 4.8 },
-  { name: "agent", pos: [-120, 0, -130] as [number, number, number], color: "#bd00ff", size: 4.8 },
+  {
+    name: "saas", color: "#00ff87", size: 4.8,
+    orbit: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
+  },
+  {
+    name: "video", color: "#00f0ff", size: 4.8,
+    orbit: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
+  },
+  {
+    name: "agent", color: "#bd00ff", size: 4.8,
+    orbit: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
+  },
 ];

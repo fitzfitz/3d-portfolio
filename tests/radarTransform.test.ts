@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { worldToRadar } from "../src/utils/radarTransform";
+import { worldToRadar, altitudeCue } from "../src/utils/radarTransform";
 
 describe("worldToRadar", () => {
   it("target dead ahead maps to straight up", () => {
@@ -22,5 +22,22 @@ describe("worldToRadar", () => {
   });
   it("target behind maps to negative up", () => {
     expect(worldToRadar(0, -100, 0).up).toBeCloseTo(-100);
+  });
+});
+
+describe("altitudeCue", () => {
+  it("dead band: no chevron within ±6 units", () => {
+    expect(altitudeCue(0).dir).toBe(0);
+    expect(altitudeCue(5.9).dir).toBe(0);
+    expect(altitudeCue(-5.9).dir).toBe(0);
+  });
+  it("direction follows the sign of the delta", () => {
+    expect(altitudeCue(30).dir).toBe(1);
+    expect(altitudeCue(-30).dir).toBe(-1);
+  });
+  it("alpha ramps from 0 at the dead band to 1 at 80 units and clamps", () => {
+    expect(altitudeCue(6).alpha).toBeCloseTo(0, 5);
+    expect(altitudeCue(43).alpha).toBeCloseTo(0.5, 2);
+    expect(altitudeCue(200).alpha).toBe(1);
   });
 });
