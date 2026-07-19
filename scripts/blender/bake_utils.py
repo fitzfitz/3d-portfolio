@@ -111,3 +111,61 @@ def apply_baked_material(objects, image, name, metallic=0.55, roughness=0.45):
             if not emissive:
                 slot.material = mat
     return mat
+
+
+def bake_normal_from_hipoly(lo, hi, image_name, size=1024, extrusion=0.08, samples=16):
+    """Bake a hi-poly duplicate's surface detail into a tangent-space normal map
+    on the lo-poly's existing UVs (selected-to-active). The pro trick that makes
+    game-budget meshes read as sculpted. Caller deletes `hi` afterwards."""
+    img = bpy.data.images.new(image_name, width=size, height=size, alpha=False)
+    img.colorspace_settings.name = "Non-Color"
+    _attach_bake_target([lo], img)
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = samples
+    bpy.ops.object.select_all(action="DESELECT")
+    hi.select_set(True)
+    lo.select_set(True)
+    bpy.context.view_layer.objects.active = lo
+    bpy.ops.object.bake(
+        type="NORMAL",
+        use_selected_to_active=True,
+        cage_extrusion=extrusion,
+        use_clear=True,
+    )
+    _detach_bake_targets([lo])
+    img.pack()
+    return img
+
+
+def attach_normal_map(material, image, strength=1.0):
+    """Wire a baked normal map into a Principled material (glTF exports it)."""
+    nt = material.node_tree
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nm = nt.nodes.new("ShaderNodeNormalMap")
+    nm.inputs["Strength"].default_value = strength
+    nt.links.new(tex.outputs["Color"], nm.inputs["Color"])
+    nt.links.new(nm.outputs["Normal"], nt.nodes["Principled BSDF"].inputs["Normal"])
+
+
+def make_hipoly_detail(lo, subsurf_levels=2, noise_scale=0.12, noise_strength=0.02):
+    """Duplicate lo and add fine sculpt-ish surface detail for normal baking."""
+    bpy.ops.object.select_all(action="DESELECT")
+    lo.select_set(True)
+    bpy.context.view_layer.objects.active = lo
+    bpy.ops.object.duplicate()
+    hi = bpy.context.object
+    hi.name = lo.name + "_hipoly"
+    sub = hi.modifiers.new("detail_sub", "SUBSURF")
+    sub.levels = subsurf_levels
+    sub.render_levels = subsurf_levels
+    tex = bpy.data.textures.new(hi.name + "_micro", type="CLOUDS")
+    tex.noise_scale = noise_scale
+    disp = hi.modifiers.new("micro", "DISPLACE")
+    disp.texture = tex
+    disp.strength = noise_strength
+    for m in list(hi.modifiers):
+        bpy.ops.object.modifier_apply(modifier=m.name)
+    return hi

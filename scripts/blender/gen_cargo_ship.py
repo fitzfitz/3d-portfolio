@@ -144,7 +144,12 @@ dish.data.materials.append(ACCENT)
 
 # --- bake hull color+AO and apply ---
 img = bake_utils.bake_color_ao([ship], "cargo_ship_baked", size=1024, ao_samples=32)
-bake_utils.apply_baked_material([ship], img, "HullBaked")
+baked = bake_utils.apply_baked_material([ship], img, "HullBaked")
+# Hard-surface detail: level-1 subsurf softens machined edges, fine noise = hull plating
+hi = bake_utils.make_hipoly_detail(ship, subsurf_levels=1, noise_scale=0.06, noise_strength=0.008)
+nimg = bake_utils.bake_normal_from_hipoly(ship, hi, "cargo_ship_normal", size=1024)
+bake_utils.attach_normal_map(baked, nimg)
+bpy.data.objects.remove(hi, do_unlink=True)
 
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "cargo_ship.glb"))
 

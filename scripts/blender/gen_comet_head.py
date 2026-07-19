@@ -36,7 +36,11 @@ bsdf.inputs["Roughness"].default_value = 0.85
 head.data.materials.append(mat)
 
 img = bake_utils.bake_color_ao([head], "comet_baked", size=512, ao_samples=32)
-bake_utils.apply_baked_material([head], img, "CometBaked", metallic=0.05, roughness=0.85)
+baked = bake_utils.apply_baked_material([head], img, "CometBaked", metallic=0.05, roughness=0.85)
+hi = bake_utils.make_hipoly_detail(head, subsurf_levels=2, noise_scale=0.08, noise_strength=0.05)
+nimg = bake_utils.bake_normal_from_hipoly(head, hi, "comet_normal", size=512)
+bake_utils.attach_normal_map(baked, nimg)
+bpy.data.objects.remove(hi, do_unlink=True)
 
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "comet_head.glb"))
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True)

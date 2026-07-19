@@ -41,7 +41,12 @@ for m in list(moon.modifiers):
 bpy.ops.object.shade_smooth()
 
 img = bake_utils.bake_color_ao([moon], "moon_baked", size=1024, ao_samples=32)
-bake_utils.apply_baked_material([moon], img, "MoonBaked", metallic=0.0, roughness=0.9)
+baked = bake_utils.apply_baked_material([moon], img, "MoonBaked", metallic=0.0, roughness=0.9)
+# Sculpt-detail normal bake: hi-poly duplicate -> tangent normal map on the lo mesh
+hi = bake_utils.make_hipoly_detail(moon, subsurf_levels=2, noise_scale=0.1, noise_strength=0.03)
+nimg = bake_utils.bake_normal_from_hipoly(moon, hi, "moon_normal", size=1024)
+bake_utils.attach_normal_map(baked, nimg)
+bpy.data.objects.remove(hi, do_unlink=True)
 
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets-src", "moon.glb"))
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_apply=True)
