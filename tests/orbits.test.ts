@@ -39,4 +39,12 @@ describe("orbitPosition", () => {
     expect(b.y).toBeCloseTo(a.y, 4);
     expect(b.z).toBeCloseTo(a.z, 4);
   });
+  it("pins the inclination sign: at θ=90° with i=30°, y = −r·sin i", () => {
+    const el = { ...base, inclination: Math.PI / 6 };
+    const t = (Math.PI / 2) / el.angularSpeed; // θ = phase(0) + t·ω = 90°
+    const p = orbitPosition(el, t);
+    expect(p.x).toBeCloseTo(0, 6);
+    expect(p.y).toBeCloseTo(-50, 6); // −r·sin(30°) = −50: signed, not magnitude
+    expect(p.z).toBeCloseTo(100 * Math.cos(Math.PI / 6), 6);
+  });
 });
