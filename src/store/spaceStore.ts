@@ -67,6 +67,7 @@ export const flight = {
   y: 0, // altitude, written by Spaceship each frame
   speed: 0, // world units / second
   heading: 0, // yaw in radians, written by Spaceship each frame
+  pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
     boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,

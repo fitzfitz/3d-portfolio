@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
+import { pitchStep, noseDirection } from "../../utils/pitchFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
@@ -47,8 +47,7 @@ export default function Spaceship() {
   const roll = useRef(0);
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
-  const vy = useRef(0);
-  const lastVerticalInput = useRef(0);
+  const pitchVel = useRef(0); // rad/s — `pitch` ref (above) is now flight state, not just visual
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
@@ -95,10 +94,8 @@ export default function Spaceship() {
 
     if (!wasLocked || isOrbitLocked) return; // only true→false = real orbit break
     if (pos.current.length() > 0.5) {
-      const escapePush = new THREE.Vector3(
-        -Math.sin(angle.current) * 2.8, 0, -Math.cos(angle.current) * 2.8
-      );
-      pos.current.add(escapePush);
+      const d = noseDirection(angle.current, pitch.current);
+      pos.current.add(new THREE.Vector3(-d.x * 2.8, -d.y * 2.8, -d.z * 2.8));
       vel.current.set(0, 0, 0);
     }
   }, [isOrbitLocked]);
@@ -157,6 +154,7 @@ export default function Spaceship() {
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.4);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
+      flight.pitch = pitch.current;
       return;
     }
 
@@ -173,17 +171,19 @@ export default function Spaceship() {
         perspCam.fov = THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
         perspCam.updateProjectionMatrix();
       }
-      const camOffset = new THREE.Vector3(
-        -Math.sin(angle.current) * camDistance, camHeight, -Math.cos(angle.current) * camDistance
+      const nose = noseDirection(angle.current, pitch.current);
+      const targetCamPos = new THREE.Vector3(
+        pos.current.x - nose.x * camDistance,
+        pos.current.y - nose.y * camDistance + camHeight,
+        pos.current.z - nose.z * camDistance
       );
-      const targetCamPos = pos.current.clone().add(camOffset);
-      const fXZ = frameLerp(0.05, dt);
-      const fY = frameLerp(0.03, dt);
-      state.camera.position.x += (targetCamPos.x - state.camera.position.x) * fXZ;
-      state.camera.position.z += (targetCamPos.z - state.camera.position.z) * fXZ;
-      state.camera.position.y += (targetCamPos.y - state.camera.position.y) * fY;
-      const lookOffset = new THREE.Vector3(Math.sin(angle.current) * 1.5, 0.2 + THREE.MathUtils.clamp(vy.current * 0.1, -1, 1), Math.cos(angle.current) * 1.5);
-      state.camera.lookAt(pos.current.clone().add(lookOffset));
+      const f = frameLerp(0.05, dt);
+      state.camera.position.lerp(targetCamPos, f);
+      state.camera.lookAt(
+        pos.current.x + nose.x * 1.5,
+        pos.current.y + nose.y * 1.5 + 0.2,
+        pos.current.z + nose.z * 1.5
+      );
     };
 
     if (isOrbitLocked) {
@@ -199,15 +199,17 @@ export default function Spaceship() {
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
       angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
       roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
+      pitch.current = THREE.MathUtils.lerp(pitch.current, 0, frameLerp(0.05, dt)); // level out in orbit
       vel.current.set(0, 0, 0);
-      vy.current = 0;
+      pitchVel.current = 0;
       shipRef.current.position.copy(pos.current);
       shipRef.current.position.y += Math.sin(time * 2) * 0.05; // bob
-      shipRef.current.rotation.set(0, angle.current, roll.current, "YXZ");
+      shipRef.current.rotation.set(-pitch.current, angle.current, roll.current, "YXZ");
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.35);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.heading = angle.current;
+      flight.pitch = pitch.current;
       flight.speed = orbitRadius.current * 0.25; // tangential speed for the HUD
 
       applyChaseCam(false);
@@ -225,7 +227,14 @@ export default function Spaceship() {
     }
     angle.current += turnVelocity.current * dt;
 
-    // 2. Warp vs impulse. Touch thrust is analog (0..1 forward, <0 brakes).
+    // 2. Pitch channel: nose angle, eased like yaw. No auto-level, no ceiling —
+    // the nose and the ship stay wherever the pilot leaves them (spec §1).
+    const pRes = pitchStep(pitch.current, pitchVel.current,
+      { up: input.ascend, down: input.descend }, dt);
+    pitch.current = pRes.pitch;
+    pitchVel.current = pRes.pitchVel;
+
+    // 3. Warp vs impulse along the nose direction. Touch thrust is analog.
     // Briefly suppressed right after an impact so the reflected velocity can
     // actually push the ship away instead of being overwritten by warp speed.
     const warpActive = input.boost && time > warpSuppressUntil.current;
@@ -233,54 +242,35 @@ export default function Spaceship() {
     const thrustInput = input.forward ? 1 : Math.max(0, input.thrust);
     const braking = input.backward || input.thrust < -0.2;
 
-    const headingX = Math.sin(angle.current);
-    const headingZ = Math.cos(angle.current);
+    const nose = noseDirection(angle.current, pitch.current);
 
     if (warpActive) {
-      vel.current.set(headingX * WARP_SPEED, 0, headingZ * WARP_SPEED);
+      vel.current.set(nose.x * WARP_SPEED, nose.y * WARP_SPEED, nose.z * WARP_SPEED);
     } else if (thrustInput > 0) {
-      vel.current.x += headingX * ACCEL * thrustInput * dt;
-      vel.current.z += headingZ * ACCEL * thrustInput * dt;
+      vel.current.x += nose.x * ACCEL * thrustInput * dt;
+      vel.current.y += nose.y * ACCEL * thrustInput * dt;
+      vel.current.z += nose.z * ACCEL * thrustInput * dt;
       if (vel.current.length() > MAX_SPEED) vel.current.normalize().multiplyScalar(MAX_SPEED);
     } else if (braking) {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
-    pos.current.x += vel.current.x * dt;
-    pos.current.z += vel.current.z * dt;
+    pos.current.addScaledVector(vel.current, dt);
 
-    // Vertical channel (pure step; auto-level only outside gravity zones,
-    // and only after a grace period so pilots can cruise at altitude)
-    if (input.ascend || input.descend) lastVerticalInput.current = time;
-    const graceOver = time - lastVerticalInput.current > 4;
-    const vRes = verticalStep(
-      pos.current.y,
-      vy.current,
-      {
-        ascend: input.ascend,
-        descend: input.descend,
-        autoLevel: !input.ascend && !input.descend && !store.activeZone && graceOver,
-      },
-      dt
-    );
-    pos.current.y = vRes.y;
-    vy.current = vRes.vy;
-    store.setAltitudeWarn(Math.abs(pos.current.y) > V_CEIL - 7);
-
-    pitch.current = Math.sin(time * 2) * 0.03 + THREE.MathUtils.clamp(-vy.current * 0.045, -0.3, 0.3);
+    // Ecliptic-departure advisory (flavor only — nothing pulls the ship back)
+    store.setAltitudeWarn(Math.abs(pos.current.y) > 180);
 
     // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
     for (const c of COLLIDERS) {
       const hit = resolveCollision(
         pos.current.x, pos.current.y, pos.current.z,
-        vel.current.x, vy.current, vel.current.z,
+        vel.current.x, vel.current.y, vel.current.z,
         c.x, c.y, c.z, c.r
       );
       if (hit) {
         pos.current.set(hit.px, hit.py, hit.pz);
-        vel.current.x = hit.vx; vel.current.z = hit.vz;
-        vy.current = hit.vy;
+        vel.current.set(hit.vx, hit.vy, hit.vz);
         warpSuppressUntil.current = time + 0.45; // let the reflection push us away
         if (time - lastImpactAt.current > 0.5) {
           lastImpactAt.current = time;
@@ -292,15 +282,18 @@ export default function Spaceship() {
       }
     }
 
-    // Toroidal boundary wrap
+    // Toroidal boundary wrap — all three axes (spec §2)
     const bounds = COSMIC_BOUNDS;
-    let wrapOffsetX = 0, wrapOffsetZ = 0, didWrap = false;
+    let wrapOffsetX = 0, wrapOffsetY = 0, wrapOffsetZ = 0, didWrap = false;
     if (pos.current.x > bounds) { pos.current.x = -bounds + 3; wrapOffsetX = -bounds * 2 + 3; didWrap = true; }
     else if (pos.current.x < -bounds) { pos.current.x = bounds - 3; wrapOffsetX = bounds * 2 - 3; didWrap = true; }
+    if (pos.current.y > bounds) { pos.current.y = -bounds + 3; wrapOffsetY = -bounds * 2 + 3; didWrap = true; }
+    else if (pos.current.y < -bounds) { pos.current.y = bounds - 3; wrapOffsetY = bounds * 2 - 3; didWrap = true; }
     if (pos.current.z > bounds) { pos.current.z = -bounds + 3; wrapOffsetZ = -bounds * 2 + 3; didWrap = true; }
     else if (pos.current.z < -bounds) { pos.current.z = bounds - 3; wrapOffsetZ = bounds * 2 - 3; didWrap = true; }
     if (didWrap) {
       state.camera.position.x += wrapOffsetX;
+      state.camera.position.y += wrapOffsetY;
       state.camera.position.z += wrapOffsetZ;
       store.triggerTeleportFlash();
     }
@@ -308,7 +301,12 @@ export default function Spaceship() {
     shipRef.current.position.copy(pos.current);
     // YXZ: yaw first, then pitch about the yawed axis — with the default XYZ,
     // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
-    shipRef.current.rotation.set(pitch.current, angle.current, roll.current, "YXZ");
+    shipRef.current.rotation.set(
+      -pitch.current + Math.sin(time * 2) * 0.03,
+      angle.current,
+      roll.current,
+      "YXZ"
+    );
 
     // 3. Thruster scale + engine light breathing with throttle
     if (thrusterRef.current) {
@@ -388,8 +386,9 @@ export default function Spaceship() {
     flight.x = pos.current.x;
     flight.z = pos.current.z;
     flight.y = pos.current.y;
-    flight.speed = Math.hypot(vel.current.length(), vy.current);
+    flight.speed = vel.current.length();
     flight.heading = angle.current;
+    flight.pitch = pitch.current;
     store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6 && Math.abs(pos.current.y) < 3);
   });
 
