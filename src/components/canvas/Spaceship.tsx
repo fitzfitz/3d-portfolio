@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { verticalStep, V_CEIL } from "../../utils/verticalFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -69,7 +69,8 @@ export default function Spaceship() {
       const activeZone = useSpaceStore.getState().activeZone;
       const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
       if (planet) {
-        lockedCenter.current.set(...planet.pos);
+        const b = bodies[planet.name];
+        lockedCenter.current.set(b.x, b.y, b.z);
         targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
       } else if (activeZone === "contact") {
         lockedCenter.current.set(...PORTAL_POS);
@@ -186,6 +187,11 @@ export default function Spaceship() {
     };
 
     if (isOrbitLocked) {
+      // The locked body orbits the sun — ride along with it (spec §1).
+      const zone = store.activeZone;
+      const live = zone ? bodies[zone] : undefined;
+      if (live) lockedCenter.current.set(live.x, live.y, live.z);
+
       orbitRadius.current += (targetLockRadius.current - orbitRadius.current) * frameLerp(0.03, dt);
       orbitAngle.current += dt * 0.25;
       pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;

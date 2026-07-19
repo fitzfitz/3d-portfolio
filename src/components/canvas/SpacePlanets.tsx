@@ -10,7 +10,8 @@ import {
   ZONE_FACTOR, LOCK_ENGAGE_FACTOR, LOCK_RETAIN_FACTOR,
   PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
 } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { orbitPosition } from "../../utils/orbits";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
@@ -189,6 +190,7 @@ export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
   const agentPlanetRef = useRef<THREE.Mesh>(null);
+  const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
@@ -237,15 +239,24 @@ export default function SpacePlanets() {
     return () => membraneMaterial.dispose();
   }, [portalScene, membraneMaterial]);
 
-  // Register static scan targets (planets + contact portal) once — positions never move.
+  // Portal is static; planets are re-registered every frame (they orbit).
   useEffect(() => {
-    planets.forEach((p) => setScannable(p.name, p.pos[0], p.pos[1], p.pos[2], "PLANET_" + p.name.toUpperCase()));
     setScannable("contact", PORTAL_POS[0], PORTAL_POS[1], PORTAL_POS[2], "PORTAL_SUN");
   }, []);
 
   // Proximity attraction logic
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
+
+    // 0. Orbit drive: single writer of `bodies` (spec §3)
+    planets.forEach((p, i) => {
+      const pos = orbitPosition(p.orbit, time);
+      const b = bodies[p.name];
+      b.x = pos.x; b.y = pos.y; b.z = pos.z;
+      const g = planetGroupRefs.current[i];
+      if (g) g.position.set(pos.x, pos.y, pos.z);
+      setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase());
+    });
 
     // 1. Slowly rotate planets
     if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.1;
@@ -298,7 +309,8 @@ export default function SpacePlanets() {
     let lockActive = false;
 
     planets.forEach((p) => {
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, p.pos[0], p.pos[2], p.pos[1], COSMIC_BOUNDS);
+      const b = bodies[p.name];
+      const dist = toroidalDistance3(flight.x, flight.z, flight.y, b.x, b.z, b.y, COSMIC_BOUNDS);
       if (lockedNow && zoneNow === p.name) {
         if (dist < p.size * LOCK_RETAIN_FACTOR) {
           activeZone = p.name;
@@ -328,13 +340,13 @@ export default function SpacePlanets() {
   return (
     <group>
       {/* 1. SAAS PLANET (Neon Green, Rings) */}
-      <group position={planets[0].pos}>
+      <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={saasPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[0].size, 32, 32]} />
           <meshStandardMaterial map={earthTex} roughness={0.5} metalness={0.0} />
         </mesh>
-        <Atmosphere radius={planets[0].size} color="#6fd8ff" planetPos={planets[0].pos} intensity={1.2} />
+        <Atmosphere radius={planets[0].size} color="#6fd8ff" planetPos={bodies[planets[0].name]} intensity={1.2} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
         <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
 
@@ -360,14 +372,14 @@ export default function SpacePlanets() {
       </group>
 
       {/* 2. VIRAL VIDEO PLANET (Neon Cyan, Moon) */}
-      <group position={planets[1].pos}>
+      <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={videoPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[1].size, 32, 32]} />
           <meshStandardMaterial map={jupiterTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
-        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={planets[1].pos} intensity={0.55} thickness={1.06} />
+        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
         <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
         <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} />
 
@@ -386,13 +398,13 @@ export default function SpacePlanets() {
       </group>
 
       {/* 3. MULTI-AGENT PLANET (Neon Purple, Banded Grid Clouds) */}
-      <group position={planets[2].pos}>
+      <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={agentPlanetRef} castShadow={true}>
           <sphereGeometry args={[planets[2].size, 32, 32]} />
           <meshStandardMaterial map={marsTex} roughness={0.95} metalness={0.0} />
         </mesh>
-        <Atmosphere radius={planets[2].size} color="#e8b48a" planetPos={planets[2].pos} intensity={0.4} thickness={1.05} />
+        <Atmosphere radius={planets[2].size} color="#e8b48a" planetPos={bodies[planets[2].name]} intensity={0.4} thickness={1.05} />
         <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
         <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
 
@@ -409,6 +421,19 @@ export default function SpacePlanets() {
 
         <pointLight color="#bd00ff" intensity={0.6} distance={planets[2].size * 4.5} />
       </group>
+
+      {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}
+      {planets.map((p) => (
+        <group key={`ring-${p.name}`} rotation={[0, p.orbit.node, 0]}>
+          <group rotation={[p.orbit.inclination, 0, 0]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[p.orbit.radius - 0.15, p.orbit.radius + 0.15, 128]} />
+              <meshBasicMaterial color={p.color} transparent={true} opacity={0.22}
+                side={THREE.DoubleSide} depthWrite={false} />
+            </mesh>
+          </group>
+        </group>
+      ))}
 
       {/* 4. CONTACT PORTAL SUN STAR (at 0, 0, -160) */}
       <group position={PORTAL_POS}>

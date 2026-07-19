@@ -1,17 +1,13 @@
 import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar } from "../../utils/radarTransform";
 import { V_CEIL } from "../../utils/verticalFlight";
 
 const SIZE = 148;
 const RANGE = 120; // world units mapped to radar radius
-const targets = [
-  ...planets.map((p) => ({ name: p.name, x: p.pos[0], z: p.pos[2], color: p.color })),
-  { name: "contact", x: PORTAL_POS[0], z: PORTAL_POS[2], color: "#ec4899" },
-  { name: "sun", x: 0, z: 0, color: "#ff5500" },
-];
+const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -57,6 +53,14 @@ export default function RadarMap() {
       // Blips (heading-up: rotate world deltas by ship heading)
       const a = flight.heading;
       const activeZone = useSpaceStore.getState().activeZone;
+      const targets = [
+        ...PLANET_COLORS.map((p) => {
+          const b = bodies[p.name];
+          return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
+        }),
+        { name: "contact", x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2], color: "#ec4899" },
+        { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
+      ];
       for (const t of targets) {
         const dx = wrapDelta(flight.x, t.x, COSMIC_BOUNDS);
         const dz = wrapDelta(flight.z, t.z, COSMIC_BOUNDS);
