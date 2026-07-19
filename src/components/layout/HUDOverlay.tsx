@@ -90,8 +90,8 @@ export default function HUDOverlay() {
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
-          <span className="text-white/25">ALTITUDE</span>
-          <span className="text-white">{isCoarse ? "RISE / DIVE" : "SPACE / C"}</span>
+          <span className="text-white/25">PITCH</span>
+          <span className="text-white">{isCoarse ? "PITCH ▲ / ▼" : "SPACE / C"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
