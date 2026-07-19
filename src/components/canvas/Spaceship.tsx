@@ -312,12 +312,12 @@ export default function Spaceship() {
       thrusterRef.current.scale.z = thrusterRef.current.scale.x;
     }
     if (engineLightRef.current) {
-      const targetGlow = (warpActive ? 6 : 0.5 + thrustInput * 2.5) * (0.92 + Math.sin(time * 21) * 0.08);
+      const targetGlow = (warpActive ? 2.2 : 0.25 + thrustInput * 1.0) * (0.92 + Math.sin(time * 21) * 0.08);
       engineLightRef.current.intensity = THREE.MathUtils.lerp(engineLightRef.current.intensity, targetGlow, frameLerp(0.25, dt));
     }
     // The three nozzle spots themselves: emissive burn follows throttle
     if (engineMat) {
-      const targetBurn = (warpActive ? 14 : 2 + thrustInput * 6) * (0.94 + Math.sin(time * 23) * 0.06);
+      const targetBurn = (warpActive ? 4.5 : 0.7 + thrustInput * 2.0) * (0.94 + Math.sin(time * 23) * 0.06);
       engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
     }
 
@@ -390,12 +390,12 @@ export default function Spaceship() {
       {/* Positions derived from the GLB's Engine_Emissive clusters: nozzles at
           (±0.582, -0.05, 3.25) in model space -> (±0.204, -0.068, -1.14) here,
           exhaust exit plane at z ≈ -1.23. */}
-      <pointLight ref={engineLightRef} position={[0, -0.068, -1.5]} color="#00f0ff" intensity={0.6} distance={7} decay={2} />
+      <pointLight ref={engineLightRef} position={[0, -0.068, -1.5]} color="#00f0ff" intensity={0.3} distance={5} decay={2} />
       <group ref={thrusterRef}>
         {[-0.204, 0, 0.204].map((x) => (
           <mesh key={x} position={[x, -0.068, -1.32]} rotation={[-Math.PI / 2, 0, 0]}>
             <coneGeometry args={[0.04, 0.22, 8]} />
-            <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.35} />
+            <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.22} />
           </mesh>
         ))}
       </group>

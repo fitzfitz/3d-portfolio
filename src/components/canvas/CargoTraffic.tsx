@@ -89,11 +89,11 @@ export default function CargoTraffic() {
       ship.group.rotateZ(rolls.current[i]);
 
       // Nav lights: sharp blink, per-ship phase
-      const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 8 : 0.4;
+      const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 4.5 : 0.3;
       for (const m of ship.navMats) m.emissiveIntensity = blink;
 
       // Engine burn: uneven thruster flicker, per-ship phase
-      const burn = 5 + Math.sin(time * 7.3 + i * 2.3) * 1.1 + Math.sin(time * 13.7 + i) * 0.6;
+      const burn = 2.6 + Math.sin(time * 7.3 + i * 2.3) * 0.6 + Math.sin(time * 13.7 + i) * 0.3;
       for (const m of ship.engineMats) m.emissiveIntensity = burn;
 
       // Radar dish: constant spin
