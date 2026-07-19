@@ -2,9 +2,10 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
+import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { pitchStep, noseDirection } from "../../utils/pitchFlight";
+import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
@@ -101,6 +102,7 @@ export default function Spaceship() {
   }, [isOrbitLocked]);
 
   const shipRef = useRef<THREE.Group>(null);
+  const trailRef = useRef<TrailMesh>(null);
   const thrusterRef = useRef<THREE.Group>(null);
   const engineLightRef = useRef<THREE.PointLight>(null);
 
@@ -143,6 +145,16 @@ export default function Spaceship() {
     const dt = Math.min(delta, 0.05); // clamp tab-switch spikes
     const store = useSpaceStore.getState();
     const time = state.clock.getElapsedTime();
+
+    // Engine trail fades with |pitch|: pitched flight puts the chase cam almost
+    // on the trail axis, where the billboarded ribbon projects as a giant beam
+    // (see trailFade). Runs in every branch so photo/orbit poses stay clean.
+    if (trailRef.current) {
+      const trailMat = trailRef.current.material as THREE.Material & { opacity: number };
+      trailMat.transparent = true;
+      trailMat.depthWrite = false;
+      trailMat.opacity = trailFade(pitch.current);
+    }
 
     if (store.photoMode) {
       // Photo mode: freeze input/physics/camera/shake entirely so OrbitControls
@@ -408,6 +420,7 @@ export default function Spaceship() {
         ))}
       </group>
       <Trail
+        ref={trailRef}
         width={1.4}
         length={5}
         color="#00f0ff"

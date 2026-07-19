@@ -23,6 +23,21 @@ export function pitchStep(
   return { pitch, pitchVel };
 }
 
+export const TRAIL_FADE_START = 0.25; // rad — trail fully visible below this |pitch|
+export const TRAIL_FADE_END = 0.7;    // rad — trail fully hidden above this |pitch|
+
+/**
+ * Engine-trail visibility vs pitch. The trail streams along −velocity; once
+ * the ship pitches, the chase cam's world-up height offset stops clearing
+ * that line, the camera ends up nearly ON the trail axis, and near-plane
+ * projection blows the ribbon up into a screen-filling beam. Fade it out
+ * before the camera aligns — cones/particles/streaks carry thrust instead.
+ */
+export function trailFade(pitch: number): number {
+  const p = Math.abs(pitch);
+  return 1 - Math.min(1, Math.max(0, (p - TRAIL_FADE_START) / (TRAIL_FADE_END - TRAIL_FADE_START)));
+}
+
 /** Spherical heading: yaw 0 / pitch 0 = +Z (matches the old sin/cos yaw convention). */
 export function noseDirection(yaw: number, pitch: number): { x: number; y: number; z: number } {
   const c = Math.cos(pitch);

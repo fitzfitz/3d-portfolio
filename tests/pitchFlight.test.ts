@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pitchStep, noseDirection, PITCH_MAX } from "../src/utils/pitchFlight";
+import { pitchStep, noseDirection, trailFade, PITCH_MAX } from "../src/utils/pitchFlight";
 
 const idle = { up: false, down: false };
 
@@ -47,5 +47,23 @@ describe("noseDirection", () => {
   });
   it("positive pitch points the nose up", () => {
     expect(noseDirection(0, 0.5).y).toBeCloseTo(Math.sin(0.5));
+  });
+});
+
+describe("trailFade", () => {
+  it("full trail in level and shallow flight", () => {
+    expect(trailFade(0)).toBe(1);
+    expect(trailFade(0.25)).toBe(1);
+    expect(trailFade(-0.25)).toBe(1);
+  });
+  it("fully faded before the camera aligns with the trail axis", () => {
+    expect(trailFade(0.7)).toBe(0);
+    expect(trailFade(-0.7)).toBe(0);
+    expect(trailFade(1.45)).toBe(0);
+  });
+  it("fades smoothly and symmetrically in between", () => {
+    expect(trailFade(0.475)).toBeCloseTo(0.5, 5);
+    expect(trailFade(-0.475)).toBeCloseTo(0.5, 5);
+    expect(trailFade(0.3)).toBeGreaterThan(trailFade(0.5));
   });
 });
