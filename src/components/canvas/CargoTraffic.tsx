@@ -6,11 +6,12 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-// Three closed trade loops threading the planets and portal at varied heights.
+// Three trade loops threading the volume: a climbing run (−80 → +110 with a
+// return dive), a belt-gap weaver, and a high ring at portal altitude (spec §5).
 const ROUTES = [
-  [v(-110, 8, 80), v(-20, 14, 150), v(130, 6, -40), v(30, -6, -170), v(-140, 10, -70)],
-  [v(150, -8, 60), v(60, 4, 180), v(-160, -4, 140), v(-90, 12, -30), v(40, 2, -120)],
-  [v(0, 20, -200), v(170, 14, -100), v(200, 6, 80), v(0, -10, 120), v(-190, 16, -20)],
+  [v(-110, -80, 80), v(-20, -30, 150), v(130, 20, -40), v(30, 65, -170), v(-140, 110, -70)],
+  [v(150, -40, 60), v(60, 10, 180), v(-160, -25, 140), v(-90, 30, -30), v(40, -10, -120)],
+  [v(0, 95, -200), v(170, 80, -100), v(200, 60, 80), v(0, 110, 120), v(-190, 90, -20)],
 ].map((pts) => new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5));
 
 interface ShipDef { route: number; phase: number; loopSeconds: number }
@@ -84,8 +85,9 @@ export default function CargoTraffic() {
       curve.getTangentAt((t + 0.01) % 1, tanB);
       let targetRoll = THREE.MathUtils.clamp(tanA.cross(tanB).y * 60, -0.5, 0.5);
       const dx = ship.group.position.x - flight.x;
+      const dy = ship.group.position.y - flight.y;
       const dz = ship.group.position.z - flight.z;
-      if (dx * dx + dz * dz < 144) targetRoll += Math.sign(dx || 1) * 0.35;
+      if (dx * dx + dy * dy + dz * dz < 144) targetRoll += Math.sign(dx || 1) * 0.35;
       rolls.current[i] += (targetRoll - rolls.current[i]) * (1 - Math.pow(0.01, dt));
       ship.group.rotateZ(rolls.current[i]);
 

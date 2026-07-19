@@ -10,8 +10,8 @@ import { keplerPosition } from "../../utils/kepler";
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
 // tail, curved white dust tail, all activity scaled by heliocentric distance.
 const COMETS = [
-  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, tilt: 0.18 },
-  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, tilt: -0.14 },
+  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, inclination: 0.9, node: 0.6 },   // ~52° diver
+  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, inclination: -1.15, node: 2.4 }, // ~66° retrograde-feel
 ];
 
 const ION_POINTS = 72;
@@ -238,10 +238,11 @@ export default function Comets() {
         colAttr.needsUpdate = true;
       }
 
-      // xz-only by design — vertical NPC/comet reactions are out of scope (spec).
+      // Full 3D proximity — comets dive through the ecliptic now (spec §5)
       const dx = head.x - flight.x;
+      const dy = head.y - flight.y;
       const dz = head.z - flight.z;
-      if (dx * dx + dz * dz < 3600) anyNear = true;
+      if (dx * dx + dy * dy + dz * dz < 3600) anyNear = true;
     });
 
     store.setCometNear(anyNear);
