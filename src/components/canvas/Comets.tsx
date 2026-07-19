@@ -8,14 +8,16 @@ import { keplerPosition } from "../../utils/kepler";
 
 const TAIL_POINTS = 50;
 // Keplerian orbits: sun at the focus — comets whip past perihelion (~54 units,
-// tail blazing) and crawl out to aphelion. Periods long enough to feel like events.
+// tail blazing) and crawl out to aphelion. Short periods = fast, frequent sweeps.
 const COMETS = [
-  { a: 140, e: 0.62, periodSeconds: 380, phase: 0, tilt: 0.18 },
-  { a: 155, e: 0.65, periodSeconds: 620, phase: 2.1, tilt: -0.14 },
+  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, tilt: 0.18 },
+  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, tilt: -0.14 },
 ];
 
 const head = new THREE.Vector3();
 const away = new THREE.Vector3();
+const velDir = new THREE.Vector3();
+const Y_UP = new THREE.Vector3(0, 1, 0);
 
 // "Fire beam" coma: flickering fresnel shell, warm core fading to icy fringe.
 const comaVertex = /* glsl */ `
@@ -40,10 +42,35 @@ const comaFragment = /* glsl */ `
   }
 `;
 
+// Velocity-aligned energy beam: a flaring open cylinder trailing the head,
+// white-hot at the nose dissolving to cyan — length/brightness ride the
+// comet's actual orbital speed (longest at perihelion).
+const beamVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const beamFragment = /* glsl */ `
+  uniform float uTime;
+  uniform float uPower;
+  varying vec2 vUv;
+  void main() {
+    float fade = pow(1.0 - vUv.y, 1.7);
+    float streak = 0.82 + 0.18 * sin(uTime * 21.0 + vUv.y * 26.0 + vUv.x * 40.0);
+    vec3 col = mix(vec3(1.0, 1.0, 1.0), vec3(0.45, 0.85, 1.0), clamp(vUv.y * 1.6, 0.0, 1.0));
+    gl_FragColor = vec4(col, fade * streak * uPower);
+  }
+`;
+
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const comaRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
   const tailRefs = useRef<(THREE.Points<any> | null)[]>([null, null]);
+  const beamRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
+  const prevHeads = useRef([new THREE.Vector3(), new THREE.Vector3()]);
+  const beamInit = useRef([false, false]);
 
   const comaMaterial = useMemo(
     () =>
@@ -59,6 +86,25 @@ export default function Comets() {
     []
   );
   useEffect(() => () => comaMaterial.dispose(), [comaMaterial]);
+
+  // One beam material per comet — each drives its own uPower from orbital speed.
+  const beamMaterials = useMemo(
+    () =>
+      COMETS.map(
+        () =>
+          new THREE.ShaderMaterial({
+            uniforms: { uTime: { value: 0 }, uPower: { value: 0 } },
+            vertexShader: beamVertex,
+            fragmentShader: beamFragment,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          })
+      ),
+    []
+  );
+  useEffect(() => () => beamMaterials.forEach((m) => m.dispose()), [beamMaterials]);
 
   const { scene } = useGLTF("/models/comet_head.glb");
 
@@ -96,7 +142,7 @@ export default function Comets() {
     []
   );
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const time = state.clock.getElapsedTime();
     const store = useSpaceStore.getState();
     comaMaterial.uniforms.uTime.value = time;
@@ -113,6 +159,28 @@ export default function Comets() {
       }
       const coma = comaRefs.current[i];
       if (coma) coma.position.copy(head);
+
+      // Speed beam: orient a flaring shaft opposite the velocity, length and
+      // brightness scaling with how fast the comet is actually moving.
+      const prev = prevHeads.current[i];
+      const beam = beamRefs.current[i];
+      if (!beamInit.current[i]) {
+        prev.copy(head);
+        beamInit.current[i] = true;
+      } else if (beam && delta > 0) {
+        velDir.copy(head).sub(prev);
+        const speed = velDir.length() / delta;
+        prev.copy(head);
+        if (velDir.lengthSq() > 1e-8) {
+          velDir.normalize().negate(); // points backwards, along the beam
+          const len = THREE.MathUtils.clamp(speed * 1.6, 7, 34);
+          beam.position.copy(head).addScaledVector(velDir, len / 2 + 1.0);
+          beam.quaternion.setFromUnitVectors(Y_UP, velDir);
+          beam.scale.set(1, len, 1);
+          beamMaterials[i].uniforms.uPower.value = THREE.MathUtils.clamp(speed / 9, 0.35, 1.0);
+          beamMaterials[i].uniforms.uTime.value = time;
+        }
+      }
 
       // Tail points away from the sun (origin), longer when closer to the sun
       away.copy(head).normalize();
@@ -156,12 +224,16 @@ export default function Comets() {
       {COMETS.map((_, i) => (
         <group key={i}>
           {/* Ribbon trail like the ship's engine wake — long at perihelion speed */}
-          <Trail width={3.2} length={7} color="#9feaff" attenuation={(t) => t * t}>
+          <Trail width={4.4} length={11} color="#9feaff" attenuation={(t) => t * t}>
             <mesh ref={(m) => { headRefs.current[i] = m; }} geometry={headGeometry} material={headMaterial} scale={0.8} />
           </Trail>
           {/* Fire coma */}
           <mesh ref={(m) => { comaRefs.current[i] = m; }} material={comaMaterial} scale={1.5}>
             <sphereGeometry args={[1, 20, 20]} />
+          </mesh>
+          {/* Speed beam: flaring shaft opposite the velocity vector */}
+          <mesh ref={(m) => { beamRefs.current[i] = m; }} material={beamMaterials[i]} frustumCulled={false}>
+            <cylinderGeometry args={[0.85, 0.3, 1, 12, 1, true]} />
           </mesh>
           {/* Anti-sunward shimmer stream (the ion tail) */}
           <points ref={(p) => { tailRefs.current[i] = p; }} geometry={tails[i].geom} frustumCulled={false}>
