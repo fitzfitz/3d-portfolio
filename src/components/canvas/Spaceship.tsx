@@ -312,12 +312,15 @@ export default function Spaceship() {
       thrusterRef.current.scale.z = thrusterRef.current.scale.x;
     }
     if (engineLightRef.current) {
-      const targetGlow = (warpActive ? 2.2 : 0.25 + thrustInput * 1.0) * (0.92 + Math.sin(time * 21) * 0.08);
+      const targetGlow = (warpActive ? 2.2 : 0.25 + thrustInput * 0.15) * (0.92 + Math.sin(time * 21) * 0.08);
       engineLightRef.current.intensity = THREE.MathUtils.lerp(engineLightRef.current.intensity, targetGlow, frameLerp(0.25, dt));
     }
     // The three nozzle spots themselves: emissive burn follows throttle
     if (engineMat) {
-      const targetBurn = (warpActive ? 4.5 : 0.7 + thrustInput * 2.0) * (0.94 + Math.sin(time * 23) * 0.06);
+      // Bloom saturates above ~0.2 luminance, so throttling emissive up only
+      // grows the aura — hold the idle level and let the exhaust visuals
+      // (cone stretch, trail, particles) carry the sense of thrust.
+      const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06);
       engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
     }
 
