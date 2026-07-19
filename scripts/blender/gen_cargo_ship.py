@@ -27,8 +27,11 @@ def make_material(name, color, metallic=0.7, roughness=0.35, emission=None, stre
     return m
 
 
-HULL = make_material("Hull", (0.16, 0.17, 0.22))
-ACCENT = make_material("Accent", (0.30, 0.33, 0.40), roughness=0.5)
+HULL = make_material("Hull", (0.40, 0.42, 0.47), roughness=0.45)
+ACCENT = make_material("Accent", (0.56, 0.57, 0.62), roughness=0.5)
+CONTAINER_RUST = make_material("ContainerRust", (0.48, 0.17, 0.10), metallic=0.4, roughness=0.6)
+CONTAINER_TEAL = make_material("ContainerTeal", (0.10, 0.36, 0.36), metallic=0.4, roughness=0.6)
+CONTAINER_AMBER = make_material("ContainerAmber", (0.58, 0.36, 0.08), metallic=0.4, roughness=0.6)
 WINDOWS = make_material("Windows", (0.02, 0.02, 0.03), emission=(0.0, 0.94, 1.0), strength=4.0)
 ENGINE = make_material("EngineGlow", (0.02, 0.02, 0.03), emission=(0.0, 0.94, 1.0), strength=6.0)
 NAV_RED = make_material("NavRed", (0.05, 0.0, 0.0), emission=(1.0, 0.1, 0.1), strength=8.0)
@@ -71,16 +74,30 @@ add_box("cabin", (0.34, 0.5, 0.3), (0, 0.95, 0.28), ACCENT)
 add_box("window_l", (0.02, 0.3, 0.08), (-0.18, 0.98, 0.32), WINDOWS)
 add_box("window_r", (0.02, 0.3, 0.08), (0.18, 0.98, 0.32), WINDOWS)
 # Cargo containers on the spine
-for i, y in enumerate((-0.75, -0.15, 0.4)):
-    add_box(f"container_{i}", (0.42, 0.5, 0.28), (0, y, 0.3), ACCENT if i % 2 else HULL)
+for i, (y, cmat) in enumerate(zip((-0.75, -0.15, 0.4), (CONTAINER_RUST, CONTAINER_TEAL, CONTAINER_AMBER))):
+    add_box(f"container_{i}", (0.42, 0.5, 0.28), (0, y, 0.3), cmat)
+    # container ribbing: thin vertical strips like corrugated walls
+    for r, ry in enumerate((-0.18, -0.06, 0.06, 0.18)):
+        add_box(f"rib_{i}_{r}", (0.44, 0.02, 0.26), (0, y + ry, 0.3), ACCENT)
 # Wing stubs
 add_box("wing_l", (0.7, 0.4, 0.06), (-0.55, -0.2, 0.0), HULL)
 add_box("wing_r", (0.7, 0.4, 0.06), (0.55, -0.2, 0.0), HULL)
 # Twin engines at the stern (cylinders along Y)
 add_cyl("engine_l", 0.14, 0.5, (-0.28, -1.25, 0.0), (math.radians(90), 0, 0), ACCENT)
 add_cyl("engine_r", 0.14, 0.5, (0.28, -1.25, 0.0), (math.radians(90), 0, 0), ACCENT)
-add_cyl("nozzle_l", 0.10, 0.06, (-0.28, -1.52, 0.0), (math.radians(90), 0, 0), ENGINE)
-add_cyl("nozzle_r", 0.10, 0.06, (0.28, -1.52, 0.0), (math.radians(90), 0, 0), ENGINE)
+add_cyl("nozzle_l", 0.13, 0.06, (-0.28, -1.66, 0.0), (math.radians(90), 0, 0), ENGINE)
+add_cyl("nozzle_r", 0.13, 0.06, (0.28, -1.66, 0.0), (math.radians(90), 0, 0), ENGINE)
+# Flared engine bells
+for bx in (-0.28, 0.28):
+    bpy.ops.mesh.primitive_cone_add(radius1=0.10, radius2=0.16, depth=0.18, vertices=16,
+                                    location=(bx, -1.62, 0.0), rotation=(math.radians(-90), 0, 0))
+    bell = bpy.context.object
+    bell.name = f"bell_{bx}"
+    bell.data.materials.append(HULL)
+    parts.append(bell)
+# Lit cargo-bay strip along each hull flank
+add_box("strip_l", (0.015, 1.6, 0.04), (-0.26, -0.1, 0.12), WINDOWS)
+add_box("strip_r", (0.015, 1.6, 0.04), (0.26, -0.1, 0.12), WINDOWS)
 # Nav lights on the wingtips: red = port (-X), green = starboard (+X)
 add_sphere("nav_red", 0.06, (-0.92, -0.2, 0.05), NAV_RED)
 add_sphere("nav_green", 0.06, (0.92, -0.2, 0.05), NAV_GREEN)
