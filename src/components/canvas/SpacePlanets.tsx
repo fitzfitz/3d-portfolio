@@ -33,6 +33,34 @@ const nebulaTexture = (() => {
   return new THREE.CanvasTexture(canvas);
 })();
 
+// Animated energy membrane for the stargate: spiral bands swirling into a hot
+// core, replacing the GLB's static portal_glow texture.
+const membraneVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const membraneFragment = /* glsl */ `
+  uniform float uTime;
+  varying vec2 vUv;
+  void main() {
+    vec2 p = vUv - 0.5;
+    float r = length(p) * 2.0;
+    float a = atan(p.y, p.x);
+    // three spiral arms drifting inward, plus a slow counter-swirl for depth
+    float swirl = sin(a * 3.0 + r * 9.0 - uTime * 2.6) * 0.5 + 0.5;
+    float counter = sin(a * 5.0 - r * 14.0 + uTime * 1.7) * 0.5 + 0.5;
+    float bands = swirl * 0.7 + counter * 0.3;
+    float core = smoothstep(0.55, 0.0, r);
+    vec3 col = mix(vec3(0.45, 0.05, 0.55), vec3(1.0, 0.25, 0.75), bands); // deep violet -> neon pink
+    col = mix(col, vec3(1.0, 0.9, 0.6), core * (0.6 + bands * 0.4));       // white-hot center
+    float alpha = (0.35 + bands * 0.5) * smoothstep(1.05, 0.8, r) + core * 0.5;
+    gl_FragColor = vec4(col * (0.8 + core), alpha);
+  }
+`;
+
 interface NebulaClusterProps {
   position: [number, number, number];
   color: string;
@@ -188,6 +216,27 @@ export default function SpacePlanets() {
   // Load custom stargate portal gateway model
   const { scene: portalScene } = useGLTF("/models/portal_gateway.glb");
 
+  // Swap the GLB's static membrane texture for the animated swirl shader.
+  const membraneMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: membraneVertex,
+        fragmentShader: membraneFragment,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    []
+  );
+  useEffect(() => {
+    portalScene.traverse((o) => {
+      if (o instanceof THREE.Mesh && o.name.startsWith("PortalMembrane")) o.material = membraneMaterial;
+    });
+    return () => membraneMaterial.dispose();
+  }, [portalScene, membraneMaterial]);
+
   // Register static scan targets (planets + contact portal) once — positions never move.
   useEffect(() => {
     planets.forEach((p) => setScannable(p.name, p.pos[0], p.pos[1], p.pos[2], "PLANET_" + p.name.toUpperCase()));
@@ -207,6 +256,7 @@ export default function SpacePlanets() {
     if (portalFrameRef.current) {
       portalFrameRef.current.rotation.z = time * 0.08;
     }
+    membraneMaterial.uniforms.uTime.value = time;
 
     // Rotate accessories
     if (saasRingRef.current) saasRingRef.current.rotation.z = -time * 0.06;

@@ -99,6 +99,7 @@ export default function Spaceship() {
 
   const shipRef = useRef<THREE.Group>(null);
   const thrusterRef = useRef<THREE.Group>(null);
+  const engineLightRef = useRef<THREE.PointLight>(null);
 
   const particleCount = 20;
   const [particleGeometry, particleVelocities] = useMemo(() => {
@@ -297,12 +298,16 @@ export default function Spaceship() {
     // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
     shipRef.current.rotation.set(pitch.current, angle.current, roll.current, "YXZ");
 
-    // 3. Thruster scale
+    // 3. Thruster scale + engine light breathing with throttle
     if (thrusterRef.current) {
       const targetScale = warpActive ? 2.5 : thrustInput > 0 ? 1.4 : 0.4;
       thrusterRef.current.scale.y = THREE.MathUtils.lerp(thrusterRef.current.scale.y, targetScale, frameLerp(0.2, dt));
       thrusterRef.current.scale.x = THREE.MathUtils.lerp(thrusterRef.current.scale.x, warpActive ? 1.4 : 1.0, frameLerp(0.2, dt));
       thrusterRef.current.scale.z = thrusterRef.current.scale.x;
+    }
+    if (engineLightRef.current) {
+      const targetGlow = (warpActive ? 6 : 0.5 + thrustInput * 2.5) * (0.92 + Math.sin(time * 21) * 0.08);
+      engineLightRef.current.intensity = THREE.MathUtils.lerp(engineLightRef.current.intensity, targetGlow, frameLerp(0.25, dt));
     }
 
     // 4. Exhaust particles (velocities were per-frame — scale by dt*60)
@@ -371,6 +376,7 @@ export default function Spaceship() {
   return (
     <group ref={shipRef}>
       <primitive object={scene} scale={0.35} rotation={[0, Math.PI, 0]} position={[0, -0.05, 0]} />
+      <pointLight ref={engineLightRef} position={[0, 0, -0.9]} color="#00f0ff" intensity={0.6} distance={7} decay={2} />
       <group ref={thrusterRef}>
         <mesh position={[-0.14, -0.04, -0.62]} rotation={[-Math.PI / 2, 0, 0]}>
           <coneGeometry args={[0.04, 0.22, 8]} />
