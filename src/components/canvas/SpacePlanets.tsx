@@ -304,7 +304,12 @@ export default function SpacePlanets() {
     // radius than the one that engaged it, so the orbit ring (which sits
     // further out than the engage threshold) doesn't immediately break the
     // lock it just entered — see tests/orbitInvariant.test.ts.
-    const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked } = useSpaceStore.getState();
+    const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked, photoMode } = useSpaceStore.getState();
+    // Photo mode freezes the ship but bodies/scannables above keep orbiting; if we
+    // let a moving planet drift past LOCK_RETAIN while frozen, the lock breaks and
+    // Spaceship's escape-push effect (Spaceship.tsx:96-100) jolts the ship mid-photo.
+    // Skip only the zone/lock writes here — mirrors Scanner.tsx:22's self-gate.
+    if (photoMode) return;
     let activeZone: string | null = null;
     let lockActive = false;
 
