@@ -54,15 +54,31 @@ export default async function run() {
     const KEYS = ["activeZone", "isNearSpawn", "cometNear", "altitudeWarn", "scanTarget",
       "isOrbitLocked", "isWarping", "isLowPerf", "impactCount", "broadcast"];
 
+    // The zero-commit result only means something if the ship genuinely flew
+    // during the hold — otherwise delta=0 could just as well mean "KeyW did
+    // nothing" (pointer-lock gate, listener regression, focus loss) as "flew
+    // with zero renders." Basis for the threshold: Spaceship.tsx uses
+    // ACCEL=25.2 world-units/s^2 up to SHIP_MAX_SPEED=10.8 (src/constants.ts),
+    // so from rest it reaches max speed in ~0.43s and covers roughly 50 world
+    // units over the remaining ~4.6s of a 5s hold. 5 units is comfortably
+    // below that expected distance but many orders of magnitude above any
+    // float-precision position noise, so it only trips on a real failure to
+    // move.
+    const MIN_FLIGHT_DISPLACEMENT = 5;
+
     let conclusive = false;
     let delta = -1;
+    let displacement = -1;
     let churn = "";
+    let motionReason = "";
     for (let attempt = 1; attempt <= 3 && !conclusive; attempt++) {
       const snap = () => page.evaluate((keys) => {
         const s = window.__fitz.store.getState();
         const out = {};
         for (const k of keys) out[k] = JSON.stringify(s[k]);
-        return { store: out, renders: window.__fitz.renderCount };
+        const f = window.__fitz.flight;
+        return { store: out, renders: window.__fitz.renderCount,
+          pos: { x: f.x, y: f.y, z: f.z }, speed: f.speed };
       }, KEYS);
 
       const a = await snap();
@@ -71,16 +87,34 @@ export default async function run() {
 
       const changed = KEYS.filter((k) => a.store[k] !== b.store[k]);
       delta = b.renders - a.renders;
-      if (changed.length === 0) conclusive = true;
-      else churn = changed.join(",");
+      displacement = Math.hypot(b.pos.x - a.pos.x, b.pos.y - a.pos.y, b.pos.z - a.pos.z);
+      const moved = displacement >= MIN_FLIGHT_DISPLACEMENT;
+
+      // A motionless sample is treated exactly like a churned one: it cannot
+      // support a conclusion about renders during real flight, so it retries
+      // rather than failing outright on a single sample. If input is truly
+      // broken (not just a first-hold timing fluke) it will still be
+      // motionless on attempt 3 and correctly fall through to the failure
+      // branch below — never a silent pass.
+      if (changed.length === 0 && moved) conclusive = true;
+      else {
+        if (changed.length) churn = changed.join(",");
+        if (!moved) motionReason = `displacement=${displacement.toFixed(2)} (need >= ${MIN_FLIGHT_DISPLACEMENT}), speed a=${a.speed.toFixed(2)} b=${b.speed.toFixed(2)}`;
+      }
     }
 
     if (conclusive) {
+      checks.check("ship displaced during the 5s hold (flight input genuinely moved it)",
+        displacement >= MIN_FLIGHT_DISPLACEMENT, `Δ=${displacement.toFixed(2)}`);
       checks.check("zero React commits during 5s of steady flight", delta === 0,
         `commits=${delta}`);
     } else {
+      const reasons = [
+        churn && `store kept changing (${churn})`,
+        motionReason && `ship did not move (${motionReason})`,
+      ].filter(Boolean).join("; ");
       checks.check("steady-flight commit sample was conclusive", false,
-        `store kept changing (${churn}) across 3 attempts — cannot isolate steady state`);
+        `${reasons} across 3 attempts — cannot isolate steady state`);
     }
   });
 }
