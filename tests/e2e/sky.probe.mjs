@@ -1,0 +1,146 @@
+import { withPage, hold, settle, sceneQuery } from "./harness.mjs";
+
+const OUT = process.env.SCRATCH ?? "/tmp";
+
+/** Hue in degrees of the first NebulaCluster's material colour. */
+const nebulaHue = (page) => page.evaluate(() => {
+  let pts = null;
+  window.__fitz.scene.traverse((o) => { if (!pts && o.name === "NebulaCluster") pts = o; });
+  if (!pts) return null;
+  const hsl = {};
+  pts.material.color.getHSL(hsl);
+  return hsl.h * 360;
+});
+
+export default async function run() {
+  return withPage({ label: "sky" }, async (page, checks) => {
+    // Nebula hue drift: driftedHue is ±25° over 180s, so 20s from load moves it
+    // by 25*sin(20/180*2pi) ≈ 16°. Assert a conservative ≥5°.
+    const h0 = await nebulaHue(page);
+    checks.check("nebula material is readable", h0 !== null, `hue=${h0}`);
+    await settle(page, 20_000);
+    const h1 = await nebulaHue(page);
+    const dHue = Math.abs(((h1 - h0 + 540) % 360) - 180);
+    checks.check("nebula hue drifts over 20s", dHue >= 5,
+      `${h0?.toFixed(1)}° -> ${h1?.toFixed(1)}° (delta ${dHue.toFixed(1)}°)`);
+
+    // Cloud layers rotate (1.4x surface speed, so rotation.y must advance).
+    const c0 = await sceneQuery(page, "CloudLayer");
+    await settle(page, 3000);
+    const c1 = await sceneQuery(page, "CloudLayer");
+    checks.check("cloud layer rotates", c0.found && c1.found && c1.rotation.y !== c0.rotation.y,
+      `y ${c0.rotation?.y?.toFixed(3)} -> ${c1.rotation?.y?.toFixed(3)}`);
+
+    // Star shells translate with the ship and keep their own slow rotation:
+    // turning must change the ship's heading while shells stay centred on it.
+    //
+    // Selector note: a bare `type === "Points" && name !== "NebulaCluster"`
+    // (the brief's original filter) also matches Comets.tsx's per-comet ion/
+    // dust tails and Spaceship.tsx's engine-trail particles — real Points
+    // objects, but heliocentric-orbit or ship-local particle systems, not sky
+    // shells. Probed live (traversing the scene and logging o.parent), the
+    // three StarLayer instances and DustField in GlobalCanvas.tsx (lines
+    // 64/103: `pointsRef.current.position.set(flight.x, flight.y, flight.z)`
+    // every frame) are the only Points mounted directly on the R3F root scene
+    // — GalaxyStarfield is rendered as a top-level fragment with no wrapping
+    // group, while every other Points-bearing component (Comets, Spaceship)
+    // nests its points inside its own <group>. So `o.parent === scene` is
+    // exactly "is this one of the sky shells" here, and including the
+    // Comets/Spaceship points without it made this check fail on unrelated
+    // objects (e.g. a comet tail near its own orbit, tens of units from the
+    // ship) rather than reveal any real centring bug.
+    const s0 = await page.evaluate(() => {
+      const f = window.__fitz.flight;
+      const scene = window.__fitz.scene;
+      const shells = [];
+      scene.traverse((o) => {
+        if (o.type === "Points" && o.name !== "NebulaCluster" && o.parent === scene) shells.push(o.rotation.y);
+      });
+      return { heading: f.heading, shells };
+    });
+    await hold(page, ["KeyD"], 2500);
+    const s1 = await page.evaluate(() => {
+      const f = window.__fitz.flight;
+      const scene = window.__fitz.scene;
+      const shells = [];
+      scene.traverse((o) => {
+        if (o.type === "Points" && o.name !== "NebulaCluster" && o.parent === scene) shells.push(o.rotation.y);
+      });
+      return { heading: f.heading, shells, x: f.x, y: f.y, z: f.z };
+    });
+    checks.check("heading changes when turning", s0.heading !== s1.heading,
+      `${s0.heading.toFixed(3)} -> ${s1.heading.toFixed(3)}`);
+    checks.check("star shells drift independently of heading",
+      s1.shells.length > 0 && s1.shells.some((r, i) => r !== s0.shells[i]),
+      `${s1.shells.length} shells`);
+    const centred = await page.evaluate(() => {
+      const f = window.__fitz.flight;
+      const scene = window.__fitz.scene;
+      let ok = true, n = 0;
+      scene.traverse((o) => {
+        if (o.type === "Points" && o.name !== "NebulaCluster" && o.parent === scene) {
+          n++;
+          if (Math.hypot(o.position.x - f.x, o.position.y - f.y, o.position.z - f.z) > 1) ok = false;
+        }
+      });
+      return { ok, n };
+    });
+    checks.check("star shells stay centred on the ship", centred.ok, `${centred.n} shells checked`);
+
+    // Corona flicker: Sun.tsx's coronaMaterial is a THREE.ShaderMaterial with a
+    // single uniform `uTime` (a plain number) that useFrame sets to the clock's
+    // elapsed time every frame (Sun.tsx:84). That numeric uniform is exactly
+    // the animation mechanism, so reading it before/after a wait is a direct
+    // proof the shader is animating (not a proxy for something else).
+    const flicker = await page.evaluate(async () => {
+      const read = () => {
+        let m = null;
+        window.__fitz.scene.traverse((o) => { if (!m && o.name === "SunCorona") m = o.material; });
+        if (!m) return null;
+        const u = m.uniforms ?? {};
+        const key = Object.keys(u).find((k) => typeof u[k]?.value === "number");
+        return key ? u[key].value : null;
+      };
+      const a = read();
+      await new Promise((r) => setTimeout(r, 1200));
+      return { a, b: read() };
+    });
+    checks.check("sun corona shader animates", flicker.a !== null && flicker.a !== flicker.b,
+      `uniform ${flicker.a} -> ${flicker.b}`);
+
+    // Meteors: ShootingStars.tsx pools a *single* LineSegments object and never
+    // touches material.opacity (it stays at its default of 1 the whole time,
+    // so `material.opacity > 0.01` is always true and would pass even with
+    // zero meteors spawned). The real visibility mechanism is the per-vertex
+    // `color` attribute: inactive slots are zeroed with `col.fill(0, o, o+6)`
+    // and the code comment is explicit that "brightness IS alpha under
+    // additive blending" (ShootingStars.tsx:69,80-84). So a meteor is visible
+    // iff some component of that color buffer is above the noise floor.
+    const sawMeteor = await page.evaluate(async () => {
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        let visible = 0;
+        window.__fitz.scene.traverse((o) => {
+          if (o.type === "LineSegments" && o.visible) {
+            const col = o.geometry?.attributes?.color?.array;
+            if (col) {
+              for (let i = 0; i < col.length; i++) {
+                if (col[i] > 0.05) { visible++; break; }
+              }
+            }
+          }
+        });
+        if (visible > 0) return true;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      return false;
+    });
+    checks.check("a shooting star appears within 30s", sawMeteor);
+
+    // God rays: capture-only. Proving "the sun dims when a planet crosses it"
+    // needs a contrived pose and luminance thresholds that would be flaky;
+    // the plan downgraded this to a human-judged capture (QA checklist §2).
+    await page.screenshot({ path: `${OUT}/sky-godrays-open.png` });
+    checks.note("god-ray occlusion", `captured ${OUT}/sky-godrays-open.png — judge in QA checklist`);
+  });
+}
