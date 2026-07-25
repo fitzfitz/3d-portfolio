@@ -52,8 +52,10 @@ export default async function run() {
     const c = SIZE / 2, rimR = c - 6;
     const outliers = blips.filter((b) => b.inRange &&
       Math.hypot(b.px - c, b.py - c) > rimR + 0.5);
-    checks.check("every in-range blip lands inside the rim", outliers.length === 0,
-      outliers.map((o) => `${o.name}@${o.px.toFixed(1)},${o.py.toFixed(1)}`).join(" "));
+    checks.check("every in-range blip lands inside the rim",
+      blips.length > 0 && outliers.length === 0,
+      blips.length === 0 ? "no bodies to check (see telemetry check above)"
+        : outliers.map((o) => `${o.name}@${o.px.toFixed(1)},${o.py.toFixed(1)}`).join(" "));
 
     // Radar canvas actually paints. The brief's original version of this check
     // only asserted >2 colour buckets, which is weak: RadarMap.tsx always
@@ -137,15 +139,43 @@ export default async function run() {
       wrapped ? `z ${preZ.toFixed(1)} -> ${postZ.toFixed(1)} (Δ=${(postZ - preZ).toFixed(1)})`
         : `no wrap within 45s (last z=${preZ?.toFixed(1)})`);
 
+    // Check ALL THREE components, not just the axis the manoeuvre happens to
+    // travel along. An earlier version of this check only compared `dx`
+    // (inherited from the brief's original design, which teleported along X)
+    // after the manoeuvre was rewritten to fly +Z instead — leaving `dx`
+    // permanently near zero (the ship barely moves in x) and `dz` (the axis
+    // that actually wraps) unchecked entirely, so the assertion passed
+    // unconditionally regardless of whether `wrapDelta`/the radar transform
+    // was continuous. Comparing dx/dy/dz together is robust to the manoeuvre
+    // changing axis again in the future — exactly the failure mode that
+    // produced the bug — and the detail string reports which axis actually
+    // carried the crossing, so a future reader can see the seam was genuinely
+    // exercised rather than just not-obviously-broken.
     if (wrapped && pre && post) {
-      const jumped = pre.filter((p) => {
+      const AXES = ["dx", "dy", "dz"];
+      const diffs = pre.map((p) => {
         const q = post.find((o) => o.name === p.name);
-        return q && Math.abs(q.dx - p.dx) > BOUNDS;
-      });
-      checks.check("radar deltas stay continuous across the wrap seam", jumped.length === 0,
-        jumped.map((j) => j.name).join(" ") || "no discontinuity");
+        if (!q) return null;
+        return { name: p.name, ...Object.fromEntries(AXES.map((a) => [a, q[a] - p[a]])) };
+      }).filter(Boolean);
+
+      const jumped = diffs.filter((d) => AXES.some((a) => Math.abs(d[a]) > BOUNDS));
+
+      let biggest = { name: null, axis: null, value: -1 };
+      for (const d of diffs) {
+        for (const a of AXES) {
+          const v = Math.abs(d[a]);
+          if (v > biggest.value) biggest = { name: d.name, axis: a, value: v };
+        }
+      }
+
+      checks.check("radar deltas stay continuous across the wrap seam (dx/dy/dz)",
+        jumped.length === 0,
+        jumped.length
+          ? jumped.map((d) => `${d.name}(dx=${d.dx.toFixed(1)},dy=${d.dy.toFixed(1)},dz=${d.dz.toFixed(1)})`).join(" ")
+          : `no discontinuity; largest single-axis change ${biggest.name}.${biggest.axis.slice(1)}=${biggest.value.toFixed(1)} (ship travelled along z, so this is expected to be the ~dz of some body)`);
     } else {
-      checks.check("radar deltas stay continuous across the wrap seam", false,
+      checks.check("radar deltas stay continuous across the wrap seam (dx/dy/dz)", false,
         "skipped — seam crossing was not confirmed, so continuity cannot be judged");
     }
 
