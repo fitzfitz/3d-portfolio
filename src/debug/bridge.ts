@@ -17,6 +17,12 @@ export interface FitzDebug {
   gl: THREE.WebGLRenderer | null;
   /** React commits, incremented by the dev-only Profiler in main.tsx. */
   renderCount: number;
+  /**
+   * Moves the ship immediately. Registered by Spaceship in dev, because
+   * `flight.{x,y,z}` is write-only telemetry — see Spaceship's own comment.
+   * Null until Spaceship mounts.
+   */
+  teleport: ((x: number, y: number, z: number) => void) | null;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -27,4 +33,5 @@ export const fitzDebug: FitzDebug = {
   scene: null,
   gl: null,
   renderCount: 0,
+  teleport: null,
 };

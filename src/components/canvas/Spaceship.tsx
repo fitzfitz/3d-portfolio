@@ -5,6 +5,7 @@ import { useGLTF, Trail } from "@react-three/drei";
 import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -44,6 +45,19 @@ export default function Spaceship() {
 
   const pos = useRef(new THREE.Vector3(0, 0, 18));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
+
+  // Dev-only: e2e probes and the QA checklist need to reposition the ship.
+  // `flight` cannot be used for this — it is written FROM pos every frame, so
+  // assigning to it is a no-op. Registering here is the only way to reach pos.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.teleport = (x: number, y: number, z: number) => {
+      pos.current.set(x, y, z);
+      vel.current.set(0, 0, 0);
+    };
+    return () => { fitzDebug.teleport = null; };
+  }, []);
+
   const angle = useRef(0);
   const roll = useRef(0);
   const pitch = useRef(0);

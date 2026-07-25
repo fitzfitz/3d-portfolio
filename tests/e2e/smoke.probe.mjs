@@ -18,5 +18,15 @@ export default async function run() {
       const o = await sceneQuery(page, name);
       checks.check(`scene object ${name} exists`, o.found, `matches=${o.matches}`);
     }
+
+    await page.evaluate(() => window.__fitz.teleport(-230, -210, -230));
+    await new Promise((r) => setTimeout(r, 1200));
+    const p = await page.evaluate(() => {
+      const f = window.__fitz.flight;
+      return { x: f.x, y: f.y, z: f.z };
+    });
+    const near = Math.hypot(p.x - -230, p.y - -210, p.z - -230) < 25;
+    checks.check("teleport moves the ship and it stays there", near,
+      `pos=(${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`);
   });
 }

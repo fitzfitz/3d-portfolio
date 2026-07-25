@@ -148,10 +148,11 @@ export function sceneQuery(page, name) {
 
 /** Puts the ship in deep space away from every planet, portal, and comet. */
 export async function toDeepSpace(page) {
-  await page.evaluate(() => {
-    const f = window.__fitz.flight;
-    f.x = -230; f.y = -210; f.z = -230;
-    f.speed = 0;
+  const ok = await page.evaluate(() => {
+    if (typeof window.__fitz.teleport !== "function") return false;
+    window.__fitz.teleport(-230, -210, -230);
+    return true;
   });
+  if (!ok) throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
   await settle(page, 1500);
 }
