@@ -1,10 +1,17 @@
 import { withPage, hold, settle, sceneQuery, toDeepSpace } from "./harness.mjs";
 
-const countNamed = (page, prefix) => page.evaluate((p) => {
+// cargo_ship.glb's own root mesh node is named "CargoShip" (its sibling
+// "RadarDish" is looked up the same way in CargoTraffic.tsx via
+// getObjectByName). CargoTraffic.tsx also names each wrapper group
+// "CargoShip${i}" for e2e assertions. A bare prefix match on "CargoShip"
+// therefore matches both the wrapper AND the asset-internal node nested
+// inside it, double-counting every ship (5 -> 10, 3 -> 6). Anchor to exactly
+// one trailing digit so only the wrapper groups count.
+const countCargoShips = (page) => page.evaluate(() => {
   let n = 0;
-  window.__fitz.scene.traverse((o) => { if (o.name.startsWith(p)) n++; });
+  window.__fitz.scene.traverse((o) => { if (/^CargoShip\d$/.test(o.name)) n++; });
   return n;
-}, prefix);
+});
 
 export default async function run() {
   return withPage({ label: "perf" }, async (page, checks) => {
@@ -14,7 +21,7 @@ export default async function run() {
       `count=${beltFull.count}`);
     const haloFull = await sceneQuery(page, "BeltHalo");
     checks.check("polar halo present at full detail", haloFull.found);
-    const cargoFull = await countNamed(page, "CargoShip");
+    const cargoFull = await countCargoShips(page);
     checks.check("5 cargo ships at full detail", cargoFull === 5, `count=${cargoFull}`);
     const coronaFull = await sceneQuery(page, "SunCorona");
     checks.check("sun corona present at full detail", coronaFull.found);
@@ -29,7 +36,7 @@ export default async function run() {
     checks.check("belt halves to 200 in low-perf", beltLow.count === 200, `count=${beltLow.count}`);
     const haloLow = await sceneQuery(page, "BeltHalo");
     checks.check("polar halo dropped in low-perf", !haloLow.found);
-    const cargoLow = await countNamed(page, "CargoShip");
+    const cargoLow = await countCargoShips(page);
     checks.check("cargo drops to 3 in low-perf", cargoLow === 3, `count=${cargoLow}`);
     const coronaLow = await sceneQuery(page, "SunCorona");
     checks.check("sun corona dropped in low-perf", !coronaLow.found);
