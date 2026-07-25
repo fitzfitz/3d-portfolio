@@ -1055,10 +1055,16 @@ git commit -m "test: flight probe — radar blip accuracy across the wrap seam, 
 ```js
 import { withPage, hold, settle, readStore } from "./harness.mjs";
 
-/** Teleports the ship next to a world point and zeroes its velocity. */
+/**
+ * Teleports the ship next to a world point and zeroes its velocity.
+ * MUST go through `__fitz.teleport` (Task 6b): `flight.{x,y,z}` is written FROM
+ * Spaceship's `pos` ref every frame, so assigning to it is a silent no-op.
+ */
 const warpTo = (page, x, y, z) => page.evaluate((p) => {
-  const f = window.__fitz.flight;
-  f.x = p.x; f.y = p.y; f.z = p.z; f.speed = 0;
+  if (typeof window.__fitz.teleport !== "function") {
+    throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
+  }
+  window.__fitz.teleport(p.x, p.y, p.z);
 }, { x, y, z });
 
 export default async function run() {
@@ -1321,8 +1327,8 @@ export default async function run() {
     const name = await page.evaluate(async () => {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
-      const f = window.__fitz.flight;
-      f.x = b.x; f.y = b.y; f.z = b.z + 18; f.speed = 0;
+      // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
+      window.__fitz.teleport(b.x, b.y, b.z + 18);
       return planets[0].name;
     });
     await settle(page, 1500);
@@ -1683,8 +1689,10 @@ The nine (everything the suite cannot judge):
 Include a **Setup** section with the fast-path snippets, since the whole point is that each check is reachable in seconds. Every snippet runs in the browser console against the dev server:
 
 ```js
-// Teleport (skip the two-minute flight to anywhere)
-__fitz.flight.x = 80; __fitz.flight.y = -28; __fitz.flight.z = 75
+// Teleport (skip the two-minute flight to anywhere).
+// NOTE: it must be __fitz.teleport(...) — assigning __fitz.flight.x does NOTHING,
+// because flight is written from the ship's internal position every frame.
+__fitz.teleport(80, -28, 75)
 
 // Pre-seed 9 of 10 shards, then reload, to test the collect-all fanfare
 localStorage.setItem("fitz-shards", JSON.stringify([0,1,2,3,4,5,6,7,8]))
@@ -2352,8 +2360,8 @@ await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
     await page.evaluate(async () => {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
-      const f = window.__fitz.flight;
-      f.x = b.x + 14; f.y = b.y + 6; f.z = b.z + 16; f.speed = 0;
+      // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
+      window.__fitz.teleport(b.x + 14, b.y + 6, b.z + 16);
     });
     await settle(page, 2500);
     await page.keyboard.press("KeyP");        // photo mode: no HUD, no modals
