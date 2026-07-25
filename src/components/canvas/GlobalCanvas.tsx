@@ -20,6 +20,7 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import Scanner from "./Scanner";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import DebugBridge from "../../debug/DebugBridge";
 
 interface StarLayerProps {
   count: number;
@@ -191,6 +192,8 @@ export default function GlobalCanvas() {
             Initializing Star System...
           </Html>
         }>
+          {import.meta.env.DEV && <DebugBridge />}
+
           {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
           <Environment resolution={64} frames={1}>
             <color attach="background" args={["#050310"]} />

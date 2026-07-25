@@ -105,7 +105,7 @@ export default function Sun({ onSunReady }: SunProps) {
       {/* Animated corona shell + flares (skipped in low-perf) */}
       {!isLowPerf && (
         <>
-          <mesh material={coronaMaterial}>
+          <mesh name="SunCorona" material={coronaMaterial}>
             <sphereGeometry args={[3.2, 48, 48]} />
           </mesh>
           <sprite ref={flareARef}>

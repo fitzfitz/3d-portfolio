@@ -127,7 +127,7 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
   const initialPositions = useMemo(() => new Float32Array(pointsCount * 3), []);
 
   return (
-    <points position={position} ref={pointsRef}>
+    <points name="NebulaCluster" position={position} ref={pointsRef}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"

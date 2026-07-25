@@ -48,7 +48,7 @@ export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17 }: C
     if (ref.current) ref.current.rotation.y = state.clock.getElapsedTime() * speed;
   });
   return (
-    <mesh ref={ref}>
+    <mesh name="CloudLayer" ref={ref}>
       <sphereGeometry args={[radius * 1.03, 32, 32]} />
       <meshStandardMaterial
         color={tint}

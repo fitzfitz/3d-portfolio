@@ -80,6 +80,6 @@ export default function DataShards() {
   });
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, material, SHARDS.length]} frustumCulled={false} />
+    <instancedMesh name="DataShards" ref={meshRef} args={[geometry, material, SHARDS.length]} frustumCulled={false} />
   );
 }

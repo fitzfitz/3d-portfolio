@@ -29,9 +29,11 @@ interface BeltRingProps {
   rMin: number; rMax: number; yJitter: number;
   /** plane tilt about X (rad) */
   tilt: number;
+  /** scene name so e2e probes can assert instance counts */
+  name: string;
 }
 
-function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter, tilt }: BeltRingProps) {
+function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter, tilt, name }: BeltRingProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const rocks = useMemo<BeltRock[]>(() => {
     const rand = mulberry32(seed);
@@ -68,7 +70,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
 
   return (
     <group rotation={[tilt, 0, 0]}>
-      <instancedMesh key={count} ref={meshRef} args={[geometry, material, count]}
+      <instancedMesh name={name} key={count} ref={meshRef} args={[geometry, material, count]}
         frustumCulled={false} dispose={null} />
     </group>
   );
@@ -97,12 +99,12 @@ export default function AsteroidBelt() {
     <>
       {/* Main belt: 25° inclined plane (spec §5) */}
       <BeltRing geometry={geometry} material={material} count={count} total={COUNT_FULL}
-        seed={42} rMin={40} rMax={70} yJitter={5} tilt={0.436} />
+        seed={42} rMin={40} rMax={70} yJitter={5} tilt={0.436} name="BeltMain" />
       {/* Polar halo: sparse steep band crossing the main belt — climbing threads
           asteroid country. Skipped in low-perf mode. */}
       {!isLowPerf && (
         <BeltRing geometry={geometry} material={material} count={HALO_FULL} total={HALO_FULL}
-          seed={1337} rMin={80} rMax={95} yJitter={9} tilt={1.31} />
+          seed={1337} rMin={80} rMax={95} yJitter={9} tilt={1.31} name="BeltHalo" />
       )}
     </>
   );

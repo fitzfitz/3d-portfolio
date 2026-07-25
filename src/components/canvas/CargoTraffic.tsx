@@ -36,13 +36,14 @@ export default function CargoTraffic() {
   // Clone the small ship per NPC; clone nav-light materials so each blinks with its own phase.
   const ships = useMemo(
     () =>
-      SHIPS.map(() => {
+      SHIPS.map((_, i) => {
         const model = scene.clone(true);
         // glTF export maps the ship's Blender +Y nose to -Z, but Object3D.lookAt
         // points +Z at the target — flip the model inside a wrapper we steer.
         model.rotation.y = Math.PI;
         const group = new THREE.Group();
         group.add(model);
+        group.name = `CargoShip${i}`;
         const navMats: THREE.MeshStandardMaterial[] = [];
         const engineMats: THREE.MeshStandardMaterial[] = [];
         model.traverse((o) => {
