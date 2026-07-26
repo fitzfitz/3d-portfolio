@@ -1115,7 +1115,9 @@ Record: gate outcomes, the probe's check count, the `commits=0` figure, the meas
 
 Review returned spec ❌ on one Important finding plus four Minors against `tests/e2e/fuel.probe.mjs` and this record. The SwiftShader tick-starvation root cause above was confirmed correct; what needed fixing was what the replacement check asserted. All five addressed:
 
-1. **Important — the drain check restated its own exit condition.** `pollUntil` returns the instant `burned >= 16`, so `burned > 8` was tautologically true on every non-timeout run, and `pollUntil`'s `{ok}` was discarded, so a timeout would have passed silently. Fixed: the check is renamed `"warping drains the tank toward empty"` and now asserts `drainPoll.ok && burned > 0` — a timeout fails loudly. The `> 8` comparison is dropped entirely. A second check, `"drain overshoot past the target stays small"` (`burned < 24`), is kept but re-labelled as a sanity bound on one poll interval's overshoot past the 16 target, not a rate assertion — the actual 8/sec rate is pinned deterministically and frame-rate-independently by `tests/fuel.test.ts` (`drainFuel(100,1)===92`, `drainFuel(100,0.5)===96`), which the probe comment now points to explicitly so a future reader doesn't "restore" a rate assertion the harness can't support.
+1. **Important — the drain check restated its own exit condition.** `pollUntil` returns the instant `burned >= 16`, so `burned > 8` was tautologically true on every non-timeout run, and `pollUntil`'s `{ok}` was discarded, so a timeout would have passed silently. Fixed: the check is renamed `"warping drains the tank toward empty"` and now asserts `drainPoll.ok && burned > 0` — a timeout fails loudly. The `> 8` comparison is dropped entirely. A second check, `"drain overshoot past the target stays small"` (`burned < 24`), is kept but re-labelled as a sanity bound on one poll interval's overshoot past the 16 target, not a rate assertion — the actual 8/sec rate is pinned deterministically and frame-rate-independently by `tests/fuel.test.ts`, which the probe comment now points to explicitly so a future reader doesn't "restore" a rate assertion the harness can't support.
+
+> **Correction, from the final whole-branch review.** This record originally cited `drainFuel(100,1)===92` and `drainFuel(100,0.5)===96` as the assertions that pin the rate. They do not: both are written as `toBeCloseTo(100 - FUEL_DRAIN_PER_SEC)`, i.e. self-referential to the constant, so they would pass at *any* drain rate. The assertion that actually forbids a wrong rate is the **one-crossing test** (`tests/fuel.test.ts`, "gives one full crossing of the map on a full tank"): at 4/sec, `reach = 25 × 39 = 975`, which fails `toBeLessThan(crossing * 1.1)`; at 16/sec it fails the lower bound. Both directions are caught. The conclusion — that no simulated-time accumulator belongs in the debug bridge for a test's sake — stands, but on that basis rather than the one first given.
 2. **Minor — "an empty tank does not drain further" couldn't fail** (`drainFuel` clamps at 0 regardless of the gate). Renamed to `"fuel stays clamped at exactly zero (no underflow) while gated off"`, matching what it actually tests.
 3. **Minor — "cruising does not drain fuel" could pass vacuously** if KeyW never registered. Added a paired displacement check, `"the cruise hold actually flew (so the check above isn't vacuous)"`, measuring `flight.{x,y,z}` before/after the 1.5s hold. Measured displacement: **3.80 units** on two separate runs (threshold set at `> 0.5`, ~7.6x margin).
 4. **Minor — `refuelled >= 25` was one-sided.** Fuel was exactly 0 beforehand and `FUEL_PER_CRYSTAL` is 25, so the check now asserts `refuelled === 25`, strictly stronger. Measured `fuel=25` on every run.
@@ -1134,3 +1136,37 @@ Review returned spec ❌ on one Important finding plus four Minors against `test
 **Open question, now RESOLVED by the coordinator before dispatch:** the radar originally read the crystal array through the dev-only debug bridge, which would have meant **no crystal blips in a production build** — turning refuelling into a blind hunt at ~146-unit spacing. The array is now module-level state exported from `spaceStore.ts` beside `flight` and `bodies`, which both the canvas component and the radar import directly. The bridge still mirrors it, but only so the e2e probe can read it.
 
 **Ordering.** Task 1 before 2, 3, 5. Task 2 before 3 and 6. Task 4 before 5. Task 5 before 6 (the probe reads `fitzDebug.crystals`).
+
+---
+
+## Final whole-branch review
+
+**Verdict: SAFE TO MERGE.** 13 commits, `3668d08..5a087dd`, plus the fix wave `daea4a8`.
+
+All four binding constraints verified against source rather than taken on trust: zero React renders during flight (no reachable per-frame `set()`; both store setters change-guarded; `flight.fuel > 0` appears in exactly one place, inside the `warpActive` term only), never-stranded (thrust is fuel-blind in every mode — keyboard, touch analog, braking), base-position pickup, and `ambientTime` on decorative motion only (`respawnTick` correctly uses raw `dt`). No assets added; no `.env` access.
+
+### One Important finding, fixed in `daea4a8`
+
+**The radar's crystal range gate was horizontal-only.** `Math.hypot(dx, dz) > RANGE` made it a 500-unit-tall cylinder rather than a 160-unit sphere. Since crystals spawn uniformly in y and y wraps at ±250, the review measured **~12.9 blips drawn per frame, ~7.3 of them (57%) farther than 160 units away** — and because the planet pass draws altitude chevrons, the radar actively teaches that a chevron-less blip is at your level. A crystal 240 units straight up rendered as a bright dot beside the ship. A dry visitor would fly to the nearest dot and arrive at empty space: it reads as broken, not as a mechanic. Now gated on `Math.hypot(dx, dz, dy)` with a scaled `altitudeCue` chevron.
+
+The accompanying e2e check (spec §8, previously unwritten) samples the radar canvas for the crystal fill colour and asserts opposite outcomes in two ship positions. The re-review confirmed by simulating 400 random 40-crystal fields that it **fails under a cylinder gate in 400/400 runs** — it guards the actual bug, not merely a deleted gate.
+
+### Known gaps, parked deliberately
+
+- `"found (or built) a ship position…"` in `fuel.probe.mjs` is tautological — a diagnostic line, not an assertion. 1 of 19 cannot fail.
+- **The crystal altitude chevron is untested:** it shares the dot's `#ffd24a` fill, so pixel counting cannot distinguish them. Deleting the chevron would fail nothing.
+- The 160-unit gate boundary itself is not probed — pinned only to roughly (20, 165).
+- Canvas alpha/`fillStyle` hygiene is verified by reading the loop, not by a test (identical colours make it unobservable).
+- The probe hard-codes `RANGE = 160`; it would silently desync if the production constant changed.
+- **`fuel.probe.mjs`'s crystal-relocation block must stay last in the probe.** It mutates live crystal positions, and a relocated crystal has a ~2% chance of landing in an asteroid band — which would break the buried-in-bands check if that check ran afterwards. This hazard is not commented in the probe itself.
+- The drain check admits a halved rate; the rate is pinned by the one-crossing unit test instead (see the correction above).
+
+### Playability notes — judgement calls, not defects
+
+- **Findability is better than the spec assumed.** The spec's "13 seconds of flying blind" used 146-unit *mean* spacing, but Poisson nearest-neighbour distance is 0.554 × 146 ≈ **81 units**, comfortably inside radar range.
+- **A successful refuel is silent.** `DataShards` broadcasts on every shard pickup; `FuelCrystals` broadcasts only on the useless full-tank case. So the DRY message says "COLLECT A FUEL CRYSTAL TO RECHARGE" and a visitor who obeys gets a sound and a moving bar but no confirmation. One line on the `before < FUEL_MAX` branch would close the loop the DRY message opens. Deliberately **not** added — it is a product decision for the repo owner, and the spec does not ask for it.
+- 12.5 seconds of warp is short for a first-timer who holds Shift from the gate; the chatter mitigates it. First knob to turn if the site reads as stingy.
+
+### Not done — reserved for the repo owner
+
+The hands-on `npm run dev` check that W/A/S/D still fly on an empty tank. It is covered mechanically by the probe's "cruise still works at zero fuel" assertion, and was never claimed as hand-verified.
