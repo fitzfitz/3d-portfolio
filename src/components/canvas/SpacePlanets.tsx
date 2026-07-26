@@ -16,16 +16,17 @@ import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
+import { animScale } from "../../utils/animScale";
 
 /**
  * Orbit-ring breathe. Baseline 0.22 is the opacity the rings were authored with,
  * so at zero amplitude they look exactly as before. The x16 multiplier converts
  * each planet's orbital rate (periods of 420-600s) into a perceptible ~26-37s
- * pulse; ±0.06 on 0.22 is a clear breath while keeping the rings faint enough to
- * stay background architecture.
+ * pulse. Amplitude ±0.12 on a 0.22 baseline — better than half, so the rings
+ * visibly fade in and out rather than merely shimmering.
  */
 const ORBIT_RING_OPACITY = 0.22;
-const ORBIT_RING_BREATH = 0.06;
+const ORBIT_RING_BREATH = 0.12;
 const ORBIT_RING_BREATH_MULT = 16;
 
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
@@ -309,7 +310,8 @@ export default function SpacePlanets() {
       const mat = orbitRingMats.current[i];
       if (!mat) continue;
       const rate = planets[i].orbit.angularSpeed * ORBIT_RING_BREATH_MULT;
-      mat.opacity = ORBIT_RING_OPACITY + Math.sin(time * rate + planets[i].orbit.phase) * ORBIT_RING_BREATH;
+      mat.opacity = ORBIT_RING_OPACITY +
+        Math.sin(time * rate + planets[i].orbit.phase) * ORBIT_RING_BREATH * animScale();
     }
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
 

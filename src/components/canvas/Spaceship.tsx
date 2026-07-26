@@ -11,6 +11,7 @@ import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime } from "../../utils/ambientTime";
+import { animScale } from "../../utils/animScale";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -19,6 +20,12 @@ const WARP_SPEED = 39;      // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
 const BRAKE = 0.92;         // per-frame decay basis
+/**
+ * Idle bob amplitude. Was 0.025 — about 1.6% of the ship's own size, which
+ * measured as moving but was invisible on screen. 0.12 is ~8%: a clear breath
+ * on the most centrally-framed object in the game.
+ */
+const SHIP_IDLE_BOB = 0.12;
 
 // Frame-rate independent lerp: equivalent to lerp(a, b, k) once per frame at 60fps.
 const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
@@ -344,7 +351,7 @@ export default function Spaceship() {
     // this cannot perturb the camera or gameplay. Smaller amplitude than the
     // other two bobs (0.025 vs 0.05) because in free flight the ship is closer
     // to the camera, so the same offset reads as roughly twice the motion.
-    shipRef.current.position.y += Math.sin(ambient * 2) * 0.025;
+    shipRef.current.position.y += Math.sin(ambient * 2) * SHIP_IDLE_BOB * animScale();
     // YXZ: yaw first, then pitch about the yawed axis — with the default XYZ,
     // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
     shipRef.current.rotation.set(

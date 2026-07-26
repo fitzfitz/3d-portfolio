@@ -3,15 +3,24 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
+import { animScale } from "../../utils/animScale";
 
-/**
- * Core emissive baseline and pulse depth. 3.2 matches the value the material is
- * authored with, so with the pulse at zero the sun looks exactly as it did.
- * ±0.25 is ~8% — a visible breath at a glance, but small enough that the bloom
- * threshold (0.2, see GlobalCanvas) does not visibly bloom-pump with it.
- */
+/** Baseline, matching the value the material is authored with. */
 const SUN_CORE_EMISSIVE = 3.2;
-const SUN_CORE_PULSE = 0.25;
+/**
+ * Pulse depth, raised from 0.25 (±8%) to 1.1 (±34%). The original was chosen to
+ * avoid bloom-pumping, but that made it invisible: the core sits at 3.2 against
+ * a bloom threshold of 0.2, so it is deep in saturation and an 8% swing simply
+ * does not survive the bloom pass.
+ */
+const SUN_CORE_PULSE = 1.1;
+/**
+ * Emissive colour swing, and the real fix for visibility. Where raw intensity is
+ * swallowed by bloom saturation, HUE still reads — a star shifting between deep
+ * orange and hot yellow-white is legible even when its brightness is clipped.
+ */
+const SUN_HOT = new THREE.Color("#ffd08a");
+const SUN_COOL = new THREE.Color("#ff3300");
 
 const coronaVertex = /* glsl */ `
   varying vec3 vNormal;
@@ -101,14 +110,18 @@ export default function Sun({ onSunReady }: SunProps) {
     // Core breathing. The corona, flares and god rays are ALL gated behind
     // !isLowPerf, so without this the sun — dead centre of the scene — was
     // 100% frozen for exactly the visitors on modest hardware who land in
-    // low-perf mode. Driving emissiveIntensity rather than scale because the
-    // GodRays pass samples this mesh's silhouette, and a pulsing silhouette
-    // would make the rays throb. ~18s period (2pi/0.35) puts it in the same
-    // tempo family as the flare pulses above (0.53-2.7 rad/s), so it reads as
-    // one organism rather than a bolted-on effect.
+    // low-perf mode. Driving emissiveIntensity and emissive COLOUR rather than
+    // scale, because the GodRays pass samples this mesh's silhouette and a
+    // pulsing silhouette would make the rays throb.
     if (coreMesh.current) {
       const mat = coreMesh.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = SUN_CORE_EMISSIVE + Math.sin(t * 0.35) * SUN_CORE_PULSE;
+      const k = animScale();
+      // Faster too: 0.35 rad/s was an 18s period, slow enough that a visitor
+      // glancing at the scene never saw a full breath. 0.9 gives ~7s.
+      const breath = Math.sin(t * 0.9);
+      mat.emissiveIntensity = SUN_CORE_EMISSIVE + breath * SUN_CORE_PULSE * k;
+      // Colour carries the pulse where intensity cannot. lerp on 0..1.
+      mat.emissive.copy(SUN_COOL).lerp(SUN_HOT, Math.min(1, (breath * 0.5 + 0.5) * k));
     }
     // Asynchronous flare pulses
     if (flareARef.current) {

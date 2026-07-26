@@ -3,6 +3,7 @@ import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightforme
 import { Suspense, useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
+import { animScale } from "../../utils/animScale";
 import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
@@ -63,7 +64,9 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
     // The shells are the infinite sky: they translate with the ship (no positional
     // parallax — the DustField supplies that) and keep their slow rotation drift.
     pointsRef.current.position.set(flight.x, flight.y, flight.z);
-    pointsRef.current.rotation.y = time * speed;
+    // Rate scaled live: for a uniform starfield with no landmarks, ROTATION
+    // RATE is the perceptibility bottleneck, not amplitude.
+    pointsRef.current.rotation.y = time * speed * animScale();
     if (twinkle) {
       const mat = pointsRef.current.material as THREE.PointsMaterial;
       mat.size = size + Math.sin(time * 2.5) * size * 0.3;

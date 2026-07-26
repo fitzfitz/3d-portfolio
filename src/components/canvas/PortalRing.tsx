@@ -2,6 +2,7 @@ import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
+import { animScale } from "../../utils/animScale";
 
 export default function PortalRing() {
   const outerRingRef = useRef<THREE.Mesh>(null);
@@ -49,10 +50,11 @@ export default function PortalRing() {
     // flattened the whole effect. Two incommensurate frequencies per light
     // (11/23 and 13/27) so they never settle into a visible repeating beat.
     if (lightARef.current) {
-      lightARef.current.intensity = 2.5 + Math.sin(time * 11) * 0.35 + Math.sin(time * 23) * 0.18;
+      const k = animScale();
+      lightARef.current.intensity = 2.5 + (Math.sin(time * 11) * 0.35 + Math.sin(time * 23) * 0.18) * k;
     }
     if (lightBRef.current) {
-      lightBRef.current.intensity = 1.5 + Math.sin(time * 13 + 1.7) * 0.3 + Math.sin(time * 27) * 0.12;
+      lightBRef.current.intensity = 1.5 + (Math.sin(time * 13 + 1.7) * 0.3 + Math.sin(time * 27) * 0.12) * animScale();
     }
   });
 
