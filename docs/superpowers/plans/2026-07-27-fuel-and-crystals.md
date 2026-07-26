@@ -1091,6 +1091,28 @@ Record: gate outcomes, the probe's check count, the `commits=0` figure, the meas
 
 ---
 
+### Verification record (Task 6 + final verification)
+
+**Step 1 — full gate run.** `npm run build && npm run lint && npm test && npm run test:e2e`, all green.
+- Build: clean, only the pre-existing chunk-size advisory (`index-*.js` 1,578.24 kB / gzip 448.44 kB).
+- Lint: exactly the two long-standing warnings, no new ones — `Atmosphere.tsx:54` (`react-hooks/exhaustive-deps`) and `Scanner.tsx:9` (`react/only-export-components`).
+- Unit tests: **139 passed** (119 original + 7 fuel + 13 crystal field), 25 files, in 458ms. (The brief's own Final-verification Step 1 says 138; the coordinator's brief for this task corrected that to 139, and the measured run confirms 139.)
+- e2e: **127/127 checks passed, 2 capture-only** (112 baseline + 14 new `fuel` checks + 1 "no page errors" = 127). `perf` probe: **`commits=0`** with fuel actively draining during the 5s steady-flight hold (displacement Δ=17.6–18.1 units across repeated runs, confirming the hold genuinely flew). `assets` probe's `assets-src/moon.glb restored byte-for-byte` passed (sha `688ca09ed270` both sides) — no BLOCKED condition.
+
+**Step 2 — production bundle.** `npm run build && ! grep -rq '__fitz' dist/assets/*.js` → `OK: production bundle clean`. Confirms `RadarMap.tsx` reads `crystalSlots` as a direct module import (never through `fitzDebug`), so crystal blips render for real visitors, not just under the dev-only bridge.
+
+**Step 3 — hands-on empty-tank check.** **Not performed.** This step asks for a subjective "verify by feel" pass in `npm run dev` (W/A/S/D still fly, HUD reads DRY, flying into a crystal restores warp) that an agent cannot honestly attest to. It is reserved for the human. The fuel probe's "cruise still works at zero fuel (nobody is stranded)" check (speed=9.17 with Shift held and an empty tank, cruise max 10.8) is the mechanical proxy for the same guarantee and passed on every run.
+
+**Task 6 Step 1 production-radar question — resolution confirmed.** `RadarMap.tsx` imports `crystalSlots` directly from `spaceStore.ts` (extending the existing `flight, useSpaceStore, bodies` import, not a second import statement) and draws in-range crystals in a separate, non-rim-clamped pass at radius 1.5 (vs. planets' 2.4), colour `#ffd24a`. Step 2's production-bundle grep proves this path survives `__fitz` dead-code elimination — the debug bridge mirror in `FuelCrystals.tsx` exists solely for the e2e probe.
+
+**Fuel probe: measured drain rate and technique.** The brief's Step 2 code holds `KeyW+ShiftLeft` for a fixed 2000ms via `hold()` and expects burned fuel in [8, 24] for a nominal 16 (8/sec × 2s). On this machine that fixed-wall-clock hold measured only **5.6–6.4 burned**, below the 8 floor — reproducibly, including under an interleaved-read variant (reads every 20–200ms via `pollUntil`, matching `touch.probe.mjs`'s DIVE-hold pattern) that gave the same ~5.6–6.4. Direct measurement showed why: over a nominal 2000ms wall-clock hold, only ~13 rAF ticks actually fired (~0.65–0.7s of *simulated* dt, since `Spaceship.tsx` clamps `dt = Math.min(delta, 0.05)` per frame) regardless of polling interval, including `intervalMs: 0` — this machine's headless-SwiftShader frame rate is capped around 5–6 fps independent of CDP traffic, so no amount of interleaving-frequency tuning closes the gap; lengthening a *blind* wait was avoided per instruction. The fix: poll for the **outcome** a real 2 simulated seconds at 8/sec should produce (burned ≥ 16) rather than for a wall-clock duration, via `pollUntil(async () => (beforeWarp - (await fuel())) >= 16, { timeoutMs: 15000, intervalMs: 300 })`, holding the keys down manually around it. This still fails correctly if the configured rate regressed (the poll would exhaust its timeout without reaching 16, leaving `burned` below the floor) but adapts to this environment's actual frame rate rather than assuming a 1:1 wall-clock-to-sim-time ratio. Measured across repeated runs: **burned = 16.4, 16.8, 17.2** (real wall time ≈ 6.1s to reach it) — comfortably inside [8, 24], with the acceptance bound itself left untouched.
+
+**Probe check count.** 14 checks (13 unconditional + 1 conditional on finding an active crystal, which every run found) plus "no page errors" — matching the coordinator's stated 14, not the brief's stated 12.
+
+**Correction applied per brief overrides:** the "no crystal spawned inside the belt or halo" check uses 3D distance from the origin (`Math.hypot(s.x, s.y, s.z)`), not XZ radius — both belt rings are tilted (`AsteroidBelt.tsx` tilt 0.436 and 1.31), so an XZ check would misjudge legally-placed crystals. Measured `buried=0` on every run.
+
+---
+
 ## Self-review notes
 
 **Spec coverage.** §1 architecture → Task 2 (fuel in `flight`, discrete `fuelEmpty`). §2 numbers → Task 1, with a test pinning the one-crossing-per-tank relationship. §3 warp gating → Task 2 Step 4, including the photo-mode/orbit-lock non-issue. §4 crystals → Tasks 4 (maths) and 5 (entity), with the base-position pickup rule and `ambientTime` both in Task 5. §5 radar → Task 6 Step 1. §6 HUD → Task 3. §7 edge cases → clamping in Task 1's tests, full-tank consumption in Task 5, cap no-op in Task 5, `MAX_ATTEMPTS` in Task 4. §8 testing → Tasks 1, 4, 6. §9 out of scope → untouched.
