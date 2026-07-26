@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
@@ -15,7 +15,7 @@ import { ambientTime } from "../../utils/ambientTime";
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
 const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
-const WARP_SPEED = 39;      // was 0.65/frame
+const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
 const BRAKE = 0.92;         // per-frame decay basis
