@@ -17,6 +17,18 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 
+/**
+ * Orbit-ring breathe. Baseline 0.22 is the opacity the rings were authored with,
+ * so at zero amplitude they look exactly as before. The x16 multiplier converts
+ * each planet's orbital rate (periods of 420-600s) into a perceptible ~26-37s
+ * pulse. Baked from animScale 4 and rebased: 0.22 ± 0.48 dipped negative, so
+ * 0.35 ± 0.35 reproduces the same observed 0 .. 0.70 range with a valid floor.
+ * The rings therefore fade fully out at the trough rather than just dimming.
+ */
+const ORBIT_RING_OPACITY = 0.35;
+const ORBIT_RING_BREATH = 0.35;
+const ORBIT_RING_BREATH_MULT = 16;
+
 // Procedurally generated soft radial gradient sprite for gas clouds rendering
 const nebulaTexture = (() => {
   const canvas = document.createElement("canvas");
@@ -198,6 +210,8 @@ export default function SpacePlanets() {
   const agentPlanetRef = useRef<THREE.Mesh>(null);
   const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
+  /** Orbit-path ring materials, one per planet, for the opacity breathe. */
+  const orbitRingMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
   const portalInnerAuraRef = useRef<THREE.Mesh>(null);
@@ -275,8 +289,30 @@ export default function SpacePlanets() {
     }
     membraneMaterial.uniforms.uTime.value = time;
 
-    // Rotate accessories
-    if (saasRingRef.current) saasRingRef.current.rotation.z = -time * 0.06;
+    // Ring precession. This used to write `rotation.z`, which was a no-op: the
+    // ring is a flat, radially symmetric, single-colour annulus whose normal IS
+    // local Z, so spinning it about that axis renders identically at every
+    // angle — invisible at any speed, not merely slow. Driving `rotation.y`
+    // instead swings the ring's normal, so its projected ellipse rotates and
+    // the motion actually reads. The mount-time X tilt (Math.PI / 2.3, set in
+    // JSX) is left alone, so the ring keeps its authored lean.
+    if (saasRingRef.current) saasRingRef.current.rotation.y = time * 0.06;
+
+    // Orbit-path rings breathe. These had no animation hook at all — three
+    // static circles marking each orbital plane. The rate is derived from each
+    // planet's own `angularSpeed`, so every ring differs naturally and no new
+    // tuning constant is introduced, but multiplied by ORBIT_RING_BREATH_MULT
+    // because the raw orbital periods are 420-600s and a 7-to-10-minute opacity
+    // fade is imperceptible — the same mistake as the old star-shell rates.
+    // At x16 the periods land around 26/32/37s: a slow, calm pulse that reads
+    // without competing with a dossier for attention.
+    for (let i = 0; i < planets.length; i++) {
+      const mat = orbitRingMats.current[i];
+      if (!mat) continue;
+      const rate = planets[i].orbit.angularSpeed * ORBIT_RING_BREATH_MULT;
+      mat.opacity = ORBIT_RING_OPACITY +
+        Math.sin(time * rate + planets[i].orbit.phase) * ORBIT_RING_BREATH;
+    }
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
 
     // Stargate Portal Aura animations (Organic high-frequency fire flicker)
@@ -434,12 +470,14 @@ export default function SpacePlanets() {
       </group>
 
       {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}
-      {planets.map((p) => (
+      {planets.map((p, i) => (
         <group key={`ring-${p.name}`} rotation={[0, p.orbit.node, 0]}>
           <group rotation={[p.orbit.inclination, 0, 0]}>
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[p.orbit.radius - 0.15, p.orbit.radius + 0.15, 128]} />
-              <meshBasicMaterial color={p.color} transparent={true} opacity={0.22}
+              <meshBasicMaterial
+                ref={(m: THREE.MeshBasicMaterial | null) => { orbitRingMats.current[i] = m; }}
+                color={p.color} transparent={true} opacity={ORBIT_RING_OPACITY}
                 side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
           </group>

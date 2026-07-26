@@ -21,7 +21,7 @@ function mulberry32(seed: number) {
 
 interface BeltRock {
   radius: number; y: number; speed: number; phase: number;
-  spinX: number; spinY: number; scale: number;
+  spinX: number; spinY: number; spinZ: number; scale: number;
 }
 
 interface BeltRingProps {
@@ -49,6 +49,13 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
         phase: rand() * Math.PI * 2,
         spinX: 0.2 + rand() * 0.6,
         spinY: 0.2 + rand() * 0.6,
+        // Third tumble axis. Z was hardcoded to 0 for all 560 rocks, so every
+        // one of them tumbled in a constrained two-axis way that reads
+        // subtly mechanical across a whole belt. This is genuinely free:
+        // Euler->matrix composition below computes sin/cos of all three angles
+        // regardless of whether Z is zero, so a real value costs nothing.
+        // Signed, so rocks tumble both directions rather than all one way.
+        spinZ: (rand() - 0.5) * 0.9,
         scale: 0.05 + rand() * 0.17,
       };
     });
@@ -61,7 +68,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
       const r = rocks[i];
       const angle = r.phase + t * r.speed;
       dummy.position.set(Math.cos(angle) * r.radius, r.y, Math.sin(angle) * r.radius);
-      dummy.rotation.set(r.phase + t * r.spinX, t * r.spinY, 0);
+      dummy.rotation.set(r.phase + t * r.spinX, t * r.spinY, t * r.spinZ);
       dummy.scale.setScalar(r.scale);
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);

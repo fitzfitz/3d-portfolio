@@ -31,6 +31,26 @@ export const asteroidInstances: AsteroidData[] = [
   { position: [-40, -190, 80], scale: 1.7, rotationSpeed: [0.04, -0.05, 0.07], initialRotation: [2.0, 0.8, 1.0], variant: 2 },
 ];
 
+/**
+ * Scale tumble rate inversely with size, applied once at module load so there is
+ * no per-frame cost.
+ *
+ * The hand-authored `rotationSpeed` values above all sit in the same 0.03-0.08
+ * band while `scale` ranges 1.2 to 3.5 — so a 3.5-unit boulder tumbled exactly
+ * as fast as a 1.2-unit chunk, which is the tell that made the field read
+ * uniform and lifeless. Bigger bodies should turn more slowly.
+ *
+ * Normalised at scale 2.0 (roughly the median), so mid-sized rocks keep their
+ * authored rate and only the extremes shift: the smallest speeds up ~1.7x, the
+ * largest slows to ~0.57x. Signs and relative per-axis character are preserved,
+ * so each rock keeps the tumble personality it was authored with.
+ */
+const TUMBLE_REF_SCALE = 2.0;
+for (const a of asteroidInstances) {
+  const f = TUMBLE_REF_SCALE / a.scale;
+  a.rotationSpeed = [a.rotationSpeed[0] * f, a.rotationSpeed[1] * f, a.rotationSpeed[2] * f];
+}
+
 export const ASTEROID_COLLIDERS = asteroidInstances.map((a, i) => ({
   id: `asteroid_${i}`, x: a.position[0], y: a.position[1], z: a.position[2], r: a.scale * 2.2,
 }));

@@ -75,7 +75,21 @@ export default function CargoTraffic() {
       const def = SHIPS[i];
       const ship = ships[i];
       const curve = ROUTES[def.route];
-      const t = (time / def.loopSeconds + def.phase) % 1;
+      // Route progress with a gentle speed wobble. `time / loopSeconds` alone is
+      // pure linear arc-length travel — perfectly constant velocity forever,
+      // which is the classic tell of a scripted path and made the traffic read
+      // as mechanical rather than piloted. Two slow sines at incommensurate
+      // periods (~52s and ~23s), phase-offset per ship by `i`, so no two ships
+      // share a rhythm and the pattern never visibly repeats.
+      //
+      // Amplitudes are bounded so progress stays monotonic — a ship sliding
+      // backwards along its spline would read as broken, not alive. The drift's
+      // max derivative is 0.010*0.12 + 0.005*0.27 = 0.00255, against a base rate
+      // of 1/loopSeconds. Worst case is the slowest route (140s): 0.00714 -
+      // 0.00255 = +0.0046, still forward. Raising either amplitude past ~0.028
+      // combined would break that on the 140s route.
+      const drift = (Math.sin(time * 0.12 + i * 1.7) * 0.010 + Math.sin(time * 0.27 + i * 0.9) * 0.005);
+      const t = (time / def.loopSeconds + def.phase + drift) % 1;
 
       curve.getPointAt(t, ship.group.position);
       ship.group.position.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;

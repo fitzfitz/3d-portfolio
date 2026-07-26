@@ -4,6 +4,31 @@ import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 
+/**
+ * Core pulse, calibrated by eye at animScale 4 and baked.
+ *
+ * Rebased rather than literally 3.2 ± 4.4: that swing dipped to -1.2, and a
+ * negative emissiveIntensity is undefined in three.js. 3.8 ± 3.8 reproduces the
+ * SAME observed range (0 .. 7.6) with a well-defined floor. Note this means the
+ * core genuinely pulses to fully dark at the trough — a dramatic beat, not a
+ * gentle breath. That is what was approved; drop SUN_CORE_PULSE toward ~1.5 for
+ * something subtler without touching the peak.
+ */
+const SUN_CORE_EMISSIVE = 3.8;
+/**
+ * Pulse depth. Started at 0.25 (±8%), which was invisible: the core sits deep in
+ * bloom saturation against a threshold of 0.2, so a small intensity swing does
+ * not survive the bloom pass at all.
+ */
+const SUN_CORE_PULSE = 3.8;
+/**
+ * Emissive colour swing, and the real fix for visibility. Where raw intensity is
+ * swallowed by bloom saturation, HUE still reads — a star shifting between deep
+ * orange and hot yellow-white is legible even when its brightness is clipped.
+ */
+const SUN_HOT = new THREE.Color("#ffd08a");
+const SUN_COOL = new THREE.Color("#ff3300");
+
 const coronaVertex = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -72,9 +97,15 @@ export default function Sun({ onSunReady }: SunProps) {
     []
   );
 
+  // The core mesh, held for per-frame access. `coreRef` below is a *callback*
+  // ref (it notifies the parent for the GodRays pass), so it has no `.current`
+  // — this is the handle the frame loop needs.
+  const coreMesh = useRef<THREE.Mesh | null>(null);
+
   // Callback ref: fires once when the core mesh mounts.
   const coreRef = useCallback(
     (mesh: THREE.Mesh | null) => {
+      coreMesh.current = mesh;
       if (mesh) onSunReady(mesh);
     },
     [onSunReady]
@@ -83,6 +114,23 @@ export default function Sun({ onSunReady }: SunProps) {
   useFrame((state) => {
     const t = ambientTime(state.clock.getElapsedTime());
     coronaMaterial.uniforms.uTime.value = t;
+    // Core breathing. The corona, flares and god rays are ALL gated behind
+    // !isLowPerf, so without this the sun — dead centre of the scene — was
+    // 100% frozen for exactly the visitors on modest hardware who land in
+    // low-perf mode. Driving emissiveIntensity and emissive COLOUR rather than
+    // scale, because the GodRays pass samples this mesh's silhouette and a
+    // pulsing silhouette would make the rays throb.
+    if (coreMesh.current) {
+      const mat = coreMesh.current.material as THREE.MeshStandardMaterial;
+      // Faster too: 0.35 rad/s was an 18s period, slow enough that a visitor
+      // glancing at the scene never saw a full breath. 0.9 gives ~7s.
+      const breath = Math.sin(t * 0.9);
+      mat.emissiveIntensity = SUN_CORE_EMISSIVE + breath * SUN_CORE_PULSE;
+      // Colour carries the pulse where intensity cannot. The x4 saturates this
+      // lerp for most of the cycle, so the core reads hot except near the
+      // trough — preserved deliberately, it is what made the pulse legible.
+      mat.emissive.copy(SUN_COOL).lerp(SUN_HOT, Math.min(1, (breath * 0.5 + 0.5) * 4));
+    }
     // Asynchronous flare pulses
     if (flareARef.current) {
       const s = 9 + Math.sin(t * 0.9) * 1.4 + Math.sin(t * 2.7) * 0.7;
