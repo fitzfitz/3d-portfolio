@@ -1,4 +1,5 @@
 import { Mail, ArrowUp } from "lucide-react";
+import { identity } from "../../data/identity";
 
 export default function Footer() {
   const scrollToTop = () => {
@@ -21,7 +22,7 @@ export default function Footer() {
         {/* Social Links */}
         <div className="flex items-center gap-6">
           <a
-            href="https://github.com"
+            href={identity.github}
             target="_blank"
             rel="noopener noreferrer"
             className="w-10 h-10 rounded-lg border border-white/5 flex items-center justify-center text-muted hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all duration-300"
@@ -36,7 +37,7 @@ export default function Footer() {
             </svg>
           </a>
           <a
-            href="https://linkedin.com"
+            href={identity.linkedin}
             target="_blank"
             rel="noopener noreferrer"
             className="w-10 h-10 rounded-lg border border-white/5 flex items-center justify-center text-muted hover:text-secondary hover:border-secondary/30 hover:bg-secondary/5 transition-all duration-300"
@@ -51,7 +52,7 @@ export default function Footer() {
             </svg>
           </a>
           <a
-            href="mailto:hello@example.com"
+            href={`mailto:${identity.email}`}
             className="w-10 h-10 rounded-lg border border-white/5 flex items-center justify-center text-muted hover:text-accent hover:border-accent/30 hover:bg-accent/5 transition-all duration-300"
             aria-label="Send Email"
           >

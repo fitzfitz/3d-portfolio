@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight, ExternalLink, Calendar, Briefcase } from "lucide-react";
 import { useIsMobile } from "../../hooks/useMediaQuery";
+import { identity } from "../../data/identity";
 
 interface Project {
   title: string;
@@ -10,6 +11,8 @@ interface Project {
   short: string;
   tech: string[];
   color: string;
+  /** Public repo URL. Falls back to the profile when a project has none. */
+  repo?: string;
 }
 
 interface ExperienceProps {
@@ -152,7 +155,7 @@ export default function Experience({
                   </div>
 
                   <a
-                    href="https://github.com"
+                    href={activeProject.repo ?? identity.github}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"

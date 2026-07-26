@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Send, CheckCircle2, ShieldAlert, Terminal } from "lucide-react";
+import { identity } from "../../data/identity";
 
 interface ContactProps {
   isSidebar?: boolean;
@@ -246,8 +247,8 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             </div>
             <div>
               <p className="text-xs font-mono text-muted">DIRECT_MAIL</p>
-              <a href="mailto:hello@example.com" className="text-sm font-mono text-white hover:text-accent transition-colors">
-                hello@example.com
+              <a href={`mailto:${identity.email}`} className="text-sm font-mono text-white hover:text-accent transition-colors">
+                {identity.email}
               </a>
             </div>
           </div>

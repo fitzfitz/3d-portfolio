@@ -15,6 +15,7 @@ import { useSpaceStore } from "./store/spaceStore";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
 import { projects } from "./constants";
+import { identity } from "./data/identity";
 
 export default function App() {
   useKeyboardInput();
@@ -206,7 +207,7 @@ export default function App() {
                   </button>
 
                   <a
-                    href="https://github.com"
+                    href={planetProject.repo ?? identity.github}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"
