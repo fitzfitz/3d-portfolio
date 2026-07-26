@@ -8,6 +8,17 @@ interface ContactProps {
   isSidebar?: boolean;
 }
 
+/**
+ * React 19 batches a `setState` call with any other `setState` call that
+ * follows it with nothing awaited in between — so logging the final status
+ * line and immediately flipping `formStatus` land in the same commit, and
+ * the terminal's last line would never actually paint before the view swaps
+ * to the success/error screen. This delay forces a paint boundary between
+ * the two, so a real visitor (and the e2e probe) can actually see the true
+ * final status before the screen changes.
+ */
+const FINAL_STATUS_PAINT_DELAY_MS = 600;
+
 export default function Contact({ isSidebar = false }: ContactProps) {
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -63,21 +74,17 @@ export default function Contact({ isSidebar = false }: ContactProps) {
       const verdict = classifyResponse(res, json);
       if (verdict === "ok") {
         log(`relay ack ${res.status} — transmission logged`);
-        // React 19 batches this log with the status flip below since nothing
-        // awaits between them — without a beat, the terminal would jump
-        // straight to the success screen and the visitor would never actually
-        // see the line reporting the real status.
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
         setFormStatus("success");
         setFormData({ name: "", email: "", message: "" });
       } else {
         log(`relay refused (${res.status}) — ${json.message ?? "no reason given"}`);
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
         setFormStatus("error");
       }
     } catch {
       log("RELAY UNREACHABLE — falling back to direct channel");
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
       setFormStatus("error");
     } finally {
       clearTimeout(timeout);
