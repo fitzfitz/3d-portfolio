@@ -130,9 +130,15 @@ function DustField() {
 function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   return (
     <>
-      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.0015} />
-      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.003} />
-      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.006} twinkle={true} />
+      {/* Rotation rates were 0.0015 / -0.003 / 0.006 rad/s — periods of 70, 35
+          and 17 minutes, which is indistinguishable from static over any real
+          visit. Tripled to ~21 / 10.5 / 5.2 minute periods: still slow enough
+          to sit behind a project dossier without pulling the eye, but now the
+          parallax between the three counter-rotating depths actually reads.
+          Costs nothing — the same one rotation write per layer per frame. */}
+      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.005} />
+      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.010} />
+      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.02} twinkle={true} />
       {!isLowPerf && <DustField />}
     </>
   );

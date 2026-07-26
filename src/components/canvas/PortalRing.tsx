@@ -7,6 +7,8 @@ export default function PortalRing() {
   const outerRingRef = useRef<THREE.Mesh>(null);
   const innerRingRef = useRef<THREE.Mesh>(null);
   const particleGroupRef = useRef<THREE.Group>(null);
+  const lightARef = useRef<THREE.PointLight>(null);
+  const lightBRef = useRef<THREE.PointLight>(null);
 
   // Generate orbital particles around the portal
   const particleCount = 40;
@@ -40,13 +42,25 @@ export default function PortalRing() {
     if (particleGroupRef.current) {
       particleGroupRef.current.rotation.z = time * 0.1;
     }
+
+    // Light flicker. These two were the only entirely static parts of an
+    // otherwise elaborately animated wormhole — the rings, aura, membrane and
+    // core all pulse, while the light *sources* sat at fixed intensity, which
+    // flattened the whole effect. Two incommensurate frequencies per light
+    // (11/23 and 13/27) so they never settle into a visible repeating beat.
+    if (lightARef.current) {
+      lightARef.current.intensity = 2.5 + Math.sin(time * 11) * 0.35 + Math.sin(time * 23) * 0.18;
+    }
+    if (lightBRef.current) {
+      lightBRef.current.intensity = 1.5 + Math.sin(time * 13 + 1.7) * 0.3 + Math.sin(time * 27) * 0.12;
+    }
   });
 
   return (
     <group>
       {/* Lights inside the portal */}
-      <pointLight color="#ff3300" intensity={2.5} distance={5} />
-      <pointLight color="#ffaa00" intensity={1.5} distance={5} />
+      <pointLight ref={lightARef} color="#ff3300" intensity={2.5} distance={5} />
+      <pointLight ref={lightBRef} color="#ffaa00" intensity={1.5} distance={5} />
 
       {/* Outer Torus Ring */}
       <mesh ref={outerRingRef}>

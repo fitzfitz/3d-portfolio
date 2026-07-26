@@ -4,6 +4,15 @@ import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 
+/**
+ * Core emissive baseline and pulse depth. 3.2 matches the value the material is
+ * authored with, so with the pulse at zero the sun looks exactly as it did.
+ * ±0.25 is ~8% — a visible breath at a glance, but small enough that the bloom
+ * threshold (0.2, see GlobalCanvas) does not visibly bloom-pump with it.
+ */
+const SUN_CORE_EMISSIVE = 3.2;
+const SUN_CORE_PULSE = 0.25;
+
 const coronaVertex = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -72,9 +81,15 @@ export default function Sun({ onSunReady }: SunProps) {
     []
   );
 
+  // The core mesh, held for per-frame access. `coreRef` below is a *callback*
+  // ref (it notifies the parent for the GodRays pass), so it has no `.current`
+  // — this is the handle the frame loop needs.
+  const coreMesh = useRef<THREE.Mesh | null>(null);
+
   // Callback ref: fires once when the core mesh mounts.
   const coreRef = useCallback(
     (mesh: THREE.Mesh | null) => {
+      coreMesh.current = mesh;
       if (mesh) onSunReady(mesh);
     },
     [onSunReady]
@@ -83,6 +98,18 @@ export default function Sun({ onSunReady }: SunProps) {
   useFrame((state) => {
     const t = ambientTime(state.clock.getElapsedTime());
     coronaMaterial.uniforms.uTime.value = t;
+    // Core breathing. The corona, flares and god rays are ALL gated behind
+    // !isLowPerf, so without this the sun — dead centre of the scene — was
+    // 100% frozen for exactly the visitors on modest hardware who land in
+    // low-perf mode. Driving emissiveIntensity rather than scale because the
+    // GodRays pass samples this mesh's silhouette, and a pulsing silhouette
+    // would make the rays throb. ~18s period (2pi/0.35) puts it in the same
+    // tempo family as the flare pulses above (0.53-2.7 rad/s), so it reads as
+    // one organism rather than a bolted-on effect.
+    if (coreMesh.current) {
+      const mat = coreMesh.current.material as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = SUN_CORE_EMISSIVE + Math.sin(t * 0.35) * SUN_CORE_PULSE;
+    }
     // Asynchronous flare pulses
     if (flareARef.current) {
       const s = 9 + Math.sin(t * 0.9) * 1.4 + Math.sin(t * 2.7) * 0.7;

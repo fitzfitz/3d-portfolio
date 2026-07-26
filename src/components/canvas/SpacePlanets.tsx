@@ -275,8 +275,14 @@ export default function SpacePlanets() {
     }
     membraneMaterial.uniforms.uTime.value = time;
 
-    // Rotate accessories
-    if (saasRingRef.current) saasRingRef.current.rotation.z = -time * 0.06;
+    // Ring precession. This used to write `rotation.z`, which was a no-op: the
+    // ring is a flat, radially symmetric, single-colour annulus whose normal IS
+    // local Z, so spinning it about that axis renders identically at every
+    // angle — invisible at any speed, not merely slow. Driving `rotation.y`
+    // instead swings the ring's normal, so its projected ellipse rotates and
+    // the motion actually reads. The mount-time X tilt (Math.PI / 2.3, set in
+    // JSX) is left alone, so the ring keeps its authored lean.
+    if (saasRingRef.current) saasRingRef.current.rotation.y = time * 0.06;
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
 
     // Stargate Portal Aura animations (Organic high-frequency fire flicker)

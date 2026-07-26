@@ -30,10 +30,14 @@ function makeGalaxyTexture(hueBase: number): THREE.CanvasTexture | null {
   return new THREE.CanvasTexture(canvas);
 }
 
+// Spins were 0.006 / -0.004 / 0.005 rad/s — 17 to 26 minute periods, which no
+// visitor perceives. Tripled to ~6 / 8.7 / 7 minute periods. The generated
+// texture's spiral arms are asymmetric, so a lopsided shape turning is an easy
+// motion cue even at a low angular rate — cheap for how much it adds.
 const GALAXIES = [
-  { pos: [180, 80, -160] as const, scale: 60, hue: 255, spin: 0.006 },
-  { pos: [-200, -80, 120] as const, scale: 42, hue: 190, spin: -0.004 },
-  { pos: [30, 210, -60] as const, scale: 50, hue: 320, spin: 0.005 }, // high above the pole
+  { pos: [180, 80, -160] as const, scale: 60, hue: 255, spin: 0.018 },
+  { pos: [-200, -80, 120] as const, scale: 42, hue: 190, spin: -0.012 },
+  { pos: [30, 210, -60] as const, scale: 50, hue: 320, spin: 0.015 }, // high above the pole
 ];
 
 export default function DistantGalaxies() {

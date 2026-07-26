@@ -336,6 +336,15 @@ export default function Spaceship() {
     }
 
     shipRef.current.position.copy(pos.current);
+    // Idle bob. Photo mode (:184) and orbit lock (:241) already bobbed, but free
+    // flight — where a visitor spends nearly all their time, with the ship dead
+    // centre in frame — had none, so the most prominent object on screen sat
+    // perfectly still. Purely visual: the chase camera and every physics,
+    // collision and radar read use `pos.current`, never `shipRef.position`, so
+    // this cannot perturb the camera or gameplay. Smaller amplitude than the
+    // other two bobs (0.025 vs 0.05) because in free flight the ship is closer
+    // to the camera, so the same offset reads as roughly twice the motion.
+    shipRef.current.position.y += Math.sin(ambient * 2) * 0.025;
     // YXZ: yaw first, then pitch about the yawed axis — with the default XYZ,
     // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
     shipRef.current.rotation.set(
