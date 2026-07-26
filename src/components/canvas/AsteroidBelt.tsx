@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { useSpaceStore } from "../../store/spaceStore";
+import { ambientTime } from "../../utils/ambientTime";
 
 const COUNT_FULL = 400;
 const COUNT_LOW = 200;
@@ -55,7 +56,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
 
   useFrame((state) => {
     if (!meshRef.current) return;
-    const t = state.clock.getElapsedTime();
+    const t = ambientTime(state.clock.getElapsedTime());
     for (let i = 0; i < count; i++) {
       const r = rocks[i];
       const angle = r.phase + t * r.speed;

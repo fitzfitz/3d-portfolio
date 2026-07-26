@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { ambientTime } from "../../utils/ambientTime";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -69,7 +70,7 @@ export default function CargoTraffic() {
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     for (let i = 0; i < count; i++) {
       const def = SHIPS[i];
       const ship = ships[i];

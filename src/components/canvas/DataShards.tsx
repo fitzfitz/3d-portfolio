@@ -6,6 +6,7 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { soundManager } from "../../audio/soundManager";
+import { ambientTime } from "../../utils/ambientTime";
 
 const dummy = new THREE.Object3D();
 const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
@@ -41,7 +42,7 @@ export default function DataShards() {
   useFrame((state) => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    const t = state.clock.getElapsedTime();
+    const t = ambientTime(state.clock.getElapsedTime());
     const store = useSpaceStore.getState();
     const collected = store.shardsCollected;
 

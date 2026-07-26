@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
 import { setScannable } from "../../utils/scannables";
+import { ambientTime } from "../../utils/ambientTime";
 
 const VARIANTS = 4;
 const dummy = new THREE.Object3D();
@@ -59,7 +60,7 @@ export default function Asteroids() {
   }, []);
 
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     for (let v = 0; v < VARIANTS; v++) {
       const mesh = meshRefs.current[v];
       if (!mesh) continue;

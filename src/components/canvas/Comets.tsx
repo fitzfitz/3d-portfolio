@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { setScannable } from "../../utils/scannables";
 import { keplerPosition } from "../../utils/kepler";
+import { ambientTime } from "../../utils/ambientTime";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
@@ -151,7 +152,7 @@ export default function Comets() {
   );
 
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     const store = useSpaceStore.getState();
     let anyNear = false;
 
