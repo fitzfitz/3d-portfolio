@@ -1,34 +1,38 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { withPage, settle } from "./harness.mjs";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+/**
+ * Hostnames this probe deliberately lets reach the real network: the Vite
+ * dev server itself (modules, GLBs, WebP textures, HMR). Everything else is
+ * non-local and must never leave the machine, no matter what host
+ * VITE_FORM_ENDPOINT names — see the request handler below for why we don't
+ * try to predict that host at all.
+ */
+const isLocal = (url) => {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
 
 /**
- * Reads VITE_FORM_ENDPOINT straight out of .env (never VITE_FORM_KEY — that
- * stays untouched here) so the interception hostname below tracks whatever
- * Contact.tsx would actually POST to, instead of a literal that can silently
- * drift out of sync. If .env is missing the var (or the file itself), fall
- * back to the same default Contact.tsx uses. Never read the access key.
+ * Google Fonts is the one other non-local request this page legitimately
+ * makes (index.html preconnects to fonts.googleapis.com/fonts.gstatic.com
+ * and links a stylesheet from the former). Deliberately deny it rather than
+ * allow it through: the probe never inspects rendered text metrics, so real
+ * webfonts buy nothing, and it's one less network dependency for a suite
+ * that's supposed to run offline-safe. See the "font" branch below for how
+ * denial is implemented without generating console-error noise.
  */
-function relayEndpointFromEnv() {
-  const fallback = "https://api.web3forms.com/submit";
+const isFontHost = (url) => {
   try {
-    const raw = readFileSync(path.join(repoRoot, ".env"), "utf8");
-    const match = raw.match(/^VITE_FORM_ENDPOINT=(.*)$/m);
-    const value = match?.[1]?.trim();
-    return value || fallback;
+    const { hostname } = new URL(url);
+    return hostname === "fonts.googleapis.com" || hostname === "fonts.gstatic.com";
   } catch {
-    return fallback;
+    return false;
   }
-}
-
-// If VITE_FORM_ENDPOINT in .env ever points somewhere other than this host,
-// interception below still matches it correctly — the mock never silently
-// stops working and the probe never risks hitting (and mailing) the real
-// service. See relayEndpointFromEnv() above.
-const RELAY_HOST = new URL(relayEndpointFromEnv()).hostname;
+};
 
 const fill = async (page) => {
   await page.type('input[name="name"]', "Ada");
@@ -49,31 +53,88 @@ export default async function run() {
   return withPage({ label: "contact" }, async (page, checks) => {
     await page.setRequestInterception(true);
     let posted = null;
+    // Anything non-local that isn't recognized as font traffic or the form
+    // submission's own preflight/POST. Should always stay empty — if it
+    // doesn't, something the probe didn't anticipate tried to leave the
+    // machine, and that needs to be visible rather than silently intercepted
+    // away.
+    const unexpectedNonLocal = [];
+    // Direct, CDP-verified proof (not just trust in the code below) that no
+    // non-local request actually reached the real network: a response
+    // fulfilled locally via req.respond() never opens a real connection, so
+    // Puppeteer reports an empty remoteAddress(). A non-empty one here means
+    // something got past every branch below and hit the wire for real.
+    const nonLocalNetworkHits = [];
+    page.on("response", (res) => {
+      const u = res.url();
+      if (isLocal(u)) return;
+      const remote = res.remoteAddress?.() ?? {};
+      if (remote.ip) nonLocalNetworkHits.push(`${u} -> ${remote.ip}`);
+    });
+
     page.on("request", (req) => {
-      if (req.url().includes(RELAY_HOST)) {
-        // application/json makes this a non-simple request, so the browser
-        // fires a CORS preflight (OPTIONS) before the real POST. Without
-        // Access-Control-Allow-* on both legs, Chrome blocks the POST outright
-        // and it never reaches this handler with a body.
-        if (req.method() === "OPTIONS") {
-          return req.respond({
-            status: 204,
-            headers: {
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "POST, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Accept",
-            },
-          });
-        }
-        posted = JSON.parse(req.postData() ?? "{}");
+      const url = req.url();
+
+      if (isLocal(url)) {
+        return req.continue();
+      }
+
+      // Fail closed: nothing non-local reaches the real network from here
+      // on, regardless of which host it is. We deliberately do NOT match on
+      // VITE_FORM_ENDPOINT's hostname — a probe that predicts the host can
+      // silently stop mocking the instant .env's endpoint changes syntax or
+      // value, letting a real submission (with the real access key) escape
+      // to the network and mail the owner. Recognizing requests by *shape*
+      // instead means no endpoint change can ever cause that.
+
+      // CORS preflight for the real POST, whatever host it's aimed at.
+      if (req.method() === "OPTIONS") {
         return req.respond({
-          status: 200,
-          contentType: "application/json",
-          headers: { "Access-Control-Allow-Origin": "*" },
-          body: JSON.stringify({ success: true, message: "Email sent successfully!" }),
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Accept",
+          },
         });
       }
-      req.continue();
+
+      // The real form submission: a POST whose JSON body carries an
+      // access_key (buildPayload always includes one, even if it's empty),
+      // recognized by shape rather than destination.
+      if (req.method() === "POST") {
+        let body = null;
+        try {
+          body = JSON.parse(req.postData() ?? "{}");
+        } catch {
+          body = null;
+        }
+        if (body && typeof body.access_key === "string") {
+          posted = body;
+          return req.respond({
+            status: 200,
+            contentType: "application/json",
+            headers: { "Access-Control-Allow-Origin": "*" },
+            body: JSON.stringify({ success: true, message: "Email sent successfully!" }),
+          });
+        }
+      }
+
+      if (isFontHost(url)) {
+        // Deny, but don't req.abort() — an aborted resource load produces a
+        // "Failed to load resource: net::ERR_FAILED" console.error (verified
+        // during development of this probe: the same message appeared when
+        // the relay POST was blocked before proper CORS headers were added),
+        // and withPage()'s "no page errors" check would fail on it. An inert
+        // 200 satisfies the <link rel="stylesheet"> without a real network
+        // hit and without that noise.
+        return req.respond({ status: 200, contentType: "text/css", body: "" });
+      }
+
+      // Genuinely unanticipated non-local request. Still never let it reach
+      // the network, but record it — this is the "visible, not silent" case.
+      unexpectedNonLocal.push(`${req.method()} ${url}`);
+      return req.respond({ status: 200, contentType: "text/plain", body: "" });
     });
 
     await openClassicContact(page);
@@ -125,5 +186,13 @@ export default async function run() {
       /reached the relay/i.test(success), success.slice(0, 200));
     checks.check("success copy does not claim encryption",
       !/has been encrypted/i.test(success));
+
+    // Positive assertions of the fail-closed interception design, not just
+    // configuration luck: nothing unrecognized tried to leave, and nothing
+    // non-local actually touched the real network regardless.
+    checks.check("no unexpected non-local request occurred", unexpectedNonLocal.length === 0,
+      unexpectedNonLocal.join(", ").slice(0, 200));
+    checks.check("no non-local request ever reached the real network",
+      nonLocalNetworkHits.length === 0, nonLocalNetworkHits.join(", ").slice(0, 200));
   });
 }
