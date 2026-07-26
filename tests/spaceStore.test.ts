@@ -8,6 +8,7 @@ beforeEach(() => {
     showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
     cometNear: false, altitudeWarn: false,
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
+    reducedMotion: false, reducedMotionManual: false,
   });
 });
 

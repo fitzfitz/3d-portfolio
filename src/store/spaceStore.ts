@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
+import { REDUCED_MOTION_KEY } from "../utils/reducedMotionPreference";
+import { setAmbientEnabled } from "../utils/ambientTime";
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -19,6 +21,26 @@ function safeGetMuted(): boolean {
 function safeSetMuted(v: boolean) {
   try {
     if (typeof localStorage !== "undefined") localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+// Three states — "1", "0", or absent — because absent (no choice made) must
+// stay distinguishable from an explicit false, which has to beat a media
+// query that says true.
+function safeGetReducedMotion(): boolean | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(REDUCED_MOTION_KEY);
+    return raw === null ? null : raw === "1";
+  } catch {
+    return null;
+  }
+}
+function safeSetReducedMotion(v: boolean) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(REDUCED_MOTION_KEY, v ? "1" : "0");
   } catch {
     /* ignore */
   }
@@ -101,6 +123,8 @@ interface SpaceState {
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
+  reducedMotion: boolean;
+  reducedMotionManual: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -117,7 +141,13 @@ interface SpaceState {
   bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
+  setReducedMotion: (v: boolean, manual?: boolean) => void;
 }
+
+// Read once into a module-level const: the two derived fields below must
+// agree, and calling the helper twice could in principle race with a
+// concurrent write.
+const storedReducedMotion = safeGetReducedMotion();
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get) => ({
@@ -138,6 +168,8 @@ export const useSpaceStore = create<SpaceState>()(
     impactCount: 0,
     scanTarget: null,
     photoMode: false,
+    reducedMotion: storedReducedMotion ?? false,
+    reducedMotionManual: storedReducedMotion !== null,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -174,5 +206,11 @@ export const useSpaceStore = create<SpaceState>()(
     bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
+    setReducedMotion: (v, manual = false) => {
+      if (manual) safeSetReducedMotion(v);
+      // Ambient motion is the inverse of reduced motion.
+      setAmbientEnabled(!v);
+      set((s) => ({ reducedMotion: v, reducedMotionManual: s.reducedMotionManual || manual }));
+    },
   }))
 );
