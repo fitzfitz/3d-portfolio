@@ -604,7 +604,9 @@ large dt owes the right number of spawns instead of dropping them."
 
 **Interfaces:**
 - Consumes: everything from Task 4; `refuel`, `FUEL_MAX` from Task 1; `flight` and `bodies` from the store; `ambientTime`.
-- Produces: `fitzDebug.crystals` — the live slot array, for Task 6's probe. Each slot is `{ x: number; y: number; z: number; active: boolean }`.
+- Produces: `crystalSlots` — a module-level mutable array exported from `src/store/spaceStore.ts`, length `CRYSTAL_MAX`, each entry `{ x: number; y: number; z: number; active: boolean }`. **Task 6's radar imports this directly.** Also mirrored onto `fitzDebug.crystals` for the probe.
+
+**COORDINATOR DECISION (resolves the open question this plan originally deferred):** the slot array is owned by `spaceStore.ts` beside the existing `flight` and `bodies` module-level mutables — NOT read through the dev-only debug bridge. Reading it via the bridge would mean no crystal blips in a production build, since the bridge is dead-code-eliminated, and at ~146-unit mean spacing that turns refuelling into a blind hunt for real visitors. `spaceStore.ts` is the right home because that file already owns exactly this pattern and `RadarMap` already imports from it.
 
 - [ ] **Step 1: Write the component**
 
@@ -615,7 +617,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { planets, PORTAL_POS, COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { ambientTime } from "../../utils/ambientTime";
@@ -668,17 +670,21 @@ export default function FuelCrystals() {
     { x: flight.x, y: flight.y, z: flight.z, r: 30 },
   ];
 
-  const slots = useMemo<CrystalSlot[]>(() => {
-    const out: CrystalSlot[] = [];
+  // Seed the shared slot array once. `crystalSlots` is module-level state in
+  // spaceStore, the same pattern as `flight` and `bodies` — so the radar can read
+  // it in production, which a bridge-only channel could not.
+  const slots = crystalSlots;
+  useEffect(() => {
+    if (slots.length > 0) return; // already seeded (StrictMode double-mount)
     for (let i = 0; i < CRYSTAL_MAX; i++) {
       const [x, y, z] = randomCrystalPos(Math.random, avoidFor());
-      out.push({ x, y, z, active: true });
+      slots.push({ x, y, z, active: true });
     }
-    return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Expose for the e2e probe. Dev-only; dead-code-eliminated in production.
+  // Mirror onto the bridge purely so the e2e probe can read it. The radar does
+  // NOT use this path — it imports crystalSlots directly.
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.crystals = slots;
@@ -745,7 +751,29 @@ export default function FuelCrystals() {
 }
 ```
 
-- [ ] **Step 2: Add the bridge field**
+- [ ] **Step 2: Declare the shared slot array in the store module**
+
+In `src/store/spaceStore.ts`, beside the existing `bodies` export (which carries the same "mutable outside React" comment), add:
+
+```ts
+export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
+
+/**
+ * Live fuel-crystal slots, seeded and mutated by FuelCrystals' frame loop and
+ * read by RadarMap's rAF loop. Module-level and mutable outside React — the same
+ * pattern as `flight` and `bodies` above, and for the same reason: a pickup or a
+ * respawn must not cost a React render.
+ *
+ * Deliberately NOT routed through the debug bridge: that is dead-code-eliminated
+ * in production, so the radar would draw no crystal blips for real visitors, and
+ * at ~146-unit mean spacing the mechanic needs that cue to be findable at all.
+ */
+export const crystalSlots: CrystalSlot[] = [];
+```
+
+`FuelCrystals` should import `CrystalSlot` from here rather than declaring its own copy.
+
+- [ ] **Step 3: Add the bridge field**
 
 In `src/debug/bridge.ts`, add to the `FitzDebug` interface and initialise `null`:
 
@@ -754,7 +782,7 @@ In `src/debug/bridge.ts`, add to the `FitzDebug` interface and initialise `null`
   crystals: { x: number; y: number; z: number; active: boolean }[] | null;
 ```
 
-- [ ] **Step 3: Mount it**
+- [ ] **Step 4: Mount it**
 
 In `src/components/canvas/GlobalCanvas.tsx`, import `FuelCrystals` and mount it inside `<Suspense>` beside `<DataShards />`:
 
@@ -765,18 +793,18 @@ In `src/components/canvas/GlobalCanvas.tsx`, import `FuelCrystals` and mount it 
 
 Not gated on `isLowPerf`: it is gameplay, not decoration, and 40 instances in one draw call is ~7% of the belt's existing 560-rock loop.
 
-- [ ] **Step 4: Verify in the browser**
+- [ ] **Step 5: Verify in the browser**
 
 Using the harness: confirm crystals exist (`window.__fitz.crystals.filter(c => c.active).length` is 40 at load), that teleporting onto one via `window.__fitz.teleport` deactivates it and raises `flight.fuel`, and that the active count climbs back toward 40 over the following seconds.
 
 Also confirm none spawned inside the belt: check every active slot's XZ radius against the 40–70 and 80–95 bands.
 
-- [ ] **Step 5: Gates and commit**
+- [ ] **Step 6: Gates and commit**
 
 Run: `npm run build && npm run lint && npm test`
 
 ```bash
-git add src/components/canvas/FuelCrystals.tsx src/components/canvas/GlobalCanvas.tsx src/debug/bridge.ts
+git add src/components/canvas/FuelCrystals.tsx src/components/canvas/GlobalCanvas.tsx src/debug/bridge.ts src/store/spaceStore.ts
 git commit -m "feat: floating fuel crystals — instanced, respawning, no React state
 
 CRYSTAL_MAX fixed slots in one InstancedMesh; inactive slots scale to zero
@@ -808,11 +836,10 @@ Instead, after the existing `for (const t of targets)` loop, add a separate pass
       // Fuel crystals: in-range only, never rim-clamped. 40 crystals at ~146
       // units mean spacing means typically 1-3 are visible — the "where is my
       // nearest fuel" cue without swamping the display.
-      const crystals = crystalSlots();
-      if (crystals) {
+      {
         ctx.globalAlpha = 0.85;
         ctx.fillStyle = "#ffd24a";
-        for (const s of crystals) {
+        for (const s of crystalSlots) {
           if (!s.active) continue;
           const dx = wrapDelta(flight.x, s.x, COSMIC_BOUNDS);
           const dz = wrapDelta(flight.z, s.z, COSMIC_BOUNDS);
@@ -828,26 +855,13 @@ Instead, after the existing `for (const t of targets)` loop, add a separate pass
 
 Radius 1.5 against the planets' 2.4 so crystals never compete with a lock target.
 
-`crystalSlots()` reads the live array without importing the canvas component, keeping the HUD free of a scene dependency. Add near the top of `RadarMap.tsx`:
+`crystalSlots` is the module-level array exported from `spaceStore.ts` (Task 5 Step 2), which `RadarMap` can already import — it imports `flight` and `bodies` from there today. Extend that existing import:
 
 ```ts
-import { fitzDebug } from "../../debug/bridge";
-
-/**
- * The live crystal array, or null before FuelCrystals mounts.
- *
- * Read through the debug bridge in dev; in production the bridge is
- * dead-code-eliminated, so this returns null and the radar draws no crystal
- * blips at all. That is a REAL GAP and it is not covered by the spec — the spec
- * assumes crystals are visible on the radar for every visitor, because without
- * that cue the mechanic is a blind hunt. See the coordinator note below.
- */
-function crystalSlots() {
-  return import.meta.env.DEV ? fitzDebug.crystals : null;
-}
+import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 ```
 
-**Stop and flag this to the coordinator before continuing** if that trade-off looks wrong to you — it means crystals are invisible on the radar in a production build, which materially weakens the mechanic for real visitors. The alternative is a small module-level array in `src/state/` that both the canvas component and the radar import, with no bridge involvement. Ask which is wanted rather than guessing.
+It works in production, unlike a debug-bridge read, which matters because the bridge is dead-code-eliminated and the mechanic needs this cue to be findable at all. Before `FuelCrystals` mounts the array is simply empty, so the loop draws nothing and needs no null check.
 
 - [ ] **Step 2: Write the probe**
 
@@ -1003,6 +1017,6 @@ Record: gate outcomes, the probe's check count, the `commits=0` figure, the meas
 
 **Spec coverage.** §1 architecture → Task 2 (fuel in `flight`, discrete `fuelEmpty`). §2 numbers → Task 1, with a test pinning the one-crossing-per-tank relationship. §3 warp gating → Task 2 Step 4, including the photo-mode/orbit-lock non-issue. §4 crystals → Tasks 4 (maths) and 5 (entity), with the base-position pickup rule and `ambientTime` both in Task 5. §5 radar → Task 6 Step 1. §6 HUD → Task 3. §7 edge cases → clamping in Task 1's tests, full-tank consumption in Task 5, cap no-op in Task 5, `MAX_ATTEMPTS` in Task 4. §8 testing → Tasks 1, 4, 6. §9 out of scope → untouched.
 
-**Known open question, deliberately surfaced rather than guessed:** Task 6 Step 1 reads the crystal array through the dev-only debug bridge, which means **no crystal blips in a production build**. That materially weakens the mechanic for real visitors. The implementer is instructed to stop and ask rather than pick. The alternative — a small shared module-level array both the canvas and the radar import — is cleaner but touches state ownership, so it deserves an explicit decision.
+**Open question, now RESOLVED by the coordinator before dispatch:** the radar originally read the crystal array through the dev-only debug bridge, which would have meant **no crystal blips in a production build** — turning refuelling into a blind hunt at ~146-unit spacing. The array is now module-level state exported from `spaceStore.ts` beside `flight` and `bodies`, which both the canvas component and the radar import directly. The bridge still mirrors it, but only so the e2e probe can read it.
 
 **Ordering.** Task 1 before 2, 3, 5. Task 2 before 3 and 6. Task 4 before 5. Task 5 before 6 (the probe reads `fitzDebug.crystals`).
