@@ -69,6 +69,12 @@ export default async function run() {
     let conclusive = false;
     let delta = -1;
     let displacement = -1;
+    // Reassigned unconditionally on every attempt below (never merely
+    // conditionally overwritten), so after the loop these always describe the
+    // LAST attempt tried — never a stale cause from an earlier, different
+    // attempt. This is what keeps "store churned" distinguishable from "ship
+    // never moved" distinguishable from "steady state genuinely had renders"
+    // (that third case is a separate, already-scoped check below).
     let churn = "";
     let motionReason = "";
     for (let attempt = 1; attempt <= 3 && !conclusive; attempt++) {
@@ -96,11 +102,15 @@ export default async function run() {
       // broken (not just a first-hold timing fluke) it will still be
       // motionless on attempt 3 and correctly fall through to the failure
       // branch below — never a silent pass.
+      // Unconditional per-attempt reset: an attempt that didn't churn must
+      // clear out any churn key a PRIOR attempt left behind, otherwise the
+      // final message could cite attempt 1's churned key alongside attempt
+      // 3's motionlessness even though they never co-occurred.
+      churn = changed.length ? changed.join(",") : "";
+      motionReason = moved ? "" :
+        `displacement=${displacement.toFixed(2)} (need >= ${MIN_FLIGHT_DISPLACEMENT}), speed a=${a.speed.toFixed(2)} b=${b.speed.toFixed(2)}`;
+
       if (changed.length === 0 && moved) conclusive = true;
-      else {
-        if (changed.length) churn = changed.join(",");
-        if (!moved) motionReason = `displacement=${displacement.toFixed(2)} (need >= ${MIN_FLIGHT_DISPLACEMENT}), speed a=${a.speed.toFixed(2)} b=${b.speed.toFixed(2)}`;
-      }
     }
 
     if (conclusive) {

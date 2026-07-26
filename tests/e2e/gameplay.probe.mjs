@@ -91,45 +91,57 @@ export default async function run() {
     // Real exports are `asteroidInstances`/`ASTEROID_COLLIDERS`/`SUN_COLLIDER`
     // (src/data/asteroids.ts) — NOT `ASTEROIDS`. ASTEROID_COLLIDERS already has
     // the {x,y,z,r} shape Spaceship's own COLLIDERS array uses.
+    //
+    // Null-guard restored: the original brief guarded against ASTEROID_COLLIDERS[0]
+    // being missing or malformed. Read the table defensively here so a future
+    // shape regression reports a clean failed check instead of throwing an
+    // unhandled exception inside page.evaluate (which would read as a crashed
+    // probe rather than a specific, diagnosable failure).
     const target = await page.evaluate(async () => {
       const mod = await import("/src/data/asteroids.ts");
-      const a = mod.ASTEROID_COLLIDERS[0];
+      const a = mod.ASTEROID_COLLIDERS?.[0];
+      if (!a || typeof a.x !== "number" || typeof a.y !== "number" ||
+          typeof a.z !== "number" || typeof a.r !== "number") return null;
       return { x: a.x, y: a.y, z: a.z, r: a.r };
     });
+    checks.check("asteroid table is readable", target !== null,
+      target ? JSON.stringify(target) : "ASTEROID_COLLIDERS[0] missing or malformed");
 
-    const before = (await readStore(page)).impactCount;
-    // noseDirection(yaw=0, pitch=0) = (0, 0, 1) — see src/utils/pitchFlight.ts
-    // and flight.probe.mjs's own comment ("holding forward drives flight.z
-    // toward +BOUNDS"). The ship's angle/pitch refs are still at their mount
-    // defaults here (no steering input has happened all probe), so holding
-    // forward moves the ship toward +Z. Approach from the -Z side so "forward"
-    // actually closes the gap, instead of flying away from the target.
-    await warpTo(page, target.x, target.y, target.z - target.r - 2);
-    await hold(page, ["KeyW"], 2500);
-    const midResult = await page.evaluate(() => (
-      { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }
-    ));
-    const mid = midResult.impactCount;
-    checks.check("ramming an asteroid registers an impact", mid > before, `${before} -> ${mid}`);
+    if (target) {
+      const before = (await readStore(page)).impactCount;
+      // noseDirection(yaw=0, pitch=0) = (0, 0, 1) — see src/utils/pitchFlight.ts
+      // and flight.probe.mjs's own comment ("holding forward drives flight.z
+      // toward +BOUNDS"). The ship's angle/pitch refs are still at their mount
+      // defaults here (no steering input has happened all probe), so holding
+      // forward moves the ship toward +Z. Approach from the -Z side so "forward"
+      // actually closes the gap, instead of flying away from the target.
+      await warpTo(page, target.x, target.y, target.z - target.r - 2);
+      await hold(page, ["KeyW"], 2500);
+      const midResult = await page.evaluate(() => (
+        { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }
+      ));
+      const mid = midResult.impactCount;
+      checks.check("ramming an asteroid registers an impact", mid > before, `${before} -> ${mid}`);
 
-    // A fixed Node-side sleep is NOT a reliable stand-in for real elapsed page
-    // time here: headless SwiftShader is slow enough (see harness.mjs) that
-    // measured diagnostics showed a requested 400ms hold taking 700-1350ms of
-    // actual browser wall time, plus 400-900ms more just in the idle gap
-    // before it (readStore/evaluate round-trips). Bracket the window with
-    // performance.now() on the page side and check the observed impact count
-    // against the bound the 0.5s cooldown actually implies for that window,
-    // instead of asserting against the wrong (Node-side) clock.
-    await hold(page, ["KeyW"], 400); // grind inside the intended cooldown window
-    const afterResult = await page.evaluate(() => (
-      { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }
-    ));
-    const after = afterResult.impactCount;
-    const windowMs = afterResult.t - midResult.t;
-    const maxAllowed = Math.floor(windowMs / 500) + 1;
-    checks.check("impacts are rate-limited to one per 0.5s",
-      after - mid <= maxAllowed,
-      `+${after - mid} impacts over ${windowMs.toFixed(0)}ms real elapsed time (0.5s cooldown allows <=${maxAllowed})`);
+      // A fixed Node-side sleep is NOT a reliable stand-in for real elapsed page
+      // time here: headless SwiftShader is slow enough (see harness.mjs) that
+      // measured diagnostics showed a requested 400ms hold taking 700-1350ms of
+      // actual browser wall time, plus 400-900ms more just in the idle gap
+      // before it (readStore/evaluate round-trips). Bracket the window with
+      // performance.now() on the page side and check the observed impact count
+      // against the bound the 0.5s cooldown actually implies for that window,
+      // instead of asserting against the wrong (Node-side) clock.
+      await hold(page, ["KeyW"], 400); // grind inside the intended cooldown window
+      const afterResult = await page.evaluate(() => (
+        { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }
+      ));
+      const after = afterResult.impactCount;
+      const windowMs = afterResult.t - midResult.t;
+      const maxAllowed = Math.floor(windowMs / 500) + 1;
+      checks.check("impacts are rate-limited to one per 0.5s",
+        after - mid <= maxAllowed,
+        `+${after - mid} impacts over ${windowMs.toFixed(0)}ms real elapsed time (0.5s cooldown allows <=${maxAllowed})`);
+    }
 
     // ---- orbit entry traces a ring around a MOVING body ----
     const orbit = await page.evaluate(async () => {

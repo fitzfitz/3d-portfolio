@@ -129,6 +129,21 @@ export default async function run() {
     const drift = Math.abs(fresh.vertices - shipped.vertices) / (shipped.vertices || 1);
     checks.check("regenerated moon vertex count within 2%", drift <= 0.02,
       `${shipped.vertices} -> ${fresh.vertices} (${(drift * 100).toFixed(2)}%)`);
+    // File size is dominated by two baked 1024x1024 textures (color+AO,
+    // normal — gen_moon.py:51,64) whose PNG-compressed byte size shifts a
+    // little run-to-run: Cycles' AO bake (ao_samples=32) and the procedural
+    // Voronoi/Clouds displacement textures are sampled, not bit-identical
+    // across independent renders, so the baked pixels (and therefore their
+    // compressed size) are not byte-stable even though the geometry and PBR
+    // values are (already asserted exactly above/below). A 25% band is
+    // generous enough to absorb that sampling noise while still catching a
+    // genuinely broken export — a truncated/near-empty file, an accidentally
+    // doubled texture resolution, or unintended debug data folded in — any of
+    // which would land far outside this range.
+    const byteDrift = Math.abs(fresh.bytes - shipped.bytes) / (shipped.bytes || 1);
+    checks.check("regenerated moon file size stays within a sane band (±25%)",
+      byteDrift <= 0.25,
+      `${shipped.bytes} -> ${fresh.bytes} bytes (${(byteDrift * 100).toFixed(2)}%)`);
     checks.check("only 4 of 11 assets are regenerable (documented in MANIFEST.md)",
       REGENERABLE.length === 4, REGENERABLE.join(","));
   } catch (e) {

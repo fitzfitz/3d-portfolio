@@ -16,6 +16,17 @@ export default async function run() {
   return withPage({ label: "sky" }, async (page, checks) => {
     // Nebula hue drift: driftedHue is ±25° over 180s, so 20s from load moves it
     // by 25*sin(20/180*2pi) ≈ 16°. Assert a conservative ≥5°.
+    //
+    // Residual flake risk (verified against src/utils/nebulaHue.ts): letting
+    // θ0 = 2*t0 degrees (t0 = seconds since mount at the first sample), the
+    // 20s swing works out to dHue = 17.1·cos(θ0 + 20°). That threshold-crossing
+    // (dHue < 5°) only happens when cos(θ0+20°) < ~0.29, i.e. θ0 within ~17°
+    // of 70° or 250° — which corresponds to a first sample landing roughly
+    // 35s or 125s into the 180s drift cycle. A slow cold start that happens
+    // to straddle one of those windows could produce a real, non-regression
+    // failure here. Do not raise the threshold to compensate — it is already
+    // conservative at typical load timing (measured 13.5°); this is a known,
+    // narrow timing flake, not a defect.
     const h0 = await nebulaHue(page);
     checks.check("nebula material is readable", h0 !== null, `hue=${h0}`);
     await settle(page, 20_000);
@@ -85,7 +96,13 @@ export default async function run() {
       });
       return { ok, n };
     });
-    checks.check("star shells stay centred on the ship", centred.ok, `${centred.n} shells checked`);
+    // Require n > 0: `ok` starts true and is only ever flipped false by a
+    // mismatch, so if the selector ever matched zero shells this would pass
+    // vacuously while printing "0 shells checked" instead of catching the
+    // regression. Currently n=4 (3 StarLayer + DustField), so this is not
+    // live today, but nothing upstream of this line guarantees it stays so.
+    checks.check("star shells stay centred on the ship", centred.ok && centred.n > 0,
+      `${centred.n} shells checked`);
 
     // Corona flicker: Sun.tsx's coronaMaterial is a THREE.ShaderMaterial with a
     // single uniform `uTime` (a plain number) that useFrame sets to the clock's

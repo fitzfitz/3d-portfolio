@@ -69,11 +69,20 @@ export default async function run() {
     const diveBox = await diveEl.boundingBox();
     await page.touchscreen.touchStart(diveBox.x + diveBox.width / 2, diveBox.y + diveBox.height / 2);
     let pitchDived = pitchAfter;
+    let divingInput = null;
     for (let i = 0; i < 9; i++) {
       await settle(page, 300);
       pitchDived = await page.evaluate(() => window.__fitz.flight.pitch);
+      if (i === 0) divingInput = await readInput(page); // capture the flag while still held
     }
     await page.touchscreen.touchEnd();
+    // Mirrors RISE's "holding RISE sets ascend" check: without this, a
+    // regression where DIVE's handler stopped setting `descend` could slip
+    // through undetected, because pitch alone can still drift down from
+    // RISE's residual velocity unwinding (see the interleaved-read comment
+    // above) even if DIVE's own input flag never fires.
+    checks.check("holding DIVE sets descend", divingInput?.descend === true,
+      `descend=${divingInput?.descend}`);
     checks.check("DIVE pitches the nose back down", pitchDived < pitchAfter,
       `pitch ${pitchAfter.toFixed(3)} -> ${pitchDived.toFixed(3)}`);
 

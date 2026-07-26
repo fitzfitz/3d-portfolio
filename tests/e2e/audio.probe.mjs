@@ -48,7 +48,12 @@ export default async function run() {
     const persisted = await page.evaluate(() => window.__fitz.store.getState().isMuted);
     checks.check("mute persists across reload", persisted === true, `isMuted=${persisted}`);
 
-    // Leave the profile clean for later probes sharing the browser profile.
+    // Not required for probe isolation: harness.mjs's withPage launches Chrome
+    // with no userDataDir, so every probe gets its own ephemeral profile that
+    // is destroyed when browser.close() runs — probes never share
+    // localStorage. This cleanup is still harmless (leaves no state behind
+    // in case a future harness change adds a persistent userDataDir), just
+    // not for the reason previously stated here.
     await page.evaluate(() => localStorage.removeItem("fitz-sound-muted"));
   });
 }

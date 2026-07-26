@@ -62,6 +62,15 @@ export class Checks {
  * Launches Chrome, opens the app, waits for the canvas and first frame, runs
  * `fn(page, checks)`, then always tears down. Page errors and non-ignored
  * console errors are appended as failed checks.
+ *
+ * Also permanently disables automatic low-perf decline (`lowPerfManual =
+ * true`) so the scene graph stays at full fidelity deterministically —
+ * headless SwiftShader is slow enough that the app's real
+ * `PerformanceMonitor.onDecline` would otherwise fire and unmount perf-gated
+ * objects (WarpTunnel, ShootingStars, ...) during every probe. Several
+ * probes' full-fidelity baselines depend on this. Probes that want to test
+ * perf-degradation behavior can still call `setLowPerf(true, ...)` themselves
+ * — only the automatic decline path is blocked.
  */
 export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 } }, fn) {
   await startServer();
@@ -120,6 +129,25 @@ export async function tap(page, testId, ms = 400) {
   await page.touchscreen.touchEnd();
 }
 
+// WARNING (found in Task 8, touch.probe.mjs): a single long blind `settle()`
+// under-services requestAnimationFrame in headless SwiftShader Chrome — it is
+// pure Node-side setTimeout with zero CDP traffic, and this browser barely
+// pumps its own rAF loop while idle between protocol commands. Meanwhile
+// Spaceship.tsx:159 clamps `dt = Math.min(delta, 0.05)`, so simulated physics
+// time falls behind wall-clock. A `settle(page, 1200)` does NOT reliably
+// deliver 1200ms of simulated ship motion. If you are measuring
+// physics-over-time (position, velocity, pitch, rotation deltas) rather than
+// just waiting for something to settle, interleave `page.evaluate()` reads
+// instead of one long wait — each round-trip is a CDP command that reliably
+// pumps the browser's task queue and ticks frames forward. See
+// touch.probe.mjs's DIVE hold for the pattern. (Considered hardening this
+// into a `settleFrames()` helper that waits on real rAF ticks — deferred:
+// every current physics-over-time window (sky's turn hold, gameplay's ram +
+// cooldown grind, perf's 5s steady-flight hold) already has a carefully
+// measured, working threshold tied to this exact wall-clock behavior;
+// swapping the underlying wait mechanism would risk churning those thresholds
+// for a currently-nonexistent problem. touch.probe.mjs's local interleaving
+// remains the only place this trap has actually bitten.)
 export function settle(page, ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
