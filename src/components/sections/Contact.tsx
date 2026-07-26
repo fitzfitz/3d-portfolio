@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Send, CheckCircle2, ShieldAlert, Terminal } from "lucide-react";
 import { identity } from "../../data/identity";
+import { buildPayload, buildMailto, classifyResponse } from "../../utils/contactForm";
 
 interface ContactProps {
   isSidebar?: boolean;
@@ -13,14 +14,8 @@ export default function Contact({ isSidebar = false }: ContactProps) {
   const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
 
-  // Simulation terminal logs
-  const simulationSteps = [
-    "Establishing secure socket connection...",
-    "Validating payload headers...",
-    "Encrypting message contents with PGP...",
-    "Dispatching packet to smtp.fitzgeral.dev...",
-    "Transmission successfully completed! Status 200 OK.",
-  ];
+  const accessKey = import.meta.env.VITE_FORM_KEY ?? "";
+  const endpoint = import.meta.env.VITE_FORM_ENDPOINT ?? "https://api.web3forms.com/submit";
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -44,26 +39,69 @@ export default function Contact({ isSidebar = false }: ContactProps) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setFormStatus("submitting");
+    const log = (line: string) => setTerminalLogs((prev) => [...prev, `[system] > ${line}`]);
     setTerminalLogs([]);
+    log("validating payload headers…");
 
-    // Run terminal logs sequence
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < simulationSteps.length) {
-        setTerminalLogs((prev) => [...prev, `[system] > ${simulationSteps[currentStep]}`]);
-        currentStep++;
-      } else {
-        clearInterval(interval);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      log("serializing transmission packet…");
+      log("awaiting relay acknowledgement…");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(buildPayload(formData, accessKey)),
+        signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      const verdict = classifyResponse(res, json);
+      if (verdict === "ok") {
+        log(`relay ack ${res.status} — transmission logged`);
+        // React 19 batches this log with the status flip below since nothing
+        // awaits between them — without a beat, the terminal would jump
+        // straight to the success screen and the visitor would never actually
+        // see the line reporting the real status.
+        await new Promise((r) => setTimeout(r, 600));
         setFormStatus("success");
         setFormData({ name: "", email: "", message: "" });
+      } else {
+        log(`relay refused (${res.status}) — ${json.message ?? "no reason given"}`);
+        await new Promise((r) => setTimeout(r, 600));
+        setFormStatus("error");
       }
-    }, 400);
+    } catch {
+      log("RELAY UNREACHABLE — falling back to direct channel");
+      await new Promise((r) => setTimeout(r, 600));
+      setFormStatus("error");
+    } finally {
+      clearTimeout(timeout);
+    }
   };
+
+  if (!accessKey) {
+    return (
+      <div className={isSidebar ? "glass-card rounded-2xl p-6 border border-accent/20 bg-black/85" : "glass-card rounded-2xl p-6 sm:p-8"}>
+        <h3 className="font-display font-extrabold text-xl mb-3 text-white">Open a Channel</h3>
+        <p className="text-muted text-sm mb-6">
+          Direct transmission only — the relay isn't configured on this build.
+        </p>
+        <a
+          href={`mailto:${identity.email}`}
+          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+        >
+          <Mail className="w-4 h-4" />
+          OPEN_TRANSMISSION
+        </a>
+        <p className="mt-4 font-mono text-[10px] text-white/40 select-all">{identity.email}</p>
+      </div>
+    );
+  }
 
   const formCard = (
     <div className={isSidebar ? "glass-card rounded-2xl p-6 relative w-full border border-accent/20 bg-black/85 max-h-[85vh] overflow-hidden pointer-events-auto" : "glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden"}>
@@ -84,13 +122,39 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             <CheckCircle2 className="w-16 h-16 text-primary mb-6 animate-bounce" />
             <h3 className="font-display font-bold text-2xl mb-2">Transmission Dispatched!</h3>
             <p className="text-muted text-sm max-w-xs mb-6">
-              Your transmission has been encrypted and sent to my inbox. I'll analyze it and get back to you shortly.
+              Your transmission reached the relay and is on its way to my inbox. I'll get back to you shortly.
             </p>
             <button
               onClick={() => setFormStatus("idle")}
               className="px-5 py-2.5 rounded-lg font-mono text-xs text-primary border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer"
             >
               SEND_ANOTHER_PACKET
+            </button>
+          </motion.div>
+        ) : formStatus === "error" ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col items-center justify-center py-12 text-center"
+          >
+            <ShieldAlert className="w-16 h-16 text-red-400 mb-6" />
+            <h3 className="font-display font-bold text-2xl mb-2">Relay Unreachable</h3>
+            <p className="text-muted text-sm max-w-xs mb-6">
+              The relay didn't acknowledge. Nothing was lost — open a direct channel and your
+              message travels with you.
+            </p>
+            <a
+              href={buildMailto(formData, identity.email)}
+              className="px-5 py-2.5 rounded-lg font-mono text-xs text-primary border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              OPEN_DIRECT_CHANNEL
+            </a>
+            <button
+              onClick={() => setFormStatus("idle")}
+              className="mt-4 font-mono text-[10px] text-white/40 hover:text-white/70 transition-colors cursor-pointer"
+            >
+              RETRY_TRANSMISSION
             </button>
           </motion.div>
         ) : formStatus === "submitting" ? (
@@ -121,7 +185,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
 
             {/* Console Footer */}
             <div className="border-t border-white/5 pt-2 mt-4 text-[10px] text-white/30 text-right">
-              ENCRYPTION: AES-GCM-256
+              TRANSPORT: HTTPS/TLS
             </div>
           </motion.div>
         ) : (
