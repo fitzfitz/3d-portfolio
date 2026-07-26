@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { ambientTime } from "../../utils/ambientTime";
 
 // One shared wispy alpha texture for all planets, generated once at module load.
 // Stacked soft radial blobs (same trick as the nebula sprite) read as cloud bands.
@@ -45,7 +46,7 @@ interface CloudLayerProps {
 export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17 }: CloudLayerProps) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((state) => {
-    if (ref.current) ref.current.rotation.y = state.clock.getElapsedTime() * speed;
+    if (ref.current) ref.current.rotation.y = ambientTime(state.clock.getElapsedTime()) * speed;
   });
   return (
     <mesh name="CloudLayer" ref={ref}>

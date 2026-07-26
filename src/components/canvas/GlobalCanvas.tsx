@@ -2,6 +2,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import { Suspense, useRef, useMemo, useState } from "react";
 import * as THREE from "three";
+import { ambientTime } from "../../utils/ambientTime";
 import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
@@ -58,7 +59,7 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
 
   useFrame((state) => {
     if (!pointsRef.current) return;
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     // The shells are the infinite sky: they translate with the ship (no positional
     // parallax — the DustField supplies that) and keep their slow rotation drift.
     pointsRef.current.position.set(flight.x, flight.y, flight.z);

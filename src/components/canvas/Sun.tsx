@@ -2,6 +2,7 @@ import { useRef, useMemo, useCallback } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
+import { ambientTime } from "../../utils/ambientTime";
 
 const coronaVertex = /* glsl */ `
   varying vec3 vNormal;
@@ -80,7 +81,7 @@ export default function Sun({ onSunReady }: SunProps) {
   );
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = ambientTime(state.clock.getElapsedTime());
     coronaMaterial.uniforms.uTime.value = t;
     // Asynchronous flare pulses
     if (flareARef.current) {
