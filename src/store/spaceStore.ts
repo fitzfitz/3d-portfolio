@@ -4,6 +4,7 @@ import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
+import { FUEL_MAX } from "../utils/fuel";
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +110,14 @@ export const flight = {
     forward: false, backward: false, left: false, right: false,
     boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
   } as FlightInput,
+  /**
+   * Warp fuel, 0..FUEL_MAX. Written ONLY by Spaceship's frame loop and read by
+   * the HUD/radar rAF loops. Deliberately here rather than in the store: it
+   * changes every frame while warping, and store state would make that a
+   * per-frame React commit, breaking the zero-renders-during-flight guarantee.
+   * Starts full — fuel is session state, not persisted progress.
+   */
+  fuel: FUEL_MAX,
 };
 
 /**
@@ -140,6 +149,8 @@ interface SpaceState {
   photoMode: boolean;
   reducedMotion: boolean;
   reducedMotionManual: boolean;
+  fuelEmpty: boolean;
+  setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -194,9 +205,13 @@ export const useSpaceStore = create<SpaceState>()(
     photoMode: false,
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
+    fuelEmpty: false,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
+    // Change-guarded: called from a frame loop, so it must not notify unless the
+    // value actually flipped.
+    setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
     setOrbitLocked: (v) => { if (get().isOrbitLocked !== v) set({ isOrbitLocked: v }); },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
