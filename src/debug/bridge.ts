@@ -24,6 +24,8 @@ export interface FitzDebug {
    * Null until Spaceship mounts.
    */
   teleport: ((x: number, y: number, z: number) => void) | null;
+  /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
+  crystals: { x: number; y: number; z: number; active: boolean }[] | null;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -36,4 +38,5 @@ export const fitzDebug: FitzDebug = {
   camera: null,
   renderCount: 0,
   teleport: null,
+  crystals: null,
 };

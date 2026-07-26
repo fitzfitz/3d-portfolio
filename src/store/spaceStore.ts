@@ -4,6 +4,7 @@ import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
+import { FUEL_MAX } from "../utils/fuel";
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +110,16 @@ export const flight = {
     forward: false, backward: false, left: false, right: false,
     boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
   } as FlightInput,
+  /**
+   * Warp fuel, 0..FUEL_MAX. Written by Spaceship's frame loop (continuous
+   * drain while warping) and by FuelCrystals' pickup (discrete refuel on
+   * collection), and read by the HUD/radar rAF loops. Deliberately here
+   * rather than in the store: it changes every frame while warping, and store
+   * state would make that a per-frame React commit, breaking the
+   * zero-renders-during-flight guarantee.
+   * Starts full — fuel is session state, not persisted progress.
+   */
+  fuel: FUEL_MAX,
 };
 
 /**
@@ -119,6 +130,20 @@ export const flight = {
 export const bodies: Record<string, { x: number; y: number; z: number }> = Object.fromEntries(
   planets.map((p) => [p.name, orbitPosition(p.orbit, 0)])
 );
+
+export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
+
+/**
+ * Live fuel-crystal slots, seeded and mutated by FuelCrystals' frame loop and
+ * read by RadarMap's rAF loop. Module-level and mutable outside React — the same
+ * pattern as `flight` and `bodies` above, and for the same reason: a pickup or a
+ * respawn must not cost a React render.
+ *
+ * Deliberately NOT routed through the debug bridge: that is dead-code-eliminated
+ * in production, so the radar would draw no crystal blips for real visitors, and
+ * at ~146-unit mean spacing the mechanic needs that cue to be findable at all.
+ */
+export const crystalSlots: CrystalSlot[] = [];
 
 interface SpaceState {
   activeZone: string | null;
@@ -140,6 +165,8 @@ interface SpaceState {
   photoMode: boolean;
   reducedMotion: boolean;
   reducedMotionManual: boolean;
+  fuelEmpty: boolean;
+  setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -194,9 +221,13 @@ export const useSpaceStore = create<SpaceState>()(
     photoMode: false,
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
+    fuelEmpty: false,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
+    // Change-guarded: called from a frame loop, so it must not notify unless the
+    // value actually flipped.
+    setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
     setOrbitLocked: (v) => { if (get().isOrbitLocked !== v) set({ isOrbitLocked: v }); },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },

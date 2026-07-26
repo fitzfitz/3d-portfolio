@@ -9,6 +9,7 @@ beforeEach(() => {
     cometNear: false, altitudeWarn: false,
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
     reducedMotion: false, reducedMotionManual: false,
+    fuelEmpty: false,
   });
 });
 

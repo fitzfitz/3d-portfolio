@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
@@ -11,11 +11,12 @@ import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime } from "../../utils/ambientTime";
+import { drainFuel } from "../../utils/fuel";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
 const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
-const WARP_SPEED = 39;      // was 0.65/frame
+const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
 const BRAKE = 0.92;         // per-frame decay basis
@@ -281,7 +282,17 @@ export default function Spaceship() {
     // 3. Warp vs impulse along the nose direction. Touch thrust is analog.
     // Briefly suppressed right after an impact so the reflected velocity can
     // actually push the ship away instead of being overwritten by warp speed.
-    const warpActive = input.boost && time > warpSuppressUntil.current;
+    // Warp needs fuel. Ordering is deliberate: the drain is conditioned on the
+    // same `warpActive` the velocity branch uses, so the gate and the drain can
+    // never disagree about whether warp happened this frame. Holding Shift on an
+    // empty tank drains nothing and simply cruises.
+    //
+    // Running dry is a graceful coast, not a stop: the warp branch below assigns
+    // velocity directly, so when it stops running the ship keeps its 39 u/s and
+    // decays through the existing SPACE_DRAG.
+    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0;
+    if (warpActive) flight.fuel = drainFuel(flight.fuel, dt);
+    store.setFuelEmpty(flight.fuel <= 0);
     store.setWarping(warpActive);
     const thrustInput = input.forward ? 1 : Math.max(0, input.thrust);
     const braking = input.backward || input.thrust < -0.2;

@@ -27,6 +27,8 @@ export const COSMIC_BOUNDS = 250;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
 export const PORTAL_POS: [number, number, number] = [0, 95, -150];
 export const SHIP_MAX_SPEED = 10.8;
+/** Warp velocity while boost is held. 3.6x cruise; fuel endurance is tuned against it. */
+export const SHIP_WARP_SPEED = 39;
 
 // Orbit-lock geometry: ORBIT must stay well inside RETAIN or the lock
 // self-destructs one frame after engaging (see tests/orbitInvariant.test.ts).

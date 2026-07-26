@@ -47,18 +47,49 @@
 
 **Files:**
 - Create: `src/utils/fuel.ts`, `tests/fuel.test.ts`
+- Modify: `src/constants.ts` (add `SHIP_WARP_SPEED` beside the existing `SHIP_MAX_SPEED` on line 29)
+- Modify: `src/components/canvas/Spaceship.tsx:6,18` (import the constant instead of declaring it locally)
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `FUEL_MAX = 100`, `FUEL_DRAIN_PER_SEC = 8`, `FUEL_PER_CRYSTAL = 25`, `drainFuel(fuel: number, dt: number): number`, `refuel(fuel: number): number`. **Tasks 2, 4, 5 and 6 depend on these exact names.**
+- Produces: `FUEL_MAX = 100`, `FUEL_DRAIN_PER_SEC = 8`, `FUEL_PER_CRYSTAL = 25`, `drainFuel(fuel: number, dt: number): number`, `refuel(fuel: number): number`. **Tasks 2, 4, 5 and 6 depend on these exact names.** Also produces `SHIP_WARP_SPEED = 39` from `src/constants.ts`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Promote `WARP_SPEED` to a shared constant**
+
+Task 1's final test pins the design's central tuning claim — one full map crossing per
+tank — which multiplies fuel endurance by the warp speed. That speed currently lives as
+a module-local `const WARP_SPEED = 39` at `Spaceship.tsx:18`, invisible to any test,
+while its sibling `SHIP_MAX_SPEED = 10.8` is already exported from `src/constants.ts`.
+Left as-is the test would hardcode `39` and stay green if someone retuned warp — pinning
+nothing, which is the exact failure its commit message claims to prevent.
+
+In `src/constants.ts`, directly below `export const SHIP_MAX_SPEED = 10.8;` (line 29):
+
+```ts
+/** Warp velocity while boost is held. 3.6x cruise; fuel endurance is tuned against it. */
+export const SHIP_WARP_SPEED = 39;
+```
+
+In `src/components/canvas/Spaceship.tsx`, add `SHIP_WARP_SPEED` to the existing
+`../../constants` import on line 6, then replace line 18:
+
+```ts
+const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
+```
+
+Keeping the local alias means the two `WARP_SPEED` use sites in the file are untouched,
+so this step is a pure move with no behavioural change. Confirm with
+`grep -n 'WARP_SPEED' src/components/canvas/Spaceship.tsx` — the value 39 must appear
+only in `constants.ts`.
+
+- [ ] **Step 2: Write the failing test**
 
 `tests/fuel.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, drainFuel, refuel } from "../src/utils/fuel";
+import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
 
 describe("drainFuel", () => {
   it("drains at the configured rate, scaled by dt", () => {
@@ -78,10 +109,16 @@ describe("drainFuel", () => {
 
   it("gives one full crossing of the map on a full tank", () => {
     // The design's central tuning claim: FUEL_MAX / drain = seconds of warp,
-    // times WARP_SPEED (39) should be about the 500-unit width of the world.
+    // times warp speed should be about the width of the world.
+    //
+    // Both sides read the real constants rather than literals, so retuning
+    // SHIP_WARP_SPEED or COSMIC_BOUNDS moves the assertion with them instead of
+    // leaving a stale 39 here that would keep passing while the intent broke.
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
-    expect(seconds * 39).toBeGreaterThan(450);
-    expect(seconds * 39).toBeLessThan(550);
+    const reach = seconds * SHIP_WARP_SPEED; // 12.5s x 39 u/s = 487.5 units
+    const crossing = COSMIC_BOUNDS * 2; // 500 units, edge to edge
+    expect(reach).toBeGreaterThan(crossing * 0.9);
+    expect(reach).toBeLessThan(crossing * 1.1);
   });
 });
 
@@ -104,12 +141,12 @@ describe("refuel", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run tests/fuel.test.ts`
 Expected: FAIL — cannot resolve `../src/utils/fuel`.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 4: Write the implementation**
 
 `src/utils/fuel.ts`:
 
@@ -117,9 +154,9 @@ Expected: FAIL — cannot resolve `../src/utils/fuel`.
 /**
  * Warp fuel. Pure transforms so the tuning is testable without a scene.
  *
- * Numbers derive from the flight model rather than taste: WARP_SPEED is 39 u/s
- * (Spaceship.tsx) in a 500-unit-wide world (COSMIC_BOUNDS 250), so a 100 tank
- * draining 8/s gives 12.5s of warp ≈ 488 units — one full crossing per tank.
+ * Numbers derive from the flight model rather than taste: SHIP_WARP_SPEED is
+ * 39 u/s in a 500-unit-wide world (COSMIC_BOUNDS 250), so a 100 tank draining
+ * 8/s gives 12.5s of warp ≈ 488 units — one full crossing per tank.
  * That makes warp a decision rather than something you hold down by default.
  */
 export const FUEL_MAX = 100;
@@ -141,22 +178,31 @@ export function refuel(fuel: number): number {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run tests/fuel.test.ts`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Full suite and commit**
+- [ ] **Step 6: Confirm the constant move changed no behaviour**
+
+Run: `npm run build` — must succeed. Step 1 is a pure move, so a type error here
+means the import or the alias is wrong, not that the design changed.
+
+- [ ] **Step 7: Full suite and commit**
 
 Run: `npm test` — expected 126 tests (119 + 7).
 
 ```bash
-git add src/utils/fuel.ts tests/fuel.test.ts
+git add src/utils/fuel.ts tests/fuel.test.ts src/constants.ts src/components/canvas/Spaceship.tsx
 git commit -m "feat: fuel maths — drain and refuel, clamped
 
-Numbers derived from the flight model, not taste: WARP_SPEED 39 u/s in a
-500-unit world means a 100 tank at 8/s gives one crossing per tank. A test pins
-that relationship so retuning one constant cannot silently break the intent."
+Numbers derived from the flight model, not taste: warp at 39 u/s in a 500-unit
+world means a 100 tank at 8/s gives one crossing per tank. A test pins that
+relationship so retuning one constant cannot silently break the intent.
+
+WARP_SPEED moves from a module-local in Spaceship.tsx to SHIP_WARP_SPEED in
+constants.ts, beside the SHIP_MAX_SPEED it belongs with. Without that the test
+would have hardcoded 39 and stayed green through a retune — pinning nothing."
 ```
 
 ---
@@ -402,7 +448,7 @@ import { COSMIC_BOUNDS } from "../src/constants";
 
 describe("isRejectedSpawn", () => {
   it("rejects inside the asteroid belt band", () => {
-    // Belt is radius 40-70 in the XZ plane.
+    // Belt is radius 40-70, measured as distance from the origin.
     expect(isRejectedSpawn(55, 0, 0, [])).toBe(true);
     expect(isRejectedSpawn(0, 0, 45, [])).toBe(true);
   });
@@ -412,8 +458,20 @@ describe("isRejectedSpawn", () => {
     expect(isRejectedSpawn(88, 0, 0, [])).toBe(true);
   });
 
+  it("measures the bands as 3D radius, so the tilted halo is covered", () => {
+    // Both belt rings are TILTED (BeltMain 0.436 rad, BeltHalo 1.31 rad), and a
+    // tilt preserves distance from the origin while destroying XZ radius. The
+    // 75-degree halo at ring radius 88 therefore reaches y ~= 85 at an XZ radius
+    // of only ~22 — so an XZ-radius test would happily place a crystal in the
+    // thick of the halo. Straight up the pole at 88 units must reject.
+    expect(isRejectedSpawn(0, 88, 0, [])).toBe(true);
+    // And a point whose XZ radius lands in the belt band but whose true distance
+    // is far outside it must be accepted.
+    expect(isRejectedSpawn(55, 240, 0, [])).toBe(false);
+  });
+
   it("accepts the gaps between and beyond the bands", () => {
-    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // inside the belt
+    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // the belt's inner hole
     expect(isRejectedSpawn(75, 0, 0, [])).toBe(false);   // between belt and halo
     expect(isRejectedSpawn(200, 0, 0, [])).toBe(false);  // beyond both
   });
@@ -425,9 +483,17 @@ describe("isRejectedSpawn", () => {
   });
 
   it("measures avoid distance in 3D, not just the XZ plane", () => {
-    // Directly above an avoid point, within its radius: must still reject.
-    const avoid = [{ x: 0, y: 0, z: 200, r: 20 }];
-    expect(isRejectedSpawn(0, 15, 200, avoid)).toBe(true);
+    // Discriminating on purpose. An XZ-only avoid check would drop the y term and
+    // compute distance 0 for a point directly above the avoid centre, rejecting
+    // it — so the ACCEPT case below is what actually catches that regression.
+    // Origin radius 25 also sits clear of the belt band (40-70), so only the
+    // avoid logic decides these two verdicts.
+    const avoid = [{ x: 0, y: 0, z: 0, r: 20 }];
+    // Inside the sphere in 3D: reject.
+    expect(isRejectedSpawn(0, 15, 0, avoid)).toBe(true);
+    // Directly above it but outside its radius in 3D: accept. An XZ-only test
+    // would measure 0 here and wrongly reject.
+    expect(isRejectedSpawn(0, 25, 0, avoid)).toBe(false);
   });
 });
 
@@ -512,10 +578,10 @@ export const CRYSTAL_RESPAWN_SECONDS = 4;
 /** Ship-to-crystal distance that collects it. Matches the shard radius. */
 export const CRYSTAL_PICKUP_RADIUS = 3;
 
-/** Main asteroid belt band, radius in the XZ plane (AsteroidBelt.tsx). */
+/** Main asteroid belt band, distance from origin (AsteroidBelt.tsx:110). */
 const BELT_MIN = 40;
 const BELT_MAX = 70;
-/** Polar halo band, same file. */
+/** Polar halo band, same file (line 115). */
 const HALO_MIN = 80;
 const HALO_MAX = 95;
 
@@ -527,14 +593,18 @@ const MAX_ATTEMPTS = 20;
  * the asteroid bands where it would be buried in rock, or too close to a body
  * the player is navigating around.
  *
- * Band tests use XZ radius because the belt and halo are rings around the
- * origin; avoid points use full 3D distance because a crystal directly above a
- * planet is just as wrong as one beside it.
+ * Every test is full 3D distance from the origin, NOT XZ radius. Both belt rings
+ * are tilted — `BeltMain` by 0.436 rad and `BeltHalo` by 1.31 rad — and rotating
+ * a ring preserves each rock's distance from the origin while changing its XZ
+ * radius completely. The 75-degree halo at ring radius 88 climbs to y ~= 85 at an
+ * XZ radius of ~22, so an XZ test would drop crystals right into the halo it was
+ * meant to exclude. Distance from origin is the tilt-invariant measure, and it is
+ * what the spec means by "radius 40-70 from origin".
  */
 export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoint[]): boolean {
-  const ringR = Math.hypot(x, z);
-  if (ringR >= BELT_MIN && ringR <= BELT_MAX) return true;
-  if (ringR >= HALO_MIN && ringR <= HALO_MAX) return true;
+  const originR = Math.hypot(x, y, z);
+  if (originR >= BELT_MIN && originR <= BELT_MAX) return true;
+  if (originR >= HALO_MIN && originR <= HALO_MAX) return true;
   for (const a of avoid) {
     if (Math.hypot(x - a.x, y - a.y, z - a.z) < a.r) return true;
   }
@@ -578,11 +648,11 @@ export function respawnTick(accum: number, dt: number): { spawns: number; accum:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/crystalField.test.ts`
-Expected: PASS (12 tests).
+Expected: PASS (13 tests).
 
 - [ ] **Step 5: Full suite and commit**
 
-Run: `npm test` — expected 138 tests (126 + 12).
+Run: `npm test` — expected 139 tests (126 + 13).
 
 ```bash
 git add src/utils/crystalField.ts tests/crystalField.test.ts
@@ -738,6 +808,14 @@ export default function FuelCrystals() {
         flight.fuel = refuel(flight.fuel);
         s.active = false;
         soundManager.pickup();
+        // Clear the DRY flag here as well as in Spaceship's loop. Spaceship's
+        // `setFuelEmpty` call sits below its photo-mode and orbit-lock early
+        // returns, so while the ship is orbit-locked nothing reconciles the flag —
+        // a pickup in that state would refuel the tank while the HUD still read
+        // OFFLINE (NO FUEL) until the visitor broke orbit. A pickup is a discrete
+        // event, not a per-frame one, and the setter is change-guarded, so calling
+        // it here costs nothing in the steady state.
+        store.setFuelEmpty(flight.fuel <= 0);
         if (before >= FUEL_MAX) store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
       }
     }
@@ -1013,6 +1091,44 @@ Record: gate outcomes, the probe's check count, the `commits=0` figure, the meas
 
 ---
 
+### Verification record (Task 6 + final verification)
+
+**Step 1 — full gate run.** `npm run build && npm run lint && npm test && npm run test:e2e`, all green.
+- Build: clean, only the pre-existing chunk-size advisory (`index-*.js` 1,578.24 kB / gzip 448.44 kB).
+- Lint: exactly the two long-standing warnings, no new ones — `Atmosphere.tsx:54` (`react-hooks/exhaustive-deps`) and `Scanner.tsx:9` (`react/only-export-components`).
+- Unit tests: **139 passed** (119 original + 7 fuel + 13 crystal field), 25 files, in 458ms. (The brief's own Final-verification Step 1 says 138; the coordinator's brief for this task corrected that to 139, and the measured run confirms 139.)
+- e2e: **127/127 checks passed, 2 capture-only** (112 baseline + 14 new `fuel` checks + 1 "no page errors" = 127). `perf` probe: **`commits=0`** with fuel actively draining during the 5s steady-flight hold (displacement Δ=17.6–18.1 units across repeated runs, confirming the hold genuinely flew). `assets` probe's `assets-src/moon.glb restored byte-for-byte` passed (sha `688ca09ed270` both sides) — no BLOCKED condition.
+
+**Step 2 — production bundle.** `npm run build && ! grep -rq '__fitz' dist/assets/*.js` → `OK: production bundle clean`. This grep checks one narrower thing than "the radar works in production": it confirms the `__fitz` debug bridge itself is stripped from the bundle (as `import.meta.env.DEV`-gated code should be), not that the radar's crystal path survives that stripping — a `fitzDebug.crystals` read would not put the string `__fitz` in the bundle either way, since `fitzDebug` is a plain module object, not something named `__fitz` until `main.tsx` assigns it to `window`. The actual production-radar guarantee is established by source, not this grep: `RadarMap.tsx:3` imports `crystalSlots` directly from `spaceStore.ts` (the same module-level export `flight` and `bodies` come from), never from `fitzDebug`; and `FuelCrystals.tsx:72-74` gates its bridge mirror (`fitzDebug.crystals = slots`) behind `if (!import.meta.env.DEV) return;`, so only the mirror — never the radar's own read — is dev-only. The grep is still useful as a check that the bridge itself is properly stripped, just not as proof of the radar's data path.
+
+**Step 3 — hands-on empty-tank check.** **Not performed.** This step asks for a subjective "verify by feel" pass in `npm run dev` (W/A/S/D still fly, HUD reads DRY, flying into a crystal restores warp) that an agent cannot honestly attest to. It is reserved for the human. The fuel probe's "cruise still works at zero fuel (nobody is stranded)" check (speed=9.17 with Shift held and an empty tank, cruise max 10.8) is the mechanical proxy for the same guarantee and passed on every run.
+
+**Task 6 Step 1 production-radar question — resolution confirmed.** `RadarMap.tsx` imports `crystalSlots` directly from `spaceStore.ts` (extending the existing `flight, useSpaceStore, bodies` import, not a second import statement) and draws in-range crystals in a separate, non-rim-clamped pass at radius 1.5 (vs. planets' 2.4), colour `#ffd24a`. The guarantee that this survives production rests on `RadarMap.tsx:3`'s direct store import and `FuelCrystals.tsx:72-74`'s `import.meta.env.DEV` gate on the bridge mirror — see Step 2 above for why the `__fitz` grep is evidence for a related but narrower claim (the bridge is stripped), not for this one.
+
+**Fuel probe: measured drain rate and technique.** The brief's Step 2 code holds `KeyW+ShiftLeft` for a fixed 2000ms via `hold()` and expects burned fuel in [8, 24] for a nominal 16 (8/sec × 2s). On this machine that fixed-wall-clock hold measured only **5.6–6.4 burned**, below the 8 floor — reproducibly, including under an interleaved-read variant (reads every 20–200ms via `pollUntil`, matching `touch.probe.mjs`'s DIVE-hold pattern) that gave the same ~5.6–6.4. Direct measurement showed why: over a nominal 2000ms wall-clock hold, only ~13 rAF ticks actually fired (~0.65–0.7s of *simulated* dt, since `Spaceship.tsx` clamps `dt = Math.min(delta, 0.05)` per frame) regardless of polling interval, including `intervalMs: 0` — this machine's headless-SwiftShader frame rate is capped around 5–6 fps independent of CDP traffic, so no amount of interleaving-frequency tuning closes the gap; lengthening a *blind* wait was avoided per instruction. The fix: poll for the **outcome** a real 2 simulated seconds at 8/sec should produce (burned ≥ 16) rather than for a wall-clock duration, via `pollUntil(async () => (beforeWarp - (await fuel())) >= 16, { timeoutMs: 15000, intervalMs: 300 })`, holding the keys down manually around it. This still fails correctly if the configured rate regressed (the poll would exhaust its timeout without reaching 16, leaving `burned` below the floor) but adapts to this environment's actual frame rate rather than assuming a 1:1 wall-clock-to-sim-time ratio. Measured across repeated runs: **burned = 16.4, 16.8, 17.2** (real wall time ≈ 6.1s to reach it) — comfortably inside [8, 24], with the acceptance bound itself left untouched.
+
+**Probe check count.** 14 checks (13 unconditional + 1 conditional on finding an active crystal, which every run found) plus "no page errors" — matching the coordinator's stated 14, not the brief's stated 12.
+
+**Correction applied per brief overrides:** the "no crystal spawned inside the belt or halo" check uses 3D distance from the origin (`Math.hypot(s.x, s.y, s.z)`), not XZ radius — both belt rings are tilted (`AsteroidBelt.tsx` tilt 0.436 and 1.31), so an XZ check would misjudge legally-placed crystals. Measured `buried=0` on every run.
+
+### Fix round 1 (review findings addressed)
+
+Review returned spec ❌ on one Important finding plus four Minors against `tests/e2e/fuel.probe.mjs` and this record. The SwiftShader tick-starvation root cause above was confirmed correct; what needed fixing was what the replacement check asserted. All five addressed:
+
+1. **Important — the drain check restated its own exit condition.** `pollUntil` returns the instant `burned >= 16`, so `burned > 8` was tautologically true on every non-timeout run, and `pollUntil`'s `{ok}` was discarded, so a timeout would have passed silently. Fixed: the check is renamed `"warping drains the tank toward empty"` and now asserts `drainPoll.ok && burned > 0` — a timeout fails loudly. The `> 8` comparison is dropped entirely. A second check, `"drain overshoot past the target stays small"` (`burned < 24`), is kept but re-labelled as a sanity bound on one poll interval's overshoot past the 16 target, not a rate assertion — the actual 8/sec rate is pinned deterministically and frame-rate-independently by `tests/fuel.test.ts`, which the probe comment now points to explicitly so a future reader doesn't "restore" a rate assertion the harness can't support.
+
+> **Correction, from the final whole-branch review.** This record originally cited `drainFuel(100,1)===92` and `drainFuel(100,0.5)===96` as the assertions that pin the rate. They do not: both are written as `toBeCloseTo(100 - FUEL_DRAIN_PER_SEC)`, i.e. self-referential to the constant, so they would pass at *any* drain rate. The assertion that actually forbids a wrong rate is the **one-crossing test** (`tests/fuel.test.ts`, "gives one full crossing of the map on a full tank"): at 4/sec, `reach = 25 × 39 = 975`, which fails `toBeLessThan(crossing * 1.1)`; at 16/sec it fails the lower bound. Both directions are caught. The conclusion — that no simulated-time accumulator belongs in the debug bridge for a test's sake — stands, but on that basis rather than the one first given.
+2. **Minor — "an empty tank does not drain further" couldn't fail** (`drainFuel` clamps at 0 regardless of the gate). Renamed to `"fuel stays clamped at exactly zero (no underflow) while gated off"`, matching what it actually tests.
+3. **Minor — "cruising does not drain fuel" could pass vacuously** if KeyW never registered. Added a paired displacement check, `"the cruise hold actually flew (so the check above isn't vacuous)"`, measuring `flight.{x,y,z}` before/after the 1.5s hold. Measured displacement: **3.80 units** on two separate runs (threshold set at `> 0.5`, ~7.6x margin).
+4. **Minor — `refuelled >= 25` was one-sided.** Fuel was exactly 0 beforehand and `FUEL_PER_CRYSTAL` is 25, so the check now asserts `refuelled === 25`, strictly stronger. Measured `fuel=25` on every run.
+5. **Minor — the plan record's Step 2 wording overstated the `__fitz` grep.** Fixed above: the grep is now described as confirming the debug bridge itself is stripped from production, not as proof the radar's crystal path works — that guarantee rests on `RadarMap.tsx:3`'s direct store import and `FuelCrystals.tsx:72-74`'s `import.meta.env.DEV` gate on the bridge mirror.
+
+**Check count after the fix.** 15 checks (14 unconditional + 1 conditional on finding an active crystal, which every run found) plus "no page errors" = 16 — one more than the pre-fix 14, from the new cruise-displacement check.
+
+**Re-verification.** `npm run test:e2e fuel`: 16/16 passed, run twice for stability (drain burned=16.8 then 17.2, displacement=3.80 both times). `npm run test:e2e perf`: 13/13 passed, `commits=0` with fuel actively draining elsewhere in the run. The full e2e suite and the `assets` probe (Blender-dependent, irreplaceable `assets-src/`) were deliberately not re-run, since only `fuel.probe.mjs` and this plan record changed.
+
+---
+
 ## Self-review notes
 
 **Spec coverage.** §1 architecture → Task 2 (fuel in `flight`, discrete `fuelEmpty`). §2 numbers → Task 1, with a test pinning the one-crossing-per-tank relationship. §3 warp gating → Task 2 Step 4, including the photo-mode/orbit-lock non-issue. §4 crystals → Tasks 4 (maths) and 5 (entity), with the base-position pickup rule and `ambientTime` both in Task 5. §5 radar → Task 6 Step 1. §6 HUD → Task 3. §7 edge cases → clamping in Task 1's tests, full-tank consumption in Task 5, cap no-op in Task 5, `MAX_ATTEMPTS` in Task 4. §8 testing → Tasks 1, 4, 6. §9 out of scope → untouched.
@@ -1020,3 +1136,37 @@ Record: gate outcomes, the probe's check count, the `commits=0` figure, the meas
 **Open question, now RESOLVED by the coordinator before dispatch:** the radar originally read the crystal array through the dev-only debug bridge, which would have meant **no crystal blips in a production build** — turning refuelling into a blind hunt at ~146-unit spacing. The array is now module-level state exported from `spaceStore.ts` beside `flight` and `bodies`, which both the canvas component and the radar import directly. The bridge still mirrors it, but only so the e2e probe can read it.
 
 **Ordering.** Task 1 before 2, 3, 5. Task 2 before 3 and 6. Task 4 before 5. Task 5 before 6 (the probe reads `fitzDebug.crystals`).
+
+---
+
+## Final whole-branch review
+
+**Verdict: SAFE TO MERGE.** 13 commits, `3668d08..5a087dd`, plus the fix wave `daea4a8`.
+
+All four binding constraints verified against source rather than taken on trust: zero React renders during flight (no reachable per-frame `set()`; both store setters change-guarded; `flight.fuel > 0` appears in exactly one place, inside the `warpActive` term only), never-stranded (thrust is fuel-blind in every mode — keyboard, touch analog, braking), base-position pickup, and `ambientTime` on decorative motion only (`respawnTick` correctly uses raw `dt`). No assets added; no `.env` access.
+
+### One Important finding, fixed in `daea4a8`
+
+**The radar's crystal range gate was horizontal-only.** `Math.hypot(dx, dz) > RANGE` made it a 500-unit-tall cylinder rather than a 160-unit sphere. Since crystals spawn uniformly in y and y wraps at ±250, the review measured **~12.9 blips drawn per frame, ~7.3 of them (57%) farther than 160 units away** — and because the planet pass draws altitude chevrons, the radar actively teaches that a chevron-less blip is at your level. A crystal 240 units straight up rendered as a bright dot beside the ship. A dry visitor would fly to the nearest dot and arrive at empty space: it reads as broken, not as a mechanic. Now gated on `Math.hypot(dx, dz, dy)` with a scaled `altitudeCue` chevron.
+
+The accompanying e2e check (spec §8, previously unwritten) samples the radar canvas for the crystal fill colour and asserts opposite outcomes in two ship positions. The re-review confirmed by simulating 400 random 40-crystal fields that it **fails under a cylinder gate in 400/400 runs** — it guards the actual bug, not merely a deleted gate.
+
+### Known gaps, parked deliberately
+
+- `"found (or built) a ship position…"` in `fuel.probe.mjs` is tautological — a diagnostic line, not an assertion. 1 of 19 cannot fail.
+- **The crystal altitude chevron is untested:** it shares the dot's `#ffd24a` fill, so pixel counting cannot distinguish them. Deleting the chevron would fail nothing.
+- The 160-unit gate boundary itself is not probed — pinned only to roughly (20, 165).
+- Canvas alpha/`fillStyle` hygiene is verified by reading the loop, not by a test (identical colours make it unobservable).
+- The probe hard-codes `RANGE = 160`; it would silently desync if the production constant changed.
+- **`fuel.probe.mjs`'s crystal-relocation block must stay last in the probe.** It mutates live crystal positions, and a relocated crystal has a ~2% chance of landing in an asteroid band — which would break the buried-in-bands check if that check ran afterwards. This hazard is not commented in the probe itself.
+- The drain check admits a halved rate; the rate is pinned by the one-crossing unit test instead (see the correction above).
+
+### Playability notes — judgement calls, not defects
+
+- **Findability is better than the spec assumed.** The spec's "13 seconds of flying blind" used 146-unit *mean* spacing, but Poisson nearest-neighbour distance is 0.554 × 146 ≈ **81 units**, comfortably inside radar range.
+- **A successful refuel is silent.** `DataShards` broadcasts on every shard pickup; `FuelCrystals` broadcasts only on the useless full-tank case. So the DRY message says "COLLECT A FUEL CRYSTAL TO RECHARGE" and a visitor who obeys gets a sound and a moving bar but no confirmation. One line on the `before < FUEL_MAX` branch would close the loop the DRY message opens. Deliberately **not** added — it is a product decision for the repo owner, and the spec does not ask for it.
+- 12.5 seconds of warp is short for a first-timer who holds Shift from the gate; the chatter mitigates it. First knob to turn if the site reads as stingy.
+
+### Not done — reserved for the repo owner
+
+The hands-on `npm run dev` check that W/A/S/D still fly on an empty tank. It is covered mechanically by the probe's "cruise still works at zero fuel" assertion, and was never claimed as hand-verified.

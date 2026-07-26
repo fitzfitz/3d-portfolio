@@ -3,6 +3,7 @@ import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } 
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
+import { FUEL_MAX } from "../../utils/fuel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -11,6 +12,18 @@ import ScanRing from "./ScanRing";
 const ZONE_COLORS: Record<string, string> = {
   saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
 };
+
+/**
+ * Module-level, NOT a ref: App.tsx conditionally unmounts HUDOverlay for
+ * photo mode (`P` key) and classic CV, both ordinary user actions. A ref
+ * would be reinitialised by that same remount and let the effect below
+ * re-announce mid dry-spell, which is exactly the bug this guards against.
+ * Living at module scope lets it survive the remount; it still resets on the
+ * true→false edge (see the effect) so a later dry spell announces again, and
+ * resets on page reload along with fuel itself. Do not "simplify" this back
+ * into a useRef.
+ */
+let dryAnnouncedThisSpell = false;
 
 export default function HUDOverlay() {
   const activeZone = useSpaceStore((s) => s.activeZone);
@@ -23,10 +36,13 @@ export default function HUDOverlay() {
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const setReducedMotion = useSpaceStore((s) => s.setReducedMotion);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
+  const fuelEmpty = useSpaceStore((s) => s.fuelEmpty);
   const isCoarse = useMediaQuery("(pointer: coarse)");
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
+  const fuelFillRef = useRef<HTMLDivElement>(null);
+  const fuelLabelRef = useRef<HTMLDivElement>(null);
   const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
@@ -37,6 +53,17 @@ export default function HUDOverlay() {
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
+      if (fuelFillRef.current) {
+        fuelFillRef.current.style.width = `${(pct * 100).toFixed(1)}%`;
+        // Amber under a quarter, red when dry. Written as style rather than a
+        // className so this never touches React.
+        fuelFillRef.current.style.backgroundColor =
+          pct <= 0 ? "#ef4444" : pct < 0.25 ? "#f59e0b" : "#00ff87";
+      }
+      if (fuelLabelRef.current)
+        fuelLabelRef.current.textContent =
+          pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`;
       for (const p of planets) {
         const el = planetRowRefs.current[p.name];
         const b = bodies[p.name];
@@ -48,6 +75,24 @@ export default function HUDOverlay() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // One-time chatter when the tank empties. `fuelEmpty` flips on the order of
+  // seconds (not frames), and the store setter is change-guarded — but this
+  // component itself can remount mid dry-spell (photo mode, classic CV), so
+  // the module-level `dryAnnouncedThisSpell` (not component state) is what
+  // actually prevents a duplicate announcement on that remount. Reset on the
+  // true→false edge so the NEXT dry spell still announces.
+  useEffect(() => {
+    if (!fuelEmpty) {
+      dryAnnouncedThisSpell = false;
+      return;
+    }
+    if (dryAnnouncedThisSpell) return;
+    dryAnnouncedThisSpell = true;
+    useSpaceStore.getState().sendBroadcast(
+      "WARP CORE DRY // COLLECT A FUEL CRYSTAL TO RECHARGE — THRUSTERS STILL NOMINAL"
+    );
+  }, [fuelEmpty]);
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
@@ -62,8 +107,14 @@ export default function HUDOverlay() {
         <div ref={locRef}>NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
-        <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
+        <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
+        <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
+          <div ref={fuelFillRef} data-testid="hud-fuel-bar"
+            className="h-full rounded-full transition-none"
+            style={{ width: "100%", backgroundColor: "#00ff87" }} />
+        </div>
       </div>
 
       <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">
