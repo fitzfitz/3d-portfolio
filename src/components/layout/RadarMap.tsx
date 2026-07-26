@@ -94,21 +94,45 @@ export default function RadarMap() {
         ctx.globalAlpha = 1;
       }
 
-      // Fuel crystals: in-range only, never rim-clamped. 40 crystals at ~146
-      // units mean spacing means typically 1-3 are visible — the "where is my
-      // nearest fuel" cue without swamping the display.
+      // Fuel crystals: in-range only (3D, wrap-aware gate — a horizontal-only
+      // gate here used to draw ~57% of blips farther than RANGE with no
+      // altitude cue at all), never rim-clamped. 40 crystals at ~146 units
+      // mean spacing puts ~5.5 within a correct 160-unit 3D gate at once —
+      // the "where is my nearest fuel" cue without swamping the display.
       {
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = "#ffd24a";
         for (const s of crystalSlots) {
           if (!s.active) continue;
           const dx = wrapDelta(flight.x, s.x, COSMIC_BOUNDS);
           const dz = wrapDelta(flight.z, s.z, COSMIC_BOUNDS);
-          if (Math.hypot(dx, dz) > RANGE) continue; // out of range: simply absent
+          const dy = wrapDelta(flight.y, s.y, COSMIC_BOUNDS);
+          if (Math.hypot(dx, dz, dy) > RANGE) continue; // out of range: simply absent
           const { x: sx, up } = worldToRadar(dx, dz, a);
+          const px = sx * scale;
+          const py = -up * scale;
+          // Re-established every iteration: the chevron below changes
+          // globalAlpha, and without this reset that alpha would bleed into
+          // the NEXT crystal's dot in the loop.
+          ctx.globalAlpha = 0.85;
+          ctx.fillStyle = "#ffd24a";
           ctx.beginPath();
-          ctx.arc(c + sx * scale, c - up * scale, 1.5, 0, Math.PI * 2);
+          ctx.arc(c + px, c + py, 1.5, 0, Math.PI * 2);
           ctx.fill();
+          // Relative-altitude chevron, mirroring the planet pass above but
+          // scaled to the crystals' smaller 1.5px blip (vs. 2.4px for
+          // planets — same ~0.625 ratio applied to the apex offset and
+          // half-width). Crystals are never rim-clamped, so this is always
+          // the "not onRim" alpha treatment.
+          const cue = altitudeCue(dy);
+          if (cue.dir !== 0) {
+            ctx.globalAlpha = cue.alpha * 0.9;
+            const by = c + py - cue.dir * 3.75;
+            ctx.beginPath();
+            ctx.moveTo(c + px - 1.5625, by + cue.dir * 1.5625);
+            ctx.lineTo(c + px, by);
+            ctx.lineTo(c + px + 1.5625, by + cue.dir * 1.5625);
+            ctx.closePath();
+            ctx.fill();
+          }
         }
         ctx.globalAlpha = 1;
       }
@@ -146,7 +170,7 @@ export default function RadarMap() {
 
   return (
     <div className="absolute bottom-24 left-6 pointer-events-none rounded-full border border-primary/20 bg-black/50" style={{ width: SIZE, height: SIZE }}>
-      <canvas ref={canvasRef} width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} />
+      <canvas ref={canvasRef} width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} data-testid="radar-canvas" />
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] text-primary/50 font-mono">RADAR.SYS</div>
     </div>
   );
