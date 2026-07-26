@@ -47,18 +47,49 @@
 
 **Files:**
 - Create: `src/utils/fuel.ts`, `tests/fuel.test.ts`
+- Modify: `src/constants.ts` (add `SHIP_WARP_SPEED` beside the existing `SHIP_MAX_SPEED` on line 29)
+- Modify: `src/components/canvas/Spaceship.tsx:6,18` (import the constant instead of declaring it locally)
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `FUEL_MAX = 100`, `FUEL_DRAIN_PER_SEC = 8`, `FUEL_PER_CRYSTAL = 25`, `drainFuel(fuel: number, dt: number): number`, `refuel(fuel: number): number`. **Tasks 2, 4, 5 and 6 depend on these exact names.**
+- Produces: `FUEL_MAX = 100`, `FUEL_DRAIN_PER_SEC = 8`, `FUEL_PER_CRYSTAL = 25`, `drainFuel(fuel: number, dt: number): number`, `refuel(fuel: number): number`. **Tasks 2, 4, 5 and 6 depend on these exact names.** Also produces `SHIP_WARP_SPEED = 39` from `src/constants.ts`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Promote `WARP_SPEED` to a shared constant**
+
+Task 1's final test pins the design's central tuning claim — one full map crossing per
+tank — which multiplies fuel endurance by the warp speed. That speed currently lives as
+a module-local `const WARP_SPEED = 39` at `Spaceship.tsx:18`, invisible to any test,
+while its sibling `SHIP_MAX_SPEED = 10.8` is already exported from `src/constants.ts`.
+Left as-is the test would hardcode `39` and stay green if someone retuned warp — pinning
+nothing, which is the exact failure its commit message claims to prevent.
+
+In `src/constants.ts`, directly below `export const SHIP_MAX_SPEED = 10.8;` (line 29):
+
+```ts
+/** Warp velocity while boost is held. 3.6x cruise; fuel endurance is tuned against it. */
+export const SHIP_WARP_SPEED = 39;
+```
+
+In `src/components/canvas/Spaceship.tsx`, add `SHIP_WARP_SPEED` to the existing
+`../../constants` import on line 6, then replace line 18:
+
+```ts
+const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
+```
+
+Keeping the local alias means the two `WARP_SPEED` use sites in the file are untouched,
+so this step is a pure move with no behavioural change. Confirm with
+`grep -n 'WARP_SPEED' src/components/canvas/Spaceship.tsx` — the value 39 must appear
+only in `constants.ts`.
+
+- [ ] **Step 2: Write the failing test**
 
 `tests/fuel.test.ts`:
 
 ```ts
 import { describe, it, expect } from "vitest";
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, drainFuel, refuel } from "../src/utils/fuel";
+import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
 
 describe("drainFuel", () => {
   it("drains at the configured rate, scaled by dt", () => {
@@ -78,10 +109,16 @@ describe("drainFuel", () => {
 
   it("gives one full crossing of the map on a full tank", () => {
     // The design's central tuning claim: FUEL_MAX / drain = seconds of warp,
-    // times WARP_SPEED (39) should be about the 500-unit width of the world.
+    // times warp speed should be about the width of the world.
+    //
+    // Both sides read the real constants rather than literals, so retuning
+    // SHIP_WARP_SPEED or COSMIC_BOUNDS moves the assertion with them instead of
+    // leaving a stale 39 here that would keep passing while the intent broke.
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
-    expect(seconds * 39).toBeGreaterThan(450);
-    expect(seconds * 39).toBeLessThan(550);
+    const reach = seconds * SHIP_WARP_SPEED; // 12.5s x 39 u/s = 487.5 units
+    const crossing = COSMIC_BOUNDS * 2; // 500 units, edge to edge
+    expect(reach).toBeGreaterThan(crossing * 0.9);
+    expect(reach).toBeLessThan(crossing * 1.1);
   });
 });
 
@@ -104,12 +141,12 @@ describe("refuel", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 3: Run test to verify it fails**
 
 Run: `npx vitest run tests/fuel.test.ts`
 Expected: FAIL — cannot resolve `../src/utils/fuel`.
 
-- [ ] **Step 3: Write the implementation**
+- [ ] **Step 4: Write the implementation**
 
 `src/utils/fuel.ts`:
 
@@ -117,9 +154,9 @@ Expected: FAIL — cannot resolve `../src/utils/fuel`.
 /**
  * Warp fuel. Pure transforms so the tuning is testable without a scene.
  *
- * Numbers derive from the flight model rather than taste: WARP_SPEED is 39 u/s
- * (Spaceship.tsx) in a 500-unit-wide world (COSMIC_BOUNDS 250), so a 100 tank
- * draining 8/s gives 12.5s of warp ≈ 488 units — one full crossing per tank.
+ * Numbers derive from the flight model rather than taste: SHIP_WARP_SPEED is
+ * 39 u/s in a 500-unit-wide world (COSMIC_BOUNDS 250), so a 100 tank draining
+ * 8/s gives 12.5s of warp ≈ 488 units — one full crossing per tank.
  * That makes warp a decision rather than something you hold down by default.
  */
 export const FUEL_MAX = 100;
@@ -141,22 +178,31 @@ export function refuel(fuel: number): number {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run tests/fuel.test.ts`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Full suite and commit**
+- [ ] **Step 6: Confirm the constant move changed no behaviour**
+
+Run: `npm run build` — must succeed. Step 1 is a pure move, so a type error here
+means the import or the alias is wrong, not that the design changed.
+
+- [ ] **Step 7: Full suite and commit**
 
 Run: `npm test` — expected 126 tests (119 + 7).
 
 ```bash
-git add src/utils/fuel.ts tests/fuel.test.ts
+git add src/utils/fuel.ts tests/fuel.test.ts src/constants.ts src/components/canvas/Spaceship.tsx
 git commit -m "feat: fuel maths — drain and refuel, clamped
 
-Numbers derived from the flight model, not taste: WARP_SPEED 39 u/s in a
-500-unit world means a 100 tank at 8/s gives one crossing per tank. A test pins
-that relationship so retuning one constant cannot silently break the intent."
+Numbers derived from the flight model, not taste: warp at 39 u/s in a 500-unit
+world means a 100 tank at 8/s gives one crossing per tank. A test pins that
+relationship so retuning one constant cannot silently break the intent.
+
+WARP_SPEED moves from a module-local in Spaceship.tsx to SHIP_WARP_SPEED in
+constants.ts, beside the SHIP_MAX_SPEED it belongs with. Without that the test
+would have hardcoded 39 and stayed green through a retune — pinning nothing."
 ```
 
 ---
