@@ -238,7 +238,7 @@ export default function GlobalCanvas() {
           <PlasmaAnomalies ref={anomaliesRef} />
 
           {/* Pooled shooting star streaks */}
-          {!isLowPerf && <ShootingStars />}
+          {!isLowPerf && !reducedMotion && <ShootingStars />}
 
           {/* Warp tunnel around the ship during boost */}
           {!isLowPerf && !reducedMotion && <WarpTunnel />}
