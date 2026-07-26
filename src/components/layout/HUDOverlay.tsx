@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -20,6 +20,8 @@ export default function HUDOverlay() {
   const setLowPerf = useSpaceStore((s) => s.setLowPerf);
   const isMuted = useSpaceStore((s) => s.isMuted);
   const setMuted = useSpaceStore((s) => s.setMuted);
+  const reducedMotion = useSpaceStore((s) => s.reducedMotion);
+  const setReducedMotion = useSpaceStore((s) => s.setReducedMotion);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const isCoarse = useMediaQuery("(pointer: coarse)");
 
@@ -111,6 +113,17 @@ export default function HUDOverlay() {
               : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"}`}>
           {isLowPerf ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           <span>{isLowPerf ? "ENABLE_BLOOM" : "LOW_PERF"}</span>
+        </button>
+
+        <button
+          data-testid="hud-reduced-motion"
+          onClick={() => setReducedMotion(!reducedMotion, true)}
+          title="Freeze ambient motion; flight still works"
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
+            reducedMotion ? "border-amber-400/25 bg-amber-400/5 text-amber-300"
+              : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"}`}>
+          {reducedMotion ? <ZapOff className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+          <span>{reducedMotion ? "MOTION_OFF" : "REDUCE_MOTION"}</span>
         </button>
 
         <button
