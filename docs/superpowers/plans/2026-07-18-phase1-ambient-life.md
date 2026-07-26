@@ -1146,4 +1146,33 @@ Automated gates — all pass:
 - `npm run build`: pass (chunk-size warning only) · `npm run lint`: pass · `npm test`: 17/17 (wrapDelta ×3, chatterScheduler ×5, spaceStore ×9)
 - Asset budget: public/models unchanged at 3.9M — Phase 1 added zero asset bytes (all textures canvas-generated, all audio synthesized)
 
-Pending human browser checks (plan Task 8 checklist): sound behaviors + persistence, belt orbit + low-perf halving, cloud rotation, radar accuracy incl. boundary wrap, chatter cadence + zone interrupts, meteors, steady-flight profiler, StrictMode single-init.
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Sound behaviors + persistence — closed by `tests/e2e/audio.probe.mjs` (`no
+  AudioContext before user gesture`, `AudioContext is running after gesture`, `mute
+  writes localStorage`, `mute persists across reload`).
+- StrictMode single-init — closed by `tests/e2e/audio.probe.mjs` (`exactly one
+  AudioContext after gesture (StrictMode single-init)`).
+- Belt orbit + low-perf halving — closed by `tests/e2e/perf.probe.mjs` (`belt is 400
+  instances at full detail`, `belt halves to 200 in low-perf`).
+- Cloud rotation — closed by `tests/e2e/sky.probe.mjs` (`cloud layer rotates`).
+- Radar accuracy incl. boundary wrap — closed by `tests/e2e/flight.probe.mjs` (`bodies
+  telemetry is populated`, `every in-range blip lands inside the rim`, `radar canvas is
+  painting`, `radar canvas paints actual body-blip colours (not just chrome)`, `ship
+  actually crossed the wrap seam (z jumped by > bounds)`, `radar deltas stay continuous
+  across the wrap seam (dx/dy/dz)`).
+- Zone interrupts — closed by `tests/e2e/gameplay.probe.mjs` (`entering a zone
+  interrupts chatter with a new zone-specific line`).
+- Chatter cadence (the "atmospheric vs. spammy" feel) — NOT RUN — awaiting human pass,
+  see `docs/QA-CHECKLIST.md` §5.
+- Meteors — closed by `tests/e2e/sky.probe.mjs` (`a shooting star appears within 30s`).
+- Steady-flight profiler — closed by `tests/e2e/perf.probe.mjs` (`zero React commits
+  during 5s of steady flight`, gated on `ship displaced during the 5s hold (flight
+  input genuinely moved it)`). This is the same claim as phase2-deep-sky's "profiler
+  zero renders" — this project's longest-standing unverified performance assertion,
+  now genuinely measured as a React commit delta of 0 across 5s of real flight in true
+  deep space.
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

@@ -1531,9 +1531,35 @@ Automated gates — all pass:
 
 Static verification (Task 5 review, opus): zero per-frame React setState paths remain; physics conversion arithmetic exact; guarded store setters confirmed.
 
-Pending human browser checks (cannot be automated here):
-1. WASD flight feel at 60Hz vs high-refresh displays; warp FOV kick (now 86)
-2. React DevTools profiler: zero renders during steady flight
-3. Orbit lock/break on all 3 planets + contact portal; plasma spawn on click
-4. Visual: asteroid close-up detail, atmosphere rims, engine trail, warp streaks/CA, IBL brightness (fallback: cut Lightformer intensities ~30% if washed out)
-5. Touch emulation: joystick, boost, modal taps while locked, classic-CV toggle mid-drag
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- WASD flight feel across refresh rates; warp FOV kick — NOT RUN: no probe measures
+  frame-rate-independent physics or FOV-kick magnitude, and this specific claim isn't
+  among the 9 items in `docs/QA-CHECKLIST.md` (which cover banking §1 and climb/dive §2,
+  but not refresh-rate sensitivity or the FOV kick itself).
+- React DevTools profiler: zero renders during steady flight — closed by
+  `tests/e2e/perf.probe.mjs` (`zero React commits during 5s of steady flight`, gated on
+  `ship displaced during the 5s hold (flight input genuinely moved it)`). This was this
+  project's longest-standing unverified performance claim; it is now genuinely measured
+  as a React commit delta of 0 across 5s of real flight in true deep space.
+- Orbit lock/break — closed for one of the three planets by `tests/e2e/gameplay.probe.mjs`
+  (`approaching a planet engages orbit lock`, `locked ship holds a ring radius around the
+  moving planet`); not independently re-run against the other two planets, so "all 3
+  planets" is not literally verified.
+- Contact portal; plasma spawn on click — NOT RUN: no probe interacts with the contact
+  portal or spawns a plasma anomaly via click.
+- Visual quality (asteroid close-up detail, atmosphere rims, engine trail, warp
+  streaks/CA, IBL brightness) — NOT RUN: no probe judges rendered visual quality beyond
+  structural presence, and none of these are among the 9 `docs/QA-CHECKLIST.md` items.
+- Touch emulation: joystick, boost — closed by `tests/e2e/touch.probe.mjs` (`joystick
+  drag sets analog steer`, `joystick drag sets analog thrust`, `releasing the joystick
+  zeroes steer and thrust`, `BOOST sets the boost input`).
+- Touch emulation: modal taps while locked — NOT RUN under emulation; the real-device
+  half is `docs/QA-CHECKLIST.md` §8 — NOT RUN — awaiting human pass.
+- Touch emulation: classic-CV toggle mid-drag — NOT RUN: `showClassicCV` exists in
+  `src/store/spaceStore.ts` but no probe exercises it during a touch drag, and it isn't
+  among the 9 QA-checklist items.
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

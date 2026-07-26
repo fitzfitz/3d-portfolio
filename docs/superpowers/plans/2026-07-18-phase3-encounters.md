@@ -750,4 +750,19 @@ Headless-probe visual verification (screenshots captured via puppeteer rig):
 - Sweep frames: distant spiral galaxy sprite, purple/pink nebulae, sun corona (not blown out), planets/moons.
 - Jellyfish: J-summon verified — huge undulating tentacle trails on screen after pressing J and flying forward. NOTE: the plan's original NEAR_T=0.32 was numerically wrong (284 units out); path waypoint 2 moved to (30,18,70) and NEAR_T recomputed to 0.177 (closest approach ~75 units), fixed in 6227a60.
 
-Pending human checks: ship banking feel on curves, comet chatter announcement timing in normal play, low-perf 3-ship reduction.
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Ship banking feel on curves — NOT RUN — awaiting human pass, see
+  `docs/QA-CHECKLIST.md` §1.
+- Comet chatter announcement timing in normal play — capture-only: comet orbits are
+  not controllable, so `tests/e2e/gameplay.probe.mjs` watches for `cometNear` over a
+  20s window (note `comet proximity announcement`) rather than asserting pass/fail.
+  This item is also not one of the 9 `docs/QA-CHECKLIST.md` checks, so the timing feel
+  during extended normal play remains genuinely unconfirmed either way — the probe
+  capture is the only evidence that exists.
+- Low-perf 3-ship reduction — closed by `tests/e2e/perf.probe.mjs` (`cargo drops to 3
+  in low-perf`).
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

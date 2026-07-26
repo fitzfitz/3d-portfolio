@@ -437,4 +437,21 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 Gates: build ✓ · lint ✓ · tests 45/45 · public/models 4.8M (< 8MB). Name survival verified post-optimize via gltf-transform API: nodes CargoShip + RadarDish; materials HullBaked/Windows/EngineGlow/NavRed/NavGreen/Accent.
 Asset sizes: cargo_ship 202KB (baked 1024 color×AO webp), moon 39.5KB, comet_head 4.1KB.
 Probe: cratered moon visible orbiting with real surface shading near the video planet (two frames apart — orbital + textured); orbit-lock at warp approach still works; zone chatter fired.
-Pending human: close-up of a passing cargo ship (dish spin + greebles — they cross the play area every ~30s), comet head close-up, moon metallic-ness sanity (bake_utils sets metal 0.55 — flagged by Task 2 review).
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Cargo ship close-up (dish spin) — closed by `tests/e2e/assets.probe.mjs` (`cargo
+  radar dish spins`); the "greebles" surface-detail close-up judgment is not asserted
+  by any probe or QA-checklist item — NOT RUN for that portion.
+- Comet head close-up (tumble) — closed by `tests/e2e/assets.probe.mjs` (`comet head
+  tumbles`); close-up surface-detail judgment beyond the tumble motion is NOT RUN, same
+  caveat as above.
+- moon metalness — NOT a defect. The 0.55 default in `bake_utils.apply_baked_material`
+  is consumed only by `gen_cargo_ship.py` (a metal hull). `gen_moon.py:52` passes
+  `metallic=0.0`, and the shipped artifact confirms it: reading
+  `public/models/moon.glb` yields `MoonBaked metal=0.00 rough=0.90`
+  (asteroids 0.05/0.92, comet head 0.00/0.96). Guarded against regression by
+  `tests/e2e/assets.probe.mjs` ("moon material stays non-metallic").
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

@@ -334,4 +334,30 @@ Implementation notes: read `shardsCollected` inside the frame loop via `getState
 
 Gates: build ✓ · lint ✓ (one informational fast-refresh note on Scanner.tsx) · tests 57/57 · assets unchanged 4.8M.
 Probe-verified (screenshots): scanner full loop — target acquisition ("PLANET_VIDEO" label + ring UI), completed hold → project-flavored SCAN report typed on the radio; photo mode — clean frame, orbit-drag to a side profile, PHOTO_MODE tag only; SHARDS: 0/10 HUD counter live; cratered moons + cloud layer visible on approach. Zero page errors across runs.
-Pending human: shard pickup + collect-all fanfare (fly to one; pre-seed localStorage fitz-shards with 9 indices to test the fanfare fast), asteroid ram feel (bounce/shake/boom + 0.5s cooldown grinding), orbit-entry circling behind the dossier, touch SCAN button on device.
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Shard pickup — closed by `tests/e2e/gameplay.probe.mjs` (`ship is within the shard
+  pickup radius (precondition)`, `flying into a shard collects it`, `HUD shard counter
+  reflects the pickup`).
+- Collect-all fanfare — closed at the mechanism level by `tests/e2e/gameplay.probe.mjs`
+  (`collecting the 10th shard completes the set`, `collect-all broadcasts the
+  completion fanfare`); whether it *feels* celebratory folds into the general audio-mix
+  judgment — NOT RUN — awaiting human pass, see `docs/QA-CHECKLIST.md` §9.
+- Asteroid ram feel (bounce/shake/boom) — the underlying mechanism (impact registers,
+  rate-limited) is closed by `tests/e2e/gameplay.probe.mjs` (`ramming an asteroid
+  registers an impact`, `impacts are rate-limited to one per 0.5s`); whether it *feels*
+  weighted rather than floaty/machine-gun is NOT RUN — awaiting human pass, see
+  `docs/QA-CHECKLIST.md` §6.
+- Orbit-entry circling behind the dossier — NOT RUN: `tests/e2e/gameplay.probe.mjs`
+  confirms the orbit-lock ring-radius mechanism (`locked ship holds a ring radius
+  around the moving planet`), but no probe or QA-checklist item judges the visual
+  composition of the ship circling behind the fullscreen dossier modal.
+- Touch SCAN button on device — partially closed: `tests/e2e/touch.probe.mjs` verifies
+  SCAN under iPhone emulation (`scan target acquired near ${name}`, `SCAN button
+  appears when a target is in range`, `SCAN sets the scan input`), but emulation cannot
+  judge real-device thumb-reach ergonomics — that half is NOT RUN — awaiting human
+  pass, see `docs/QA-CHECKLIST.md` §8.
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

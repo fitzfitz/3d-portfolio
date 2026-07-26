@@ -415,6 +415,22 @@ Gates: build ✓ · lint ✓ · tests 40/40 (12 new: verticalStep ×7, toroidalD
 
 Probe-verified (screenshots): hold-Space climb to Y(28.7) with radar altitude marker up + vertical engine trail; 12s idle auto-level back to Y(0.4) with spawn card reappearing (3D spawn check); Shift-warp fires the full warp stack (tunnel + CA + chatter + 144 KM/S). New 4-cell HUD card (ALTITUDE: SPACE/C · WARP_DRIVE: SHIFT) rendering. Zero page errors.
 
-Pending human: climb/dive feel, C/X descend key comfort, touch RISE/DIVE on device, altitude-bar vs dead-ahead-blip overlap aesthetics (flagged by Task 3 review — looked acceptable in probe shots).
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Climb/dive feel — NOT RUN — awaiting human pass, see `docs/QA-CHECKLIST.md` §2.
+- C/X descend key comfort — NOT RUN — awaiting human pass, see `docs/QA-CHECKLIST.md`
+  §3.
+- Touch RISE/DIVE on device — partially closed: `tests/e2e/touch.probe.mjs` verifies
+  RISE/DIVE under iPhone emulation (`RISE releases the ascend input cleanly`, `holding
+  RISE sets ascend`, `holding RISE pitches the nose up`, `holding DIVE sets descend`,
+  `DIVE pitches the nose back down`), but emulation cannot judge real-device
+  thumb-reach ergonomics — that half is NOT RUN — awaiting human pass, see
+  `docs/QA-CHECKLIST.md` §8.
+- Altitude-bar vs dead-ahead-blip overlap aesthetics — NOT RUN — awaiting human pass,
+  see `docs/QA-CHECKLIST.md` §4.
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.
 
 Note: auto-level implemented as y *= 0.7^dt (~2s half-life) — matches spec intent; spec's "~8s"/0.915 wording was self-contradictory.
