@@ -403,14 +403,17 @@ Wrapping itself still happens; only the flash is suppressed.
 Append to `src/index.css`. Both selectors carry the same rules so the manual toggle works too:
 
 ```css
-/* Reduced motion: neutralise decorative CSS animation and transitions. The
-   media query covers the OS signal; the attribute covers the in-app toggle,
-   which a media query cannot see. Motion the visitor initiates (flight) is
-   driven by WebGL, not CSS, and is unaffected by either. */
+/* Reduced motion: neutralise decorative CSS animation and transitions.
+   Motion the visitor initiates (flight) is driven by WebGL, not CSS, and is
+   unaffected by either rule below.
+
+   The media query covers the OS signal — including the window before React
+   hydrates and can set the attribute — but excludes an explicit opt-out.
+   The attribute rule covers the in-app toggle, which a media query cannot see. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-reduced-motion="false"]) *,
+  :root:not([data-reduced-motion="false"]) *::before,
+  :root:not([data-reduced-motion="false"]) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -426,19 +429,11 @@ Append to `src/index.css`. Both selectors carry the same rules so the manual tog
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
-
-/* And the inverse: an explicit opt-out must restore motion even when the OS
-   flag is set, so the media-query block above must not win over it. */
-:root[data-reduced-motion="false"] *,
-:root[data-reduced-motion="false"] *::before,
-:root[data-reduced-motion="false"] *::after {
-  animation-duration: revert !important;
-  animation-iteration-count: revert !important;
-  transition-duration: revert !important;
-}
 ```
 
 **Why `0.01ms` rather than `none`:** animations that rely on a completion event still fire, so nothing waits forever for a transition that never runs. This is the standard approach.
+
+**Why the opt-out is a `:not()` exclusion rather than a third block that re-enables motion.** The obvious-looking inverse — a `[data-reduced-motion="false"]` block setting `animation-duration: revert !important` — is **wrong**. `revert` rolls a property back to the previous cascade origin, which for an author stylesheet means the user-agent value, so it would delete Tailwind's animation durations rather than restore them. Excluding the opt-out from the media query in the first place is the only correct shape: nothing to undo.
 
 - [ ] **Step 5: Add the HUD toggle**
 
