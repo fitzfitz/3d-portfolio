@@ -14,7 +14,7 @@ import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide
 import { useSpaceStore } from "./store/spaceStore";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
-import { projects } from "./constants";
+import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
 
 export default function App() {
@@ -42,14 +42,9 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setPhotoMode]);
 
-  const getPlanetDetails = () => {
-    if (activeZone === "saas") return projects[0];
-    if (activeZone === "video") return projects[1];
-    if (activeZone === "agent") return projects[2];
-    return null;
-  };
-
-  const planetProject = getPlanetDetails();
+  // `activeZone` IS the project id, so this is a lookup rather than a mapping.
+  // Returns undefined for the contact portal, which has no dossier.
+  const planetProject = projectById(activeZone);
 
   return (
     <div className="relative w-full min-h-screen bg-[#020108] text-white selection:bg-primary selection:text-black overflow-hidden">

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "saas",
+    "title": "Multi-Tenant SaaS Platform",
+    "role": "Lead Architect",
+    "duration": "2024 - Present",
+    "short": "Subdomain multitenancy with automated Stripe fee splits.",
+    "description": "Architected a scalable, secure subscription platform handling schema-isolated client tenants, dynamic subdomain resolution, and custom platform fee distribution using Stripe Connect. The platform currently orchestrates billing flows for 15,000+ active subscriptions with sub-millisecond route resolution.",
+    "tech": ["React", "TypeScript", "Hono", "PostgreSQL", "Stripe", "Docker"],
+    "color": "#00ff87"
+  },
+  {
+    "id": "video",
+    "title": "Viral Video Generator",
+    "role": "Core ML Engineer",
+    "duration": "2023 - 2024",
+    "short": "AI semantic scene parser and dynamic video clipper.",
+    "description": "Designed a Python-based processing pipeline parsing lengthy podcasts and webinars. Utilized OpenAI Whisper transcription matched with semantic scene analysis, facial framing detectors, and NLP emotion classifiers to clip high-retention vertical videos, exporting directly to social platform queues.",
+    "tech": ["Python", "PyTorch", "Whisper API", "OpenCV", "FFmpeg", "Vite"],
+    "color": "#00f0ff"
+  },
+  {
+    "id": "agent",
+    "title": "Custom Multi-Agent Architecture",
+    "role": "R&D AI Engineer",
+    "duration": "2024",
+    "short": "Closed-loop AI agent workflow automating local engineering.",
+    "description": "Built a custom multi-agent framework mapping hierarchy managers to coder and review agents. Operating within containerized workspaces, the system reads OpenSpec documents, plans feature files, runs local TDD cycles, and standardizes PR validation checks to optimize frontend engineering speeds.",
+    "tech": ["TypeScript", "Python", "LangChain", "OpenSpec", "Docker", "Portainer"],
+    "color": "#bd00ff"
+  }
+]

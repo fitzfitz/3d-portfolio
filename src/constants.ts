@@ -1,6 +1,12 @@
 import type { OrbitalElements } from "./utils/orbits";
+import projectsData from "./data/projects.json";
 
 export interface Project {
+  /**
+   * Stable identity, and also the planet's `name` and the store's `activeZone`
+   * value. Changing it renames the planet and breaks any saved reference to it.
+   */
+  id: string;
   title: string; role: string; duration: string; short: string;
   description: string; tech: string[]; color: string;
   /** Public repo URL. Falls back to the profile when a project has none. */
@@ -9,6 +15,13 @@ export interface Project {
 export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;
 }
+
+/**
+ * Zone ids the engine reserves for non-project destinations. A project may not
+ * claim one — `activeZone === "contact"` is the portal, and a project with that
+ * id would make flying to the portal open a project dossier instead.
+ */
+export const RESERVED_ZONE_IDS = ["contact"] as const;
 
 export const COSMIC_BOUNDS = 250;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
@@ -26,53 +39,49 @@ export const PORTAL_LOCK_R = 1.5;
 export const PORTAL_RETAIN_R = 3.4;
 export const PORTAL_ORBIT_R = 2.6;
 
-export const projects: Project[] = [
-  {
-    title: "Multi-Tenant SaaS Platform",
-    role: "Lead Architect",
-    duration: "2024 - Present",
-    short: "Subdomain multitenancy with automated Stripe fee splits.",
-    description:
-      "Architected a scalable, secure subscription platform handling schema-isolated client tenants, dynamic subdomain resolution, and custom platform fee distribution using Stripe Connect. The platform currently orchestrates billing flows for 15,000+ active subscriptions with sub-millisecond route resolution.",
-    tech: ["React", "TypeScript", "Hono", "PostgreSQL", "Stripe", "Docker"],
-    color: "#00ff87", // Neon Green
-  },
-  {
-    title: "Viral Video Generator",
-    role: "Core ML Engineer",
-    duration: "2023 - 2024",
-    short: "AI semantic scene parser and dynamic video clipper.",
-    description:
-      "Designed a Python-based processing pipeline parsing lengthy podcasts and webinars. Utilized OpenAI Whisper transcription matched with semantic scene analysis, facial framing detectors, and NLP emotion classifiers to clip high-retention vertical videos, exporting directly to social platform queues.",
-    tech: ["Python", "PyTorch", "Whisper API", "OpenCV", "FFmpeg", "Vite"],
-    color: "#00f0ff", // Neon Cyan
-  },
-  {
-    title: "Custom Multi-Agent Architecture",
-    role: "R&D AI Engineer",
-    duration: "2024",
-    short: "Closed-loop AI agent workflow automating local engineering.",
-    description:
-      "Built a custom multi-agent framework mapping hierarchy managers to coder and review agents. Operating within containerized workspaces, the system reads OpenSpec documents, plans feature files, runs local TDD cycles, and standardizes PR validation checks to optimize frontend engineering speeds.",
-    tech: ["TypeScript", "Python", "LangChain", "OpenSpec", "Docker", "Portainer"],
-    color: "#bd00ff", // Neon Purple
-  },
-];
+/**
+ * Project content lives in `src/data/projects.json` so it can be edited as data.
+ * JSON gets no compile-time checking against `Project`, so `tests/projects.test.ts`
+ * is that check — required fields, hex colours, unique non-reserved ids.
+ */
+export const projects: Project[] = projectsData;
 
-// Inclined living orbits around the sun at origin (spec §3). Periods are
-// minutes-slow: orbital speed stays ≪ ship speed so orbit-lock tracking is
-// trivial (tests/orbitInvariant.test.ts).
-export const planets: PlanetData[] = [
-  {
-    name: "saas", color: "#00ff87", size: 4.8,
-    orbit: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
-  },
-  {
-    name: "video", color: "#00f0ff", size: 4.8,
-    orbit: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
-  },
-  {
-    name: "agent", color: "#bd00ff", size: 4.8,
-    orbit: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
-  },
-];
+/** Planet physical size. Uniform today; per-planet if that ever changes. */
+const PLANET_SIZE = 4.8;
+
+/**
+ * Inclined living orbits around the sun at origin (spec §3), keyed by project id.
+ * Periods are minutes-slow: orbital speed stays ≪ ship speed so orbit-lock
+ * tracking is trivial (tests/orbitInvariant.test.ts).
+ *
+ * These stay in code rather than the content JSON because they are tuning
+ * constants, balanced against the lock radii above, the belt (r 40-70), the
+ * polar halo (80-95) and the portal at y=95. Adding a project therefore forces
+ * a deliberate orbital decision — `tests/projects.test.ts` fails on a project
+ * with no entry here, and on an entry with no project.
+ */
+export const PLANET_ORBITS: Record<string, OrbitalElements> = {
+  saas: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
+  video: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
+  agent: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
+};
+
+const byId = new Map(projects.map((p) => [p.id, p]));
+
+/** Resolves a zone id to its project. Undefined for the portal and unknowns. */
+export function projectById(zoneId: string | null): Project | undefined {
+  return zoneId === null ? undefined : byId.get(zoneId);
+}
+
+/**
+ * The planets the engine flies through, derived by joining each project to its
+ * orbital elements. Colour is single-sourced from the project — it used to be
+ * duplicated here and had to be kept in sync by hand.
+ *
+ * A project with no orbit is dropped rather than crashing at import time, since
+ * throwing here would take down the whole 3D canvas; the test suite is what
+ * catches it loudly.
+ */
+export const planets: PlanetData[] = projects
+  .filter((p) => p.id in PLANET_ORBITS)
+  .map((p) => ({ name: p.id, color: p.color, size: PLANET_SIZE, orbit: PLANET_ORBITS[p.id] }));
