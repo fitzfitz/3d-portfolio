@@ -22,6 +22,18 @@ export function useReducedMotion(): void {
   }, [queryMatches, manual, setReducedMotion]);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-reduced-motion", reducedMotion ? "true" : "false");
-  }, [reducedMotion]);
+    // "false" is a deliberate opt-out in CSS (index.css excludes it from the
+    // media-query block), so it must only be written for an explicit manual
+    // choice. Absent a choice, remove the attribute so the media query alone
+    // governs — otherwise an OS-reduce visitor with nothing stored would have
+    // "false" written first (useMediaQuery initialises false and only reads
+    // the query inside an effect), un-neutralising the CSS for a render cycle.
+    if (reducedMotion) {
+      document.documentElement.setAttribute("data-reduced-motion", "true");
+    } else if (manual) {
+      document.documentElement.setAttribute("data-reduced-motion", "false");
+    } else {
+      document.documentElement.removeAttribute("data-reduced-motion");
+    }
+  }, [reducedMotion, manual]);
 }

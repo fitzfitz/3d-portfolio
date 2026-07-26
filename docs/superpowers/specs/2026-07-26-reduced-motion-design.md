@@ -58,8 +58,15 @@ has been frozen — deliberately NOT an accumulator advanced by one privileged c
 - The module remembers `lastReal` and `t`.
 - On each call: if `realElapsed` differs from `lastReal`, advance `t` by `realElapsed - lastReal`
   when enabled (by nothing when disabled), then store `lastReal = realElapsed`.
-- So the first caller in a frame advances it and every later caller in that same frame reads the
-  identical value.
+- **Correction (final review):** callers within one frame do not read one identical value in
+  production. `THREE.Clock.getElapsedTime()` is itself mutating — it calls `getDelta()` internally
+  in three@0.185.1 — so each of the 14 call sites passes a slightly larger `realElapsed` than the
+  last within the same frame, and each nudges `t` forward by that small slice. The consequence is
+  nil: the total advance across the frame still equals real elapsed time, exactly as before this
+  module existed, and this is order-independent regardless of which consumer runs first. Only the
+  "identical value" phrasing was wrong; `tests/ambientTime.test.ts` only demonstrates the accumulator
+  with a synthetic constant argument, which is a different case from the mutating clock in
+  production.
 - `setAmbientEnabled(enabled: boolean)` — driven by the store.
 
 **Why not a privileged `advance(delta)` in `GlobalCanvas`:** that requires consumers to run after
@@ -116,6 +123,12 @@ burst is a direct response to input, which the principle in this spec permits.
 animation, so it is not a motion concern and stays as-is. Noted here only because its name suggests
 otherwise and a future reader would reasonably look for it in this list.
 
+**Deliberate residual exception:** `RadarMap.tsx`'s sweep line rotates continuously off
+`performance.now()`, ungated, inside a `<canvas>` 2D loop that CSS neutralisation cannot reach.
+Judged acceptable at 148px and ≤35% opacity — small enough, and low-contrast enough, that it does
+not read as the large-field motion `prefers-reduced-motion` targets. Recorded here so it is a
+decision rather than an omission; the code is intentionally left unchanged.
+
 Handled by a `@media (prefers-reduced-motion: reduce)` block in `index.css` that neutralises
 animation and transition durations, **plus** a `data-reduced-motion="true"` attribute on
 `<html>` carrying the same rules — so the manual toggle (§3) also drives CSS, which a bare media
@@ -162,7 +175,11 @@ assumption.
 - OS setting toggled mid-session → the existing `change` listener updates live, unless a manual
   choice is set, which continues to win.
 - Photo mode already freezes ship physics; reduced motion must not fight it. Photo mode with
-  reduced motion on is a fully static scene, which is coherent.
+  reduced motion on is a fully static scene, which is coherent. **Final review correction:** this
+  was not true as first implemented — the idle bob (photo mode and orbit lock, 0.05 units) and the
+  free-flight roll wobble (0.03 rad) in `Spaceship.tsx` ran on the real clock, unconditionally. Since
+  these are decorative flourishes rather than physics, they were moved onto `ambientTime()`, which
+  freezes with reduced motion on — so the sentence above now holds literally, not just in intent.
 - A frozen `ambientTime()` must not divide-by-zero or NaN any shader uniform that derives from it.
 
 ## 6. Testing
