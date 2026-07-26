@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
-import { REDUCED_MOTION_KEY } from "../utils/reducedMotionPreference";
+import { REDUCED_MOTION_KEY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
 
 // Module-level timeout handles for cancellation on re-entry
@@ -148,6 +148,14 @@ interface SpaceState {
 // agree, and calling the helper twice could in principle race with a
 // concurrent write.
 const storedReducedMotion = safeGetReducedMotion();
+// Synchronise the ambient clock here, at module scope, not inside a mount
+// effect: the effect that would otherwise do this (Task 3's media-query sync)
+// skips its own call when the choice is manual, since manual already reflects
+// the visitor's intent. Without this line a reload with reduced motion stored
+// ON would leave `enabled` at its `true` default until the visitor toggled
+// the HUD button twice — the store would say reduced motion is on while the
+// decorative clock kept advancing.
+setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, false));
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get) => ({
@@ -168,7 +176,7 @@ export const useSpaceStore = create<SpaceState>()(
     impactCount: 0,
     scanTarget: null,
     photoMode: false,
-    reducedMotion: storedReducedMotion ?? false,
+    reducedMotion: resolveReducedMotion(storedReducedMotion, false),
     reducedMotionManual: storedReducedMotion !== null,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
