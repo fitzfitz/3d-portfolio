@@ -6,7 +6,7 @@ import { COSMIC_BOUNDS } from "../src/constants";
 
 describe("isRejectedSpawn", () => {
   it("rejects inside the asteroid belt band", () => {
-    // Belt is radius 40-70 in the XZ plane.
+    // Belt is radius 40-70, measured as distance from the origin.
     expect(isRejectedSpawn(55, 0, 0, [])).toBe(true);
     expect(isRejectedSpawn(0, 0, 45, [])).toBe(true);
   });
@@ -41,9 +41,17 @@ describe("isRejectedSpawn", () => {
   });
 
   it("measures avoid distance in 3D, not just the XZ plane", () => {
-    // Directly above an avoid point, within its radius: must still reject.
-    const avoid = [{ x: 0, y: 0, z: 200, r: 20 }];
-    expect(isRejectedSpawn(0, 15, 200, avoid)).toBe(true);
+    // Discriminating on purpose. An XZ-only avoid check would drop the y term and
+    // compute distance 0 for a point directly above the avoid centre, rejecting
+    // it — so the ACCEPT case below is what actually catches that regression.
+    // Origin radius 25 also sits clear of the belt band (40-70), so only the
+    // avoid logic decides these two verdicts.
+    const avoid = [{ x: 0, y: 0, z: 0, r: 20 }];
+    // Inside the sphere in 3D: reject.
+    expect(isRejectedSpawn(0, 15, 0, avoid)).toBe(true);
+    // Directly above it but outside its radius in 3D: accept. An XZ-only test
+    // would measure 0 here and wrongly reject.
+    expect(isRejectedSpawn(0, 25, 0, avoid)).toBe(false);
   });
 });
 
