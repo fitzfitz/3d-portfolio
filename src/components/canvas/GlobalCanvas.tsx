@@ -156,6 +156,7 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
 export default function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const isWarping = useSpaceStore((s) => s.isWarping);
+  const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
@@ -239,7 +240,7 @@ export default function GlobalCanvas() {
           {!isLowPerf && <ShootingStars />}
 
           {/* Warp tunnel around the ship during boost */}
-          {!isLowPerf && <WarpTunnel />}
+          {!isLowPerf && !reducedMotion && <WarpTunnel />}
 
           {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
           <SpaceJellyfish />
@@ -275,7 +276,7 @@ export default function GlobalCanvas() {
                 const effects = [
                   <Bloom key="bloom" intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />,
                   <Vignette key="vignette" eskil={false} offset={0.28} darkness={0.72} />,
-                  <ChromaticAberration key="ca" offset={isWarping ? [0.0022, 0.0014] : [0, 0]} />,
+                  <ChromaticAberration key="ca" offset={isWarping && !reducedMotion ? [0.0022, 0.0014] : [0, 0]} />,
                 ];
                 if (sunMesh) {
                   effects.push(

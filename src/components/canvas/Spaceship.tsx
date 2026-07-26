@@ -401,10 +401,12 @@ export default function Spaceship() {
     // Shake intentionally freezes while orbit-locked (early return above skips
     // this block entirely) and resumes decaying from wherever it left off
     // once orbit breaks.
-    if (shake.current > 0.001) {
+    if (shake.current > 0.001 && !useSpaceStore.getState().reducedMotion) {
       state.camera.position.x += (Math.random() - 0.5) * shake.current;
       state.camera.position.y += (Math.random() - 0.5) * shake.current;
       state.camera.position.z += (Math.random() - 0.5) * shake.current;
+    }
+    if (shake.current > 0.001) {
       shake.current *= Math.pow(0.03, dt);
     }
 
