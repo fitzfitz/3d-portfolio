@@ -3,6 +3,10 @@ import { withPage, hold, settle, readStore, pollUntil } from "./harness.mjs";
 export default async function run() {
   return withPage({ label: "fuel" }, async (page, checks) => {
     const fuel = () => page.evaluate(() => window.__fitz.flight.fuel);
+    const position = () => page.evaluate(() => {
+      const f = window.__fitz.flight;
+      return { x: f.x, y: f.y, z: f.z };
+    });
     const activeCrystals = () =>
       page.evaluate(() => (window.__fitz.crystals ?? []).filter((c) => c.active).length);
 
@@ -11,40 +15,59 @@ export default async function run() {
     const n0 = await activeCrystals();
     checks.check("field starts at the cap", n0 === 40, `active=${n0}`);
 
-    // Cruising must not drain.
+    // Cruising must not drain. Paired with a displacement assertion: without
+    // it, a KeyW keypress that silently failed to register (focus loss,
+    // pointer-lock gate, a listener regression) would produce the exact same
+    // "fuel unchanged" result as a correctly-implemented non-draining cruise,
+    // making the check pass for the wrong reason.
     const beforeCruise = await fuel();
+    const cruiseStart = await position();
     await hold(page, ["KeyW"], 1500);
+    const cruiseEnd = await position();
+    const cruiseDisplacement = Math.hypot(
+      cruiseEnd.x - cruiseStart.x, cruiseEnd.y - cruiseStart.y, cruiseEnd.z - cruiseStart.z);
     checks.check("cruising does not drain fuel", (await fuel()) === beforeCruise,
       `${beforeCruise} -> ${await fuel()}`);
+    checks.check("the cruise hold actually flew (so the check above isn't vacuous)",
+      cruiseDisplacement > 0.5, `displacement=${cruiseDisplacement.toFixed(2)}`);
 
-    // Warping must drain, at roughly the configured rate. A fixed wall-clock
-    // hold assumes 1 real second delivers ~1 simulated second of physics —
-    // false here: Spaceship.tsx clamps dt per frame, and this environment's
-    // actual frame rate runs well below real-time under headless SwiftShader.
-    // Measured directly: a blind 2s hold, and even a 2s hold with reads
-    // interleaved every 20-200ms (a CDP round-trip that should tick a frame
-    // forward — see harness.mjs's hold() doc comment and touch.probe.mjs's
-    // DIVE hold), both landed at burned=5.6-6.4, i.e. only ~0.7s of
-    // *simulated* warp per ~2.5s of *wall* time on this machine. That rules
-    // out CDP-traffic starvation as the cause — interleaving harder doesn't
-    // move the number — so lengthening a blind wait or polling faster can't
-    // fix it either. Instead, poll for the *outcome* a real 2 simulated
-    // seconds at the configured 8/sec should produce (~16 burned) rather than
-    // for a wall-clock duration, so the hold runs exactly as long as this
-    // environment's actual frame rate requires (measured: ~6.1s real to reach
-    // it). A configured-rate regression still fails this: if drain were far
-    // off, the poll would run to its timeout without reaching 16 and `burned`
-    // would land outside the bound below.
+    // Warping must drain the tank at all, and the Shift+W path must actually
+    // route through the drain. The exact 8/sec rate is already pinned
+    // deterministically and frame-rate-independently in tests/fuel.test.ts
+    // (drainFuel(100,1)===92, drainFuel(100,0.5)===96) — a wall-clock-driven
+    // e2e probe cannot add a real rate assertion on top of that without
+    // exposing a simulated-time accumulator on the debug bridge purely for
+    // this test, which is unnecessary given that unit coverage. So this
+    // probe's job here is integration only, not rate measurement: the next
+    // reader should NOT "restore" a rate assertion on `burned` — the harness
+    // cannot support one.
+    //
+    // Poll for the outcome (burned reaching ~16, what 2 simulated seconds at
+    // the configured 8/sec would produce) rather than holding for a fixed
+    // wall-clock duration: this environment's headless-SwiftShader frame rate
+    // runs well under real-time — measured directly, ~13 rAF ticks fire over
+    // ~2.5s of wall-clock regardless of polling interval (tried 0/20/50/200ms,
+    // all identical) — so a fixed-duration hold under-drains reproducibly
+    // (measured burned=5.6-6.4 over a nominal 2s hold). pollUntil's own {ok}
+    // is asserted explicitly below: a timeout must fail loudly rather than
+    // pass silently on whatever partial burn happened to accumulate — the
+    // poll's exit condition (burned>=16) is not re-asserted afterward, since
+    // that would just restate what the loop already guarantees on a true exit.
     const beforeWarp = await fuel();
     for (const c of ["KeyW", "ShiftLeft"]) await page.keyboard.down(c);
-    await pollUntil(async () => (beforeWarp - (await fuel())) >= 16,
+    const drainPoll = await pollUntil(async () => (beforeWarp - (await fuel())) >= 16,
       { timeoutMs: 15_000, intervalMs: 300 });
     const afterWarp = await fuel();
     for (const c of ["KeyW", "ShiftLeft"]) await page.keyboard.up(c);
     const burned = beforeWarp - afterWarp;
-    checks.check("warping drains fuel", burned > 0, `burned ${burned.toFixed(1)}`);
-    checks.check("drain is near the configured 8/sec", burned > 8 && burned < 24,
-      `burned ${burned.toFixed(1)}`);
+    checks.check("warping drains the tank toward empty", drainPoll.ok && burned > 0,
+      `ok=${drainPoll.ok} burned=${burned.toFixed(1)}`);
+    // Sanity bound only, not a rate assertion: this bounds how far a single
+    // 300ms poll interval can overshoot the ~16 target once burned crosses
+    // it, nothing more. It is not evidence of the 8/sec rate — that is pinned
+    // in tests/fuel.test.ts, referenced above.
+    checks.check("drain overshoot past the target stays small", burned < 24,
+      `burned=${burned.toFixed(1)}`);
 
     // Burn it dry, then prove warp is dead and cruise is not.
     await page.evaluate(() => { window.__fitz.flight.fuel = 0; });
@@ -67,8 +90,13 @@ export default async function run() {
       `speed with Shift held on an empty tank: ${speedOnEmpty.toFixed(2)} (cruise max is 10.8, warp is 39)`);
     checks.check("cruise still works at zero fuel (nobody is stranded)", speedOnEmpty > 1,
       `speed=${speedOnEmpty.toFixed(2)} — the ship is still moving under thrust`);
-    // Fuel must not have drained while warp was gated off.
-    checks.check("an empty tank does not drain further", (await fuel()) === 0, `fuel=${await fuel()}`);
+    // drainFuel clamps at 0 unconditionally, so this cannot catch "drained
+    // further" — that property holds no matter whether the gate works. What
+    // it actually tests is the clamp/no-underflow property: the store keeps
+    // reporting exactly 0, never negative and never spuriously replenished,
+    // while warp is (correctly) gated off on an empty tank.
+    checks.check("fuel stays clamped at exactly zero (no underflow) while gated off",
+      (await fuel()) === 0, `fuel=${await fuel()}`);
 
     // Refuel by flying onto a crystal.
     const target = await page.evaluate(() => {
@@ -80,7 +108,9 @@ export default async function run() {
     if (target) {
       await settle(page, 1500);
       const refuelled = await fuel();
-      checks.check("touching a crystal refuels", refuelled >= 25, `fuel=${refuelled}`);
+      // Fuel was exactly 0 beforehand and FUEL_PER_CRYSTAL is 25, so the
+      // exact value is available and strictly stronger than a one-sided bound.
+      checks.check("touching a crystal refuels", refuelled === 25, `fuel=${refuelled}`);
     }
 
     // Cap is respected as the field refills.
