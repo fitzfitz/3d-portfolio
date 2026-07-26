@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfishPath";
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
 import { setScannable } from "../../utils/scannables";
+import { ambientTime } from "../../utils/ambientTime";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
 // Mirrored in JS below for the swim surge — keep the two in sync.
@@ -131,7 +132,7 @@ export default function SpaceJellyfish() {
 
   useFrame((state) => {
     if (!groupRef.current) return;
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     timeRef.current = time;
     material.uniforms.uTime.value = time;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;

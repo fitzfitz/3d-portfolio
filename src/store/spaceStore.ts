@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
+import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
+import { setAmbientEnabled } from "../utils/ambientTime";
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -21,6 +23,41 @@ function safeSetMuted(v: boolean) {
     if (typeof localStorage !== "undefined") localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
   } catch {
     /* ignore */
+  }
+}
+
+// Three states — "1", "0", or absent — because absent (no choice made) must
+// stay distinguishable from an explicit false, which has to beat a media
+// query that says true.
+function safeGetReducedMotion(): boolean | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(REDUCED_MOTION_KEY);
+    return raw === null ? null : raw === "1";
+  } catch {
+    return null;
+  }
+}
+function safeSetReducedMotion(v: boolean) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(REDUCED_MOTION_KEY, v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+// `matchMedia` can be absent (old browser, SSR-ish context) — degrade to "no
+// preference" rather than throwing. Seeding from the live query at module
+// scope (rather than assuming `false`) closes a startup gap for an OS-reduce
+// visitor with nothing stored: without it, `reducedMotion` and the ambient
+// clock would both start as if no preference were set, and only flip once
+// the sync effect in useReducedMotion ran after first paint.
+function safeGetReducedMotionQueryMatches(): boolean {
+  try {
+    return typeof window !== "undefined" && typeof window.matchMedia === "function"
+      && window.matchMedia(REDUCED_MOTION_QUERY).matches;
+  } catch {
+    return false;
   }
 }
 
@@ -101,6 +138,8 @@ interface SpaceState {
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
+  reducedMotion: boolean;
+  reducedMotionManual: boolean;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
@@ -117,7 +156,22 @@ interface SpaceState {
   bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
+  setReducedMotion: (v: boolean, manual?: boolean) => void;
 }
+
+// Read once into a module-level const: the two derived fields below must
+// agree, and calling the helper twice could in principle race with a
+// concurrent write.
+const storedReducedMotion = safeGetReducedMotion();
+const initialReducedMotionQueryMatches = safeGetReducedMotionQueryMatches();
+// Synchronise the ambient clock here, at module scope, not inside a mount
+// effect: the effect that would otherwise do this (Task 3's media-query sync)
+// skips its own call when the choice is manual, since manual already reflects
+// the visitor's intent. Without this line a reload with reduced motion stored
+// ON would leave `enabled` at its `true` default until the visitor toggled
+// the HUD button twice — the store would say reduced motion is on while the
+// decorative clock kept advancing.
+setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches));
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get) => ({
@@ -138,6 +192,8 @@ export const useSpaceStore = create<SpaceState>()(
     impactCount: 0,
     scanTarget: null,
     photoMode: false,
+    reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
+    reducedMotionManual: storedReducedMotion !== null,
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -174,5 +230,11 @@ export const useSpaceStore = create<SpaceState>()(
     bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
+    setReducedMotion: (v, manual = false) => {
+      if (manual) safeSetReducedMotion(v);
+      // Ambient motion is the inverse of reduced motion.
+      setAmbientEnabled(!v);
+      set((s) => ({ reducedMotion: v, reducedMotionManual: s.reducedMotionManual || manual }));
+    },
   }))
 );

@@ -12,6 +12,7 @@ import {
 } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { orbitPosition } from "../../utils/orbits";
+import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
@@ -101,7 +102,7 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
 
   // Animate the buffer geometry positions inside useFrame
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     if (pointsRef.current) {
       const geo = pointsRef.current.geometry;
       const posAttr = geo.getAttribute("position") as THREE.BufferAttribute;
@@ -178,7 +179,7 @@ function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, sp
   useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = ambientTime(state.clock.getElapsedTime());
     if (orbitRef.current) orbitRef.current.rotation.y = phase + t * speed;
     if (meshRef.current) meshRef.current.rotation.y = t * spin;
   });
@@ -251,7 +252,7 @@ export default function SpacePlanets() {
 
   // Proximity attraction logic
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
 
     // 0. Orbit drive: single writer of `bodies` (spec §3)
     planets.forEach((p, i) => {

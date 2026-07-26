@@ -6,9 +6,11 @@ import { fitzDebug } from "./bridge";
 export default function DebugBridge() {
   const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
+  const camera = useThree((s) => s.camera);
   useEffect(() => {
     fitzDebug.scene = scene;
     fitzDebug.gl = gl;
-  }, [scene, gl]);
+    fitzDebug.camera = camera;
+  }, [scene, gl, camera]);
   return null;
 }

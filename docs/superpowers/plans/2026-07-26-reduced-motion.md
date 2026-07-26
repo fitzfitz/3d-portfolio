@@ -403,14 +403,17 @@ Wrapping itself still happens; only the flash is suppressed.
 Append to `src/index.css`. Both selectors carry the same rules so the manual toggle works too:
 
 ```css
-/* Reduced motion: neutralise decorative CSS animation and transitions. The
-   media query covers the OS signal; the attribute covers the in-app toggle,
-   which a media query cannot see. Motion the visitor initiates (flight) is
-   driven by WebGL, not CSS, and is unaffected by either. */
+/* Reduced motion: neutralise decorative CSS animation and transitions.
+   Motion the visitor initiates (flight) is driven by WebGL, not CSS, and is
+   unaffected by either rule below.
+
+   The media query covers the OS signal — including the window before React
+   hydrates and can set the attribute — but excludes an explicit opt-out.
+   The attribute rule covers the in-app toggle, which a media query cannot see. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :root:not([data-reduced-motion="false"]) *,
+  :root:not([data-reduced-motion="false"]) *::before,
+  :root:not([data-reduced-motion="false"]) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -426,19 +429,11 @@ Append to `src/index.css`. Both selectors carry the same rules so the manual tog
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
-
-/* And the inverse: an explicit opt-out must restore motion even when the OS
-   flag is set, so the media-query block above must not win over it. */
-:root[data-reduced-motion="false"] *,
-:root[data-reduced-motion="false"] *::before,
-:root[data-reduced-motion="false"] *::after {
-  animation-duration: revert !important;
-  animation-iteration-count: revert !important;
-  transition-duration: revert !important;
-}
 ```
 
 **Why `0.01ms` rather than `none`:** animations that rely on a completion event still fire, so nothing waits forever for a transition that never runs. This is the standard approach.
+
+**Why the opt-out is a `:not()` exclusion rather than a third block that re-enables motion.** The obvious-looking inverse — a `[data-reduced-motion="false"]` block setting `animation-duration: revert !important` — is **wrong**. `revert` rolls a property back to the previous cascade origin, which for an author stylesheet means the user-agent value, so it would delete Tailwind's animation durations rather than restore them. Excluding the opt-out from the media query in the first place is the only correct shape: nothing to undo.
 
 - [ ] **Step 5: Add the HUD toggle**
 
@@ -894,3 +889,56 @@ Record: gate outcomes, the probe's check count, what was verified by hand, and a
 **Known risks, stated rather than hidden.** Task 8's camera-shake and flash-overlay assertions are the two least certain in the plan; both carry explicit instructions to adapt the mechanism without weakening the claim, and to prefer an inert `data-testid` over any production debug hook. Task 6's `SpacePlanets.tsx:254` edit is the highest-consequence single line, since it freezes the shared body telemetry that orbit-lock, radar and scan all read.
 
 **Ordering.** Task 1 before 5, 6 (they import `ambientTime`). Task 2 before 3, 4, 7, 8 (they read the store flag). Task 4 adds the `reducedMotion` selector in `GlobalCanvas` that Task 7 reuses — if executed out of order, Task 7 must add it itself.
+
+---
+
+## Verification (2026-07-27)
+
+**Gates:** `npm run build` clean · `npm run lint` exactly the two long-standing pre-existing warnings
+(`Atmosphere.tsx:54`, `Scanner.tsx:9`) · `npm test` **119/119 across 23 files** · `npm run test:e2e`
+**112 checks across 10 probes, 2 capture-only** · **`perf.probe.mjs` reports `commits=0`** ·
+`__fitz` absent from `dist/assets/*.js`.
+
+The `commits=0` figure is the one that mattered most: this feature touched 13 canvas files including
+`Spaceship.tsx`, the hottest frame loop in the project, and a single stray selector subscription would
+have broken the zero-React-renders-during-flight guarantee silently. Gating in the hot loop goes through
+`useSpaceStore.getState()` throughout; selectors appear only where flight does not render.
+
+### What the final review caught that eight task reviews did not
+
+**`Spaceship.tsx`'s orbit lock revolved the camera forever, ungated** — `orbitAngle += dt * 0.25`, about
+25s per revolution, sweeping the whole viewport. Involuntary on two counts: the lock engages
+automatically on proximity, and the branch returns before any steering input is read. Freezing everything
+else made it *more* salient, since the camera became the only thing moving. This was the single genuine
+accessibility defect in the branch and no per-task review could see it, because each task was scoped to
+its own brief while this line belonged to none of them.
+
+Fixed by gating the revolution while leaving the `frameLerp` easings intact, so the ship still glides to
+station and settles, and zeroing `flight.speed` so the HUD does not report tangential speed for a parked
+ship. The scoped re-review mutated the gate back to unconditional and measured 0.04 gated versus 4.41
+ungated — a 100x margin confirming the fix is load-bearing.
+
+Also fixed: the cargo radar dish spun on real `dt` inside an otherwise-converted file, so ships halted
+mid-route with dishes turning; and `data-reduced-motion="false"` was written for "no preference" when the
+CSS treats that value as an explicit opt-out, briefly un-neutralising CSS for OS-reduce visitors.
+
+### Honest scope notes
+
+- `RadarMap.tsx`'s sweep rotates continuously off `performance.now()` inside a 2D canvas that CSS
+  neutralisation cannot reach. Judged acceptable at 148px and ≤35% opacity, and now recorded in the spec
+  as a deliberate exception rather than an omission.
+- `PlasmaAnomalies.tsx` calls `setAnomalies` every frame while any anomaly is alive — a pre-existing
+  per-frame `setState` that violates the zero-commits guarantee and escapes `perf.probe.mjs` because that
+  probe's steady state never spawns one. Untouched here; filed as follow-up.
+- The spec's claim that same-frame callers read one identical `ambientTime` value is false in production,
+  because `THREE.Clock.getElapsedTime()` is itself mutating. Consequence is nil — the per-frame total
+  still equals wall-clock time — and the description has been corrected rather than the code.
+
+### Where the defects actually were
+
+Both fix rounds during implementation were defects in **this plan**, not in the implementations: a test
+reset that hid the cold-start branch, and persistence that would have visually ignored a saved preference
+while the store and HUD both reported it active. Four further vacuous checks were caught by implementers
+or reviewers — a camera-shake sample taken before the ram, a flash assertion that never triggered a wrap,
+a meteor detector counting the ship's engine streaks, and a shard-pickup coupling I described that does
+not exist. Tasks 3 through 7 then landed with zero findings.

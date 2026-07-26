@@ -8,6 +8,7 @@ beforeEach(() => {
     showClassicCV: false, isNearSpawn: true, isTeleporting: false, isMuted: false,
     cometNear: false, altitudeWarn: false,
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
+    reducedMotion: false, reducedMotionManual: false,
   });
 });
 
@@ -131,5 +132,29 @@ describe("spaceStore", () => {
   it("bumpImpact increments", () => {
     useSpaceStore.getState().bumpImpact();
     expect(useSpaceStore.getState().impactCount).toBe(1);
+  });
+});
+
+// The reduced-motion flag is seeded from localStorage at module load, before
+// any React effect runs. If the ambient clock weren't synced at that same
+// moment, a reload with reduced motion stored ON would say "reduced motion is
+// on" while the decorative clock kept advancing until the visitor toggled the
+// HUD button twice — the sync hook (which skips its own call when the choice
+// is manual) never gets a chance to close it. vi.resetModules() + a dynamic
+// import reproduces a genuine cold module load, same pattern as the "cold
+// start" case in tests/ambientTime.test.ts.
+describe("reducedMotion / ambientTime sync at module load", () => {
+  it("freezes the ambient clock immediately when reduced motion is stored on", async () => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => (k === "fitz-reduced-motion" ? "1" : null),
+      setItem: () => {},
+    });
+    const ambient = await import("../src/utils/ambientTime");
+    const freshStore = await import("../src/store/spaceStore");
+    expect(freshStore.useSpaceStore.getState().reducedMotion).toBe(true);
+    expect(ambient.ambientTime(5)).toBe(0); // seeds the cold-start clock
+    expect(ambient.ambientTime(6)).toBe(0); // frozen: would be 1 if still enabled
+    vi.unstubAllGlobals();
   });
 });

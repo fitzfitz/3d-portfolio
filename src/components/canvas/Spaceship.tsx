@@ -10,6 +10,7 @@ import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
+import { ambientTime } from "../../utils/ambientTime";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -159,6 +160,10 @@ export default function Spaceship() {
     const dt = Math.min(delta, 0.05); // clamp tab-switch spikes
     const store = useSpaceStore.getState();
     const time = state.clock.getElapsedTime();
+    // Sub-perceptual idle flourishes (bob, roll wobble) are decorative, not
+    // physics, so they freeze under reduced motion like any other Tier 2
+    // effect — the ship's position/physics themselves stay on `time` (spec §1).
+    const ambient = ambientTime(time);
 
     // Engine trail fades with |pitch|: pitched flight puts the chase cam almost
     // on the trail axis, where the billboarded ribbon projects as a giant beam
@@ -176,7 +181,7 @@ export default function Spaceship() {
       // thruster glow + its existing Trail — at whatever pos.current was when
       // photo mode was toggled on. flight.x/y/z are republished from the same
       // frozen pos.current, so they hold steady (nothing here advances them).
-      shipRef.current.position.y = pos.current.y + Math.sin(time * 2) * 0.05;
+      shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.4);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
@@ -219,7 +224,11 @@ export default function Spaceship() {
       if (live) lockedCenter.current.set(live.x, live.y, live.z);
 
       orbitRadius.current += (targetLockRadius.current - orbitRadius.current) * frameLerp(0.03, dt);
-      orbitAngle.current += dt * 0.25;
+      // Continuing revolution is the involuntary, large-field motion reduced
+      // motion targets — gate only this increment. The easings above/below
+      // (radius settling, bank/level-out) still run so the ship glides to its
+      // orbital station and settles rather than snapping or hanging mid-approach.
+      if (!store.reducedMotion) orbitAngle.current += dt * 0.25;
       pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;
       pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * orbitRadius.current;
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
@@ -229,14 +238,16 @@ export default function Spaceship() {
       vel.current.set(0, 0, 0);
       pitchVel.current = 0;
       shipRef.current.position.copy(pos.current);
-      shipRef.current.position.y += Math.sin(time * 2) * 0.05; // bob
+      shipRef.current.position.y += Math.sin(ambient * 2) * 0.05; // bob
       shipRef.current.rotation.set(-pitch.current, angle.current, roll.current, "YXZ");
       if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.35);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.heading = angle.current;
       flight.pitch = pitch.current;
-      flight.speed = orbitRadius.current * 0.25; // tangential speed for the HUD
+      // A parked ship reports zero tangential speed under reduced motion,
+      // matching the frozen orbitAngle above.
+      flight.speed = store.reducedMotion ? 0 : orbitRadius.current * 0.25; // tangential speed for the HUD
 
       applyChaseCam(false);
       return;
@@ -328,7 +339,7 @@ export default function Spaceship() {
     // YXZ: yaw first, then pitch about the yawed axis — with the default XYZ,
     // pitch degrades into roll as heading approaches ±90° (see tests/shipPitchOrder.test.ts)
     shipRef.current.rotation.set(
-      -pitch.current + Math.sin(time * 2) * 0.03,
+      -pitch.current + Math.sin(ambient * 2) * 0.03,
       angle.current,
       roll.current,
       "YXZ"
@@ -401,10 +412,12 @@ export default function Spaceship() {
     // Shake intentionally freezes while orbit-locked (early return above skips
     // this block entirely) and resumes decaying from wherever it left off
     // once orbit breaks.
-    if (shake.current > 0.001) {
+    if (shake.current > 0.001 && !useSpaceStore.getState().reducedMotion) {
       state.camera.position.x += (Math.random() - 0.5) * shake.current;
       state.camera.position.y += (Math.random() - 0.5) * shake.current;
       state.camera.position.z += (Math.random() - 0.5) * shake.current;
+    }
+    if (shake.current > 0.001) {
       shake.current *= Math.pow(0.03, dt);
     }
 

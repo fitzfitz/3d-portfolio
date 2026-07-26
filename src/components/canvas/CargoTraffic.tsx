@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { ambientTime } from "../../utils/ambientTime";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -69,7 +70,7 @@ export default function CargoTraffic() {
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
     for (let i = 0; i < count; i++) {
       const def = SHIPS[i];
       const ship = ships[i];
@@ -100,8 +101,9 @@ export default function CargoTraffic() {
       const burn = 2.6 + Math.sin(time * 7.3 + i * 2.3) * 0.6 + Math.sin(time * 13.7 + i) * 0.3;
       for (const m of ship.engineMats) m.emissiveIntensity = burn;
 
-      // Radar dish: constant spin
-      if (ship.dish) ship.dish.rotation.z += 1.2 * dt;
+      // Radar dish: constant spin, on the ambient clock like everything else
+      // in this loop (dt would keep it spinning under reduced motion).
+      if (ship.dish) ship.dish.rotation.z = time * 1.2;
     }
   });
 

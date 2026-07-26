@@ -79,3 +79,30 @@ canvas {
 .glow-pulse {
   animation: pulseGlow 3s infinite alternate;
 }
+
+/* Reduced motion: neutralise decorative CSS animation and transitions.
+   Motion the visitor initiates (flight) is driven by WebGL, not CSS, and is
+   unaffected by either rule below.
+
+   The media query covers the OS signal — including the window before React
+   hydrates and can set the attribute — but excludes an explicit opt-out.
+   The attribute rule covers the in-app toggle, which a media query cannot see. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduced-motion="false"]) *,
+  :root:not([data-reduced-motion="false"]) *::before,
+  :root:not([data-reduced-motion="false"]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

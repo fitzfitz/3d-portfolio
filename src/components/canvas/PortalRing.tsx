@@ -1,6 +1,7 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { ambientTime } from "../../utils/ambientTime";
 
 export default function PortalRing() {
   const outerRingRef = useRef<THREE.Mesh>(null);
@@ -23,7 +24,7 @@ export default function PortalRing() {
   }, []);
 
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
+    const time = ambientTime(state.clock.getElapsedTime());
 
     // Rotate the ring components in opposite directions
     if (outerRingRef.current) {

@@ -14,12 +14,14 @@ import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide
 import { useSpaceStore } from "./store/spaceStore";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
+import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
 
 export default function App() {
   useKeyboardInput();
   useSound();
+  useReducedMotion();
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);
@@ -29,6 +31,7 @@ export default function App() {
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
+  const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
@@ -50,7 +53,7 @@ export default function App() {
     <div className="relative w-full min-h-screen bg-[#020108] text-white selection:bg-primary selection:text-black overflow-hidden">
       {/* Visual Warp Teleport Screen Flash */}
       <AnimatePresence>
-        {isTeleporting && (
+        {isTeleporting && !reducedMotion && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 0.85 }}
