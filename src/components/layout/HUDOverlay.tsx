@@ -3,6 +3,7 @@ import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } 
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
+import { FUEL_MAX } from "../../utils/fuel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -23,10 +24,13 @@ export default function HUDOverlay() {
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const setReducedMotion = useSpaceStore((s) => s.setReducedMotion);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
+  const fuelEmpty = useSpaceStore((s) => s.fuelEmpty);
   const isCoarse = useMediaQuery("(pointer: coarse)");
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
+  const fuelFillRef = useRef<HTMLDivElement>(null);
+  const fuelLabelRef = useRef<HTMLDivElement>(null);
   const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
@@ -37,6 +41,17 @@ export default function HUDOverlay() {
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
+      if (fuelFillRef.current) {
+        fuelFillRef.current.style.width = `${(pct * 100).toFixed(1)}%`;
+        // Amber under a quarter, red when dry. Written as style rather than a
+        // className so this never touches React.
+        fuelFillRef.current.style.backgroundColor =
+          pct <= 0 ? "#ef4444" : pct < 0.25 ? "#f59e0b" : "#00ff87";
+      }
+      if (fuelLabelRef.current)
+        fuelLabelRef.current.textContent =
+          pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`;
       for (const p of planets) {
         const el = planetRowRefs.current[p.name];
         const b = bodies[p.name];
@@ -48,6 +63,16 @@ export default function HUDOverlay() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // One-time chatter when the tank empties. `fuelEmpty` flips on the order of
+  // seconds (not frames), and the store setter is change-guarded, so this
+  // effect fires exactly once per transition rather than every frame.
+  useEffect(() => {
+    if (!fuelEmpty) return;
+    useSpaceStore.getState().sendBroadcast(
+      "WARP CORE DRY // COLLECT A FUEL CRYSTAL TO RECHARGE — THRUSTERS STILL NOMINAL"
+    );
+  }, [fuelEmpty]);
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
@@ -62,8 +87,14 @@ export default function HUDOverlay() {
         <div ref={locRef}>NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
-        <div>WARP.CORE: {isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
+        <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
+        <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
+          <div ref={fuelFillRef} data-testid="hud-fuel-bar"
+            className="h-full rounded-full transition-none"
+            style={{ width: "100%", backgroundColor: "#00ff87" }} />
+        </div>
       </div>
 
       <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">
