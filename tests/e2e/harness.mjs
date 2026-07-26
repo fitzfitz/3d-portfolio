@@ -102,8 +102,12 @@ export class Checks {
  * probes' full-fidelity baselines depend on this. Probes that want to test
  * perf-degradation behavior can still call `setLowPerf(true, ...)` themselves
  * — only the automatic decline path is blocked.
+ *
+ * `emulateReducedMotion`, if true, emulates the `prefers-reduced-motion:
+ * reduce` OS preference before navigation, so the app's own media-query
+ * detection sees it on its very first render.
  */
-export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 } }, fn) {
+export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false }, fn) {
   await startServer();
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -116,6 +120,9 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     const page = await browser.newPage();
     if (device) await page.emulate(device);
     else await page.setViewport(viewport);
+    if (emulateReducedMotion) {
+      await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
+    }
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
       if (m.type() !== "error") return;

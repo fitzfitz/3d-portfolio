@@ -15,6 +15,7 @@ export interface FitzDebug {
   sound: typeof soundManager;
   scene: THREE.Scene | null;
   gl: THREE.WebGLRenderer | null;
+  camera: THREE.Camera | null;
   /** React commits, incremented by the dev-only Profiler in main.tsx. */
   renderCount: number;
   /**
@@ -32,6 +33,7 @@ export const fitzDebug: FitzDebug = {
   sound: soundManager,
   scene: null,
   gl: null,
+  camera: null,
   renderCount: 0,
   teleport: null,
 };
