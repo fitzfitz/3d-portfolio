@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
-import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
 
@@ -89,6 +89,25 @@ export default function RadarMap() {
           ctx.lineTo(c + px, by);
           ctx.lineTo(c + px + 2.5, by + cue.dir * 2.5);
           ctx.closePath();
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Fuel crystals: in-range only, never rim-clamped. 40 crystals at ~146
+      // units mean spacing means typically 1-3 are visible — the "where is my
+      // nearest fuel" cue without swamping the display.
+      {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = "#ffd24a";
+        for (const s of crystalSlots) {
+          if (!s.active) continue;
+          const dx = wrapDelta(flight.x, s.x, COSMIC_BOUNDS);
+          const dz = wrapDelta(flight.z, s.z, COSMIC_BOUNDS);
+          if (Math.hypot(dx, dz) > RANGE) continue; // out of range: simply absent
+          const { x: sx, up } = worldToRadar(dx, dz, a);
+          ctx.beginPath();
+          ctx.arc(c + sx * scale, c - up * scale, 1.5, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.globalAlpha = 1;
