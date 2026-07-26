@@ -3,7 +3,6 @@ import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightforme
 import { Suspense, useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
-import { animScale } from "../../utils/animScale";
 import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
@@ -64,9 +63,7 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
     // The shells are the infinite sky: they translate with the ship (no positional
     // parallax — the DustField supplies that) and keep their slow rotation drift.
     pointsRef.current.position.set(flight.x, flight.y, flight.z);
-    // Rate scaled live: for a uniform starfield with no landmarks, ROTATION
-    // RATE is the perceptibility bottleneck, not amplitude.
-    pointsRef.current.rotation.y = time * speed * animScale();
+    pointsRef.current.rotation.y = time * speed;
     if (twinkle) {
       const mat = pointsRef.current.material as THREE.PointsMaterial;
       mat.size = size + Math.sin(time * 2.5) * size * 0.3;
@@ -133,15 +130,14 @@ function DustField() {
 function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   return (
     <>
-      {/* Rotation rates were 0.0015 / -0.003 / 0.006 rad/s — periods of 70, 35
-          and 17 minutes, which is indistinguishable from static over any real
-          visit. Tripled to ~21 / 10.5 / 5.2 minute periods: still slow enough
-          to sit behind a project dossier without pulling the eye, but now the
-          parallax between the three counter-rotating depths actually reads.
-          Costs nothing — the same one rotation write per layer per frame. */}
-      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.005} />
-      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.010} />
-      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.02} twinkle={true} />
+      {/* Rates were 0.0015 / -0.003 / 0.006 rad/s — periods of 70, 35 and 17
+          MINUTES, indistinguishable from static over any real visit. Calibrated
+          by eye and baked at 12x those originals, giving ~5.2 / 2.6 / 1.3 minute
+          periods, so the parallax between the three counter-rotating depths
+          actually reads. Free — one rotation write per layer per frame. */}
+      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.02} />
+      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.04} />
+      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.08} twinkle={true} />
       {!isLowPerf && <DustField />}
     </>
   );

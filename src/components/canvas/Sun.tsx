@@ -3,17 +3,24 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
-import { animScale } from "../../utils/animScale";
 
-/** Baseline, matching the value the material is authored with. */
-const SUN_CORE_EMISSIVE = 3.2;
 /**
- * Pulse depth, raised from 0.25 (±8%) to 1.1 (±34%). The original was chosen to
- * avoid bloom-pumping, but that made it invisible: the core sits at 3.2 against
- * a bloom threshold of 0.2, so it is deep in saturation and an 8% swing simply
- * does not survive the bloom pass.
+ * Core pulse, calibrated by eye at animScale 4 and baked.
+ *
+ * Rebased rather than literally 3.2 ± 4.4: that swing dipped to -1.2, and a
+ * negative emissiveIntensity is undefined in three.js. 3.8 ± 3.8 reproduces the
+ * SAME observed range (0 .. 7.6) with a well-defined floor. Note this means the
+ * core genuinely pulses to fully dark at the trough — a dramatic beat, not a
+ * gentle breath. That is what was approved; drop SUN_CORE_PULSE toward ~1.5 for
+ * something subtler without touching the peak.
  */
-const SUN_CORE_PULSE = 1.1;
+const SUN_CORE_EMISSIVE = 3.8;
+/**
+ * Pulse depth. Started at 0.25 (±8%), which was invisible: the core sits deep in
+ * bloom saturation against a threshold of 0.2, so a small intensity swing does
+ * not survive the bloom pass at all.
+ */
+const SUN_CORE_PULSE = 3.8;
 /**
  * Emissive colour swing, and the real fix for visibility. Where raw intensity is
  * swallowed by bloom saturation, HUE still reads — a star shifting between deep
@@ -115,13 +122,14 @@ export default function Sun({ onSunReady }: SunProps) {
     // pulsing silhouette would make the rays throb.
     if (coreMesh.current) {
       const mat = coreMesh.current.material as THREE.MeshStandardMaterial;
-      const k = animScale();
       // Faster too: 0.35 rad/s was an 18s period, slow enough that a visitor
       // glancing at the scene never saw a full breath. 0.9 gives ~7s.
       const breath = Math.sin(t * 0.9);
-      mat.emissiveIntensity = SUN_CORE_EMISSIVE + breath * SUN_CORE_PULSE * k;
-      // Colour carries the pulse where intensity cannot. lerp on 0..1.
-      mat.emissive.copy(SUN_COOL).lerp(SUN_HOT, Math.min(1, (breath * 0.5 + 0.5) * k));
+      mat.emissiveIntensity = SUN_CORE_EMISSIVE + breath * SUN_CORE_PULSE;
+      // Colour carries the pulse where intensity cannot. The x4 saturates this
+      // lerp for most of the cycle, so the core reads hot except near the
+      // trough — preserved deliberately, it is what made the pulse legible.
+      mat.emissive.copy(SUN_COOL).lerp(SUN_HOT, Math.min(1, (breath * 0.5 + 0.5) * 4));
     }
     // Asynchronous flare pulses
     if (flareARef.current) {

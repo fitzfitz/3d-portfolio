@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
-import { animScale } from "../../utils/animScale";
 
 /** Procedural two-arm spiral galaxy texture. Generated once per size at module use. */
 function makeGalaxyTexture(hueBase: number): THREE.CanvasTexture | null {
@@ -36,9 +35,9 @@ function makeGalaxyTexture(hueBase: number): THREE.CanvasTexture | null {
 // texture's spiral arms are asymmetric, so a lopsided shape turning is an easy
 // motion cue even at a low angular rate — cheap for how much it adds.
 const GALAXIES = [
-  { pos: [180, 80, -160] as const, scale: 60, hue: 255, spin: 0.018 },
-  { pos: [-200, -80, 120] as const, scale: 42, hue: 190, spin: -0.012 },
-  { pos: [30, 210, -60] as const, scale: 50, hue: 320, spin: 0.015 }, // high above the pole
+  { pos: [180, 80, -160] as const, scale: 60, hue: 255, spin: 0.072 },
+  { pos: [-200, -80, 120] as const, scale: 42, hue: 190, spin: -0.048 },
+  { pos: [30, 210, -60] as const, scale: 50, hue: 320, spin: 0.06 }, // high above the pole
 ];
 
 export default function DistantGalaxies() {
@@ -59,7 +58,7 @@ export default function DistantGalaxies() {
   );
 
   useFrame((state) => {
-    const t = ambientTime(state.clock.getElapsedTime()) * animScale();
+    const t = ambientTime(state.clock.getElapsedTime());
     sprites.forEach((s) => {
       s.material.rotation = t * s.spin;
     });

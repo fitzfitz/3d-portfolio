@@ -1,7 +1,6 @@
 import type * as THREE from "three";
 import { useSpaceStore, flight, bodies } from "../store/spaceStore";
 import { soundManager } from "../audio/soundManager";
-import { animScale, setAnimScale } from "../utils/animScale";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -25,14 +24,6 @@ export interface FitzDebug {
    * Null until Spaceship mounts.
    */
   teleport: ((x: number, y: number, z: number) => void) | null;
-  /**
-   * Live decorative-animation multiplier, for tuning amplitudes by eye instead
-   * of by rebuild. `__fitz.setAnimScale(4)` in the console, watch, repeat.
-   * Temporary: once the right factors are known they are baked into the
-   * constants at each site and this goes away.
-   */
-  setAnimScale: (v: number) => number;
-  animScale: () => number;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -45,6 +36,4 @@ export const fitzDebug: FitzDebug = {
   camera: null,
   renderCount: 0,
   teleport: null,
-  setAnimScale,
-  animScale,
 };

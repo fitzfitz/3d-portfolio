@@ -5,7 +5,6 @@ import { SHARDS } from "../../data/shards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
-import { animScale } from "../../utils/animScale";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime } from "../../utils/ambientTime";
 
@@ -67,8 +66,8 @@ export default function DataShards() {
       // Note the pickup check below deliberately measures against the RAW `py`,
       // not the bobbed `y`, so changing the bob cannot affect collection.
       const bobRate = 1.2 + (i % 4) * 0.22;
-      const bobAmp = 0.3 + (i % 3) * 0.14;
-      const y = py + Math.sin(t * bobRate + i) * bobAmp * animScale();
+      const bobAmp = 1.2 + (i % 3) * 0.56;
+      const y = py + Math.sin(t * bobRate + i) * bobAmp;
       dummy.position.set(px, y, pz);
       // Spin on two axes, direction alternating by index, so adjacent shards
       // never turn in lockstep.
