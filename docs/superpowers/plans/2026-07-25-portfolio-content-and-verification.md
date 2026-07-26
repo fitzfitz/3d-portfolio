@@ -2489,3 +2489,61 @@ git commit -m "docs: verification record for the content + verification closure 
 **Ordering constraints.** Task 1 must precede 2–9 (probes need the bridge and the names). Task 2 must precede 3–9 and 15 (all import the harness). Task 13 must precede 14, 15, and 16 (identity and name). Task 10 should run after 3–9 but its fixes may touch anything. Task 12 must run last of Part B — it records what the others concluded.
 
 **Blocked task.** Task 13 needs user-supplied data and says so explicitly. Tasks 1–12 and Task 16's generator are unblocked; Task 16's meta tags need the name.
+
+---
+
+## Verification (2026-07-26)
+
+**Gates:** `npm run build` clean (chunk-size advisory only) · `npm run lint` exactly the two
+long-standing pre-existing warnings (`Atmosphere.tsx:54`, `Scanner.tsx:9`) · `npm test` **97/97 across
+20 files** (was 85) · `npm run test:e2e` **101/101 checks, 2 capture-only** · `scripts/check-first-paint.sh`
+both assertions pass · production bundle contains no `__fitz` (dev-only debug surface fully
+dead-code-eliminated).
+
+**Placeholder scan:** no `hello@example.com`, no `smtp.fitzgeral.dev`, no `AES-GCM-256`, no PGP claim
+survives anywhere in `src/` or `index.html`. `KNOWN_PLACEHOLDERS` contains exactly `["github"]` — the
+owner's one deliberate, declared placeholder.
+
+**Assets:** `public/models/` unchanged at 3.6MB. One image added: `public/og.webp`, 1200×630, 21.7KB,
+generated from the app's own photo mode. `assets-src/` verified byte-identical before and after every
+Blender run (independent per-file sha256 baseline plus the probe's own restore assertion).
+
+### What Part B actually established
+
+Roughly 33 acceptance checks across seven plans had never been confirmed. 24 are now machine-asserted,
+9 are scripted for a human in `docs/QA-CHECKLIST.md` (all rows `NOT RUN` — no agent judged them), and
+~10 turned out to have no coverage at all and are recorded as such rather than implied.
+
+**The app's claims held up.** The project's longest-standing unverified assertion — zero React renders
+during steady flight — measures a commit delta of 0 across 5s of real flight in genuine deep space,
+gated on the ship having actually moved. Scope note: the `<Profiler>` wraps the DOM tree, and
+`@react-three/fiber` creates its own reconciler root, so canvas-internal commits are covered indirectly
+via store-key sameness rather than by the counter. Touch controls were exercised for the first time in
+the project's history (14/14 under iPhone emulation). Low-perf gating, wrap-seam radar continuity,
+shard fanfare, ram cooldown and asset PBR are all real.
+
+**Every failure encountered during implementation was a defect in this plan, not in the app.** The
+notable ones: a meteor check that was always true (opacity is never modulated); a continuity check
+reading an axis the ship never travelled; a ram manoeuvre that flew away from its target; a chatter
+assertion pointed at a store field that code path never writes; and `flight.{x,y,z}` being write-only
+telemetry, which made every planned teleport a silent no-op and would have hollowed out four tasks
+before Task 6b introduced a real `__fitz.teleport`.
+
+### Part A
+
+The contact form previously ran a `setInterval` claiming PGP encryption and a dispatch to
+`smtp.fitzgeral.dev`, made no network call, and told visitors their message had reached the inbox. It
+now really POSTs, with log lines tied to the actual request lifecycle, a 10s abort, verdict-specific
+failure copy, and a mailto fallback carrying everything typed. With no key configured it renders a
+mailto card *inside the same section wrapper*, so the `#contact` anchor and page layout survive.
+
+**Open:** the one real end-to-end send is unperformed. Web3Forms sits behind Cloudflare bot-protection
+that 403s automated browsers; the implementer attempted it, failed at CORS preflight, and correctly
+stopped rather than disguising automation to get through. Only a human in an ordinary browser can
+confirm delivery.
+
+**Also open, and more consequential than anything in this plan:** `portal_gateway.glb`,
+`space_crystal.glb`, `earth.jpg`, `mars.jpg`, `jupiter.jpg` and the spaceship base mesh have no
+discoverable provenance or licence (searched all specs, README at every commit, and
+`git log --all --diff-filter=A` with vendor keywords). Publishing a CV that ships six unlicensed
+third-party assets is a real exposure. Recorded in `assets-src/MANIFEST.md`.
