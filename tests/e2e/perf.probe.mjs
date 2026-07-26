@@ -116,6 +116,16 @@ export default async function run() {
     if (conclusive) {
       checks.check("ship displaced during the 5s hold (flight input genuinely moved it)",
         displacement >= MIN_FLIGHT_DISPLACEMENT, `Δ=${displacement.toFixed(2)}`);
+      // Scope note: window.__fitz.renderCount comes from a <Profiler> in
+      // src/main.tsx that wraps the DOM tree only. @react-three/fiber mounts
+      // <Canvas> via its own reconciler root (it calls createContainer(store,
+      // ...) independently of ReactDOM), so that Profiler cannot observe
+      // commits happening inside the canvas tree — this check verifies zero
+      // commits for the DOM tree (HUD, radar, modals, chatter) during steady
+      // flight, not for anything R3F renders. The canvas tree's steady-state
+      // behavior is covered only indirectly, by the store-key sameness
+      // assertion above (`changed.length === 0`): if a store key the R3F tree
+      // reads were changing every frame, it would show up there.
       checks.check("zero React commits during 5s of steady flight", delta === 0,
         `commits=${delta}`);
     } else {

@@ -18,6 +18,37 @@ const IGNORED_ERRORS = [
   /THREE\.WebGLRenderer: (EXT|WEBGL)_/,
 ];
 
+/**
+ * Google Fonts is the one non-local request the app legitimately makes on
+ * every load: index.html preconnects to fonts.googleapis.com/
+ * fonts.gstatic.com and links a stylesheet from the former. If those hosts
+ * are unreachable (DNS blip, offline CI runner), Chrome would otherwise emit
+ * a `console.error: Failed to load resource: net::ERR_FAILED` that
+ * withPage's "no page errors" check promotes into a suite-wide failure — so
+ * every probe needs this handled, not just the ones that happen to set up
+ * their own request interception.
+ */
+export const isFontHost = (url) => {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "fonts.googleapis.com" || hostname === "fonts.gstatic.com";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Fulfils a font-host request with an inert stylesheet rather than
+ * `req.abort()`-ing it: an aborted resource load is what produces the
+ * "Failed to load resource: net::ERR_FAILED" console.error in the first
+ * place (verified in contact.probe.mjs's development — the same message
+ * appeared when the relay POST was blocked before proper CORS headers were
+ * added). Responding 200 satisfies the `<link rel="stylesheet">` with no
+ * real network hit and no console noise.
+ */
+export const respondInertFont = (req) =>
+  req.respond({ status: 200, contentType: "text/css", body: "" });
+
 let server = null;
 
 export async function startServer() {
@@ -92,6 +123,19 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
       if (IGNORED_ERRORS.some((re) => re.test(text))) return;
       errors.push(`console.error: ${text}`);
     });
+    // Arm font interception before navigation: index.html's Google Fonts
+    // <link rel="stylesheet"> fires as soon as the browser parses <head>,
+    // well before a probe's own `fn` gets a chance to call
+    // setRequestInterception itself. Disarmed again below, right before
+    // handing off to `fn`, so a probe that wants its own interception (e.g.
+    // contact.probe.mjs's fail-closed relay mocking) can install it without
+    // fighting a second "request" listener over the same requests.
+    await page.setRequestInterception(true);
+    const offlineFonts = (req) => {
+      if (isFontHost(req.url())) return respondInertFont(req);
+      return req.continue();
+    };
+    page.on("request", offlineFonts);
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("canvas", { timeout: 20_000 });
     await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
@@ -105,6 +149,8 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     // path is blocked.
     await page.evaluate(() => window.__fitz.store.getState().setLowPerf(false, true));
     await settle(page, 4000); // let GLBs load and the first frames run
+    page.off("request", offlineFonts);
+    await page.setRequestInterception(false);
     await fn(page, checks);
   } finally {
     await browser.close();
@@ -150,6 +196,60 @@ export async function tap(page, testId, ms = 400) {
 // remains the only place this trap has actually bitten.)
 export function settle(page, ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Retries `fn` up to `attempts` times, tolerating a transient page.evaluate()
+ * failure (e.g. "Attempted to use detached Frame ..." from an HMR reload or
+ * navigation racing the read) between tries instead of letting the exception
+ * propagate all the way to run.mjs's top-level catch — which replaces every
+ * check the probe has already recorded with a single opaque "probe crashed"
+ * failure, hiding its siblings. Returns `{ ok, value, error }`; if every
+ * attempt fails, `ok` is false so the caller can report a clean failed check
+ * rather than pass silently or crash.
+ */
+export async function retryEval(fn, { attempts = 3, delayMs = 500 } = {}) {
+  let lastError = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return { ok: true, value: await fn() };
+    } catch (e) {
+      lastError = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return { ok: false, value: null, error: lastError };
+}
+
+/**
+ * Polls `fn` every `intervalMs` from the harness side until it returns a
+ * truthy value or `timeoutMs` elapses, tolerating up to `maxConsecutiveErrors`
+ * evaluate failures in a row (see retryEval) before giving up. Prefer this
+ * over a single long in-page `await` loop passed to page.evaluate(): a
+ * multi-second loop running entirely inside the page can't be interrupted or
+ * retried if the frame it's executing in goes away partway through, whereas
+ * harness-side polling can just try again against a fresh evaluate call.
+ * Returns `{ ok, value, error }`; `ok: false` with no error means `fn` never
+ * returned truthy before the deadline — a genuine, reportable failure, not a
+ * crash.
+ */
+export async function pollUntil(fn, { timeoutMs, intervalMs = 500, maxConsecutiveErrors = 5 }) {
+  const deadline = Date.now() + timeoutMs;
+  let consecutiveErrors = 0;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const value = await fn();
+      consecutiveErrors = 0;
+      if (value) return { ok: true, value };
+    } catch (e) {
+      lastError = e;
+      consecutiveErrors++;
+      if (consecutiveErrors >= maxConsecutiveErrors) return { ok: false, value: null, error: lastError };
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return { ok: false, value: null, error: lastError };
 }
 
 export function readStore(page) {

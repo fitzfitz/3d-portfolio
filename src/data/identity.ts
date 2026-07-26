@@ -4,9 +4,14 @@
  * placeholders survive to production once already (see tests/identity.test.ts).
  */
 export const identity = {
-  /** Display name for <title>, og:title, and the footer byline. */
+  /**
+   * Display name for the footer byline (Footer.tsx). NOTE: index.html's
+   * <title>, og:title/og:site_name, and twitter:title are plain static HTML
+   * — they load before any JS bundle and cannot import this TS module — so
+   * they must be kept in sync with this value by hand, not by import.
+   */
   name: "Fitzgeral",
-  /** In-world handle, already used by the spawn banner. */
+  /** In-world handle shown in the spawn banner's "PILOT:" line (App.tsx). */
   callsign: "FITZGERAL_SYS",
   /** Public contact address. Also the mailto fallback target. */
   email: "fitzgeralmedia@gmail.com",

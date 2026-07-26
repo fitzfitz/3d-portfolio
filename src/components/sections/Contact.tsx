@@ -22,8 +22,9 @@ const FINAL_STATUS_PAINT_DELAY_MS = 600;
 export default function Contact({ isSidebar = false }: ContactProps) {
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "rejected" | "unreachable">("idle");
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [errorDetail, setErrorDetail] = useState("");
 
   const accessKey = import.meta.env.VITE_FORM_KEY ?? "";
   const endpoint = import.meta.env.VITE_FORM_ENDPOINT ?? "https://api.web3forms.com/submit";
@@ -78,39 +79,51 @@ export default function Contact({ isSidebar = false }: ContactProps) {
         setFormStatus("success");
         setFormData({ name: "", email: "", message: "" });
       } else {
-        log(`relay refused (${res.status}) — ${json.message ?? "no reason given"}`);
+        // verdict is "rejected" (the relay answered and declined, e.g. a
+        // revoked key or quota exceeded — a 4xx) or "unreachable" (the relay
+        // itself is down, a 5xx). Both differ from a network-level failure
+        // (caught below) in that the relay *did* answer; keep the distinct
+        // verdict so the error screen doesn't call a refusal "unreachable".
+        const reason = json.message ?? "no reason given";
+        log(`relay ${verdict} (${res.status}) — ${reason}`);
+        setErrorDetail(reason);
         await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
-        setFormStatus("error");
+        setFormStatus(verdict);
       }
     } catch {
       log("RELAY UNREACHABLE — falling back to direct channel");
+      setErrorDetail("");
       await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
-      setFormStatus("error");
+      setFormStatus("unreachable");
     } finally {
       clearTimeout(timeout);
     }
   };
 
-  if (!accessKey) {
-    return (
-      <div className={isSidebar ? "glass-card rounded-2xl p-6 border border-accent/20 bg-black/85" : "glass-card rounded-2xl p-6 sm:p-8"}>
-        <h3 className="font-display font-extrabold text-xl mb-3 text-white">Open a Channel</h3>
-        <p className="text-muted text-sm mb-6">
-          Direct transmission only — the relay isn't configured on this build.
-        </p>
-        <a
-          href={`mailto:${identity.email}`}
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
-        >
-          <Mail className="w-4 h-4" />
-          OPEN_TRANSMISSION
-        </a>
-        <p className="mt-4 font-mono text-[10px] text-white/40 select-all">{identity.email}</p>
-      </div>
-    );
-  }
-
-  const formCard = (
+  // No relay configured on this build (fresh clone, or any host that builds
+  // without VITE_FORM_KEY): resolve `formCard` to the mailto-only card rather
+  // than early-returning above the `isSidebar` branch and the `<section
+  // id="contact">` wrapper below. An early return here used to make the
+  // whole "Get In Touch" section — and its #contact anchor that Navbar and
+  // Hero link to — disappear whenever the key was empty. Keeping the same
+  // wrapper structure either way means the page layout is identical
+  // regardless of whether the relay is configured.
+  const formCard = !accessKey ? (
+    <div className={isSidebar ? "glass-card rounded-2xl p-6 border border-accent/20 bg-black/85" : "glass-card rounded-2xl p-6 sm:p-8"}>
+      <h3 className="font-display font-extrabold text-xl mb-3 text-white">Open a Channel</h3>
+      <p className="text-muted text-sm mb-6">
+        Direct transmission only — the relay isn't configured on this build.
+      </p>
+      <a
+        href={`mailto:${identity.email}`}
+        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+      >
+        <Mail className="w-4 h-4" />
+        OPEN_TRANSMISSION
+      </a>
+      <p className="mt-4 font-mono text-[10px] text-white/40 select-all">{identity.email}</p>
+    </div>
+  ) : (
     <div className={isSidebar ? "glass-card rounded-2xl p-6 relative w-full border border-accent/20 bg-black/85 max-h-[85vh] overflow-hidden pointer-events-auto" : "glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden"}>
       {isSidebar && (
         <h3 className="font-display font-extrabold text-xl mb-4 text-white flex items-center gap-2">
@@ -138,7 +151,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
               SEND_ANOTHER_PACKET
             </button>
           </motion.div>
-        ) : formStatus === "error" ? (
+        ) : formStatus === "rejected" || formStatus === "unreachable" ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -146,10 +159,13 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             className="flex flex-col items-center justify-center py-12 text-center"
           >
             <ShieldAlert className="w-16 h-16 text-red-400 mb-6" />
-            <h3 className="font-display font-bold text-2xl mb-2">Relay Unreachable</h3>
+            <h3 className="font-display font-bold text-2xl mb-2">
+              {formStatus === "rejected" ? "Transmission Refused" : "Relay Unreachable"}
+            </h3>
             <p className="text-muted text-sm max-w-xs mb-6">
-              The relay didn't acknowledge. Nothing was lost — open a direct channel and your
-              message travels with you.
+              {formStatus === "rejected"
+                ? `The relay answered and declined the transmission${errorDetail ? ` — ${errorDetail}` : ""}. Nothing was lost — open a direct channel and your message travels with you.`
+                : "The relay didn't acknowledge. Nothing was lost — open a direct channel and your message travels with you."}
             </p>
             <a
               href={buildMailto(formData, identity.email)}

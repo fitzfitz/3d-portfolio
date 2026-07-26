@@ -12,7 +12,7 @@ export default function Footer() {
         {/* Info / Copyright */}
         <div className="flex flex-col items-center md:items-start gap-2">
           <p className="font-mono text-xs text-muted">
-            Designed & Engineered by Fitzgeral &copy; {new Date().getFullYear()}
+            Designed & Engineered by {identity.name} &copy; {new Date().getFullYear()}
           </p>
           <p className="text-[10px] font-mono text-white/20">
             Powered by React, Vite, Three.js & Tailwind CSS

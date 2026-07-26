@@ -1,4 +1,4 @@
-import { withPage, settle } from "./harness.mjs";
+import { withPage, settle, isFontHost, respondInertFont } from "./harness.mjs";
 
 /**
  * Hostnames this probe deliberately lets reach the real network: the Vite
@@ -16,23 +16,12 @@ const isLocal = (url) => {
   }
 };
 
-/**
- * Google Fonts is the one other non-local request this page legitimately
- * makes (index.html preconnects to fonts.googleapis.com/fonts.gstatic.com
- * and links a stylesheet from the former). Deliberately deny it rather than
- * allow it through: the probe never inspects rendered text metrics, so real
- * webfonts buy nothing, and it's one less network dependency for a suite
- * that's supposed to run offline-safe. See the "font" branch below for how
- * denial is implemented without generating console-error noise.
- */
-const isFontHost = (url) => {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === "fonts.googleapis.com" || hostname === "fonts.gstatic.com";
-  } catch {
-    return false;
-  }
-};
+// Google Fonts is the one other non-local request this page legitimately
+// makes (index.html preconnects to fonts.googleapis.com/fonts.gstatic.com and
+// links a stylesheet from the former). `isFontHost`/`respondInertFont` come
+// from harness.mjs, which arms the same inert-200 handling during its own
+// page.goto+settle window (before this probe's own interception below takes
+// over) — imported here rather than redefined so the two stay in sync.
 
 const fill = async (page) => {
   await page.type('input[name="name"]', "Ada");
@@ -121,14 +110,7 @@ export default async function run() {
       }
 
       if (isFontHost(url)) {
-        // Deny, but don't req.abort() — an aborted resource load produces a
-        // "Failed to load resource: net::ERR_FAILED" console.error (verified
-        // during development of this probe: the same message appeared when
-        // the relay POST was blocked before proper CORS headers were added),
-        // and withPage()'s "no page errors" check would fail on it. An inert
-        // 200 satisfies the <link rel="stylesheet"> without a real network
-        // hit and without that noise.
-        return req.respond({ status: 200, contentType: "text/css", body: "" });
+        return respondInertFont(req);
       }
 
       // Genuinely unanticipated non-local request. Still never let it reach
@@ -192,7 +174,13 @@ export default async function run() {
     // non-local actually touched the real network regardless.
     checks.check("no unexpected non-local request occurred", unexpectedNonLocal.length === 0,
       unexpectedNonLocal.join(", ").slice(0, 200));
-    checks.check("no non-local request ever reached the real network",
+    // Named "from run() onward" rather than "ever": the response listener
+    // above is installed inside this function, so it cannot see (and this
+    // check cannot vouch for) anything that happened during withPage's own
+    // page.goto+settle before run() started — harness.mjs's font handling
+    // covers that earlier window separately, on its own, unverified-by-this-
+    // check terms.
+    checks.check("no non-local request reached the real network from run() onward",
       nonLocalNetworkHits.length === 0, nonLocalNetworkHits.join(", ").slice(0, 200));
   });
 }
