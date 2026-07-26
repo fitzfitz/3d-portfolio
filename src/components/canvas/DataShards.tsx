@@ -57,9 +57,22 @@ export default function DataShards() {
       }
 
       const [px, py, pz] = SHARDS[i].pos;
-      const y = py + Math.sin(t * 1.5 + i) * 0.4;
+      // Per-shard bob and spin. These were `sin(t * 1.5 + i) * 0.4` and
+      // `t * 0.8 + i` — identical rate and amplitude for all ten, with only the
+      // phase varying, so a cluster of shards moved as one rigid body. Deriving
+      // rate and amplitude from the index as well gives each its own character
+      // at no extra cost: the trig count per frame is unchanged.
+      //
+      // Note the pickup check below deliberately measures against the RAW `py`,
+      // not the bobbed `y`, so changing the bob cannot affect collection.
+      const bobRate = 1.2 + (i % 4) * 0.22;
+      const bobAmp = 0.3 + (i % 3) * 0.14;
+      const y = py + Math.sin(t * bobRate + i) * bobAmp;
       dummy.position.set(px, y, pz);
-      dummy.rotation.set(0, t * 0.8 + i, 0);
+      // Spin on two axes, direction alternating by index, so adjacent shards
+      // never turn in lockstep.
+      const spin = 0.6 + (i % 5) * 0.13;
+      dummy.rotation.set(Math.sin(t * 0.4 + i) * 0.3, (i % 2 ? t : -t) * spin + i, 0);
       dummy.scale.copy(ONE_SCALE);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);

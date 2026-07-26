@@ -134,13 +134,33 @@ export default function SpaceJellyfish() {
     if (!groupRef.current) return;
     const time = ambientTime(state.clock.getElapsedTime());
     timeRef.current = time;
-    material.uniforms.uTime.value = time;
+
+    /**
+     * Pulse rhythm, time-warped so the creature does not beat like a metronome.
+     * The contraction cycle is `fract(t / 3.2)` in both the shader and the JS
+     * `pulseCycle`, which meant an exactly 3.2s period forever — the single
+     * biggest reason the jellyfish read as mechanical rather than alive.
+     *
+     * Warping the time argument varies the effective period instead of adding a
+     * second system: d(warp)/dt = 1 + 4·0.045·cos(...) = 1 ± 0.18, so the
+     * period breathes between 3.2/1.18 ≈ 2.7s and 3.2/0.82 ≈ 3.9s over a slow
+     * ~140s envelope. The derivative never reaches zero (min 0.82), so the
+     * pulse cannot stall or run backwards.
+     *
+     * Only the rhythm is warped. Path progress and the slow drift below stay on
+     * raw `time`, so the creature still traverses its route at a steady average
+     * pace — it is the heartbeat that varies, not the swimming.
+     */
+    const pulseTime = time + 4 * Math.sin(time * 0.045);
+    material.uniforms.uTime.value = pulseTime;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
     JELLY_PATH.getPointAt(t, groupRef.current.position);
     const tangent = JELLY_PATH.getTangentAt(t);
     // Jet propulsion: surge forward on each contraction stroke, plus a slow bob —
     // the drift is no longer a constant glide.
-    const surge = pulseCycle(time - 0.15);
+    // Surge reads the same warped clock as the shader, so the propulsion stroke
+    // stays locked to the visible contraction rather than drifting out of sync.
+    const surge = pulseCycle(pulseTime - 0.15);
     groupRef.current.position.addScaledVector(tangent, surge * 2.2);
     groupRef.current.position.y += Math.sin(time * 0.5) * 0.8;
     groupRef.current.rotation.set(
