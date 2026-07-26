@@ -19,6 +19,7 @@ import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
 import Comets from "./Comets";
 import DataShards from "./DataShards";
+import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
@@ -256,6 +257,9 @@ export default function GlobalCanvas() {
 
           {/* Collectible data shards scattered across the system */}
           <DataShards />
+
+          {/* Floating warp-fuel crystals */}
+          <FuelCrystals />
 
           {/* Headless: drives proximity scan targeting/progress/report dispatch */}
           <Scanner />
