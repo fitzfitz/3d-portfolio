@@ -13,6 +13,18 @@ const ZONE_COLORS: Record<string, string> = {
   saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
 };
 
+/**
+ * Module-level, NOT a ref: App.tsx conditionally unmounts HUDOverlay for
+ * photo mode (`P` key) and classic CV, both ordinary user actions. A ref
+ * would be reinitialised by that same remount and let the effect below
+ * re-announce mid dry-spell, which is exactly the bug this guards against.
+ * Living at module scope lets it survive the remount; it still resets on the
+ * true→false edge (see the effect) so a later dry spell announces again, and
+ * resets on page reload along with fuel itself. Do not "simplify" this back
+ * into a useRef.
+ */
+let dryAnnouncedThisSpell = false;
+
 export default function HUDOverlay() {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
@@ -65,10 +77,18 @@ export default function HUDOverlay() {
   }, []);
 
   // One-time chatter when the tank empties. `fuelEmpty` flips on the order of
-  // seconds (not frames), and the store setter is change-guarded, so this
-  // effect fires exactly once per transition rather than every frame.
+  // seconds (not frames), and the store setter is change-guarded — but this
+  // component itself can remount mid dry-spell (photo mode, classic CV), so
+  // the module-level `dryAnnouncedThisSpell` (not component state) is what
+  // actually prevents a duplicate announcement on that remount. Reset on the
+  // true→false edge so the NEXT dry spell still announces.
   useEffect(() => {
-    if (!fuelEmpty) return;
+    if (!fuelEmpty) {
+      dryAnnouncedThisSpell = false;
+      return;
+    }
+    if (dryAnnouncedThisSpell) return;
+    dryAnnouncedThisSpell = true;
     useSpaceStore.getState().sendBroadcast(
       "WARP CORE DRY // COLLECT A FUEL CRYSTAL TO RECHARGE — THRUSTERS STILL NOMINAL"
     );
