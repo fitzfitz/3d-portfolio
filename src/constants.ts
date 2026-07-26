@@ -3,6 +3,8 @@ import type { OrbitalElements } from "./utils/orbits";
 export interface Project {
   title: string; role: string; duration: string; short: string;
   description: string; tech: string[]; color: string;
+  /** Public repo URL. Falls back to the profile when a project has none. */
+  repo?: string;
 }
 export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;

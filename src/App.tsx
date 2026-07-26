@@ -15,6 +15,7 @@ import { useSpaceStore } from "./store/spaceStore";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
 import { projects } from "./constants";
+import { identity } from "./data/identity";
 
 export default function App() {
   useKeyboardInput();
@@ -120,7 +121,7 @@ export default function App() {
               >
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[9px] font-mono mb-4">
                   <Terminal className="w-3.5 h-3.5" />
-                  PILOT: FITZGERAL_SYS
+                  PILOT: {identity.callsign}
                 </div>
                 <h2 className="font-display font-bold text-xl mb-2 text-white">Space Flight CV Sandbox</h2>
                 <p className="text-muted text-[11px] leading-relaxed mb-4">
@@ -206,7 +207,7 @@ export default function App() {
                   </button>
 
                   <a
-                    href="https://github.com"
+                    href={planetProject.repo ?? identity.github}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"

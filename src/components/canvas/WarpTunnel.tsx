@@ -70,7 +70,7 @@ export default function WarpTunnel() {
   });
 
   return (
-    <mesh ref={meshRef} material={material} visible={false}>
+    <mesh name="WarpTunnel" ref={meshRef} material={material} visible={false}>
       {/* open-ended tube around the ship, long axis = flight direction */}
       <cylinderGeometry args={[3.5, 3.5, 14, 32, 1, true]} />
     </mesh>

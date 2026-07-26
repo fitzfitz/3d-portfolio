@@ -127,7 +127,12 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
   const initialPositions = useMemo(() => new Float32Array(pointsCount * 3), []);
 
   return (
-    <points position={position} ref={pointsRef}>
+    // NOTE: "NebulaCluster" is shared by all 5 sibling instances rendered
+    // below (one per nebula cloud). Object3D.getObjectByName returns only the
+    // first DFS match, so any future code (or e2e probe) reaching for that
+    // method here will silently see 1 of 5, not all of them — traverse +
+    // filter on name instead if you need every instance.
+    <points name="NebulaCluster" position={position} ref={pointsRef}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"

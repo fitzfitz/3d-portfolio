@@ -615,4 +615,41 @@ Automated gates — all pass:
 - `npm run build`: pass (chunk-size warning only) · `npm run lint`: pass · `npm test`: 24/24 (+4 driftedHue)
 - Asset budget: public/models unchanged at 3.9M — Phase 2 added zero asset bytes (galaxy/flare textures canvas-generated; corona/tunnel pure shaders)
 
-Pending human browser checks (live-like acceptance): star-layer parallax while turning; organic corona flicker; god rays swing/occlusion; warp tunnel ease-in/out aligned to heading; nebula tint shift over 90s; profiler zero renders; low-perf drops rays/tunnel/corona.
+## Verification closure (2026-07-25)
+
+Pending-human items from this plan, resolved:
+
+- Star-layer parallax while turning — closed by `tests/e2e/sky.probe.mjs` (`heading
+  changes when turning`, `star shells drift independently of heading`, `star shells
+  stay centred on the ship`).
+- Organic corona flicker — closed at the mechanism level by `tests/e2e/sky.probe.mjs`
+  (`sun corona shader animates`), confirming the shader is not static; whether the
+  flicker actually *reads* as organic is a quality judgment no probe or QA-checklist
+  item covers — NOT RUN for that qualitative claim.
+- God rays swing/occlusion — capture-only: `tests/e2e/sky.probe.mjs` captures
+  `sky-godrays-open.png` (note `god-ray occlusion`) as a reference frame, because
+  proving "the sun dims behind a planet" needs a contrived pose and flaky luminance
+  thresholds. A human judges the dim/recover behavior against that baseline — NOT RUN
+  — awaiting human pass, see `docs/QA-CHECKLIST.md` §7. (No probe checks rays
+  "swinging" with heading independent of occlusion.)
+- Warp tunnel ease-in/out aligned to heading — the heading/pitch alignment is closed by
+  `tests/e2e/flight.probe.mjs` (`warp tunnel is visible while boosting`, `warp tunnel
+  pitch follows the nose`, `warp tunnel yaw follows the heading`); the ease-in/out
+  timing itself is not separately asserted by any probe or QA-checklist item — NOT RUN
+  for that portion.
+- Nebula tint shift over 90s — closed by `tests/e2e/sky.probe.mjs` (`nebula material is
+  readable`, `nebula hue drifts over 20s`); note the probe watches 20s, not the plan's
+  original 90s, but demonstrates the same continuous-drift mechanism.
+- Profiler zero renders — closed by `tests/e2e/perf.probe.mjs` (`zero React commits
+  during 5s of steady flight`, gated on `ship displaced during the 5s hold (flight
+  input genuinely moved it)`). Same claim as phase1-ambient-life's "steady-flight
+  profiler" — this project's longest-standing unverified performance assertion, now
+  genuinely measured.
+- Low-perf drops rays/tunnel/corona — tunnel and corona closed by
+  `tests/e2e/perf.probe.mjs` (`warp tunnel dropped in low-perf`, `sun corona dropped in
+  low-perf`); the `GodRays` postprocessing pass is gated by the same `!isLowPerf` flag
+  in `src/components/canvas/GlobalCanvas.tsx` but isn't a queryable scene object, so no
+  probe check asserts it directly — NOT RUN for the rays portion specifically
+  (structurally implied by the shared guard, not independently tested).
+
+See `docs/superpowers/plans/2026-07-25-portfolio-content-and-verification.md`.

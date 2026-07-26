@@ -98,6 +98,7 @@ export default function TouchControls() {
       {/* Left-half touch zone: joystick appears where the finger lands */}
       <div
         className="fixed inset-y-0 left-0 w-1/2 z-40 pointer-events-auto touch-none"
+        data-testid="touch-joystick"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
@@ -114,6 +115,7 @@ export default function TouchControls() {
       {/* Rise button */}
       <button
         className="fixed bottom-64 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        data-testid="touch-rise"
         onPointerDown={(e) => {
           if (risepointer.current !== null) return;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -139,6 +141,7 @@ export default function TouchControls() {
       {/* Dive button */}
       <button
         className="fixed bottom-48 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        data-testid="touch-dive"
         onPointerDown={(e) => {
           if (divepointer.current !== null) return;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -165,6 +168,7 @@ export default function TouchControls() {
       {scanTarget !== null && (
         <button
           className="fixed bottom-80 right-9 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-secondary/40 bg-black/50 font-mono text-[10px] text-secondary active:bg-secondary/20"
+          data-testid="touch-scan"
           onPointerDown={(e) => {
             if (scanPointerRef.current !== null) return;
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -191,6 +195,7 @@ export default function TouchControls() {
       {/* Boost button */}
       <button
         className="fixed bottom-24 right-8 z-40 pointer-events-auto touch-none w-20 h-20 rounded-full border border-secondary/40 bg-black/50 font-mono text-[10px] text-secondary active:bg-secondary/20"
+        data-testid="touch-boost"
         onPointerDown={(e) => {
           if (boostPointerRef.current !== null) return;
           e.currentTarget.setPointerCapture(e.pointerId);

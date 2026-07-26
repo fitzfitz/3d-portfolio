@@ -1055,10 +1055,16 @@ git commit -m "test: flight probe — radar blip accuracy across the wrap seam, 
 ```js
 import { withPage, hold, settle, readStore } from "./harness.mjs";
 
-/** Teleports the ship next to a world point and zeroes its velocity. */
+/**
+ * Teleports the ship next to a world point and zeroes its velocity.
+ * MUST go through `__fitz.teleport` (Task 6b): `flight.{x,y,z}` is written FROM
+ * Spaceship's `pos` ref every frame, so assigning to it is a silent no-op.
+ */
 const warpTo = (page, x, y, z) => page.evaluate((p) => {
-  const f = window.__fitz.flight;
-  f.x = p.x; f.y = p.y; f.z = p.z; f.speed = 0;
+  if (typeof window.__fitz.teleport !== "function") {
+    throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
+  }
+  window.__fitz.teleport(p.x, p.y, p.z);
 }, { x, y, z });
 
 export default async function run() {
@@ -1321,8 +1327,8 @@ export default async function run() {
     const name = await page.evaluate(async () => {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
-      const f = window.__fitz.flight;
-      f.x = b.x; f.y = b.y; f.z = b.z + 18; f.speed = 0;
+      // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
+      window.__fitz.teleport(b.x, b.y, b.z + 18);
       return planets[0].name;
     });
     await settle(page, 1500);
@@ -1376,21 +1382,24 @@ impossible if the (pointer: coarse) gate stops matching."
 
 Note this probe has two halves: the in-browser animation checks need the harness, and the regeneration check is pure Node. Both live here because they are one concern — asset integrity.
 
-- [ ] **Step 1: Wire the two unwired generators**
+- [ ] **Step 1: Wire gen_asteroids.py — and deliberately NOT uplift_spaceship.py**
 
-`scripts/blender/generate.sh` currently calls only cargo_ship, creature, moon, and comet_head. Add asteroids before the optimize step, and spaceship guarded on its input existing:
+**Verified before writing this step** (do not re-litigate): `uplift_spaceship.py:14` sets `SRC = assets-src/spaceship.glb`, imports it at line 23, and at line 82 exports **back to that same path**. It is an in-place, one-shot transform, so running it twice re-uplifts an already-uplifted model — a second panel-detail bake on top of the first. **Wiring it into `generate.sh` would corrupt the asset on every re-run**, which is the opposite of reproducibility.
+
+`gen_asteroids.py` authors from scratch (`gen_asteroids.py:198` exports to `assets-src/asteroids.glb`) and is safe to wire.
+
+In `scripts/blender/generate.sh`, add asteroids before the `npm run assets:optimize` line:
 
 ```bash
 [ -f scripts/blender/gen_asteroids.py ] && "$BLENDER" --background --python scripts/blender/gen_asteroids.py
-# uplift_spaceship.py transforms an existing spaceship GLB rather than authoring
-# one — it needs assets-src/spaceship_source.glb present. Skipped with a warning
-# when absent so a clean checkout still regenerates everything else.
-if [ -f scripts/blender/uplift_spaceship.py ] && [ -f assets-src/spaceship_source.glb ]; then
-  "$BLENDER" --background --python scripts/blender/uplift_spaceship.py
-else
-  echo "SKIP uplift_spaceship.py (needs assets-src/spaceship_source.glb)"
-fi
+# uplift_spaceship.py is deliberately NOT called here. It imports and exports
+# assets-src/spaceship.glb in place (see its SRC at line 14 used by both the
+# import at line 23 and the export at line 82), so a second run would uplift an
+# already-uplifted model. It is a one-shot migration, not a generator; the
+# pristine input is preserved at assets-src/originals/spaceship_orig.glb.
 ```
+
+Record the same fact in `MANIFEST.md` (Step 2) so `spaceship.glb` is listed as *derived, not regenerable*.
 
 - [ ] **Step 2: Write the manifest**
 
@@ -1400,13 +1409,26 @@ fi
 cd assets-src && shasum -a 256 * | awk '{printf "| `%s` | `%s` |\n", $2, substr($1,1,16)}'
 ```
 
-Then write the file with a row per asset, a **Generator** column naming the script or `none — external`, and a **License** column. For the five externals (`portal_gateway.glb`, `space_crystal.glb`, `earth.jpg`, `mars.jpg`, `jupiter.jpg`) fill in the actual source URL and licence; if a source is unknown, write `UNKNOWN — must be re-sourced or replaced before any public deploy` rather than guessing. Include this note at the top:
+Then write the file with a row per asset, a **Generator** column naming the script or `none — external`, and a **License** column. For the five externals (`portal_gateway.glb`, `space_crystal.glb`, `earth.jpg`, `mars.jpg`, `jupiter.jpg`) fill in the actual source URL and licence; if a source is unknown, write `UNKNOWN — must be re-sourced or replaced before any public deploy` rather than guessing.
+
+Three rows need specific treatment:
+
+- **`spaceship.glb`** — `derived, NOT regenerable`. `uplift_spaceship.py` rewrites it in place and is not idempotent (Step 1), so it is a one-shot migration. Its pristine input is `originals/spaceship_orig.glb`, which must be listed as its own row and never deleted.
+- **`originals/spaceship_orig.glb`** — the only pristine copy of the ship. Mark it `PRESERVE — input to uplift_spaceship.py, never regenerable`.
+- **`asteroid.glb`** — present in `assets-src/` but note whether anything consumes it; `gen_asteroids.py` produces `asteroids.glb` (plural). If nothing references the singular file, record it as `unused — candidate for removal` rather than silently implying it ships.
+
+Include this note at the top:
 
 ```markdown
 > `assets-src/` is gitignored: these originals exist only on the authoring
 > machine. Four assets regenerate from `scripts/blender/`; the rest cannot.
-> Losing this directory means losing those five permanently — back it up
+> Losing this directory means losing the externals permanently — back it up
 > off-machine before changing machines.
+>
+> Local archive taken 2026-07-25: `~/fitz-assets-src-2026-07-25.tgz`
+> (sha256 `876f7cc44095b2e19dcc3301c001b5c25971d29fb22699d16ad134816e618722`).
+> That archive lives on the same machine, so it protects against accidental
+> overwrite, NOT against machine loss. An off-machine copy is still owed.
 ```
 
 - [ ] **Step 3: Write the probe**
@@ -1506,50 +1528,68 @@ export default async function run() {
 
   const scratch = mkdtempSync(join(tmpdir(), "fitz-regen-"));
   const REGENERABLE = ["cargo_ship", "moon", "comet_head", "creature"];
+
+  // gen_moon.py:68 hardcodes its output to assets-src/moon.glb and reads no env
+  // var (verified). Regenerating therefore OVERWRITES an original in a
+  // gitignored, local-only directory. Preserve it byte-for-byte and restore it
+  // no matter how this block exits.
+  const original = "assets-src/moon.glb";
+  const preserved = join(scratch, "moon.original.glb");
+  copyFileSync(original, preserved);
+  const originalHash = createHash("sha256").update(readFileSync(original)).digest("hex");
+
   try {
     execFileSync(blender, ["--background", "--python", "scripts/blender/gen_moon.py"],
-      { stdio: "pipe", env: { ...process.env, FITZ_OUT: scratch } });
+      { stdio: "pipe" });
     checks.check("gen_moon.py runs headless", true);
+
+    const [shipped, fresh] = await Promise.all([
+      fingerprint(preserved),      // the pre-existing original
+      fingerprint(original),       // what the generator just wrote
+    ]);
+
+    checks.check("regenerated moon keeps its node names",
+      JSON.stringify(shipped.nodes) === JSON.stringify(fresh.nodes),
+      `${shipped.nodes} vs ${fresh.nodes}`);
+    checks.check("regenerated moon keeps its material PBR values",
+      JSON.stringify(shipped.materials) === JSON.stringify(fresh.materials),
+      JSON.stringify(fresh.materials));
+    const drift = Math.abs(fresh.vertices - shipped.vertices) / (shipped.vertices || 1);
+    checks.check("regenerated moon vertex count within 2%", drift <= 0.02,
+      `${shipped.vertices} -> ${fresh.vertices} (${(drift * 100).toFixed(2)}%)`);
+    checks.check("only 4 of 11 assets are regenerable (documented in MANIFEST.md)",
+      REGENERABLE.length === 4, REGENERABLE.join(","));
   } catch (e) {
-    checks.check("gen_moon.py runs headless", false, e.message.slice(0, 200));
-    return checks;
+    checks.check("regeneration check completed", false, e.message.slice(0, 200));
+  } finally {
+    // Always restore, then prove the restore worked. A silent failure here
+    // costs an irreplaceable original.
+    copyFileSync(preserved, original);
+    const restoredHash = createHash("sha256").update(readFileSync(original)).digest("hex");
+    checks.check("assets-src/moon.glb restored byte-for-byte",
+      restoredHash === originalHash,
+      `${originalHash.slice(0, 12)} vs ${restoredHash.slice(0, 12)}`);
   }
-
-  const regenerated = join(scratch, "moon.glb");
-  if (!existsSync(regenerated)) {
-    checks.check("regenerated moon.glb honours FITZ_OUT", false,
-      `no file at ${regenerated} — gen_moon.py hardcodes its output path; ` +
-      "add FITZ_OUT support or compare against assets-src/moon.glb instead");
-    return checks;
-  }
-
-  const [shipped, fresh] = await Promise.all([
-    fingerprint("assets-src/moon.glb"),
-    fingerprint(regenerated),
-  ]);
-  checks.check("regenerated moon keeps its node names",
-    JSON.stringify(shipped.nodes) === JSON.stringify(fresh.nodes),
-    `${shipped.nodes} vs ${fresh.nodes}`);
-  checks.check("regenerated moon keeps its material PBR values",
-    JSON.stringify(shipped.materials) === JSON.stringify(fresh.materials),
-    JSON.stringify(fresh.materials));
-  const drift = Math.abs(fresh.vertices - shipped.vertices) / (shipped.vertices || 1);
-  checks.check("regenerated moon vertex count within 2%", drift <= 0.02,
-    `${shipped.vertices} -> ${fresh.vertices} (${(drift * 100).toFixed(2)}%)`);
-  checks.check("only 4 of 11 assets are regenerable (documented in MANIFEST.md)",
-    REGENERABLE.length === 4, REGENERABLE.join(","));
 
   return checks;
 }
 ```
 
+Add the two extra `node:fs`/`node:crypto` imports this needs at the top of the file:
+
+```js
+import { mkdtempSync, existsSync, statSync, copyFileSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+```
+
 - [ ] **Step 4: Run it**
 
 Run: `npm run test:e2e assets`
-Expected: 3 in-browser checks plus the regeneration checks. Two likely outcomes to handle, both real findings rather than probe bugs:
+Expected: 3 in-browser checks plus 5 regeneration checks, ending with `assets-src/moon.glb restored byte-for-byte`.
 
-- `gen_moon.py` writes to a hardcoded `assets-src/moon.glb` and ignores `FITZ_OUT`. **Do not let it overwrite `assets-src/`.** Either add `FITZ_OUT` support to the generator (preferred — one `os.environ.get` line) or copy `assets-src/moon.glb` aside first and restore it after. Record which you did.
-- No `RadarDish`/comet mesh found means the traversal name differs; print the scene's names with `scene.traverse(o => console.log(o.name, o.type))` and correct the matcher.
+**If that last check ever fails, stop and restore from the archive** at `~/fitz-assets-src-2026-07-25.tgz` (sha256 `876f7cc44095b2e1…`) before doing anything else — `assets-src/` is gitignored and git cannot recover it.
+
+If no `RadarDish` or comet mesh is found, the traversal name differs from the assumption; print the scene's names with `scene.traverse(o => console.log(o.name, o.type))` and correct the matcher.
 
 - [ ] **Step 5: Verify assets-src was not mutated**
 
@@ -1649,8 +1689,10 @@ The nine (everything the suite cannot judge):
 Include a **Setup** section with the fast-path snippets, since the whole point is that each check is reachable in seconds. Every snippet runs in the browser console against the dev server:
 
 ```js
-// Teleport (skip the two-minute flight to anywhere)
-__fitz.flight.x = 80; __fitz.flight.y = -28; __fitz.flight.z = 75
+// Teleport (skip the two-minute flight to anywhere).
+// NOTE: it must be __fitz.teleport(...) — assigning __fitz.flight.x does NOTHING,
+// because flight is written from the ship's internal position every frame.
+__fitz.teleport(80, -28, 75)
 
 // Pre-seed 9 of 10 shards, then reload, to test the collect-all fanfare
 localStorage.setItem("fitz-shards", JSON.stringify([0,1,2,3,4,5,6,7,8]))
@@ -1669,9 +1711,13 @@ Add a note that `assets-src/MANIFEST.md` exists and lists the five assets that c
 
 Finish with a **Results** table (date, tester, check, pass/fail/notes) so a pass leaves a record.
 
-- [ ] **Step 2: Run the checklist yourself for everything except the phone**
+- [ ] **Step 2: Leave every result row NOT RUN — do not judge these yourself**
 
-Checks 1–7 and 9 need a desktop browser and a person. Run `npm run dev`, work through them, and fill in the Results table honestly — including any that fail. Check 8 needs a real device; if none is available, mark it `NOT RUN — no device` rather than guessing.
+**User decision, 2026-07-25:** these nine checks exist precisely because they need human judgement ("does banking feel right", "is the audio mix balanced"). An agent cannot honestly answer them, and a fabricated verdict is worse than an empty row.
+
+So: author the Results table with all nine rows present and every verdict set to `NOT RUN — awaiting human pass`. Do not run the app and infer feel from screenshots. Do not mark anything passed.
+
+The only thing to verify in this step is that the setup snippets actually work: run `npm run dev`, paste each snippet from the Setup section into the browser console, and confirm each does what it claims (teleport moves the ship, `setLowPerf` drops the halo, the shard seed survives a reload). A snippet that silently fails makes the whole checklist unusable. Fix any that don't work; record in the report which you verified.
 
 - [ ] **Step 3: Commit**
 
@@ -1883,7 +1929,7 @@ this class of placeholder cannot silently return."
 - Modify: `.gitignore`
 
 **Interfaces:**
-- Consumes: `identity.email` from Task 13.
+- Consumes: nothing. `buildMailto` takes the address as its `to` parameter and its tests use a literal, so this task is **not** blocked on the identity data — only Task 15 imports `identity`.
 - Produces: `buildPayload(fields, accessKey)`, `buildMailto(fields, to)`, `classifyResponse(res, json)` returning `"ok" | "rejected" | "unreachable"`. Task 15 imports all three.
 
 - [ ] **Step 1: Write the failing test**
@@ -2314,8 +2360,8 @@ await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
     await page.evaluate(async () => {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
-      const f = window.__fitz.flight;
-      f.x = b.x + 14; f.y = b.y + 6; f.z = b.z + 16; f.speed = 0;
+      // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
+      window.__fitz.teleport(b.x + 14, b.y + 6, b.z + 16);
     });
     await settle(page, 2500);
     await page.keyboard.press("KeyP");        // photo mode: no HUD, no modals
@@ -2443,3 +2489,61 @@ git commit -m "docs: verification record for the content + verification closure 
 **Ordering constraints.** Task 1 must precede 2–9 (probes need the bridge and the names). Task 2 must precede 3–9 and 15 (all import the harness). Task 13 must precede 14, 15, and 16 (identity and name). Task 10 should run after 3–9 but its fixes may touch anything. Task 12 must run last of Part B — it records what the others concluded.
 
 **Blocked task.** Task 13 needs user-supplied data and says so explicitly. Tasks 1–12 and Task 16's generator are unblocked; Task 16's meta tags need the name.
+
+---
+
+## Verification (2026-07-26)
+
+**Gates:** `npm run build` clean (chunk-size advisory only) · `npm run lint` exactly the two
+long-standing pre-existing warnings (`Atmosphere.tsx:54`, `Scanner.tsx:9`) · `npm test` **97/97 across
+20 files** (was 85) · `npm run test:e2e` **101/101 checks, 2 capture-only** · `scripts/check-first-paint.sh`
+both assertions pass · production bundle contains no `__fitz` (dev-only debug surface fully
+dead-code-eliminated).
+
+**Placeholder scan:** no `hello@example.com`, no `smtp.fitzgeral.dev`, no `AES-GCM-256`, no PGP claim
+survives anywhere in `src/` or `index.html`. `KNOWN_PLACEHOLDERS` contains exactly `["github"]` — the
+owner's one deliberate, declared placeholder.
+
+**Assets:** `public/models/` unchanged at 3.6MB. One image added: `public/og.webp`, 1200×630, 21.7KB,
+generated from the app's own photo mode. `assets-src/` verified byte-identical before and after every
+Blender run (independent per-file sha256 baseline plus the probe's own restore assertion).
+
+### What Part B actually established
+
+Roughly 33 acceptance checks across seven plans had never been confirmed. 24 are now machine-asserted,
+9 are scripted for a human in `docs/QA-CHECKLIST.md` (all rows `NOT RUN` — no agent judged them), and
+~10 turned out to have no coverage at all and are recorded as such rather than implied.
+
+**The app's claims held up.** The project's longest-standing unverified assertion — zero React renders
+during steady flight — measures a commit delta of 0 across 5s of real flight in genuine deep space,
+gated on the ship having actually moved. Scope note: the `<Profiler>` wraps the DOM tree, and
+`@react-three/fiber` creates its own reconciler root, so canvas-internal commits are covered indirectly
+via store-key sameness rather than by the counter. Touch controls were exercised for the first time in
+the project's history (14/14 under iPhone emulation). Low-perf gating, wrap-seam radar continuity,
+shard fanfare, ram cooldown and asset PBR are all real.
+
+**Every failure encountered during implementation was a defect in this plan, not in the app.** The
+notable ones: a meteor check that was always true (opacity is never modulated); a continuity check
+reading an axis the ship never travelled; a ram manoeuvre that flew away from its target; a chatter
+assertion pointed at a store field that code path never writes; and `flight.{x,y,z}` being write-only
+telemetry, which made every planned teleport a silent no-op and would have hollowed out four tasks
+before Task 6b introduced a real `__fitz.teleport`.
+
+### Part A
+
+The contact form previously ran a `setInterval` claiming PGP encryption and a dispatch to
+`smtp.fitzgeral.dev`, made no network call, and told visitors their message had reached the inbox. It
+now really POSTs, with log lines tied to the actual request lifecycle, a 10s abort, verdict-specific
+failure copy, and a mailto fallback carrying everything typed. With no key configured it renders a
+mailto card *inside the same section wrapper*, so the `#contact` anchor and page layout survive.
+
+**Open:** the one real end-to-end send is unperformed. Web3Forms sits behind Cloudflare bot-protection
+that 403s automated browsers; the implementer attempted it, failed at CORS preflight, and correctly
+stopped rather than disguising automation to get through. Only a human in an ordinary browser can
+confirm delivery.
+
+**Also open, and more consequential than anything in this plan:** `portal_gateway.glb`,
+`space_crystal.glb`, `earth.jpg`, `mars.jpg`, `jupiter.jpg` and the spaceship base mesh have no
+discoverable provenance or licence (searched all specs, README at every commit, and
+`git log --all --diff-filter=A` with vendor keywords). Publishing a CV that ships six unlicensed
+third-party assets is a real exposure. Recorded in `assets-src/MANIFEST.md`.

@@ -1,25 +1,33 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Send, CheckCircle2, ShieldAlert, Terminal } from "lucide-react";
+import { identity } from "../../data/identity";
+import { buildPayload, buildMailto, classifyResponse } from "../../utils/contactForm";
 
 interface ContactProps {
   isSidebar?: boolean;
 }
 
+/**
+ * React 19 batches a `setState` call with any other `setState` call that
+ * follows it with nothing awaited in between — so logging the final status
+ * line and immediately flipping `formStatus` land in the same commit, and
+ * the terminal's last line would never actually paint before the view swaps
+ * to the success/error screen. This delay forces a paint boundary between
+ * the two, so a real visitor (and the e2e probe) can actually see the true
+ * final status before the screen changes.
+ */
+const FINAL_STATUS_PAINT_DELAY_MS = 600;
+
 export default function Contact({ isSidebar = false }: ContactProps) {
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success" | "rejected" | "unreachable">("idle");
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [errorDetail, setErrorDetail] = useState("");
 
-  // Simulation terminal logs
-  const simulationSteps = [
-    "Establishing secure socket connection...",
-    "Validating payload headers...",
-    "Encrypting message contents with PGP...",
-    "Dispatching packet to smtp.fitzgeral.dev...",
-    "Transmission successfully completed! Status 200 OK.",
-  ];
+  const accessKey = import.meta.env.VITE_FORM_KEY ?? "";
+  const endpoint = import.meta.env.VITE_FORM_ENDPOINT ?? "https://api.web3forms.com/submit";
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -43,28 +51,79 @@ export default function Contact({ isSidebar = false }: ContactProps) {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setFormStatus("submitting");
+    const log = (line: string) => setTerminalLogs((prev) => [...prev, `[system] > ${line}`]);
     setTerminalLogs([]);
+    log("validating payload headers…");
 
-    // Run terminal logs sequence
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < simulationSteps.length) {
-        setTerminalLogs((prev) => [...prev, `[system] > ${simulationSteps[currentStep]}`]);
-        currentStep++;
-      } else {
-        clearInterval(interval);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      log("serializing transmission packet…");
+      log("awaiting relay acknowledgement…");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(buildPayload(formData, accessKey)),
+        signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      const verdict = classifyResponse(res, json);
+      if (verdict === "ok") {
+        log(`relay ack ${res.status} — transmission logged`);
+        await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
         setFormStatus("success");
         setFormData({ name: "", email: "", message: "" });
+      } else {
+        // verdict is "rejected" (the relay answered and declined, e.g. a
+        // revoked key or quota exceeded — a 4xx) or "unreachable" (the relay
+        // itself is down, a 5xx). Both differ from a network-level failure
+        // (caught below) in that the relay *did* answer; keep the distinct
+        // verdict so the error screen doesn't call a refusal "unreachable".
+        const reason = json.message ?? "no reason given";
+        log(`relay ${verdict} (${res.status}) — ${reason}`);
+        setErrorDetail(reason);
+        await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
+        setFormStatus(verdict);
       }
-    }, 400);
+    } catch {
+      log("RELAY UNREACHABLE — falling back to direct channel");
+      setErrorDetail("");
+      await new Promise((r) => setTimeout(r, FINAL_STATUS_PAINT_DELAY_MS));
+      setFormStatus("unreachable");
+    } finally {
+      clearTimeout(timeout);
+    }
   };
 
-  const formCard = (
+  // No relay configured on this build (fresh clone, or any host that builds
+  // without VITE_FORM_KEY): resolve `formCard` to the mailto-only card rather
+  // than early-returning above the `isSidebar` branch and the `<section
+  // id="contact">` wrapper below. An early return here used to make the
+  // whole "Get In Touch" section — and its #contact anchor that Navbar and
+  // Hero link to — disappear whenever the key was empty. Keeping the same
+  // wrapper structure either way means the page layout is identical
+  // regardless of whether the relay is configured.
+  const formCard = !accessKey ? (
+    <div className={isSidebar ? "glass-card rounded-2xl p-6 border border-accent/20 bg-black/85" : "glass-card rounded-2xl p-6 sm:p-8"}>
+      <h3 className="font-display font-extrabold text-xl mb-3 text-white">Open a Channel</h3>
+      <p className="text-muted text-sm mb-6">
+        Direct transmission only — the relay isn't configured on this build.
+      </p>
+      <a
+        href={`mailto:${identity.email}`}
+        className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors"
+      >
+        <Mail className="w-4 h-4" />
+        OPEN_TRANSMISSION
+      </a>
+      <p className="mt-4 font-mono text-[10px] text-white/40 select-all">{identity.email}</p>
+    </div>
+  ) : (
     <div className={isSidebar ? "glass-card rounded-2xl p-6 relative w-full border border-accent/20 bg-black/85 max-h-[85vh] overflow-hidden pointer-events-auto" : "glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden"}>
       {isSidebar && (
         <h3 className="font-display font-extrabold text-xl mb-4 text-white flex items-center gap-2">
@@ -83,13 +142,42 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             <CheckCircle2 className="w-16 h-16 text-primary mb-6 animate-bounce" />
             <h3 className="font-display font-bold text-2xl mb-2">Transmission Dispatched!</h3>
             <p className="text-muted text-sm max-w-xs mb-6">
-              Your transmission has been encrypted and sent to my inbox. I'll analyze it and get back to you shortly.
+              Your transmission reached the relay and is on its way to my inbox. I'll get back to you shortly.
             </p>
             <button
               onClick={() => setFormStatus("idle")}
               className="px-5 py-2.5 rounded-lg font-mono text-xs text-primary border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer"
             >
               SEND_ANOTHER_PACKET
+            </button>
+          </motion.div>
+        ) : formStatus === "rejected" || formStatus === "unreachable" ? (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col items-center justify-center py-12 text-center"
+          >
+            <ShieldAlert className="w-16 h-16 text-red-400 mb-6" />
+            <h3 className="font-display font-bold text-2xl mb-2">
+              {formStatus === "rejected" ? "Transmission Refused" : "Relay Unreachable"}
+            </h3>
+            <p className="text-muted text-sm max-w-xs mb-6">
+              {formStatus === "rejected"
+                ? `The relay answered and declined the transmission${errorDetail ? ` — ${errorDetail}` : ""}. Nothing was lost — open a direct channel and your message travels with you.`
+                : "The relay didn't acknowledge. Nothing was lost — open a direct channel and your message travels with you."}
+            </p>
+            <a
+              href={buildMailto(formData, identity.email)}
+              className="px-5 py-2.5 rounded-lg font-mono text-xs text-primary border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors"
+            >
+              OPEN_DIRECT_CHANNEL
+            </a>
+            <button
+              onClick={() => setFormStatus("idle")}
+              className="mt-4 font-mono text-[10px] text-white/40 hover:text-white/70 transition-colors cursor-pointer"
+            >
+              RETRY_TRANSMISSION
             </button>
           </motion.div>
         ) : formStatus === "submitting" ? (
@@ -120,7 +208,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
 
             {/* Console Footer */}
             <div className="border-t border-white/5 pt-2 mt-4 text-[10px] text-white/30 text-right">
-              ENCRYPTION: AES-GCM-256
+              TRANSPORT: HTTPS/TLS
             </div>
           </motion.div>
         ) : (
@@ -246,8 +334,8 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             </div>
             <div>
               <p className="text-xs font-mono text-muted">DIRECT_MAIL</p>
-              <a href="mailto:hello@example.com" className="text-sm font-mono text-white hover:text-accent transition-colors">
-                hello@example.com
+              <a href={`mailto:${identity.email}`} className="text-sm font-mono text-white hover:text-accent transition-colors">
+                {identity.email}
               </a>
             </div>
           </div>

@@ -29,3 +29,6 @@ assets-src/
 
 # Python bytecode cache (Blender scripts)
 __pycache__/
+
+# Local env (contains the form relay key)
+.env
