@@ -458,8 +458,20 @@ describe("isRejectedSpawn", () => {
     expect(isRejectedSpawn(88, 0, 0, [])).toBe(true);
   });
 
+  it("measures the bands as 3D radius, so the tilted halo is covered", () => {
+    // Both belt rings are TILTED (BeltMain 0.436 rad, BeltHalo 1.31 rad), and a
+    // tilt preserves distance from the origin while destroying XZ radius. The
+    // 75-degree halo at ring radius 88 therefore reaches y ~= 85 at an XZ radius
+    // of only ~22 — so an XZ-radius test would happily place a crystal in the
+    // thick of the halo. Straight up the pole at 88 units must reject.
+    expect(isRejectedSpawn(0, 88, 0, [])).toBe(true);
+    // And a point whose XZ radius lands in the belt band but whose true distance
+    // is far outside it must be accepted.
+    expect(isRejectedSpawn(55, 240, 0, [])).toBe(false);
+  });
+
   it("accepts the gaps between and beyond the bands", () => {
-    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // inside the belt
+    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // the belt's inner hole
     expect(isRejectedSpawn(75, 0, 0, [])).toBe(false);   // between belt and halo
     expect(isRejectedSpawn(200, 0, 0, [])).toBe(false);  // beyond both
   });
@@ -558,10 +570,10 @@ export const CRYSTAL_RESPAWN_SECONDS = 4;
 /** Ship-to-crystal distance that collects it. Matches the shard radius. */
 export const CRYSTAL_PICKUP_RADIUS = 3;
 
-/** Main asteroid belt band, radius in the XZ plane (AsteroidBelt.tsx). */
+/** Main asteroid belt band, distance from origin (AsteroidBelt.tsx:110). */
 const BELT_MIN = 40;
 const BELT_MAX = 70;
-/** Polar halo band, same file. */
+/** Polar halo band, same file (line 115). */
 const HALO_MIN = 80;
 const HALO_MAX = 95;
 
@@ -573,14 +585,18 @@ const MAX_ATTEMPTS = 20;
  * the asteroid bands where it would be buried in rock, or too close to a body
  * the player is navigating around.
  *
- * Band tests use XZ radius because the belt and halo are rings around the
- * origin; avoid points use full 3D distance because a crystal directly above a
- * planet is just as wrong as one beside it.
+ * Every test is full 3D distance from the origin, NOT XZ radius. Both belt rings
+ * are tilted — `BeltMain` by 0.436 rad and `BeltHalo` by 1.31 rad — and rotating
+ * a ring preserves each rock's distance from the origin while changing its XZ
+ * radius completely. The 75-degree halo at ring radius 88 climbs to y ~= 85 at an
+ * XZ radius of ~22, so an XZ test would drop crystals right into the halo it was
+ * meant to exclude. Distance from origin is the tilt-invariant measure, and it is
+ * what the spec means by "radius 40-70 from origin".
  */
 export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoint[]): boolean {
-  const ringR = Math.hypot(x, z);
-  if (ringR >= BELT_MIN && ringR <= BELT_MAX) return true;
-  if (ringR >= HALO_MIN && ringR <= HALO_MAX) return true;
+  const originR = Math.hypot(x, y, z);
+  if (originR >= BELT_MIN && originR <= BELT_MAX) return true;
+  if (originR >= HALO_MIN && originR <= HALO_MAX) return true;
   for (const a of avoid) {
     if (Math.hypot(x - a.x, y - a.y, z - a.z) < a.r) return true;
   }
@@ -624,11 +640,11 @@ export function respawnTick(accum: number, dt: number): { spawns: number; accum:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run tests/crystalField.test.ts`
-Expected: PASS (12 tests).
+Expected: PASS (13 tests).
 
 - [ ] **Step 5: Full suite and commit**
 
-Run: `npm test` — expected 138 tests (126 + 12).
+Run: `npm test` — expected 139 tests (126 + 13).
 
 ```bash
 git add src/utils/crystalField.ts tests/crystalField.test.ts
@@ -784,6 +800,14 @@ export default function FuelCrystals() {
         flight.fuel = refuel(flight.fuel);
         s.active = false;
         soundManager.pickup();
+        // Clear the DRY flag here as well as in Spaceship's loop. Spaceship's
+        // `setFuelEmpty` call sits below its photo-mode and orbit-lock early
+        // returns, so while the ship is orbit-locked nothing reconciles the flag —
+        // a pickup in that state would refuel the tank while the HUD still read
+        // OFFLINE (NO FUEL) until the visitor broke orbit. A pickup is a discrete
+        // event, not a per-frame one, and the setter is change-guarded, so calling
+        // it here costs nothing in the steady state.
+        store.setFuelEmpty(flight.fuel <= 0);
         if (before >= FUEL_MAX) store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
       }
     }
