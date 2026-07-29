@@ -6,6 +6,7 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { setScannable } from "../../utils/scannables";
 import { keplerPosition } from "../../utils/kepler";
 import { ambientTime } from "../../utils/ambientTime";
+import { assetUrl } from "../../utils/assetUrl";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
@@ -97,7 +98,7 @@ export default function Comets() {
   );
   useEffect(() => () => comaMaterials.forEach((m) => m.dispose()), [comaMaterials]);
 
-  const { scene } = useGLTF("/models/comet_head.glb");
+  const { scene } = useGLTF(assetUrl("/models/comet_head.glb"));
 
   const { headGeometry, headMaterial } = useMemo(() => {
     let g: THREE.BufferGeometry | undefined;

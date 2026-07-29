@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
+import { assetUrl } from "../../utils/assetUrl";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -29,7 +30,7 @@ const tanA = new THREE.Vector3();
 const tanB = new THREE.Vector3();
 
 export default function CargoTraffic() {
-  const { scene } = useGLTF("/models/cargo_ship.glb");
+  const { scene } = useGLTF(assetUrl("/models/cargo_ship.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? 3 : 5;
   const rolls = useRef<number[]>(SHIPS.map(() => 0));

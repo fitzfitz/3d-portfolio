@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
+import { assetUrl } from "../../utils/assetUrl";
 
 const VARIANTS = 4;
 const dummy = new THREE.Object3D();
@@ -15,7 +16,7 @@ const byVariant = Array.from({ length: VARIANTS }, (_, v) =>
 );
 
 export default function Asteroids() {
-  const { scene } = useGLTF("/models/asteroids.glb");
+  const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
   const gl = useThree((s) => s.gl);
   const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([null, null, null, null]);
 

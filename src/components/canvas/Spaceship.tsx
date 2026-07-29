@@ -12,6 +12,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
+import { assetUrl } from "../../utils/assetUrl";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -35,7 +36,7 @@ const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
 export default function Spaceship() {
-  const { scene } = useGLTF("/models/spaceship.glb");
+  const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
 
   // Dim decorative emissives, but keep the engine material hot — it paints the

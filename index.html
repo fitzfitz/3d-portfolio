@@ -16,10 +16,16 @@
     <meta property="og:site_name" content="Fitzgeral" />
     <meta property="og:title" content="Fitzgeral — Software Engineer | 3D Flight-Sim CV" />
     <meta property="og:description" content="An interactive CV you fly through. Lock orbit around a planet to open the project dossier." />
-    <!-- TODO(deploy): og:image must become an ABSOLUTE https URL and og:url +
-         <link rel="canonical"> must be added once a domain exists. Facebook
-         resolves relative og:image inconsistently; Twitter tolerates it. -->
-    <meta property="og:image" content="/og.webp" />
+    <!-- Social images are ABSOLUTE by necessity, not style: scrapers do not
+         reliably resolve a relative og:image, and Vite's build-time HTML
+         rewriting covers og:image but NOT twitter:image (verified against
+         `vite build --base=/3d-portfolio/`), so a relative Twitter URL would
+         stay pointed at the domain root and 404 on a project page. Absolute
+         URLs need no rewriting and sidestep both problems.
+         These four URLs assume the GitHub Pages project page; a custom domain
+         means updating og:url, canonical, og:image and twitter:image. -->
+    <meta property="og:url" content="https://fitzfitz.github.io/3d-portfolio/" />
+    <meta property="og:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
@@ -27,7 +33,9 @@
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:title" content="Fitzgeral — Software Engineer | 3D Flight-Sim CV" />
     <meta property="twitter:description" content="An interactive CV you fly through. Lock orbit around a planet to open the project dossier." />
-    <meta property="twitter:image" content="/og.webp" />
+    <meta property="twitter:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
+
+    <link rel="canonical" href="https://fitzfitz.github.io/3d-portfolio/" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

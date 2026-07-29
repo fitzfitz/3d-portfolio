@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
+import { assetUrl } from "../../utils/assetUrl";
 
 const COUNT_FULL = 400;
 const COUNT_LOW = 200;
@@ -87,7 +88,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
 const HALO_FULL = 160;
 
 export default function AsteroidBelt() {
-  const { scene } = useGLTF("/models/asteroids.glb");
+  const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? COUNT_LOW : COUNT_FULL;
 

@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight } from "../../store/spaceStore";
+import { assetUrl } from "../../utils/assetUrl";
 
 interface Anomaly {
   id: number;
@@ -145,7 +146,7 @@ function AnomalyInstance({ a, scene }: AnomalyInstanceProps) {
 
 export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
   (_props, ref) => {
-    const { scene } = useGLTF("/models/space_crystal.glb");
+    const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
     /**
      * The live simulation, mutated in place. Deliberately a ref rather than
      * state: positions change every frame, and holding them in state meant a
