@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Throwaway subpath build used by tests/e2e/basepath.probe.mjs
+dist-pages
 *.local
 
 # Original uncompressed 3D assets (optimized copies live in public/models)

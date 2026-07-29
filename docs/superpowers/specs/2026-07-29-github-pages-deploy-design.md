@@ -145,6 +145,38 @@ A vacuous pass is the risk to guard against here: a probe that loads a blank pag
 "no failed requests" would pass while proving nothing. The GLB-resolved assertion is what stops
 that, and the count of expected loads should be pinned rather than checked as "> 0".
 
+## 5a. Amendment (2026-07-29, same day) — the switch gets flipped after all
+
+§4 above was written under a decision to stage everything and publish nothing.
+The repo owner then asked directly to "fix everything then build it and push it gh-pages",
+which reverses that. Two changes to the design as specified:
+
+- **`deploy.yml` ships with an active `push: [main]` trigger**, not the commented-out version
+  §3.4 describes. The reason for making it inert — avoiding failed runs while Pages was off —
+  no longer applies once Pages is being enabled in the same change.
+- **Pages gets enabled and the site goes live**, so §4's "what is deliberately NOT done" no
+  longer holds. The licence exposure it describes is now an accepted, explicitly-requested
+  consequence: the six `UNKNOWN`-provenance assets are served publicly. `MANIFEST.md`'s
+  "before any public deploy" requirement is knowingly outstanding, not satisfied.
+
+Everything in §§1–3 and §5 stands unchanged. The asset-licence work remains tracked and
+unstarted; the deploy landing first does not close it.
+
+### Verification record
+
+- 148 unit tests pass (139 pre-existing + 9 new in `tests/assetUrl.test.ts`).
+- 139/139 e2e checks pass across all 12 probes, including the new `basepath` probe.
+- `npm run build` (tsc + vite) clean; lint shows only the two pre-existing warnings.
+- **Both new gates were verified to fail when the bug is reintroduced**, not merely to pass
+  when it is absent: reverting one call site to a bare `"/models/spaceship.glb"` literal turned
+  5 of the 7 basepath checks red and failed the unit guard.
+- That exercise caught a real flaw in the probe's own logic. The
+  "no asset served from the domain root" check originally inspected only *successful*
+  responses — and a wrong-base request 404s, so it never appeared among successes. It was the
+  one check of six that still passed while the bug was live. It now records the request
+  *attempt*, with a companion check asserting the list was non-empty so it cannot pass on
+  nothing.
+
 ## 6. Out of scope
 
 The 1,578 kB chunk-size warning (code splitting is separately tracked), the two known lint

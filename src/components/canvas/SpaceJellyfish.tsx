@@ -6,6 +6,7 @@ import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfi
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
+import { assetUrl } from "../../utils/assetUrl";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
 // Mirrored in JS below for the swim surge — keep the two in sync.
@@ -81,7 +82,7 @@ function pulseCycle(t: number): number {
 }
 
 export default function SpaceJellyfish() {
-  const { scene } = useGLTF("/models/creature.glb");
+  const { scene } = useGLTF(assetUrl("/models/creature.glb"));
   const groupRef = useRef<THREE.Group>(null);
   const tOffset = useRef(0);
   const timeRef = useRef(0);

@@ -16,6 +16,7 @@ import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
+import { assetUrl } from "../../utils/assetUrl";
 
 /**
  * Orbit-ring breathe. Baseline 0.22 is the opacity the rings were authored with,
@@ -174,7 +175,7 @@ interface OrbitingMoonProps {
 }
 
 function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, spin = 0.15 }: OrbitingMoonProps) {
-  const { scene } = useGLTF("/models/moon.glb");
+  const { scene } = useGLTF(assetUrl("/models/moon.glb"));
   const orbitRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
 
@@ -220,9 +221,9 @@ export default function SpacePlanets() {
 
   // Load planet textures maps
   const [earthTex, jupiterTex, marsTex] = useTexture([
-    "/models/earth.webp",
-    "/models/jupiter.webp",
-    "/models/mars.webp"
+    assetUrl("/models/earth.webp"),
+    assetUrl("/models/jupiter.webp"),
+    assetUrl("/models/mars.webp")
   ]);
 
   const gl = useThree((s) => s.gl);
@@ -236,7 +237,7 @@ export default function SpacePlanets() {
   }, [earthTex, jupiterTex, marsTex, gl]);
 
   // Load custom stargate portal gateway model
-  const { scene: portalScene } = useGLTF("/models/portal_gateway.glb");
+  const { scene: portalScene } = useGLTF(assetUrl("/models/portal_gateway.glb"));
 
   // Swap the GLB's static membrane texture for the animated swirl shader.
   const membraneMaterial = useMemo(

@@ -13,6 +13,7 @@ import {
 } from "../../utils/crystalField";
 import { soundManager } from "../../audio/soundManager";
 import { fitzDebug } from "../../debug/bridge";
+import { assetUrl } from "../../utils/assetUrl";
 
 const dummy = new THREE.Object3D();
 const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
@@ -24,7 +25,7 @@ const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
  * render: the matrices and `flight.fuel` carry all of it.
  */
 export default function FuelCrystals() {
-  const { scene } = useGLTF("/models/space_crystal.glb");
+  const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const respawnAccum = useRef(0);
 
