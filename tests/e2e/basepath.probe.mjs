@@ -147,11 +147,18 @@ export default async function basepathProbe() {
       `${askedForModels.length} /models/ requests seen`);
 
     // Guard against the vacuous pass: a blank page also produces zero failures.
-    const canvasPainted = await page.evaluate(() => {
-      const c = document.querySelector("canvas");
-      return !!c && c.width > 0 && c.height > 0;
+    //
+    // Must target the WebGL canvas explicitly. There are two canvases and the
+    // 2D radar overlay comes FIRST in DOM order, so `querySelector("canvas")`
+    // returns the radar (148x148) — verified against the live site. Checking
+    // that one would report a healthy 3D view while the scene was empty.
+    const webgl = await page.evaluate(() => {
+      const c = [...document.querySelectorAll("canvas")].find((el) => !!el.getContext("webgl2"));
+      return c ? { w: c.width, h: c.height } : null;
     });
-    checks.check("canvas is present and sized (not a blank page)", canvasPainted);
+    checks.check("the WebGL canvas is present and full-size (not a blank scene)",
+      !!webgl && webgl.w >= 1280 && webgl.h >= 800,
+      webgl ? `${webgl.w}x${webgl.h}` : "no webgl2 canvas found");
 
     checks.check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 
