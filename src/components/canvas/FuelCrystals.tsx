@@ -133,21 +133,29 @@ export default function FuelCrystals() {
         // Confirm only the pickup that changes the visitor's situation. A
         // healthy-tank top-up stays silent because typeLine interrupts, and a
         // line per pickup would stomp the ticker across a crystal field.
-        // Percentage uses the gauge's own expression (HUDOverlay.tsx:66) so the
-        // number in the line always matches the number on the bar.
-        const pct = ((flight.fuel / FUEL_MAX) * 100).toFixed(0);
-        switch (refuelOutcome(before)) {
+        // Percentage uses the gauge's own expression, clamp included
+        // (HUDOverlay.tsx:56,66), so the number in the line always matches
+        // the number on the bar.
+        const pctText = (Math.max(0, Math.min(1, flight.fuel / FUEL_MAX)) * 100).toFixed(0);
+        const outcome = refuelOutcome(before);
+        switch (outcome) {
           case "vented":
             store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
             break;
           case "restored":
-            store.sendBroadcast(`WARP CORE RECHARGED // ${pct}% — WARP ONLINE`);
+            store.sendBroadcast(`WARP CORE RECHARGED // ${pctText}% — WARP ONLINE`);
             break;
           case "topped-up":
-            store.sendBroadcast(`FUEL CRYSTAL ABSORBED // ${pct}%`);
+            store.sendBroadcast(`FUEL CRYSTAL ABSORBED // ${pctText}%`);
             break;
           case "quiet":
             break;
+          default: {
+            // Exhaustiveness guard: a fifth RefuelOutcome member should fail
+            // to compile here rather than silently broadcast nothing.
+            const _exhaustive: never = outcome;
+            void _exhaustive;
+          }
         }
       }
     }

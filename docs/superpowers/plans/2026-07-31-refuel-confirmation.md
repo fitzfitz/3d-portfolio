@@ -490,7 +490,7 @@ npm run build && npm run lint && npm test && npm run test:e2e
 Expected:
 - Build clean, only the pre-existing chunk-size advisory.
 - Lint: exactly the two baseline warnings (`Atmosphere.tsx:54`, `Scanner.tsx:9`).
-- Unit: **156 tests** (148 measured baseline + 8 added in Task 1).
+- Unit: **156 tests** (148 measured baseline + 7 from Task 1 + 1 from Task 2).
 - e2e: exactly one more check than the suite reported before this work, with `perf` at `commits=0`. Do **not** assert against the "127" in the fuel-and-crystals record — that figure predates the `basepath` probe, which is now in `run.mjs`'s default list. Measure the baseline on `main` if you need a number to compare against.
 
 **Safety:** the `assets` probe invokes Blender against gitignored, irreplaceable `assets-src/`, asserting a sha256 restore. If `assets-src/moon.glb restored byte-for-byte` fails, **stop immediately and report it** — do not retry, and do not touch `assets-src/`.

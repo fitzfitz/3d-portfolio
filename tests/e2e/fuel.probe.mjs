@@ -140,6 +140,19 @@ export default async function run() {
         { timeoutMs: 5000, intervalMs: 250 });
       checks.check("a refuel from empty confirms itself in the chatter",
         saidRecharged.ok, `chatter="${await chatterText(page)}"`);
+
+      // The DOM poll above proves the line actually reaches the HUD, but the
+      // chatter is first read ~1.5s after the pickup (this `settle(page,
+      // 1500)`), and any competing `typeLine` in that window (cometNear is a
+      // live risk) permanently replaces the DOM text — polling recovers from
+      // slowness, not from clobbering. `store.broadcast` is set once, at
+      // pickup, and nothing overwrites it afterward, so reading it here is
+      // clobber-proof and pins what the DOM poll cannot: the exact percentage
+      // and the em dash, which nothing else in this suite asserts.
+      const storeAfterPickup = await readStore(page);
+      checks.check("store.broadcast pins the exact restored message, percentage and em dash included",
+        storeAfterPickup.broadcast?.text === "WARP CORE RECHARGED // 25% — WARP ONLINE",
+        `text="${storeAfterPickup.broadcast?.text}"`);
     }
 
     // Cap is respected as the field refills.

@@ -48,6 +48,15 @@ export type RefuelOutcome = "vented" | "restored" | "topped-up" | "quiet";
  * resetting the ambient timer), so a line per pickup would stomp the ticker
  * while crossing a field of 40 respawning crystals.
  *
+ * That "lifts out of low" framing holds only because `FUEL_PER_CRYSTAL >=
+ * FUEL_LOW` (both happen to be 25 today — see `FUEL_LOW`'s comment on why
+ * that is a coincidence, not a relationship the code enforces). Retune
+ * `FUEL_PER_CRYSTAL` below `FUEL_LOW` and a pickup can leave the tank still
+ * below `FUEL_LOW` — gauge still amber — yet still announce "topped-up": not
+ * a bug (the message never claims the tank is healthy now), but this
+ * comment's framing would then overstate what happened. Worth knowing before
+ * either constant moves.
+ *
  * `restored` and `topped-up` are separate because only one of them turns warp
  * back on. Announcing "WARP ONLINE" on a 10% -> 35% pickup would state
  * something untrue, and this HUD is careful about that distinction — the DRY
