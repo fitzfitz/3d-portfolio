@@ -545,3 +545,34 @@ git commit -m "docs: refuel confirmation verification record"
 
 1. The `HUDOverlay` source-scan test moved from Task 1 to Task 2 Step 1, where it opens that task's TDD cycle. Originally Task 1 wrote it and committed it red for Task 2 to fix — proper TDD across the pair, but it meant committing a red suite, which a reviewer would rightly flag. Both tasks are now green at every commit and both are still test-driven.
 2. The test formerly named `"does not couple the low threshold to the crystal's refuel amount"` asserted `FUEL_LOW === 25` *and* `FUEL_PER_CRYSTAL === 25` — a change-detector whose name promised the opposite of what it asserted, and which manufactured the very coupling `fuel.ts`'s comment forbids. It is now `"pins FUEL_LOW at 25, so retuning it is a deliberate act"`, asserting `FUEL_LOW` only and labelled honestly as a tuning pin.
+
+---
+
+## Verification record
+
+**Step 1 — perf guarantee, three separate runs.** `npm run test:e2e perf`:
+
+| Run | Result | `commits` | hold displacement |
+|---|---|---|---|
+| 1 | 13/13 checks passed | `commits=0` | Δ=16.07 |
+| 2 | 13/13 checks passed | `commits=0` | Δ=17.61 |
+| 3 | 13/13 checks passed | `commits=0` | Δ=17.10 |
+
+No churn on any run, no inconclusive attempts, `commits=0` every time. This confirms empirically — not merely by restating the spec's reasoning about `Shift` never appearing in `perf.probe.mjs` — that no pickup takes the new `restored`/`topped-up` branch during the sampling hold.
+
+**Step 2 — full gate run.**
+
+- `npm run build`: clean. Only the pre-existing chunk-size advisory (`dist/assets/index-*.js`, 1,578.95 kB / gzip 448.70 kB), unrelated to this work.
+- `npm run lint`: exactly the two baseline warnings — `Scanner.tsx:9` (`react/only-export-components`) and `Atmosphere.tsx:54` (`react-hooks/exhaustive-deps`). No third warning.
+- `npm test`: **156 tests passed** (26 test files). This matches the plan's own expectation of 156 exactly (148 baseline + 7 from Task 1 + 1 from Task 2) — no discrepancy to report here.
+- `npm run test:e2e` (all 12 probes — smoke, audio, perf, sky, flight, gameplay, touch, assets, contact, reducedmotion, fuel, basepath): **140/140 checks passed, 3 capture-only** (sky's god-ray-occlusion note, gameplay's comet-proximity note, basepath's subpath-render capture). `perf` reported `commits=0` within this full run too. The `assets` probe's `assets-src/moon.glb restored byte-for-byte` check **passed**: `688ca09ed270 vs 688ca09ed270` — not blocked.
+
+  On the e2e total specifically: this step warns against asserting the stale "127" figure and says to measure `main`'s baseline "if you need a number to compare against." This task's own dispatch instructions forbid switching or creating branches, so `main` was not checked out for a literal measurement. Instead this relies on the differential Task 3 already measured directly: across the whole plan, `fuel.probe.mjs` is the only probe file whose check count changed (20 → 21, one check added, measured before/after in Task 3's own report), and `gameplay.probe.mjs`'s edit only relocated the `chatterText` helper (15 checks measured both before and after that move). No other of the twelve probe files was touched by any task in this plan. The pre-work baseline is therefore inferred, not independently re-measured on `main`, as 140 − 1 = **139**, making the measured 140 exactly one more than that baseline. Flagging this as an inference from a differential rather than a direct baseline measurement, per the instruction to be explicit about how a number was obtained.
+
+**Step 3 — production bundle.** `npm run build && ! grep -rq '__fitz' dist/assets/*.js` → `OK: debug bridge stripped`. Per the brief's own scope note, this confirms only that the dev-only bridge is dead-code-eliminated — it is not evidence the confirmation works in production. That rests on `FuelCrystals.tsx` importing `refuelOutcome` from `src/utils/fuel.ts` directly, the same module-level path `refuel` and `FUEL_MAX` already take, unaudited further here.
+
+**Step 4 — hands-on by-eye check. Not performed.** Consistent with `docs/superpowers/plans/2026-07-27-fuel-and-crystals.md`'s "Step 3 — hands-on empty-tank check" precedent: this step asks for a subjective `npm run dev` pass that an agent cannot honestly attest to, and it is reserved for the repo owner.
+
+The mechanical resolution is Task 3's e2e check, re-observed in this task's own Step 2 gate run: `a refuel from empty confirms itself in the chatter — chatter="> WARP CORE RECHARGED // 25% — WARP ONLINE"`. The em dash renders as `—`, not mojibake. The `25%` is exactly what the gauge reads at that moment, not a coincidental match: a `restored` outcome only fires from `refuelOutcome`'s `before <= 0` branch, i.e. a tank at exactly 0, and `refuel()` takes 0 to exactly `FUEL_PER_CRYSTAL` = 25, so `pct = 25 / FUEL_MAX = 25%` by construction.
+
+**Discrepancies against this plan's predictions.** None on the unit total (156 measured, 156 predicted). The e2e total is not a prediction mismatch so much as an inference this plan itself asked for, since it deliberately withheld an absolute figure pending measurement: 140 is what was measured on this branch; 139 is the baseline inferred (not measured on `main` — see Step 2 above) to confirm the required "+1".
