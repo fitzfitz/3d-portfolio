@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore } from "./harness.mjs";
+import { withPage, hold, settle, readStore, chatterText } from "./harness.mjs";
 
 /**
  * Teleports the ship next to a world point and zeroes its velocity.
@@ -11,19 +11,6 @@ const warpTo = (page, x, y, z) => page.evaluate((p) => {
   }
   window.__fitz.teleport(p.x, p.y, p.z);
 }, { x, y, z });
-
-/**
- * Reads the RadioChatter HUD line. Zone/ambient/warp/wrap/comet/altitude/impact
- * lines are typed straight into this DOM node by RadioChatter.tsx's `typeLine`
- * and NEVER touch `store.broadcast` — only shard pickups (DataShards.tsx) and
- * scan reports (Scanner.tsx) go through `sendBroadcast`. `text-primary/60` is
- * a className unique to this node in the whole component tree (verified via
- * grep), so a substring match is a safe, stable selector.
- */
-const chatterText = (page) => page.evaluate(() => {
-  const el = [...document.querySelectorAll("div")].find((d) => d.className?.includes?.("text-primary/60"));
-  return el ? el.textContent ?? "" : null;
-});
 
 export default async function run() {
   return withPage({ label: "gameplay" }, async (page, checks) => {
