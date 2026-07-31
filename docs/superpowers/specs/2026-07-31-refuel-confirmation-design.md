@@ -111,26 +111,36 @@ The existing `store.setFuelEmpty(flight.fuel <= 0)` at `FuelCrystals.tsx:132` st
 unchanged, so the `fuelEmpty` true→false edge still resets `dryAnnouncedThisSpell`
 (`HUDOverlay.tsx:85-95`) and a later dry spell still re-announces. No change there.
 
-## 5. The one real risk: `perf.probe.mjs` churn
+## 5. `perf.probe.mjs` — risk assessed and found to be near-nil
 
-`perf.probe.mjs` samples React commits during a 5s steady-flight hold **with warp held, draining
-the tank**. Its `commits=0` assertion is gated on a conclusive sample: it requires
-`changed.length === 0` (no store key changed during the window) and retries up to 3 attempts,
-failing with `"steady-flight commit sample was conclusive"` if churn persists.
+**Correction.** An earlier revision of this section claimed the perf probe samples commits "with
+warp held, draining the tank", making a mid-hold pickup below 25% a plausible new source of flake.
+Reading the probe disproves both halves:
 
-`broadcast` is a store key. So a crystal pickup that now broadcasts during that hold produces
-churn. Today a mid-hold pickup is churn-free unless the tank was full or dry; under this rule it
-also churns when `before < FUEL_LOW`. Since the probe drains fuel across its attempts, reaching
-below 25% is plausible rather than hypothetical, and the pickup radius is not small.
+1. **The perf probe never warps.** Its sampling hold is `hold(page, ["KeyW"], 5000)`
+   (`perf.probe.mjs:90`) and `Shift` appears nowhere in the file. Warp is never active, so the tank
+   never drains: `flight.fuel` stays at `FUEL_MAX` for the whole probe. A crystal pickup during the
+   hold therefore hits `before >= FUEL_MAX` → the **pre-existing** `vented` branch. The new
+   `restored` and `topped-up` branches are unreachable in that probe, so this change cannot add
+   churn there at all.
+2. **`broadcast` is already a watched key.** It is in `KEYS` (`perf.probe.mjs:55`), so any
+   broadcast — including today's `vented` one — is detected as churn and retried, rather than
+   silently failing `commits=0`. The failure mode was already handled before this change.
 
-The existing 3-attempt retry already absorbs *occasional* churn, so this is a widened flake window,
-not a new failure mode. Requirements on the implementation:
+So there is no mitigation to build. The residual obligation is only to confirm the reasoning
+empirically rather than trust it:
 
 - Run `npm run test:e2e perf` **at least 3 times** and report `commits` and any inconclusive
   attempts, rather than trusting one green run.
-- If it does trip, fix it by controlling the probe's crystal field (e.g. deactivating crystals near
-  the sampling position before the hold, via the same live-reference debug bridge the radar-range
-  block already uses) — **not** by weakening the `commits=0` assertion or widening a bound.
+- If it *does* trip against this analysis, fix it by controlling the probe's crystal field (e.g.
+  deactivating crystals near the sampling position before the hold, via the same live-reference
+  debug bridge the radar-range block already uses) — **never** by weakening the `commits=0`
+  assertion or widening a bound.
+
+Note for the record: the fuel-and-crystals verification record states `commits=0` was measured
+"with fuel actively draining during the 5s steady-flight hold". Per the source above, that cannot
+have been the case — cruise does not drain (the fuel probe asserts exactly this) and the hold
+presses only `KeyW`. The `commits=0` result stands; the "draining" characterisation of it does not.
 
 ## 6. Testing
 
