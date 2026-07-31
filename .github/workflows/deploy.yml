@@ -35,6 +35,27 @@ jobs:
       # path (tests/e2e/harness.mjs CHROME) and is a local/manual gate.
       - run: npm test
 
+      # Surfaces the one failure this workflow cannot otherwise show you. With
+      # no key the contact form is eliminated from the bundle and visitors get
+      # the mailto fallback — while the build, the tests and the deploy all stay
+      # green. That state shipped undetected from the original Pages launch, and
+      # then survived three further deploys while being actively debugged.
+      #
+      # A warning, not a failure: a fork legitimately has no key, and its mailto
+      # fallback is correct behaviour, not a broken build.
+      - name: Warn if the contact form will fall back to mailto
+        env:
+          VITE_FORM_KEY: ${{ secrets.VITE_FORM_KEY }}
+        run: |
+          if [ -z "$VITE_FORM_KEY" ]; then
+            echo "::warning title=Contact form disabled::VITE_FORM_KEY is unset, so Contact.tsx renders a mailto: link and the form is dropped from the bundle. Set the VITE_FORM_KEY repository secret to enable it."
+          else
+            # Length only, deliberately never the value — enough to catch a
+            # truncated or whitespace-mangled secret, which would otherwise
+            # look identical to a working one.
+            echo "VITE_FORM_KEY is set (${#VITE_FORM_KEY} chars); the contact form will be built."
+          fi
+
       - name: Build for the project-page subpath
         env:
           BASE_PATH: /3d-portfolio/
