@@ -263,6 +263,25 @@ export function readStore(page) {
   return page.evaluate(() => window.__fitz.store.getState());
 }
 
+/**
+ * Reads the RadioChatter HUD line. Most lines (zone/ambient/warp/wrap/comet/
+ * altitude/impact) are typed straight into this DOM node by RadioChatter.tsx's
+ * `typeLine` and never touch `store.broadcast`; shard pickups
+ * (DataShards.tsx), scan reports (Scanner.tsx), the dry-tank warning
+ * (HUDOverlay.tsx) and crystal pickups (FuelCrystals.tsx) go through
+ * `sendBroadcast`, which RadioChatter subscribes to and also renders here.
+ *
+ * So this DOM node — not `store.broadcast` — is the only place that sees every
+ * line, which is why assertions read it rather than the store.
+ *
+ * `text-primary/60` is a className unique to this node in the whole component
+ * tree (verified via grep), so a substring match is a safe, stable selector.
+ */
+export const chatterText = (page) => page.evaluate(() => {
+  const el = [...document.querySelectorAll("div")].find((d) => d.className?.includes?.("text-primary/60"));
+  return el ? el.textContent ?? "" : null;
+});
+
 /** Returns {found, count, position, rotation, visible} for a named scene object. */
 export function sceneQuery(page, name) {
   return page.evaluate((n) => {

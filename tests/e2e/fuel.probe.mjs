@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, hold, settle, readStore, pollUntil, chatterText } from "./harness.mjs";
 
 /**
  * Ticks real rAF frames forward via repeated CDP round-trips rather than one
@@ -127,6 +127,19 @@ export default async function run() {
       // Fuel was exactly 0 beforehand and FUEL_PER_CRYSTAL is 25, so the
       // exact value is available and strictly stronger than a one-sided bound.
       checks.check("touching a crystal refuels", refuelled === 25, `fuel=${refuelled}`);
+
+      // The tank was at exactly 0 before this pickup, so it is a `restored`
+      // outcome and must say so — this is the line that closes the loop the
+      // DRY broadcast opens. Substring, not full string: typeLine types at
+      // ~22ms/char (RadioChatter.tsx:26), so the line arrives progressively
+      // and "WARP CORE RECHARGED" (19 chars, ~420ms) lands well before the
+      // poll's timeout. Polling rather than a single read also means this
+      // does not depend on settle() having waited long enough.
+      const saidRecharged = await pollUntil(
+        async () => ((await chatterText(page)) ?? "").includes("WARP CORE RECHARGED"),
+        { timeoutMs: 5000, intervalMs: 250 });
+      checks.check("a refuel from empty confirms itself in the chatter",
+        saidRecharged.ok, `chatter="${await chatterText(page)}"`);
     }
 
     // Cap is respected as the field refills.
@@ -196,6 +209,13 @@ export default async function run() {
     // field. It still exercises RadarMap's real gate/draw against the real
     // crystalSlots array — it just guarantees the input configuration is one
     // where the property under test can actually hold.
+    //
+    // ---- KEEP THIS BLOCK LAST IN THE PROBE ----
+    // It mutates live crystal positions to build its test geometry. A
+    // relocated crystal has a ~2% chance of landing inside an asteroid band,
+    // which would break the "no crystal spawned inside the belt or halo" check
+    // above if that check ever ran after this point. The probe is correct today
+    // purely by ordering; nothing enforces it but this comment.
     const farSetup = await page.evaluate(async () => {
       const { COSMIC_BOUNDS } = await import("/src/constants.ts");
       const RANGE = 160;
