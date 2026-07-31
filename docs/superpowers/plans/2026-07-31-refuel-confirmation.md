@@ -59,14 +59,7 @@
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/fuel.test.ts`. Also extend the existing import on line 2 to pull in the new symbols, and add the two `node:` imports at the top of the file for the source scan:
-
-```ts
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-```
-
-Line 2 becomes:
+Append to `tests/fuel.test.ts`. Also extend the existing import on line 2 to pull in the new symbols. Line 2 becomes:
 
 ```ts
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, refuel, refuelOutcome } from "../src/utils/fuel";
@@ -109,35 +102,27 @@ describe("refuelOutcome", () => {
     expect(refuelOutcome(-1)).toBe("restored");
   });
 
-  it("does not couple the low threshold to the crystal's refuel amount", () => {
-    // FUEL_LOW and FUEL_PER_CRYSTAL are both 25 today by coincidence, not by
-    // relationship: one is "when does the tank read as low", the other is
-    // "how much does a crystal restore". This test exists to state that in
-    // writing — retuning one must not be expected to move the other.
+  it("pins FUEL_LOW at 25, so retuning it is a deliberate act", () => {
+    // A tuning pin, like the one-crossing test above: it does not test
+    // behaviour, it makes a change to the tuning fail loudly so nobody moves
+    // the gauge's amber point by accident.
+    //
+    // Deliberately does NOT assert anything about FUEL_PER_CRYSTAL. The two
+    // are both 25 today by coincidence, not by relationship, and a test
+    // asserting them together would manufacture exactly the coupling
+    // fuel.ts's comment says must not exist.
     expect(FUEL_LOW).toBe(25);
-    expect(FUEL_PER_CRYSTAL).toBe(25);
-  });
-});
-
-describe("the low threshold has exactly one home", () => {
-  it("HUDOverlay reads FUEL_LOW instead of a bare 0.25", () => {
-    // Source scan, same convention as tests/identity.test.ts: the gauge's
-    // amber point and the pickup's announce point are the same boundary, and
-    // a duplicated literal is how they would silently drift apart.
-    const src = readFileSync(join("src", "components", "layout", "HUDOverlay.tsx"), "utf8");
-    expect(src).toContain("FUEL_LOW");
-    expect(src).not.toMatch(/pct < 0\.25/);
   });
 });
 ```
+
+`FUEL_PER_CRYSTAL` stays in the import line even though this block does not use it — the existing `refuel` tests below already do.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test -- fuel`
 
-Expected: FAIL. The `refuelOutcome` block fails to import (`FUEL_LOW`/`refuelOutcome` are not exported yet), and the source-scan test fails on `expect(src).toContain("FUEL_LOW")` because `HUDOverlay.tsx` has not been touched yet.
-
-The source-scan failure is expected at this step and is fixed in Task 2, not here. Do not "fix" it by editing `HUDOverlay.tsx` now.
+Expected: FAIL — the whole file fails to import, because `FUEL_LOW` and `refuelOutcome` are not exported from `src/utils/fuel.ts` yet.
 
 - [ ] **Step 3: Implement `FUEL_LOW` and `refuelOutcome`**
 
@@ -185,7 +170,9 @@ export function refuelOutcome(before: number): RefuelOutcome {
 
 Run: `npm test -- fuel`
 
-Expected: the whole `refuelOutcome` block PASSES. The `HUDOverlay reads FUEL_LOW instead of a bare 0.25` test still FAILS — that is Task 2's job.
+Expected: PASS, the whole file.
+
+Then run the full suite — `npm test` — and expect **155** (148 measured baseline + the 7 added here). Report the number you actually see rather than adjusting this expectation.
 
 - [ ] **Step 5: Commit**
 
@@ -201,12 +188,10 @@ on: 'WARP ONLINE' on a 10% -> 35% pickup would be untrue.
 
 FUEL_LOW is promoted here rather than duplicated at each call site, so the
 gauge's amber point and the announce point cannot drift. It is deliberately not
-derived from FUEL_PER_CRYSTAL, which shares its value by coincidence.
-
-The HUDOverlay source-scan test fails until the next commit wires the gauge up."
+derived from FUEL_PER_CRYSTAL, which shares its value by coincidence."
 ```
 
-Note: this commit knowingly leaves one test red. If you would rather not commit a red suite, fold Task 2 into this commit — but do not delete or weaken the source-scan test to make it green.
+The suite must be fully green at this commit. If anything is red, stop and report it — do not commit red.
 
 ---
 
@@ -215,13 +200,44 @@ Note: this commit knowingly leaves one test red. If you would rather not commit 
 **Files:**
 - Modify: `src/components/layout/HUDOverlay.tsx:6` (import) and `:62` (threshold)
 - Modify: `src/components/canvas/FuelCrystals.tsx:11` (import) and `:133` (broadcast branch)
-- Test: `tests/fuel.test.ts` (already written in Task 1 — no new test code)
+- Test: `tests/fuel.test.ts` (one new test, written in Step 1)
 
 **Interfaces:**
 - Consumes: `FUEL_LOW`, `refuelOutcome` from `src/utils/fuel.ts` (Task 1).
 - Produces: the four visitor-facing broadcast strings. Task 3's e2e check greps for `WARP CORE RECHARGED`.
 
-- [ ] **Step 1: Point the HUD gauge at the shared threshold**
+- [ ] **Step 1: Write the failing source-scan test**
+
+Add these two imports at the top of `tests/fuel.test.ts`:
+
+```ts
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+```
+
+Then append this block to the end of the file:
+
+```ts
+describe("the low threshold has exactly one home", () => {
+  it("HUDOverlay reads FUEL_LOW instead of a bare 0.25", () => {
+    // Source scan, same convention as tests/identity.test.ts: the gauge's
+    // amber point and the pickup's announce point are the same boundary, and
+    // a duplicated literal at each site is how they would silently drift
+    // apart — the bar going amber at a level where the pickup stayed quiet.
+    const src = readFileSync(join("src", "components", "layout", "HUDOverlay.tsx"), "utf8");
+    expect(src).toContain("FUEL_LOW");
+    expect(src).not.toMatch(/pct < 0\.25/);
+  });
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npm test -- fuel`
+
+Expected: FAIL on `expect(src).toContain("FUEL_LOW")` — `HUDOverlay.tsx` still carries the bare `0.25`.
+
+- [ ] **Step 3: Point the HUD gauge at the shared threshold**
 
 In `src/components/layout/HUDOverlay.tsx`, change the import on line 6:
 
@@ -245,13 +261,13 @@ Becomes:
 
 `pct` is a 0-1 fraction and `FUEL_LOW` is in fuel units, hence the division. Leave the surrounding comment ("Amber under a quarter, red when dry…") in place — it is still accurate.
 
-- [ ] **Step 2: Run the source-scan test**
+- [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test -- fuel`
 
-Expected: PASS, all of it now — including `HUDOverlay reads FUEL_LOW instead of a bare 0.25`, which was the one red test left by Task 1.
+Expected: PASS, the whole file.
 
-- [ ] **Step 3: Switch the pickup branch on the outcome**
+- [ ] **Step 5: Switch the pickup branch on the outcome**
 
 In `src/components/canvas/FuelCrystals.tsx`, extend the import on line 11:
 
@@ -293,24 +309,24 @@ Becomes:
 
 Leave `store.setFuelEmpty(flight.fuel <= 0)` on line 132 exactly where it is, above this block. It must still run first so the `fuelEmpty` true→false edge resets `dryAnnouncedThisSpell` in `HUDOverlay.tsx:85-95`.
 
-- [ ] **Step 4: Verify the build and lint are clean**
+- [ ] **Step 6: Verify the build and lint are clean**
 
 Run: `npm run build && npm run lint`
 
 Expected: build succeeds (the pre-existing chunk-size advisory for `index-*.js` is fine and not caused by you). Lint shows exactly the two baseline warnings — `Atmosphere.tsx:54` and `Scanner.tsx:9` — and nothing else.
 
-- [ ] **Step 5: Run the full unit suite**
+- [ ] **Step 7: Run the full unit suite**
 
 Run: `npm test`
 
-Expected: all tests pass, **156 total**. The suite measured **148** on `main` immediately before this work (26 files, verified by running it — the "139" in the fuel-and-crystals record is stale, predating the gh-pages-deploy branch). Task 1 adds 8: `refuelOutcome` × 7, source scan × 1.
+Expected: all tests pass, **156 total**. The suite measured **148** on `main` immediately before this work (26 files, verified by running it — the "139" in the fuel-and-crystals record is stale, predating the gh-pages-deploy branch). Task 1 added 7 (`refuelOutcome`), this task adds 1 (source scan).
 
 If you see a different total, report the number rather than adjusting the expectation.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/components/layout/HUDOverlay.tsx src/components/canvas/FuelCrystals.tsx
+git add src/components/layout/HUDOverlay.tsx src/components/canvas/FuelCrystals.tsx tests/fuel.test.ts
 git commit -m "feat: confirm a refuel that lifts the tank out of low
 
 The DRY line tells visitors to collect a crystal; obeying it produced a sound
@@ -525,4 +541,7 @@ git commit -m "docs: refuel confirmation verification record"
 
 **Type consistency.** `refuelOutcome` returns the same four string literals in Task 1's implementation, Task 1's tests, and Task 2's switch. `FUEL_LOW` is fuel units everywhere, divided by `FUEL_MAX` only at the HUD's 0-1 comparison site. `chatterText` has the same signature in the harness, in `gameplay.probe.mjs`, and in `fuel.probe.mjs`.
 
-**Known rough edge, called out rather than hidden.** Task 1 commits with one deliberately-red test (the `HUDOverlay` source scan), which Task 2 Step 2 turns green. The alternative — writing the source-scan test in Task 2 instead — would mean Task 2 has no failing test to drive it. The plan states the option to fold the two commits together for anyone who objects to a red commit.
+**Amendments applied before execution** (pre-flight scan, approved by the repo owner):
+
+1. The `HUDOverlay` source-scan test moved from Task 1 to Task 2 Step 1, where it opens that task's TDD cycle. Originally Task 1 wrote it and committed it red for Task 2 to fix — proper TDD across the pair, but it meant committing a red suite, which a reviewer would rightly flag. Both tasks are now green at every commit and both are still test-driven.
+2. The test formerly named `"does not couple the low threshold to the crystal's refuel amount"` asserted `FUEL_LOW === 25` *and* `FUEL_PER_CRYSTAL === 25` — a change-detector whose name promised the opposite of what it asserted, and which manufactured the very coupling `fuel.ts`'s comment forbids. It is now `"pins FUEL_LOW at 25, so retuning it is a deliberate act"`, asserting `FUEL_LOW` only and labelled honestly as a tuning pin.
