@@ -29,9 +29,12 @@ decision for the repo owner, and the spec does not ask for it"). This spec is th
   pickups, so nothing is added to the store.
 - **The existing full-tank "VENTED" message stays exactly as it is.** It is pre-existing, and this
   spec preserves it unchanged rather than touching it; it only adds branches beside it. (Correction:
-  an earlier revision of this bullet claimed the message was "already tested" — it is not; `grep
-  VENTED tests/` returns nothing today. That false premise is struck; it carried no weight beyond
-  itself, since the decision not to touch VENTED stands independent of whether it was tested.)
+  an earlier revision of this bullet claimed the message was "already tested". It was not, and it
+  still is not in the sense that matters — **no behavioural test exercises a full-tank pickup**. The
+  only coverage the string has is the source scan in `tests/fuel.test.ts`, added late in this branch,
+  which asserts the literal appears in `FuelCrystals.tsx`; it never drives the trigger condition. The
+  false premise is struck. It carried no weight beyond itself: the decision not to touch VENTED
+  stands independent of whether it was tested.)
 
 **Open follow-up, not settled by this spec: VENTED's frequency.** `flight.fuel` starts at
 `FUEL_MAX` and only warp drains it, so a visitor who never presses Shift sits at a full tank
