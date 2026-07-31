@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, refuel, refuelOutcome } from "../src/utils/fuel";
 import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
 
@@ -95,5 +97,17 @@ describe("refuelOutcome", () => {
     // asserting them together would manufacture exactly the coupling
     // fuel.ts's comment says must not exist.
     expect(FUEL_LOW).toBe(25);
+  });
+});
+
+describe("the low threshold has exactly one home", () => {
+  it("HUDOverlay reads FUEL_LOW instead of a bare 0.25", () => {
+    // Source scan, same convention as tests/identity.test.ts: the gauge's
+    // amber point and the pickup's announce point are the same boundary, and
+    // a duplicated literal at each site is how they would silently drift
+    // apart — the bar going amber at a level where the pickup stayed quiet.
+    const src = readFileSync(join("src", "components", "layout", "HUDOverlay.tsx"), "utf8");
+    expect(src).toContain("FUEL_LOW");
+    expect(src).not.toMatch(/pct < 0\.25/);
   });
 });

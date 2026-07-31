@@ -6,7 +6,7 @@ import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceSt
 import { planets, PORTAL_POS, COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { ambientTime } from "../../utils/ambientTime";
-import { refuel, FUEL_MAX } from "../../utils/fuel";
+import { refuel, refuelOutcome, FUEL_MAX } from "../../utils/fuel";
 import {
   CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, randomCrystalPos, respawnTick,
   type AvoidPoint,
@@ -130,7 +130,25 @@ export default function FuelCrystals() {
         // event, not a per-frame one, and the setter is change-guarded, so calling
         // it here costs nothing in the steady state.
         store.setFuelEmpty(flight.fuel <= 0);
-        if (before >= FUEL_MAX) store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
+        // Confirm only the pickup that changes the visitor's situation. A
+        // healthy-tank top-up stays silent because typeLine interrupts, and a
+        // line per pickup would stomp the ticker across a crystal field.
+        // Percentage uses the gauge's own expression (HUDOverlay.tsx:66) so the
+        // number in the line always matches the number on the bar.
+        const pct = ((flight.fuel / FUEL_MAX) * 100).toFixed(0);
+        switch (refuelOutcome(before)) {
+          case "vented":
+            store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
+            break;
+          case "restored":
+            store.sendBroadcast(`WARP CORE RECHARGED // ${pct}% — WARP ONLINE`);
+            break;
+          case "topped-up":
+            store.sendBroadcast(`FUEL CRYSTAL ABSORBED // ${pct}%`);
+            break;
+          case "quiet":
+            break;
+        }
       }
     }
     mesh.instanceMatrix.needsUpdate = true;

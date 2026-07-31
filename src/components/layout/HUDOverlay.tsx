@@ -3,7 +3,7 @@ import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } 
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
-import { FUEL_MAX } from "../../utils/fuel";
+import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -59,7 +59,7 @@ export default function HUDOverlay() {
         // Amber under a quarter, red when dry. Written as style rather than a
         // className so this never touches React.
         fuelFillRef.current.style.backgroundColor =
-          pct <= 0 ? "#ef4444" : pct < 0.25 ? "#f59e0b" : "#00ff87";
+          pct <= 0 ? "#ef4444" : pct < FUEL_LOW / FUEL_MAX ? "#f59e0b" : "#00ff87";
       }
       if (fuelLabelRef.current)
         fuelLabelRef.current.textContent =
