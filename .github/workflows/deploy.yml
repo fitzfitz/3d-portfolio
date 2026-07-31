@@ -38,6 +38,16 @@ jobs:
       - name: Build for the project-page subpath
         env:
           BASE_PATH: /3d-portfolio/
+          # Without this the contact form does not merely misbehave — it ceases
+          # to exist. Contact.tsx reads the key at build time, so an unset
+          # variable makes `accessKey` a compile-time "", which makes
+          # `!accessKey` statically true, and the minifier then eliminates the
+          # entire form branch. The deployed bundle contained zero occurrences
+          # of "web3forms", "access_key" or "botcheck" until this line existed;
+          # visitors got the mailto fallback with no way to tell it was a
+          # degradation. A missing secret still degrades that way rather than
+          # failing the build, so if the form vanishes again, check here first.
+          VITE_FORM_KEY: ${{ secrets.WEB3FORMS_KEY }}
         run: npm run build
 
       - uses: actions/configure-pages@v6
