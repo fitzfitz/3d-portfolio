@@ -47,7 +47,14 @@ jobs:
           # visitors got the mailto fallback with no way to tell it was a
           # degradation. A missing secret still degrades that way rather than
           # failing the build, so if the form vanishes again, check here first.
-          VITE_FORM_KEY: ${{ secrets.WEB3FORMS_KEY }}
+          #
+          # The secret name must match the repo secret exactly. An earlier
+          # revision read `secrets.WEB3FORMS_KEY` while the secret was actually
+          # named VITE_FORM_KEY; that resolves to an empty string silently, the
+          # build still succeeds, and the only visible symptom is the form
+          # quietly not existing. The tell is the bundle hash not changing
+          # between deploys, since an embedded key changes the output.
+          VITE_FORM_KEY: ${{ secrets.VITE_FORM_KEY }}
         run: npm run build
 
       - uses: actions/configure-pages@v6
