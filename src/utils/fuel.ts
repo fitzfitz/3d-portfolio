@@ -23,3 +23,39 @@ export function drainFuel(fuel: number, dt: number): number {
 export function refuel(fuel: number): number {
   return Math.min(FUEL_MAX, fuel + FUEL_PER_CRYSTAL);
 }
+
+/**
+ * Below this the tank reads as "low": the HUD gauge goes amber
+ * (HUDOverlay.tsx) and a pickup announces itself (FuelCrystals.tsx). It lives
+ * here, exported, so those two can never disagree about where "low" is — a
+ * duplicated literal at each site is how the bar would end up going amber at a
+ * level where the pickup had gone silent.
+ *
+ * Deliberately NOT derived from FUEL_PER_CRYSTAL, which shares its value
+ * today. They answer different questions and must be retunable apart.
+ */
+export const FUEL_LOW = 25;
+
+/** What a pickup should announce, given the tank level before it landed. */
+export type RefuelOutcome = "vented" | "restored" | "topped-up" | "quiet";
+
+/**
+ * Which confirmation a pickup deserves.
+ *
+ * Only a pickup that lifts the tank out of low speaks. A pickup on a healthy
+ * tank stays quiet on purpose: RadioChatter's `typeLine` interrupts whatever
+ * is on screen (cancelling the in-progress typewriter, playing a tick, and
+ * resetting the ambient timer), so a line per pickup would stomp the ticker
+ * while crossing a field of 40 respawning crystals.
+ *
+ * `restored` and `topped-up` are separate because only one of them turns warp
+ * back on. Announcing "WARP ONLINE" on a 10% -> 35% pickup would state
+ * something untrue, and this HUD is careful about that distinction — the DRY
+ * line goes out of its way to add "THRUSTERS STILL NOMINAL".
+ */
+export function refuelOutcome(before: number): RefuelOutcome {
+  if (before >= FUEL_MAX) return "vented";
+  if (before <= 0) return "restored";
+  if (before < FUEL_LOW) return "topped-up";
+  return "quiet";
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, drainFuel, refuel } from "../src/utils/fuel";
+import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, refuel, refuelOutcome } from "../src/utils/fuel";
 import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
 
 describe("drainFuel", () => {
@@ -48,5 +48,52 @@ describe("refuel", () => {
     let f = 0;
     for (let i = 0; i < 4; i++) f = refuel(f);
     expect(f).toBe(FUEL_MAX);
+  });
+});
+
+describe("refuelOutcome", () => {
+  it("announces a restoration only from a genuinely dry tank", () => {
+    expect(refuelOutcome(0)).toBe("restored");
+  });
+
+  it("acknowledges a low-but-not-dry pickup without claiming warp came back", () => {
+    // Warp was never offline here, so this must NOT be "restored" — the
+    // "WARP ONLINE" copy would be stating something untrue.
+    expect(refuelOutcome(0.1)).toBe("topped-up");
+    expect(refuelOutcome(FUEL_LOW - 0.1)).toBe("topped-up");
+  });
+
+  it("is quiet at exactly FUEL_LOW — the boundary comparison is strict", () => {
+    expect(refuelOutcome(FUEL_LOW)).toBe("quiet");
+  });
+
+  it("is quiet on a healthy tank, so crossing a crystal field cannot stomp the ticker", () => {
+    // This is the whole point of the feature: RadioChatter's typeLine
+    // interrupts, so a line per pickup would machine-gun the HUD across 40
+    // respawning crystals.
+    expect(refuelOutcome(50)).toBe("quiet");
+    expect(refuelOutcome(FUEL_MAX - 1)).toBe("quiet");
+  });
+
+  it("keeps the pre-existing vented case at a full tank", () => {
+    expect(refuelOutcome(FUEL_MAX)).toBe("vented");
+  });
+
+  it("treats a negative tank as dry rather than falling through to quiet", () => {
+    // drainFuel clamps at 0, so this should be unreachable. If it ever does
+    // happen, saying something correct beats silently saying nothing.
+    expect(refuelOutcome(-1)).toBe("restored");
+  });
+
+  it("pins FUEL_LOW at 25, so retuning it is a deliberate act", () => {
+    // A tuning pin, like the one-crossing test above: it does not test
+    // behaviour, it makes a change to the tuning fail loudly so nobody moves
+    // the gauge's amber point by accident.
+    //
+    // Deliberately does NOT assert anything about FUEL_PER_CRYSTAL. The two
+    // are both 25 today by coincidence, not by relationship, and a test
+    // asserting them together would manufacture exactly the coupling
+    // fuel.ts's comment says must not exist.
+    expect(FUEL_LOW).toBe(25);
   });
 });
