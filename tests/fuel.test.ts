@@ -140,6 +140,22 @@ describe("FuelCrystals broadcast strings — source scan", () => {
     expect(src).toContain("FUEL CRYSTAL ABSORBED");
   });
 
+  it("the vented arm is guarded, so a full tank says it once per session", () => {
+    // A pickup is consumed even at a full tank, so the line has to exist — but
+    // a visitor who never presses Shift stays at a full tank all visit, which
+    // would make it the reply to every pickup they make. The guard is what
+    // stops that, and it is invisible to the string check above: deleting it
+    // would leave every assertion in this file passing.
+    const arm = src.match(/case "vented":([\s\S]*?)break;/);
+    expect(arm).not.toBeNull();
+    expect(arm![1]).toMatch(/if \(!ventedAnnounced\)/);
+    expect(arm![1]).toMatch(/ventedAnnounced = true/);
+    // The flag must live at module scope, not in a ref or component state:
+    // App.tsx unmounts the canvas tree for the classic CV view, and anything
+    // component-scoped would be re-armed by that remount.
+    expect(src).toMatch(/^let ventedAnnounced = false;$/m);
+  });
+
   it("the quiet arm broadcasts nothing", () => {
     // Bound the match to `case "quiet":` up through its own `break;` — not
     // "the following }" — because a `default:` exhaustiveness arm now

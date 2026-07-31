@@ -19,6 +19,26 @@ const dummy = new THREE.Object3D();
 const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
 
 /**
+ * Whether the full-tank "VENTED" line has been said this session.
+ *
+ * A pickup is consumed even at a full tank (see the pickup branch below), so
+ * something has to explain why a crystal just vanished for nothing — but only
+ * the first time. A visitor who never presses Shift sits at a full tank for the
+ * whole visit, which would otherwise make that line the reply to every single
+ * pickup they ever make: the one branch still repeating per-pickup after the
+ * `quiet` rule was introduced to stop exactly that.
+ *
+ * Module-level, NOT a ref — same reasoning as `dryAnnouncedThisSpell` in
+ * HUDOverlay.tsx. App.tsx unmounts the canvas tree for the classic CV view, and
+ * a ref would be reinitialised by that remount and re-announce. Living at module
+ * scope survives it, and resets on page reload along with the tank itself.
+ *
+ * Deliberately never reset: unlike the dry spell, "your tank is full" has no
+ * meaningful edge to re-announce on. Saying it once per page load is the point.
+ */
+let ventedAnnounced = false;
+
+/**
  * Floating fuel crystals. One InstancedMesh of CRYSTAL_MAX fixed slots —
  * inactive slots scale to zero rather than resizing any array, exactly as
  * DataShards handles collected shards. No React state, so a pickup costs no
@@ -140,7 +160,11 @@ export default function FuelCrystals() {
         const outcome = refuelOutcome(before);
         switch (outcome) {
           case "vented":
-            store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
+            // Once per session — see `ventedAnnounced` at module scope.
+            if (!ventedAnnounced) {
+              ventedAnnounced = true;
+              store.sendBroadcast("FUEL CRYSTAL VENTED // TANK ALREADY FULL");
+            }
             break;
           case "restored":
             store.sendBroadcast(`WARP CORE RECHARGED // ${pctText}% — WARP ONLINE`);
