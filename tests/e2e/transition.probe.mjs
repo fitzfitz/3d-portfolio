@@ -1,7 +1,60 @@
 import { withPage, settle, toDeepSpace } from "./harness.mjs";
 
+// ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
+// Measured on headless Chrome / SwiftShader (software rendering) -- see that
+// file for the full baseline table, the four states these were captured in,
+// and the derivation rule repeated here in short: calls/triangles are
+// baseline + 15%, rounded up to the nearest ten; programs and lights are
+// baseline + 1, since neither should grow at all during ordinary play -- the
+// +1 is slack for a driver-dependent variant, not headroom for a new
+// material. A ceiling going up without a matching, deliberate scene change
+// is the regression this file exists to catch.
+const DEEP_CALLS_CEILING = 40;
+const DEEP_TRIS_CEILING = 949190;
+const DEEP_PROGRAMS_CEILING = 85;
+
+const APPROACH_CALLS_CEILING = 110;
+const APPROACH_TRIS_CEILING = 1019320;
+const APPROACH_PROGRAMS_CEILING = 86;
+const APPROACH_LIGHTS_CEILING = 11;
+
+const MODAL_CALLS_CEILING = 110;
+const MODAL_TRIS_CEILING = 1019180;
+const MODAL_PROGRAMS_CEILING = 86;
+const MODAL_LIGHTS_CEILING = 11;
+
+const ANOMALIES_CALLS_CEILING = 40;
+const ANOMALIES_TRIS_CEILING = 949780;
+const ANOMALIES_PROGRAMS_CEILING = 86;
+const ANOMALIES_LIGHTS_CEILING = 11;
+
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
+
+/**
+ * Reads the four counters docs/PERF-BUDGETS.md budgets against.
+ * calls/triangles come from `perfStats` (sampled by PerfSampler's
+ * `scene.onAfterRender` hook), NOT from a bare `gl.info.render.*` read here:
+ * EffectComposer's own passes call `renderer.render()` again after the real
+ * scene render, and every such call resets `gl.info` at its own start (three
+ * autoReset), so an external page.evaluate reading `gl.info.render.*`
+ * directly is permanently stuck at 1/1 regardless of scene state -- see
+ * PerfSampler.tsx for the full account and the fix. `programs` stays on
+ * `gl.info.programs.length` -- a cumulative array length, unaffected by any
+ * per-frame reset. `lights` is a direct scene.traverse, NOT
+ * `perfStats.lights`: that field is throttled to one traversal every 30
+ * frames, which is ~30 seconds of lag at headless SwiftShader's ~1fps.
+ */
+const readPerfCounters = (page) => page.evaluate(() => {
+  let lights = 0;
+  window.__fitz.scene.traverse((o) => { if (o.isLight) lights++; });
+  return {
+    calls: window.__fitz.perfStats.calls,
+    triangles: window.__fitz.perfStats.triangles,
+    programs: window.__fitz.gl.info.programs.length,
+    lights,
+  };
+});
 
 /**
  * Teleports into a planet's gravity well but short of the orbit lock.
@@ -28,6 +81,21 @@ export default async function run() {
     await toDeepSpace(page);
     await settle(page, 1000);
 
+    // ---- renderer counter budgets: deep space (docs/PERF-BUDGETS.md) ----
+    const lightBudget = await page.evaluate(async () => {
+      const { LIGHT_BUDGET } = await import("/src/constants.ts");
+      return LIGHT_BUDGET;
+    });
+    const deep = await readPerfCounters(page);
+    checks.check("deep-space draw calls within budget", deep.calls <= DEEP_CALLS_CEILING,
+      `calls=${deep.calls} ceiling=${DEEP_CALLS_CEILING}`);
+    checks.check("deep-space triangles within budget", deep.triangles <= DEEP_TRIS_CEILING,
+      `triangles=${deep.triangles} ceiling=${DEEP_TRIS_CEILING}`);
+    checks.check("deep-space programs within budget", deep.programs <= DEEP_PROGRAMS_CEILING,
+      `programs=${deep.programs} ceiling=${DEEP_PROGRAMS_CEILING}`);
+    checks.check("deep-space light count within LIGHT_BUDGET", deep.lights <= lightBudget,
+      `lights=${deep.lights} LIGHT_BUDGET=${lightBudget}`);
+
     // ---- approach: activeZone flips, canvas must not re-render ----
     const beforeApproach = await canvasRenders(page);
     const planet = await approachPlanet(page);
@@ -39,6 +107,17 @@ export default async function run() {
       `planet=${planet} activeZone=${zone}`);
     checks.check("zero canvas re-renders when activeZone flips",
       afterApproach - beforeApproach === 0, `delta=${afterApproach - beforeApproach}`);
+
+    // ---- renderer counter budgets: close approach (docs/PERF-BUDGETS.md) ----
+    const approach = await readPerfCounters(page);
+    checks.check("close-approach draw calls within budget", approach.calls <= APPROACH_CALLS_CEILING,
+      `calls=${approach.calls} ceiling=${APPROACH_CALLS_CEILING}`);
+    checks.check("close-approach triangles within budget", approach.triangles <= APPROACH_TRIS_CEILING,
+      `triangles=${approach.triangles} ceiling=${APPROACH_TRIS_CEILING}`);
+    checks.check("close-approach programs within budget", approach.programs <= APPROACH_PROGRAMS_CEILING,
+      `programs=${approach.programs} ceiling=${APPROACH_PROGRAMS_CEILING}`);
+    checks.check("close-approach light count within budget", approach.lights <= APPROACH_LIGHTS_CEILING,
+      `lights=${approach.lights} ceiling=${APPROACH_LIGHTS_CEILING}`);
 
     // ---- orbit lock: modal opens, canvas freezes (Task 6) ----
     // Before Task 6, GlobalCanvas didn't subscribe to isOrbitLocked at all, so
@@ -97,6 +176,21 @@ export default async function run() {
       afterEngage - beforeLock > 0, `delta=${afterEngage - beforeLock}`);
     checks.check("the canvas does not keep re-rendering while the modal stays open",
       afterSettle - afterEngage === 0, `delta=${afterSettle - afterEngage}`);
+
+    // ---- renderer counter budgets: dossier modal open (docs/PERF-BUDGETS.md) ----
+    // frameloop is "never" here (the freeze this section exists to test), so
+    // perfStats.calls/triangles read whatever PerfSampler last captured just
+    // before the freeze took effect -- exactly what's frozen on screen behind
+    // the modal, which is the number that matters.
+    const modal = await readPerfCounters(page);
+    checks.check("modal-open draw calls within budget", modal.calls <= MODAL_CALLS_CEILING,
+      `calls=${modal.calls} ceiling=${MODAL_CALLS_CEILING}`);
+    checks.check("modal-open triangles within budget", modal.triangles <= MODAL_TRIS_CEILING,
+      `triangles=${modal.triangles} ceiling=${MODAL_TRIS_CEILING}`);
+    checks.check("modal-open programs within budget", modal.programs <= MODAL_PROGRAMS_CEILING,
+      `programs=${modal.programs} ceiling=${MODAL_PROGRAMS_CEILING}`);
+    checks.check("modal-open light count within budget", modal.lights <= MODAL_LIGHTS_CEILING,
+      `lights=${modal.lights} ceiling=${MODAL_LIGHTS_CEILING}`);
 
     // ---- regression: classic-CV round trip while orbit-locked must not
     // leave the canvas painting zero frames forever ----
@@ -217,5 +311,16 @@ export default async function run() {
     checks.check("40 plasma spawns cause zero canvas re-renders",
       afterPlasma.renders === beforePlasma.renders,
       `delta=${afterPlasma.renders - beforePlasma.renders}`);
+
+    // ---- renderer counter budgets: 40 anomalies spawned (docs/PERF-BUDGETS.md) ----
+    const anomalies = await readPerfCounters(page);
+    checks.check("40-anomalies draw calls within budget", anomalies.calls <= ANOMALIES_CALLS_CEILING,
+      `calls=${anomalies.calls} ceiling=${ANOMALIES_CALLS_CEILING}`);
+    checks.check("40-anomalies triangles within budget", anomalies.triangles <= ANOMALIES_TRIS_CEILING,
+      `triangles=${anomalies.triangles} ceiling=${ANOMALIES_TRIS_CEILING}`);
+    checks.check("40-anomalies programs within budget", anomalies.programs <= ANOMALIES_PROGRAMS_CEILING,
+      `programs=${anomalies.programs} ceiling=${ANOMALIES_PROGRAMS_CEILING}`);
+    checks.check("40-anomalies light count within budget", anomalies.lights <= ANOMALIES_LIGHTS_CEILING,
+      `lights=${anomalies.lights} ceiling=${ANOMALIES_LIGHTS_CEILING}`);
   });
 }

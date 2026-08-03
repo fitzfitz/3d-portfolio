@@ -1,6 +1,7 @@
 import type * as THREE from "three";
 import { useSpaceStore, flight, bodies } from "../store/spaceStore";
 import { soundManager } from "../audio/soundManager";
+import { perfStats } from "./perfStats";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -34,6 +35,15 @@ export interface FitzDebug {
   teleport: ((x: number, y: number, z: number) => void) | null;
   /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
   crystals: { x: number; y: number; z: number; active: boolean }[] | null;
+  /**
+   * Live renderer counters sampled in-frame by PerfSampler, before
+   * EffectComposer resets `gl.info` — see PerfSampler's own comment. Exposed
+   * here so e2e probes can read `calls`/`triangles` reliably; `lights` on
+   * this object is throttled to one traversal every 30 frames and must NOT
+   * be used in e2e (see docs/PERF-BUDGETS.md) — traverse `scene` directly
+   * for a frame-independent light count instead.
+   */
+  perfStats: typeof perfStats;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -48,4 +58,5 @@ export const fitzDebug: FitzDebug = {
   canvasRenderCount: 0,
   teleport: null,
   crystals: null,
+  perfStats,
 };

@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, sceneQuery } from "./harness.mjs";
+import { withPage, settle, readStore, sceneQuery } from "./harness.mjs";
 
 /** Emulates the OS preference, so this exercises the real media-query path. */
 export default async function run() {
@@ -38,7 +38,24 @@ export default async function run() {
 
     // THE CHECK THAT MATTERS MOST: flight still works.
     const before = await page.evaluate(() => ({ ...window.__fitz.flight }));
-    await hold(page, ["KeyW"], 3000);
+    // Hold KeyW with interleaved page.evaluate() reads rather than one blind
+    // hold()/settle(): harness.mjs's long comment above settle() explains why
+    // — hold() is a Node-side setTimeout with zero CDP traffic, and this
+    // headless/SwiftShader browser barely services its own requestAnimationFrame
+    // loop while idle between protocol commands, so wall-clock milliseconds do
+    // not reliably convert to simulated ship motion. Measured flaky under this
+    // exact pattern: 4.31 displacement under full-suite load (below the >5
+    // threshold) vs. 5.85 twice in isolation — 17% headroom, not a real
+    // regression. touch.probe.mjs's DIVE hold is the reference: each
+    // interleaved evaluate() is a CDP round-trip that reliably pumps the
+    // browser's task queue and ticks frames forward, so ~3000ms of these
+    // round-trips delivers ~3000ms of simulated flight instead of stalling.
+    await page.keyboard.down("KeyW");
+    for (let i = 0; i < 10; i++) {
+      await settle(page, 300);
+      await page.evaluate(() => window.__fitz.flight.x); // pump a frame forward
+    }
+    await page.keyboard.up("KeyW");
     const after = await page.evaluate(() => ({ ...window.__fitz.flight }));
     const flew = Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
     checks.check("flight still works with reduced motion on", flew > 5, `displaced ${flew.toFixed(2)}`);

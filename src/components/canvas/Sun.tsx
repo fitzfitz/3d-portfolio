@@ -169,7 +169,7 @@ export default function Sun({ onSunReady }: SunProps) {
       )}
 
       {/* Solar system light (moved verbatim from SpacePlanets) */}
-      <pointLight color="#ffffff" intensity={4.8} distance={450} decay={0.8} castShadow={true} />
+      <pointLight color="#ffffff" intensity={4.8} distance={450} decay={0.8} />
     </group>
   );
 }

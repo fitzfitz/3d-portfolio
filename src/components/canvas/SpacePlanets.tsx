@@ -390,7 +390,7 @@ export default function SpacePlanets() {
       {/* 1. SAAS PLANET (Neon Green, Rings) */}
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={saasPlanetRef} castShadow={true}>
+        <mesh ref={saasPlanetRef}>
           <sphereGeometry args={[planets[0].size, 32, 32]} />
           <meshStandardMaterial map={earthTex} roughness={0.5} metalness={0.0} />
         </mesh>
@@ -422,7 +422,7 @@ export default function SpacePlanets() {
       {/* 2. VIRAL VIDEO PLANET (Neon Cyan, Moon) */}
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={videoPlanetRef} castShadow={true}>
+        <mesh ref={videoPlanetRef}>
           <sphereGeometry args={[planets[1].size, 32, 32]} />
           <meshStandardMaterial map={jupiterTex} roughness={0.95} metalness={0.0} />
         </mesh>
@@ -448,7 +448,7 @@ export default function SpacePlanets() {
       {/* 3. MULTI-AGENT PLANET (Neon Purple, Banded Grid Clouds) */}
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={agentPlanetRef} castShadow={true}>
+        <mesh ref={agentPlanetRef}>
           <sphereGeometry args={[planets[2].size, 32, 32]} />
           <meshStandardMaterial map={marsTex} roughness={0.95} metalness={0.0} />
         </mesh>
