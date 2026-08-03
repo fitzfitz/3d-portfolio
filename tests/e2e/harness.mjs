@@ -144,8 +144,33 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     };
     page.on("request", offlineFonts);
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 20_000 });
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
+    await page.waitForSelector("canvas", { timeout: 30_000 });
+    // `<Preload all />` now lives inside the Suspense boundary (Task 7,
+    // 739a523) — deliberately. Outside the boundary it was compiling a
+    // near-empty scene, so materials for the resolved scene compiled lazily
+    // mid-flight instead (measured: +6 shader programs approaching a
+    // planet). Inside the boundary, Preload's gl.compile() walks the fully-
+    // resolved scene graph and eagerly warms every shader at load, trading a
+    // longer startup for a hitch-free flight. That is the whole point of the
+    // change and it must not be reverted here.
+    //
+    // The cost of that trade: gl.compile() runs synchronously on the main
+    // thread during commit, before DebugBridge's passive useEffect gets a
+    // chance to run and publish `window.__fitz.scene`. Under headless
+    // SwiftShader (software rasterizer, ~876k triangles in this scene, p50
+    // frame time ~1s) that compile blocks long enough to blow through the
+    // old 20s wait outright — measured at 28,358ms to `window.__fitz.scene`
+    // becoming available on this branch's HEAD, versus 120ms for the canvas
+    // selector alone. A real GPU compiles this in a small fraction of that
+    // time; this ceiling exists for the software-rendered CI/test path, not
+    // because startup is actually this slow for a user.
+    //
+    // Raise this if you must, but do not lower it back toward 20s without
+    // re-measuring on headless SwiftShader first — that reintroduces the
+    // exact class of intermittent 20s-timeout crashes (reducedmotion, audio,
+    // perf, assets, fuel, flight, gameplay, ...) that this comment is here to
+    // prevent someone from "optimising" back in.
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 60_000 });
     // Headless SwiftShader is software-rendered and slow enough that the app's
     // real PerformanceMonitor.onDecline always fires, permanently unmounting
     // perf-gated scene objects (WarpTunnel, ShootingStars, ...) via isLowPerf.
