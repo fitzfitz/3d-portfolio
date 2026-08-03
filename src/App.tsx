@@ -17,6 +17,7 @@ import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
+import PerfOverlay from "./debug/PerfOverlay";
 
 export default function App() {
   useKeyboardInput();
@@ -59,7 +60,7 @@ export default function App() {
             animate={{ opacity: 0.85 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="pointer-events-none fixed inset-0 z-50 bg-[#00f0ff]/15 backdrop-blur-[3px] border-[12px] border-[#00f0ff]/30"
+            className="pointer-events-none fixed inset-0 z-50 bg-[#00f0ff]/15 border-[12px] border-[#00f0ff]/30"
           />
         )}
       </AnimatePresence>
@@ -69,6 +70,7 @@ export default function App() {
 
       {/* Global Interactive Layers */}
       <CustomCursor />
+      {import.meta.env.DEV && <PerfOverlay />}
 
       {!photoMode && !showClassicCV && <HUDOverlay />}
       {!photoMode && !showClassicCV && <TouchControls />}

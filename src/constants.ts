@@ -87,3 +87,20 @@ export function projectById(zoneId: string | null): Project | undefined {
 export const planets: PlanetData[] = projects
   .filter((p) => p.id in PLANET_ORBITS)
   .map((p) => ({ name: p.id, color: p.color, size: PLANET_SIZE, orbit: PLANET_ORBITS[p.id] }));
+
+/**
+ * Hard ceiling on simultaneous lights in the scene.
+ *
+ * Three.js bakes the light count into every shader's program cache key, so
+ * adding one light bumps lightsStateVersion and forces EVERY material in the
+ * scene to recompile on the next frame -- a synchronous, scene-wide stall.
+ * This is not a shading-cost budget, it is a "do not recompile during play"
+ * budget, and it is why particles must never carry their own light.
+ *
+ * Current occupants, measured (not enumerated by hand — an earlier hand count
+ * said 9 and missed the ambientLight): ambientLight + sun point
+ * (GlobalCanvas.tsx:346,349), sun (Sun.tsx), ship x2 (Spaceship.tsx),
+ * portal x2 (PortalRing.tsx), planets x3 (SpacePlanets.tsx).
+ * Asserted by tests/e2e/transition.probe.mjs.
+ */
+export const LIGHT_BUDGET = 10;

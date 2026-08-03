@@ -1,6 +1,6 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, invalidate } from "@react-three/fiber";
 import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState } from "react";
+import { Suspense, useRef, useMemo, useState, useEffect, memo } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import Spaceship from "./Spaceship";
@@ -8,7 +8,7 @@ import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays } from "@react-three/postprocessing";
+import PostFX from "./PostFX";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
@@ -21,8 +21,10 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectSceneFrozen } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
+import PerfSampler from "../../debug/PerfSampler";
+import { fitzDebug } from "../../debug/bridge";
 
 interface StarLayerProps {
   count: number;
@@ -144,6 +146,107 @@ function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   );
 }
 
+// Module-scope, not effect-scoped: THREE.DefaultLoadingManager's own
+// loaded/total counters are cumulative for the whole page session and never
+// reset between Suspense fallbacks. An effect-scoped local resets to 0 on
+// every remount (Suspense can fall back more than once), while the manager's
+// counters keep climbing -- so a second batch's very first progress event
+// would already read close to 100%, not the fresh 0% the comment on `update`
+// below promises. Living at module scope makes that promise actually hold:
+// it persists across remounts and is advanced only when a batch fully
+// completes (loaded === total), so each new batch is measured from where the
+// previous one left off, not from an artificial zero.
+let lastTotalLoaded = 0;
+
+// Rendered as the Suspense fallback, so it mounts inside the Canvas tree.
+// 3.6MB across eleven GLBs and three textures is a real wait on a slow
+// connection; report it honestly instead of an indefinite pulse.
+//
+// Deliberately NOT drei's useProgress: that hook is backed by a zustand store
+// that THREE.DefaultLoadingManager writes into synchronously from whichever
+// component's render happens to trigger a loader callback -- e.g. a sibling
+// useGLTF suspending mid-render -- which manifests as "Cannot update a
+// component (LoadProgress) while rendering a different component
+// (OrbitingMoon)". That's a real cross-component setState-during-render, not
+// e2e noise, so it's driven imperatively instead, the same way PerfOverlay
+// drives its readout: the manager's own callbacks write into a ref, and a
+// rAF loop reads the ref and pokes the DOM directly. No React state ever
+// sits on the update path, so there's nothing to update mid-render.
+function LoadProgress() {
+  const barRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef({ progress: 0, item: "" });
+
+  useEffect(() => {
+    const manager = THREE.DefaultLoadingManager;
+    // Nothing else in this codebase touches DefaultLoadingManager today, but
+    // it's a process-wide singleton, not something this component owns --
+    // save whatever was already wired up and chain to it rather than
+    // clobbering it, and restore it on unmount so a remount (Suspense can
+    // fall back more than once) doesn't stack handlers. onError is not
+    // included here: this component doesn't display an error state, so
+    // reassigning it would only be a pass-through to whatever was already
+    // there -- dead indirection with nothing to add.
+    const prevOnStart = manager.onStart;
+    const prevOnProgress = manager.onProgress;
+    const prevOnLoad = manager.onLoad;
+
+    // Mirrors drei's useProgress math so the readout behaves the same:
+    // percentage is relative to the total *since the last fully-completed
+    // batch*, not since page load, so a second Suspense fallback later in
+    // the session (e.g. a lazily-loaded model) still reads 0% -> 100%
+    // instead of picking up from wherever the first batch left off.
+    const update = (loaded: number, total: number, item: string, fallback: number) => {
+      const pct = (loaded - lastTotalLoaded) / (total - lastTotalLoaded) * 100 || fallback;
+      stateRef.current = { progress: pct, item };
+    };
+
+    manager.onStart = (item, loaded, total) => {
+      update(loaded, total, item, 0);
+      prevOnStart?.(item, loaded, total);
+    };
+    manager.onProgress = (item, loaded, total) => {
+      if (loaded === total) lastTotalLoaded = total;
+      update(loaded, total, item, 100);
+      prevOnProgress?.(item, loaded, total);
+    };
+    manager.onLoad = () => {
+      stateRef.current = { progress: 100, item: "" };
+      prevOnLoad?.();
+    };
+
+    let raf = 0;
+    const tick = () => {
+      const { progress, item } = stateRef.current;
+      if (barRef.current) barRef.current.style.width = `${progress.toFixed(0)}%`;
+      if (labelRef.current) {
+        labelRef.current.textContent = `${progress.toFixed(0)}% ${item ? `— ${item.split("/").pop()}` : ""}`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      manager.onStart = prevOnStart;
+      manager.onProgress = prevOnProgress;
+      manager.onLoad = prevOnLoad;
+    };
+  }, []);
+
+  return (
+    <Html center className="select-none pointer-events-none whitespace-nowrap text-center">
+      <div className="font-mono text-xs tracking-widest uppercase text-primary mb-2">
+        Initializing Star System
+      </div>
+      <div className="w-48 h-[2px] bg-primary/20 mx-auto overflow-hidden rounded-full">
+        <div ref={barRef} className="h-full bg-primary transition-[width] duration-200" style={{ width: "0%" }} />
+      </div>
+      <div ref={labelRef} className="font-mono text-[9px] text-primary/50 mt-2" />
+    </Html>
+  );
+}
+
 function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(({ camera }) => {
@@ -160,13 +263,32 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
   );
 }
 
-export default function GlobalCanvas() {
+function GlobalCanvas() {
+  if (import.meta.env.DEV) fitzDebug.canvasRenderCount++;
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
-  const isWarping = useSpaceStore((s) => s.isWarping);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
+  const sceneFrozen = useSpaceStore(selectSceneFrozen);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
+  // frameloop="never" means R3F stops driving rAF entirely; the first frame
+  // after unfreezing has to be requested explicitly or the canvas holds the
+  // stale frame until something else invalidates it.
+  //
+  // This relies on invalidate() seeing state.frameloop already flipped back
+  // to "always" by the time it runs: R3F's CanvasImpl syncs the `frameloop`
+  // prop to its internal store in a useLayoutEffect (react-three-fiber.esm.js),
+  // and React always flushes layout effects before passive ones, so that sync
+  // is guaranteed to land before this useEffect fires. invalidate() no-ops
+  // silently while frameloop is still "never" (no error, just nothing
+  // happens), so if either effect here or R3F's own sync ever became a
+  // layout/passive pair in the other order, this would go back to a
+  // permanently-frozen canvas with no signal that anything was wrong.
+  const wasFrozen = useRef(false);
+  useEffect(() => {
+    if (wasFrozen.current && !sceneFrozen) invalidate();
+    wasFrozen.current = sceneFrozen;
+  }, [sceneFrozen]);
   // Snapshot the ship's position the instant photo mode flips true so the orbit
   // target stays fixed for the session — deliberately NOT re-snapshotting every
   // frame (that would fight the user's orbit drag). Re-runs only when photoMode
@@ -178,6 +300,19 @@ export default function GlobalCanvas() {
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
         dpr={[1, 1.5]}
+        // Relies on this Canvas never mounting with sceneFrozen already true
+        // (mount always starts unlocked, and setShowClassicCV's breakOrbit()
+        // call keeps the one other remount path — the classic-CV round trip
+        // — from re-entering already locked). If that ever stopped holding,
+        // R3F provides no initial paint for frameloop="never": invalidate()
+        // and the internal invalidateInstance both no-op while frameloop is
+        // "never", and CanvasImpl's mount effect never forces a frame. A
+        // defensive advance() on mount was considered and deliberately left
+        // out — Suspense for the ship/planet GLBs hasn't resolved at that
+        // point, so it would paint an empty scene rather than a real one,
+        // trading "blank" for "blank but misleadingly logged as painted."
+        // Removing the one reachable mount-while-frozen path is the fix.
+        frameloop={sceneFrozen ? "never" : "always"}
         gl={{
           antialias: true,
           alpha: true,
@@ -195,12 +330,9 @@ export default function GlobalCanvas() {
             if (!s.lowPerfManual && !s.isLowPerf) s.setLowPerf(true);
           }}
         />
-        <Suspense fallback={
-          <Html center className="text-primary font-mono text-xs tracking-widest uppercase animate-pulse select-none pointer-events-none whitespace-nowrap">
-            Initializing Star System...
-          </Html>
-        }>
+        <Suspense fallback={<LoadProgress />}>
           {import.meta.env.DEV && <DebugBridge />}
+          {import.meta.env.DEV && <PerfSampler />}
 
           {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
           <Environment resolution={64} frames={1}>
@@ -270,6 +402,12 @@ export default function GlobalCanvas() {
               spawn a plasma anomaly into the clean frame — stopPropagation doesn't
               help across sibling listeners. */}
           {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
+
+          {/* Inside Suspense deliberately: Preload compiles the scene as it
+              exists when it mounts, so as a sibling of the boundary it ran
+              before any GLTF-dependent component had resolved and warmed a
+              near-empty scene. */}
+          <Preload all />
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
@@ -278,33 +416,21 @@ export default function GlobalCanvas() {
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}
         {!isLowPerf && (
           <SafeErrorBoundary>
-            {/* multisampling=0: the GodRays depth passes' buffer formats are incompatible
-                with the MSAA resolve blit (GL_INVALID_OPERATION every frame -> white canvas).
-                Bloom smooths edges anyway, so MSAA here bought nothing. */}
-            <EffectComposer multisampling={0}>
-              {(() => {
-                const effects = [
-                  <Bloom key="bloom" intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />,
-                  <Vignette key="vignette" eskil={false} offset={0.28} darkness={0.72} />,
-                  <ChromaticAberration key="ca" offset={isWarping && !reducedMotion ? [0.0022, 0.0014] : [0, 0]} />,
-                ];
-                if (sunMesh) {
-                  effects.push(
-                    // Accumulator budget: HDR sun (emissive 3.2) x weight x decay-series(~10) x exposure
-                    // must stay well under 1.0 or the clamp saturates to a white wash (seen at spawn
-                    // where the sun is dead-center). 3.2 x 0.08 x 10 x 0.18 = 0.46 peak.
-                    <GodRays key="rays" sun={sunMesh} samples={60} density={0.8} decay={0.9}
-                      weight={0.08} exposure={0.18} clampMax={0.8} blur={true} />
-                  );
-                }
-                return effects;
-              })()}
-            </EffectComposer>
+            <PostFX sunMesh={sunMesh} />
           </SafeErrorBoundary>
         )}
-
-        <Preload all />
       </Canvas>
     </div>
   );
 }
+
+/**
+ * memo is load-bearing, not an optimisation. GlobalCanvas takes no props and
+ * is rendered by App, which subscribes to ten store values (App.tsx:26-35).
+ * Without memo, every activeZone / isOrbitLocked / isNearSpawn flip re-renders
+ * the entire R3F tree mid-flight. The canvas reads what it needs from the
+ * store directly, so it never needs props to arrive this way.
+ *
+ * Guarded by tests/e2e/transition.probe.mjs.
+ */
+export default memo(GlobalCanvas);

@@ -29,25 +29,29 @@
   }
 }
 
-/* Glassmorphism custom classes */
+/* Glassmorphism custom classes.
+   No backdrop-filter: these panels sit over the live WebGL canvas, and a
+   backdrop blur forces the compositor to re-snapshot and re-blur the canvas
+   every frame. Nothing meaningful sits behind them anyway -- the overlay
+   variants all set an opaque bg-black/8x, and in classic-CV mode the canvas
+   is unmounted entirely. Alpha raised to compensate for the lost frosting.
+   Guarded by tests/noBackdropFilter.test.ts. */
 .glass-panel {
-  background: rgba(13, 11, 28, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(13, 11, 28, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .glass-card {
-  background: rgba(15, 12, 34, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(15, 12, 34, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: border-color 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+              transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .glass-card:hover {
-  border: 1px solid rgba(0, 255, 135, 0.25);
+  border-color: rgba(0, 255, 135, 0.25);
   box-shadow: 0 10px 40px 0 rgba(0, 255, 135, 0.1);
   transform: translateY(-4px);
 }

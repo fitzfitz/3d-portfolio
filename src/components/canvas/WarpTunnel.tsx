@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { flight, useSpaceStore } from "../../store/spaceStore";
+import { gameTime } from "../../utils/ambientTime";
 
 const tunnelVertex = /* glsl */ `
   varying vec2 vUv;
@@ -56,7 +57,12 @@ export default function WarpTunnel() {
     const target = useSpaceStore.getState().isWarping ? 1 : 0;
     intensity.current += (target - intensity.current) * (1 - Math.pow(0.002, dt)); // ~0.5s ease
     material.uniforms.uIntensity.value = intensity.current;
-    material.uniforms.uTime.value = state.clock.getElapsedTime();
+    // gameTime, not a raw clock read: the shader's scrolling streaks would
+    // otherwise phase-pop on every THREE.Clock reset (Task 6's dossier
+    // freeze) — see utils/ambientTime.ts's gameTime() doc comment. Warp is
+    // user-initiated, same as PlasmaAnomalies, so this stays off ambientTime
+    // (which freezes under reduced motion) too.
+    material.uniforms.uTime.value = gameTime(state.clock.getElapsedTime());
 
     const visible = intensity.current > 0.01;
     meshRef.current.visible = visible;
