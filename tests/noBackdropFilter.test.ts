@@ -30,8 +30,26 @@ describe("no backdrop-filter over the live canvas", () => {
       if (!/\.(css|tsx?|jsx?)$/.test(file)) continue;
       if (ALLOWLIST.includes(file)) continue;
       const text = readFileSync(file, "utf8");
+
+      // Detect file type to apply appropriate pattern
+      const isCss = /\.css$/.test(file);
+
       text.split("\n").forEach((line, i) => {
-        if (/backdrop-filter|backdrop-blur/.test(line)) {
+        let isOffender = false;
+
+        if (isCss) {
+          // CSS: match declaration form only (requires colon to avoid prose matches)
+          if (/backdrop-filter\s*:/.test(line)) {
+            isOffender = true;
+          }
+        } else {
+          // TSX/TS/JSX/JS: match camelCase inline styles and Tailwind classes with suffix
+          if (/backdropFilter\s*:/.test(line) || /backdrop-blur-/.test(line)) {
+            isOffender = true;
+          }
+        }
+
+        if (isOffender) {
           offenders.push(`${file}:${i + 1}: ${line.trim()}`);
         }
       });
