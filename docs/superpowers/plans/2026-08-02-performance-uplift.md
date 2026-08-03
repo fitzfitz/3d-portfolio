@@ -1342,7 +1342,16 @@ Remove `castShadow={true}` from `src/components/canvas/Sun.tsx:172` and from the
 
 **Measurement caveat discovered during the pre-fix baseline run.** Sampling `gl.info.render.calls` and `.triangles` from `page.evaluate` returned `1` and `1` in every state — implausible for this scene. `EffectComposer` resets `gl.info` during its own passes, so a sample taken between frames reads the composer's last internal pass rather than the scene render.
 
-Before asserting on either counter, set `gl.info.autoReset = false` and reset manually once per sampled frame, then confirm the numbers are plausible (deep space should be dozens of calls, not one). **If they cannot be made trustworthy, drop both assertions and budget on `programs` and `lights` alone** — those are cumulative, were verified reliable in the baseline run, and are the two that actually moved in all three bugs. A budget asserting `calls <= 10` against a broken `calls === 1` reading is worse than no budget: it passes forever and reads like coverage.
+**Resolved — do NOT use `gl.info.autoReset = false`.** A later measurement found the values are already sampled correctly: the DEV overlay read `calls 70`, `tris 876368` in the same session where external sampling read `1` and `1`. The difference is *when* the read happens. `PerfSampler` (`src/debug/PerfSampler.tsx`) reads `gl.info.render.*` from inside `useFrame`, before `EffectComposer` resets it; a `page.evaluate` between frames reads the composer's last internal pass.
+
+So the probe must read **`perfStats.calls` and `perfStats.triangles`** — the values `PerfSampler` already captured in-frame — not `gl.info.render.*`. Expose `perfStats` on the debug bridge for this. No renderer state gets mutated and the infrastructure already exists.
+
+Two constraints on the same principle:
+
+- **`perfStats.lights` is NOT usable in e2e.** The light count is throttled to one traversal every 30 frames. Headless SwiftShader runs at roughly 1fps, so that is ~30 seconds of lag. Count lights with `scene.traverse` inside `page.evaluate` instead, exactly as the existing `transition.probe.mjs` checks already do — that read is instantaneous and frame-independent.
+- **`programs` stays read from `gl.info.programs.length`.** It is a cumulative array length, not a per-frame counter, so it is not affected by the reset and was verified reliable in the pre-fix baseline.
+
+A budget asserting `calls <= 10` against a broken `calls === 1` reading is worse than no budget: it passes forever and reads like coverage.
 
 - [ ] **Step 2: Capture the baselines**
 
