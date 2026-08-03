@@ -234,7 +234,22 @@ export const useSpaceStore = create<SpaceState>()(
     setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
     setLowPerf: (v, manual = false) =>
       set((s) => ({ isLowPerf: v, lowPerfManual: s.lowPerfManual || manual })),
-    setShowClassicCV: (v) => set({ showClassicCV: v }),
+    // Clearing the lock on the way IN (not just tracked as a side effect of
+    // GlobalCanvas unmounting) closes a mount-while-frozen hole: showClassicCV
+    // is the only thing that unmounts GlobalCanvas (App.tsx), and until this
+    // guard, isOrbitLocked survived that unmount untouched. A visitor who
+    // opened a dossier, then clicked into the classic resume and back, got a
+    // freshly-mounted Canvas whose very first render already had
+    // sceneFrozen=true — frameloop="never" from frame one, with no
+    // frozen->unfrozen edge for GlobalCanvas's invalidate() effect to ever
+    // fire on. That's a blank canvas, not a stale frame, until the visitor
+    // closes the dossier. It's also better UX regardless: returning to the
+    // cabin shouldn't drop the visitor back into a modal they opened before
+    // reading the résumé.
+    setShowClassicCV: (v) => {
+      if (v) get().breakOrbit();
+      set({ showClassicCV: v });
+    },
     setMuted: (v) => {
       set({ isMuted: v });
       safeSetMuted(v);

@@ -98,6 +98,66 @@ export default async function run() {
     checks.check("the canvas does not keep re-rendering while the modal stays open",
       afterSettle - afterEngage === 0, `delta=${afterSettle - afterEngage}`);
 
+    // ---- regression: classic-CV round trip while orbit-locked must not
+    // leave the canvas painting zero frames forever ----
+    // showClassicCV is the only thing that unmounts GlobalCanvas (App.tsx:79),
+    // and until setShowClassicCV started calling breakOrbit(), isOrbitLocked
+    // survived that unmount untouched: a visitor who opened this exact
+    // dossier, then clicked into the classic resume and back, got a
+    // freshly-mounted Canvas whose very first render already had
+    // sceneFrozen=true -- frameloop="never" from frame one, with no
+    // frozen->unfrozen edge for the invalidate() effect (GlobalCanvas.tsx) to
+    // ever fire on. R3F provides no initial paint for frameloop="never" (both
+    // invalidate() and the internal invalidateInstance no-op while frozen),
+    // so that's a genuinely blank canvas, not a stale frame, until the
+    // visitor closes the dossier by hand.
+    //
+    // gl.info.render.frame (a fresh WebGLRenderer's own draw-call counter,
+    // re-published by DebugBridge on every GlobalCanvas mount) is the only
+    // reliable signal here -- a screenshot can't distinguish "the 3D scene is
+    // frozen" from "everything is fine," because the HUD, radar, chatter
+    // ticker and perf overlay all animate on their own independent rAF loops
+    // regardless of whether the WebGL canvas itself is painting.
+    const stillLocked = (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked));
+    checks.check("orbit lock is still held going into the round trip (precondition)", stillLocked,
+      `locked=${stillLocked}`);
+    // Baseline from the OLD (about-to-be-unmounted) renderer, used below only
+    // to detect when window.__fitz.gl has actually swapped to the new one.
+    const frameBeforeRoundTrip = await page.evaluate(() => window.__fitz.gl.info.render.frame);
+
+    await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
+    await settle(page, 500);
+    checks.check("opening classic CV while locked clears the lock",
+      (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked)) === false);
+
+    await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(false));
+
+    // window.__fitz.gl briefly still points at the OLD, already-unmounted
+    // renderer right after the round trip — DebugBridge hasn't re-published
+    // it yet — and that stale object's frame count is frozen at whatever it
+    // last reached. Comparing two samples of that frozen, stale number would
+    // either falsely pass (both reads identical) or falsely fail (a
+    // coincidental discrepancy), neither of which says anything about
+    // whether the NEW canvas is actually painting. A fresh WebGLRenderer's
+    // own counter starts back near 0, so poll until a reading drops below
+    // the pre-round-trip baseline — that's the reliable signal that
+    // window.__fitz.gl has landed on the new instance.
+    let frame1 = null;
+    for (let i = 0; i < 15 && frame1 === null; i++) {
+      await settle(page, 200);
+      const f = await page.evaluate(() => window.__fitz.gl?.info.render.frame ?? null);
+      if (f !== null && f < frameBeforeRoundTrip) frame1 = f;
+    }
+    checks.check("a fresh renderer comes online after the round trip (precondition)",
+      frame1 !== null, `frame1=${frame1}`);
+
+    if (frame1 !== null) {
+      await settle(page, 1000);
+      const frame2 = await page.evaluate(() => window.__fitz.gl.info.render.frame);
+      checks.check("canvas resumes rendering after a classic-CV round trip while orbit-locked",
+        frame2 > frame1, `frame ${frame1} -> ${frame2}`);
+    }
+
     await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
     await settle(page, 800);
 

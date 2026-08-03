@@ -173,6 +173,16 @@ function GlobalCanvas() {
   // frameloop="never" means R3F stops driving rAF entirely; the first frame
   // after unfreezing has to be requested explicitly or the canvas holds the
   // stale frame until something else invalidates it.
+  //
+  // This relies on invalidate() seeing state.frameloop already flipped back
+  // to "always" by the time it runs: R3F's CanvasImpl syncs the `frameloop`
+  // prop to its internal store in a useLayoutEffect (react-three-fiber.esm.js),
+  // and React always flushes layout effects before passive ones, so that sync
+  // is guaranteed to land before this useEffect fires. invalidate() no-ops
+  // silently while frameloop is still "never" (no error, just nothing
+  // happens), so if either effect here or R3F's own sync ever became a
+  // layout/passive pair in the other order, this would go back to a
+  // permanently-frozen canvas with no signal that anything was wrong.
   const wasFrozen = useRef(false);
   useEffect(() => {
     if (wasFrozen.current && !sceneFrozen) invalidate();
@@ -189,6 +199,18 @@ function GlobalCanvas() {
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
         dpr={[1, 1.5]}
+        // Relies on this Canvas never mounting with sceneFrozen already true
+        // (mount always starts unlocked, and setShowClassicCV's breakOrbit()
+        // call keeps the one other remount path — the classic-CV round trip
+        // — from re-entering already locked). If that ever stopped holding,
+        // R3F provides no initial paint for frameloop="never": invalidate()
+        // and the internal invalidateInstance both no-op while frameloop is
+        // "never", and CanvasImpl's mount effect never forces a frame. A
+        // defensive advance() on mount was considered and deliberately left
+        // out — Suspense for the ship/planet GLBs hasn't resolved at that
+        // point, so it would paint an empty scene rather than a real one,
+        // trading "blank" for "blank but misleadingly logged as painted."
+        // Removing the one reachable mount-while-frozen path is the fix.
         frameloop={sceneFrozen ? "never" : "always"}
         gl={{
           antialias: true,
