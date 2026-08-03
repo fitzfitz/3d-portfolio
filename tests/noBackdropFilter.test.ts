@@ -29,22 +29,33 @@ describe("no backdrop-filter over the live canvas", () => {
     for (const file of walk("src")) {
       if (!/\.(css|tsx?|jsx?)$/.test(file)) continue;
       if (ALLOWLIST.includes(file)) continue;
-      const text = readFileSync(file, "utf8");
+      let text = readFileSync(file, "utf8");
 
       // Detect file type to apply appropriate pattern
       const isCss = /\.css$/.test(file);
+
+      // Strip comments from entire file first to handle multi-line comments
+      // Remove /* */ blocks (including multi-line)
+      text = text.replace(/\/\*[\s\S]*?\*\//g, "");
+      // Remove // line comments
+      text = text.replace(/\/\/.*$/gm, "");
 
       text.split("\n").forEach((line, i) => {
         let isOffender = false;
 
         if (isCss) {
-          // CSS: match declaration form only (requires colon to avoid prose matches)
+          // CSS: match declaration form (requires colon)
           if (/backdrop-filter\s*:/.test(line)) {
             isOffender = true;
           }
         } else {
-          // TSX/TS/JSX/JS: match camelCase inline styles and Tailwind classes with suffix
-          if (/backdropFilter\s*:/.test(line) || /backdrop-blur-/.test(line)) {
+          // TSX/TS/JSX/JS: match camelCase inline styles (case-insensitive to catch WebkitBackdropFilter),
+          // hyphenated declarations, and Tailwind classes (with or without suffix)
+          if (
+            /backdropFilter\s*:/i.test(line) ||
+            /backdrop-filter\s*:/.test(line) ||
+            /backdrop-blur(-|\b)/.test(line)
+          ) {
             isOffender = true;
           }
         }

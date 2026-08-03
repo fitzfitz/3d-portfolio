@@ -30,11 +30,11 @@
 }
 
 /* Glassmorphism custom classes.
-   No blur effects: these panels sit over the live WebGL canvas, and a
-   compositor blur forces re-snapshot and re-blur of the canvas every frame.
-   Nothing meaningful sits behind them anyway -- the overlay variants all set
-   an opaque bg-black/8x, and in classic-CV mode the canvas is unmounted
-   entirely. Alpha raised to compensate for the lost frosting.
+   No backdrop-filter: these panels sit over the live WebGL canvas, and a
+   backdrop blur forces the compositor to re-snapshot and re-blur the canvas
+   every frame. Nothing meaningful sits behind them anyway -- the overlay
+   variants all set an opaque bg-black/8x, and in classic-CV mode the canvas
+   is unmounted entirely. Alpha raised to compensate for the lost frosting.
    Guarded by tests/noBackdropFilter.test.ts. */
 .glass-panel {
   background: rgba(13, 11, 28, 0.82);
