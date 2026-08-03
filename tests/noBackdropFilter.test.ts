@@ -44,8 +44,11 @@ describe("no backdrop-filter over the live canvas", () => {
         let isOffender = false;
 
         if (isCss) {
-          // CSS: match declaration form (requires colon)
-          if (/backdrop-filter\s*:/.test(line)) {
+          // CSS: match declaration form (requires colon), plus Tailwind's
+          // `@apply backdrop-blur-*` — a bare utility name with no colon,
+          // easy to reintroduce inside `@layer components` (e.g. .glass-card)
+          // where this file's own CSS lives (src/index.css).
+          if (/backdrop-filter\s*:/.test(line) || /backdrop-blur(-|\b)/.test(line)) {
             isOffender = true;
           }
         } else {
