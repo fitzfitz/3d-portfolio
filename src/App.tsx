@@ -60,7 +60,7 @@ export default function App() {
             animate={{ opacity: 0.85 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="pointer-events-none fixed inset-0 z-50 bg-[#00f0ff]/15 backdrop-blur-[3px] border-[12px] border-[#00f0ff]/30"
+            className="pointer-events-none fixed inset-0 z-50 bg-[#00f0ff]/15 border-[12px] border-[#00f0ff]/30"
           />
         )}
       </AnimatePresence>
