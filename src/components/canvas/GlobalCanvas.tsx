@@ -23,6 +23,7 @@ import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
+import PerfSampler from "../../debug/PerfSampler";
 
 interface StarLayerProps {
   count: number;
@@ -201,6 +202,7 @@ export default function GlobalCanvas() {
           </Html>
         }>
           {import.meta.env.DEV && <DebugBridge />}
+          {import.meta.env.DEV && <PerfSampler />}
 
           {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
           <Environment resolution={64} frames={1}>

@@ -17,6 +17,7 @@ import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
+import PerfOverlay from "./debug/PerfOverlay";
 
 export default function App() {
   useKeyboardInput();
@@ -69,6 +70,7 @@ export default function App() {
 
       {/* Global Interactive Layers */}
       <CustomCursor />
+      {import.meta.env.DEV && <PerfOverlay />}
 
       {!photoMode && !showClassicCV && <HUDOverlay />}
       {!photoMode && !showClassicCV && <TouchControls />}
