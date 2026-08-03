@@ -390,14 +390,22 @@ import { withPage, settle, toDeepSpace } from "./harness.mjs";
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
 
-/** Teleports to just outside a planet's gravity well, then into it. */
+/**
+ * Teleports into a planet's gravity well but short of the orbit lock.
+ *
+ * Geometry (src/constants.ts): PLANET_SIZE 4.8, ZONE_FACTOR 1.8 and
+ * LOCK_ENGAGE_FACTOR 1.3, so activeZone sets inside 8.64 units and the lock
+ * engages inside 6.24. An offset of (5, 0, 5) is 7.07 units out — inside the
+ * well, outside the lock, and outside the planet's own 4.8 surface. A measured
+ * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
+ * at all, so activeZone stayed null and the check silently proved nothing.
+ */
 async function approachPlanet(page) {
   return page.evaluate(() => {
     const b = window.__fitz.bodies;
     const name = Object.keys(b)[0];
     const p = b[name];
-    // Inside the gravity well: SpacePlanets sets activeZone by proximity.
-    window.__fitz.teleport(p.x + 12, p.y, p.z + 12);
+    window.__fitz.teleport(p.x + 5, p.y, p.z + 5);
     return name;
   });
 }
@@ -611,11 +619,13 @@ Append to `src/constants.ts`:
  * This is not a shading-cost budget, it is a "do not recompile during play"
  * budget, and it is why particles must never carry their own light.
  *
- * Current occupants: sun (Sun.tsx), ambient sun point (GlobalCanvas.tsx),
- * ship x2 (Spaceship.tsx), portal x2 (PortalRing.tsx), planets x3
- * (SpacePlanets.tsx). Asserted by tests/e2e/transition.probe.mjs.
+ * Current occupants, measured (not enumerated by hand — an earlier hand count
+ * said 9 and missed the ambientLight): ambientLight + sun point
+ * (GlobalCanvas.tsx:214,217), sun (Sun.tsx), ship x2 (Spaceship.tsx),
+ * portal x2 (PortalRing.tsx), planets x3 (SpacePlanets.tsx).
+ * Asserted by tests/e2e/transition.probe.mjs.
  */
-export const LIGHT_BUDGET = 9;
+export const LIGHT_BUDGET = 10;
 ```
 
 - [ ] **Step 2: Write the failing probe checks**
@@ -634,8 +644,9 @@ Append inside the `withPage` callback in `tests/e2e/transition.probe.mjs`, befor
         renders: window.__fitz.canvasRenderCount };
     });
 
+    // 10, measured — see LIGHT_BUDGET in src/constants.ts.
     checks.check("baseline light count is within LIGHT_BUDGET",
-      beforePlasma.lights <= 9, `lights=${beforePlasma.lights}`);
+      beforePlasma.lights <= 10, `lights=${beforePlasma.lights}`);
 
     // Spawn 40 anomalies through the same ref path a click uses.
     await page.evaluate(() => {
@@ -1328,6 +1339,10 @@ loading from hung."
 `<Canvas>` has no `shadows` prop (`GlobalCanvas.tsx:179`), so `gl.shadowMap.enabled` is false and every `castShadow` in the scene is dead configuration that reads as if shadows were on.
 
 Remove `castShadow={true}` from `src/components/canvas/Sun.tsx:172` and from the three planet meshes at `src/components/canvas/SpacePlanets.tsx:393,425,451`.
+
+**Measurement caveat discovered during the pre-fix baseline run.** Sampling `gl.info.render.calls` and `.triangles` from `page.evaluate` returned `1` and `1` in every state — implausible for this scene. `EffectComposer` resets `gl.info` during its own passes, so a sample taken between frames reads the composer's last internal pass rather than the scene render.
+
+Before asserting on either counter, set `gl.info.autoReset = false` and reset manually once per sampled frame, then confirm the numbers are plausible (deep space should be dozens of calls, not one). **If they cannot be made trustworthy, drop both assertions and budget on `programs` and `lights` alone** — those are cumulative, were verified reliable in the baseline run, and are the two that actually moved in all three bugs. A budget asserting `calls <= 10` against a broken `calls === 1` reading is worse than no budget: it passes forever and reads like coverage.
 
 - [ ] **Step 2: Capture the baselines**
 
