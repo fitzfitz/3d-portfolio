@@ -146,6 +146,98 @@ function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   );
 }
 
+// Rendered as the Suspense fallback, so it mounts inside the Canvas tree.
+// 3.6MB across eleven GLBs and three textures is a real wait on a slow
+// connection; report it honestly instead of an indefinite pulse.
+//
+// Deliberately NOT drei's useProgress: that hook is backed by a zustand store
+// that THREE.DefaultLoadingManager writes into synchronously from whichever
+// component's render happens to trigger a loader callback -- e.g. a sibling
+// useGLTF suspending mid-render -- which manifests as "Cannot update a
+// component (LoadProgress) while rendering a different component
+// (OrbitingMoon)". That's a real cross-component setState-during-render, not
+// e2e noise, so it's driven imperatively instead, the same way PerfOverlay
+// drives its readout: the manager's own callbacks write into a ref, and a
+// rAF loop reads the ref and pokes the DOM directly. No React state ever
+// sits on the update path, so there's nothing to update mid-render.
+function LoadProgress() {
+  const barRef = useRef<HTMLDivElement>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const stateRef = useRef({ progress: 0, item: "" });
+
+  useEffect(() => {
+    const manager = THREE.DefaultLoadingManager;
+    // Nothing else in this codebase touches DefaultLoadingManager today, but
+    // it's a process-wide singleton, not something this component owns --
+    // save whatever was already wired up and chain to it rather than
+    // clobbering it, and restore it on unmount so a remount (Suspense can
+    // fall back more than once) doesn't stack handlers.
+    const prevOnStart = manager.onStart;
+    const prevOnProgress = manager.onProgress;
+    const prevOnLoad = manager.onLoad;
+    const prevOnError = manager.onError;
+
+    // Mirrors drei's useProgress math so the readout behaves the same:
+    // percentage is relative to the total *since the last fully-completed
+    // batch*, not since page load, so a second Suspense fallback later in
+    // the session (e.g. a lazily-loaded model) still reads 0% -> 100%
+    // instead of picking up from wherever the first batch left off.
+    let lastTotalLoaded = 0;
+    const update = (loaded: number, total: number, item: string, fallback: number) => {
+      const pct = (loaded - lastTotalLoaded) / (total - lastTotalLoaded) * 100 || fallback;
+      stateRef.current = { progress: pct, item };
+    };
+
+    manager.onStart = (item, loaded, total) => {
+      update(loaded, total, item, 0);
+      prevOnStart?.(item, loaded, total);
+    };
+    manager.onProgress = (item, loaded, total) => {
+      if (loaded === total) lastTotalLoaded = total;
+      update(loaded, total, item, 100);
+      prevOnProgress?.(item, loaded, total);
+    };
+    manager.onLoad = () => {
+      stateRef.current = { progress: 100, item: "" };
+      prevOnLoad?.();
+    };
+    manager.onError = (item) => {
+      prevOnError?.(item);
+    };
+
+    let raf = 0;
+    const tick = () => {
+      const { progress, item } = stateRef.current;
+      if (barRef.current) barRef.current.style.width = `${progress.toFixed(0)}%`;
+      if (labelRef.current) {
+        labelRef.current.textContent = `${progress.toFixed(0)}% ${item ? `— ${item.split("/").pop()}` : ""}`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      manager.onStart = prevOnStart;
+      manager.onProgress = prevOnProgress;
+      manager.onLoad = prevOnLoad;
+      manager.onError = prevOnError;
+    };
+  }, []);
+
+  return (
+    <Html center className="select-none pointer-events-none whitespace-nowrap text-center">
+      <div className="font-mono text-xs tracking-widest uppercase text-primary mb-2">
+        Initializing Star System
+      </div>
+      <div className="w-48 h-[2px] bg-primary/20 mx-auto overflow-hidden rounded-full">
+        <div ref={barRef} className="h-full bg-primary transition-[width] duration-200" style={{ width: "0%" }} />
+      </div>
+      <div ref={labelRef} className="font-mono text-[9px] text-primary/50 mt-2" />
+    </Html>
+  );
+}
+
 function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(({ camera }) => {
@@ -229,11 +321,7 @@ function GlobalCanvas() {
             if (!s.lowPerfManual && !s.isLowPerf) s.setLowPerf(true);
           }}
         />
-        <Suspense fallback={
-          <Html center className="text-primary font-mono text-xs tracking-widest uppercase animate-pulse select-none pointer-events-none whitespace-nowrap">
-            Initializing Star System...
-          </Html>
-        }>
+        <Suspense fallback={<LoadProgress />}>
           {import.meta.env.DEV && <DebugBridge />}
           {import.meta.env.DEV && <PerfSampler />}
 
