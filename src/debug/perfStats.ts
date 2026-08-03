@@ -20,7 +20,7 @@ export const perfStats = {
   lights: 0,
 };
 
-/** Scratch array for percentile sorting — reused so reads allocate nothing. */
+/** Scratch array for percentile sorting — pre-allocated and reused so percentile() reads allocate nothing. */
 const scratch = new Float32Array(CAPACITY);
 
 export function pushFrame(ms: number): void {
@@ -32,12 +32,18 @@ export function pushFrame(ms: number): void {
 export function percentile(p: number): number {
   const n = perfStats.count;
   if (n === 0) return 0;
-  scratch.set(perfStats.frames.subarray(0, n));
-  const view = scratch.subarray(0, n);
-  view.sort();
+  // Copy live samples into scratch without creating view objects
+  for (let i = 0; i < n; i++) {
+    scratch[i] = perfStats.frames[i];
+  }
+  // Fill tail with Infinity so dead samples sort to the end
+  for (let i = n; i < CAPACITY; i++) {
+    scratch[i] = Infinity;
+  }
+  scratch.sort();
   const clamped = Math.max(0, Math.min(100, p));
   const rank = Math.ceil((clamped / 100) * n) - 1;
-  return view[Math.max(0, rank)];
+  return scratch[Math.max(0, rank)];
 }
 
 export function resetStats(): void {
