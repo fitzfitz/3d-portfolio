@@ -36,6 +36,14 @@ export interface FitzDebug {
   /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
   crystals: { x: number; y: number; z: number; active: boolean }[] | null;
   /**
+   * Live plasma anomaly pool, registered by PlasmaAnomalies in dev. Null
+   * until mounted. Only `active` is asserted on by e2e today, so the shape
+   * here is intentionally minimal rather than mirroring the full `Anomaly`
+   * interface (position/velocity/colorIdx/phase), which stays private to
+   * PlasmaAnomalies.tsx.
+   */
+  anomalies: { active: boolean }[] | null;
+  /**
    * Live renderer counters sampled in-frame by PerfSampler, before
    * EffectComposer resets `gl.info` — see PerfSampler's own comment. Exposed
    * here so e2e probes can read `calls`/`triangles` reliably; `lights` on
@@ -58,5 +66,6 @@ export const fitzDebug: FitzDebug = {
   canvasRenderCount: 0,
   teleport: null,
   crystals: null,
+  anomalies: null,
   perfStats,
 };

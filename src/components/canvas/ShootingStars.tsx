@@ -1,6 +1,7 @@
 import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { gameTime } from "../../utils/ambientTime";
 
 const POOL = 4;
 const SPAWN_MIN = 4;   // seconds
@@ -39,7 +40,11 @@ export default function ShootingStars() {
   useFrame((state, delta) => {
     if (!linesRef.current) return;
     const dt = Math.min(delta, 0.05);
-    const t = state.clock.getElapsedTime();
+    // nextSpawn is an absolute deadline stored from an earlier frame, so it
+    // must survive a THREE.Clock reset (Task 6's dossier freeze) the same way
+    // Spaceship's warp suppression/impact debounce do — see
+    // utils/ambientTime.ts's gameTime() doc comment.
+    const t = gameTime(state.clock.getElapsedTime());
 
     // Spawner
     if (t > nextSpawn.current) {

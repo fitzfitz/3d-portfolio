@@ -4,6 +4,8 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight } from "../../store/spaceStore";
 import { assetUrl } from "../../utils/assetUrl";
+import { gameTime } from "../../utils/ambientTime";
+import { fitzDebug } from "../../debug/bridge";
 
 /** Fixed pool size. Slots are preallocated at load and recycled forever. */
 const ANOMALY_MAX = 40;
@@ -146,6 +148,18 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
       phase: 0,
     })), []);
 
+  // Mirror onto the bridge purely so the e2e probe can read it, the same
+  // pattern FuelCrystals.tsx uses for `crystals`. Without this, a spawn
+  // regression is invisible to transition.probe.mjs's 40-spawns section: the
+  // InstancedMesh mounts with a fixed `count = ANOMALY_MAX` regardless of how
+  // many slots are actually active, so draw calls/triangles never move and
+  // every assertion there passes vacuously whether spawning works or not.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.anomalies = pool;
+    return () => { fitzDebug.anomalies = null; };
+  }, [pool]);
+
   // Create and seed the instance colour buffer once, at mount, even though
   // every value written here is immediately overwritten per-slot at spawn.
   // This is NOT redundant: `InstancedMesh.setColorAt` lazily creates
@@ -209,10 +223,13 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
     shipPos.set(flight.x, flight.y, flight.z);
     stepAnomalies(pool, shipPos);
 
-    // Rotation stays on the real clock rather than ambientTime: anomalies are
+    // Rotation stays on gameTime rather than ambientTime: anomalies are
     // spawned by clicking, so they are user-initiated and the reduced-motion
-    // spec deliberately exempts them.
-    const t = state.clock.getElapsedTime();
+    // spec deliberately exempts them. gameTime (unlike a raw clock read)
+    // still carries forward across a THREE.Clock reset (Task 6's dossier
+    // freeze), which is what keeps this rotation from phase-popping the
+    // instant a modal opens or closes — see utils/ambientTime.ts.
+    const t = gameTime(state.clock.getElapsedTime());
     for (let i = 0; i < ANOMALY_MAX; i++) {
       const m = pool[i];
       if (!m.active) {

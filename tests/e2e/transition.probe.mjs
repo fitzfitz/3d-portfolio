@@ -1,4 +1,4 @@
-import { withPage, settle, toDeepSpace } from "./harness.mjs";
+import { withPage, settle, toDeepSpace, hold } from "./harness.mjs";
 
 // ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
 // Measured on headless Chrome / SwiftShader (software rendering) -- see that
@@ -278,9 +278,11 @@ export default async function run() {
         renders: window.__fitz.canvasRenderCount };
     });
 
-    // 10, measured — see LIGHT_BUDGET in src/constants.ts.
+    // lightBudget was fetched from src/constants.ts's LIGHT_BUDGET above (the
+    // deep-space section) -- reuse the same import here instead of a second
+    // hardcoded literal that could silently drift from the constant.
     checks.check("baseline light count is within LIGHT_BUDGET",
-      beforePlasma.lights <= 10, `lights=${beforePlasma.lights}`);
+      beforePlasma.lights <= lightBudget, `lights=${beforePlasma.lights} LIGHT_BUDGET=${lightBudget}`);
 
     // Spawn 40 anomalies through the same ref path a click uses.
     await page.evaluate(() => {
@@ -294,6 +296,18 @@ export default async function run() {
       }
     });
     await settle(page, 2000);
+
+    // Liveness precondition: the InstancedMesh mounts with a fixed
+    // `count = ANOMALY_MAX` and `frustumCulled={false}` (PlasmaAnomalies.tsx),
+    // so draw calls, triangles, lights and programs are ALL identical whether
+    // 0 or 40 slots are actually active -- none of the three checks below can
+    // tell "spawning is broken" from "spawning never happened" without this.
+    // Mirrors the "approach actually entered a gravity well" precondition
+    // above.
+    const activeAnomalies = await page.evaluate(() =>
+      window.__fitz.anomalies?.filter((a) => a.active).length ?? -1);
+    checks.check("40 plasma spawns actually populated the anomaly pool (precondition)",
+      activeAnomalies === 40, `active=${activeAnomalies}`);
 
     const afterPlasma = await page.evaluate(() => {
       let lights = 0;
@@ -322,5 +336,92 @@ export default async function run() {
       `programs=${anomalies.programs} ceiling=${ANOMALIES_PROGRAMS_CEILING}`);
     checks.check("40-anomalies light count within budget", anomalies.lights <= ANOMALIES_LIGHTS_CEILING,
       `lights=${anomalies.lights} ceiling=${ANOMALIES_LIGHTS_CEILING}`);
+
+    // ---- regression: a dossier open+close must not break warp (Critical 1) ----
+    // R3F's setFrameloop (used by the dossier freeze above) zeroes
+    // THREE.Clock.elapsedTime on EVERY frameloop transition -- twice per
+    // open+close (once locking, once breaking). Spaceship.tsx used to gate
+    // warp on a raw `state.clock.getElapsedTime()` read compared against an
+    // absolute deadline (`warpSuppressUntil.current`, set on the ship's last
+    // asteroid impact) stored from BEFORE the reset. Post-reset, the live
+    // clock restarts near 0 while the stored deadline is still whatever it
+    // was against the OLD, pre-reset numbering -- so Shift silently does
+    // nothing until the new clock climbs all the way back up to that stale
+    // absolute value: a dead window as long as the session had already run.
+    // Same shape for the impact debounce (camera shake/impact sound/
+    // bumpImpact) and ShootingStars' spawn timer, neither of which can
+    // self-heal either. Fixed by routing all three through utils/
+    // ambientTime.ts's gameTime(), which carries forward across exactly this
+    // discontinuity instead of restarting at zero.
+    //
+    // This reproduces the real user path end to end: collide with an
+    // asteroid (sets warpSuppressUntil/lastImpactAt to absolute, pre-reset
+    // clock values), orbit-lock a planet (frameloop "always" -> "never",
+    // reset #1), close the dossier via breakOrbit() (frameloop "never" ->
+    // "always", reset #2 -- the same store call the harness elsewhere in
+    // this file treats as "closing the dossier"), then hold Shift and
+    // confirm warp actually engages and fuel actually drains. By this point
+    // in the suite the page has been open long enough that the pre-reset
+    // clock reading is comfortably non-trivial (the reported repro is ~60s
+    // of flight), so this needs no long wait of its own.
+    //
+    // Driven through REAL keyboard input on purpose: writing
+    // store.getState().setWarping(true) directly (as the "warp: isWarping
+    // flips on every boost" check above does, deliberately, to isolate the
+    // canvas re-render invariant) bypasses Spaceship's own `warpActive`
+    // computation entirely -- which is exactly why 172 prior checks on this
+    // branch never caught this regression.
+    const asteroid = await page.evaluate(async () => {
+      const mod = await import("/src/data/asteroids.ts");
+      const a = mod.ASTEROID_COLLIDERS?.[0];
+      if (!a) return null;
+      return { x: a.x, y: a.y, z: a.z, r: a.r };
+    });
+    checks.check("asteroid table is readable (precondition)", asteroid !== null);
+
+    if (asteroid) {
+      const impactBefore = await page.evaluate(() => window.__fitz.store.getState().impactCount);
+      // Approach from outside the collider radius and ram forward into it —
+      // same technique gameplay.probe.mjs's "ramming an asteroid" check uses.
+      await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z - p.r - 2), asteroid);
+      await hold(page, ["KeyW"], 2500);
+      const impactAfter = await page.evaluate(() => window.__fitz.store.getState().impactCount);
+      checks.check("collided with an asteroid for the regression setup (precondition)",
+        impactAfter > impactBefore, `${impactBefore} -> ${impactAfter}`);
+
+      const fuelBefore = await page.evaluate(() => window.__fitz.flight.fuel);
+      checks.check("fuel is available for the warp regression test (precondition)",
+        fuelBefore > 0, `fuel=${fuelBefore}`);
+
+      // Orbit-lock (frameloop reset #1).
+      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+      await settle(page, 300);
+      const lockTarget = await page.evaluate(async () => {
+        const { planets } = await import("/src/constants.ts");
+        const p = planets[0];
+        const b = window.__fitz.bodies[p.name];
+        return { x: b.x, y: b.y, z: b.z, size: p.size };
+      });
+      await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z + p.size * 1.2), lockTarget);
+      await settle(page, 2500);
+      const lockedForRegression = await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked);
+      checks.check("orbit-locked for the clock-reset regression (precondition)",
+        lockedForRegression, `locked=${lockedForRegression}`);
+
+      // Close the dossier (frameloop reset #2).
+      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+      await settle(page, 300);
+
+      await page.keyboard.down("ShiftLeft");
+      await settle(page, 900);
+      const isWarpingDuringHold = await page.evaluate(() => window.__fitz.store.getState().isWarping);
+      const fuelDuringHold = await page.evaluate(() => window.__fitz.flight.fuel);
+      await page.keyboard.up("ShiftLeft");
+
+      checks.check("warp engages on real Shift input after a post-impact dossier round trip",
+        isWarpingDuringHold, `isWarping=${isWarpingDuringHold}`);
+      checks.check("fuel actually drains while warping post-round-trip",
+        fuelDuringHold < fuelBefore, `${fuelBefore} -> ${fuelDuringHold}`);
+    }
   });
 }

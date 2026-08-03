@@ -1,23 +1,33 @@
 /**
- * Ambient (decorative) elapsed time, which freezes under reduced motion while
- * the real clock keeps running for user-driven flight.
+ * Two elapsed-time accumulators, both immune to the `THREE.Clock` reset
+ * described in `DISCONTINUITY_SECONDS` below, differing only in whether they
+ * freeze under reduced motion:
  *
- * Deliberately a pure function of the caller's own elapsed time rather than an
- * accumulator advanced by one privileged component. Controlling `useFrame`
- * order would mean using R3F's `renderPriority`, and any priority > 0 takes
- * over the render loop and obliges manual `gl.render()` calls. Deriving the
- * value from the clock each consumer already has removes the ordering question
- * entirely: no component is special, and none needs to run before another.
+ *   - `ambientTime()` — decorative motion (planet orbits, nebula hue drift,
+ *     cloud rotation, sun corona). Freezes while `enabled` is false.
+ *   - `gameTime()` — gameplay deadlines that must keep advancing regardless
+ *     of reduced motion (warp suppression, impact debounce, meteor spawn
+ *     timing). See its own doc comment below for why it cannot share
+ *     `ambientTime`'s accumulator.
+ *
+ * Both are deliberately pure functions of the caller's own elapsed time
+ * rather than an accumulator advanced by one privileged component.
+ * Controlling `useFrame` order would mean using R3F's `renderPriority`, and
+ * any priority > 0 takes over the render loop and obliges manual
+ * `gl.render()` calls. Deriving the value from the clock each consumer
+ * already has removes the ordering question entirely: no component is
+ * special, and none needs to run before another.
  *
  * In production, callers within one frame do NOT see the identical elapsed-
  * time reading: `THREE.Clock.getElapsedTime()` is itself mutating (it calls
  * `getDelta()` internally in three@0.185.1), so each of this module's call
  * sites gets a slightly larger value than the last within the same frame, and
- * each nudges `t` forward by that small slice rather than reading one frozen
- * number. This has no visible consequence — the total advance across the
- * frame still equals real elapsed time, exactly as it did before this module
- * existed — but it means the guarantee below is "no drift or double-counting
- * regardless of call order," not "every caller sees one shared value."
+ * each nudges its accumulator forward by that small slice rather than
+ * reading one frozen number. This has no visible consequence — the total
+ * advance across the frame still equals real elapsed time, exactly as it did
+ * before this module existed — but it means the guarantee below is "no drift
+ * or double-counting regardless of call order," not "every caller sees one
+ * shared value."
  */
 let t = 0;
 let lastReal: number | null = null;
@@ -68,6 +78,56 @@ export function ambientTime(realElapsed: number): number {
 }
 
 /**
+ * Monotonic elapsed time for gameplay deadlines that must survive a
+ * `THREE.Clock` reset -- a `gameTime()` sibling to `ambientTime()` above,
+ * deliberately NOT gated on `enabled`/reduced motion.
+ *
+ * Task 6's dossier freeze flips Canvas `frameloop` between "always" and
+ * "never" on every orbit lock/unlock, and R3F's `setFrameloop` resets
+ * `clock.elapsedTime` to 0 on EVERY such transition (see the discontinuity
+ * doc above `ambientTime`) -- twice per dossier open+close. Several
+ * gameplay systems compare a live clock reading against an absolute
+ * deadline stored from an earlier frame:
+ *
+ *   - Spaceship.tsx's warp gate (`time > warpSuppressUntil.current`) and
+ *     impact debounce (`time - lastImpactAt.current > 0.5`)
+ *   - ShootingStars.tsx's spawn timer (`t > nextSpawn.current`)
+ *
+ * All three compare a FUTURE stored value against a clock that can suddenly
+ * rewind to ~0. Post-reset, the live reading takes as long to climb back to
+ * that stale absolute deadline as the deadline's own original value was --
+ * i.e. a dead window as long as the whole session had already run, and none
+ * of the three can self-heal (nothing re-derives the stored deadline once
+ * it's stale).
+ *
+ * `ambientTime` cannot be reused here even though it already handles this
+ * exact discontinuity: it deliberately FREEZES while `enabled` is false
+ * (reduced motion), and every consumer above is gameplay, not decor --
+ * warp, damage feedback and spawn timing must keep advancing under reduced
+ * motion. Hence a separate accumulator with its own state, sharing only the
+ * discontinuity constant and the re-seed-on-jump logic.
+ *
+ * `PlasmaAnomalies.tsx` and `WarpTunnel.tsx` also read raw elapsed time for
+ * decorative rotation/shader phase and are exempted from `ambientTime` for
+ * the same "user-initiated, not reduced-motion-gated" reason -- routing them
+ * through `gameTime` instead fixes their cosmetic phase-pop on the same
+ * reset without introducing a reduced-motion freeze they don't want.
+ */
+let g = 0;
+let lastRealGame: number | null = null;
+
+export function gameTime(realElapsed: number): number {
+  if (lastRealGame === null) {
+    lastRealGame = realElapsed;
+    return g;
+  }
+  const delta = realElapsed - lastRealGame;
+  lastRealGame = realElapsed;
+  if (delta > 0 && delta < DISCONTINUITY_SECONDS) g += delta;
+  return g;
+}
+
+/**
  * Test-only: restore module state between cases.
  *
  * Resets `lastReal` to 0, not null. Null means "no frame has ever been
@@ -83,4 +143,10 @@ export function resetAmbientTime(): void {
   t = 0;
   lastReal = 0;
   enabled = true;
+}
+
+/** Test-only: restore `gameTime`'s module state between cases. See `resetAmbientTime`. */
+export function resetGameTime(): void {
+  g = 0;
+  lastRealGame = 0;
 }

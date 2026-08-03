@@ -10,7 +10,7 @@ import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
-import { ambientTime } from "../../utils/ambientTime";
+import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
 import { assetUrl } from "../../utils/assetUrl";
 
@@ -168,11 +168,17 @@ export default function Spaceship() {
     if (!shipRef.current) return;
     const dt = Math.min(delta, 0.05); // clamp tab-switch spikes
     const store = useSpaceStore.getState();
-    const time = state.clock.getElapsedTime();
+    const rawElapsed = state.clock.getElapsedTime();
+    // `time` drives warp suppression and impact debounce below (both compare
+    // against an absolute deadline stored from an earlier frame), so it must
+    // survive a THREE.Clock reset (Task 6's dossier freeze flips `frameloop`
+    // twice per open+close, and R3F's setFrameloop zeroes clock.elapsedTime on
+    // each transition) — see utils/ambientTime.ts's gameTime() doc comment.
+    const time = gameTime(rawElapsed);
     // Sub-perceptual idle flourishes (bob, roll wobble) are decorative, not
     // physics, so they freeze under reduced motion like any other Tier 2
     // effect — the ship's position/physics themselves stay on `time` (spec §1).
-    const ambient = ambientTime(time);
+    const ambient = ambientTime(rawElapsed);
 
     // Engine trail fades with |pitch|: pitched flight puts the chase cam almost
     // on the trail axis, where the billboarded ribbon projects as a giant beam
