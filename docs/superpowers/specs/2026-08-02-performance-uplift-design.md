@@ -166,6 +166,18 @@ Extend `perf.probe.mjs` to count canvas-tree commits *across* transitions, not
 only during steady flight: approach a planet, orbit-lock, open a modal, spawn an
 anomaly. Assert zero canvas re-renders for each.
 
+**Amended after Task 6:** the orbit-lock/modal-open transition is NOT zero —
+Task 6 deliberately adds a `selectSceneFrozen` subscription so `GlobalCanvas`
+can react to the lock by flipping `frameloop` to freeze the canvas behind the
+dossier. That reaction IS the feature, and it costs exactly one canvas
+re-render per open (StrictMode double-invoke aside), not zero.
+`tests/e2e/transition.probe.mjs` asserts this correctly as two separate
+invariants: a re-render *does* happen when the modal opens (`delta > 0`), and
+it does *not* keep happening while the modal stays open (`delta === 0` on a
+subsequent settle) — see that file's own comment at the orbit-lock section for
+the full reasoning. Approach, plasma-spawn and warp-toggle transitions remain
+zero as originally specified here.
+
 The existing steady-flight check uses a `<Profiler>` in `main.tsx` that wraps the
 DOM tree only and cannot observe R3F's separate reconciler root. This guardrail
 needs a counter inside the canvas tree — a `useRef` increment in `GlobalCanvas`

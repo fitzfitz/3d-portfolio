@@ -1211,6 +1211,14 @@ In `src/components/canvas/GlobalCanvas.tsx`, delete `<Preload all />` from line 
 
 - [ ] **Step 3: Measure whether a warm-up is needed at all**
 
+**SUPERSEDED:** the warm-up below was implemented, then reverted on review with
+four Criticals against it (fires before Suspense resolves; the only thing it
+reaches outside Suspense is PostFX, where it adds a wasted compile instead of
+saving one; StrictMode's double-invoke cleanup left `isLowPerf` stuck
+permanently true for `npm run dev`). See `docs/FOLLOW-UPS.md` and Task 7's
+entry in `.superpowers/sdd/2026-08-02-performance-uplift/progress.md`. Do not
+re-add this step as written.
+
 The spec assumed low-perf transitions need warming. Verify before building it, because the reasoning cuts the other way on inspection: the app *starts* at full detail, so the corona, halo, warp tunnel and shooting stars all mount and compile during load already. Toggling low-perf *removes* objects rather than adding new ones, and three.js keys its program cache by shader source and defines — so a remounted identical material should hit the cache rather than recompile.
 
 Run `npm run dev` and watch `programs` in the overlay while:
