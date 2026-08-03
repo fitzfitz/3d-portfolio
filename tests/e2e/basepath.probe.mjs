@@ -15,7 +15,7 @@
 import puppeteer from "puppeteer-core";
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
-import { Checks, isFontHost, respondInertFont, settle } from "./harness.mjs";
+import { Checks, isFontHost, respondInertFont, settle, CANVAS_READY_TIMEOUT_MS } from "./harness.mjs";
 
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -125,7 +125,10 @@ export default async function basepathProbe() {
     });
 
     await page.goto(URL_UNDER_TEST, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 20_000 });
+    // See harness.mjs's CANVAS_READY_TIMEOUT_MS: this probe drives its own
+    // puppeteer session (a production build, not withPage's dev server) but
+    // pays the same eager Preload compile cost as every other probe.
+    await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });
     await settle(null, 6000); // let every GLB/texture fetch resolve
 
     // --- the checks that matter ---

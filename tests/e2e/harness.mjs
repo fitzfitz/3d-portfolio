@@ -9,6 +9,42 @@ const PORT = 5199;
 export const BASE_URL = `http://localhost:${PORT}`;
 
 /**
+ * How long to wait, after ANY navigation or reload, for the canvas to mount
+ * and for `window.__fitz.scene` to be published. Both exist because of Task
+ * 7's `<Preload all />` move (739a523) into the Suspense boundary —
+ * deliberate, and it stays: outside the boundary Preload was compiling a
+ * near-empty scene, so materials for the real scene compiled lazily
+ * mid-flight instead (measured before the move: +6 shader programs
+ * approaching a planet). Inside the boundary, Preload's `gl.compile()` walks
+ * the fully-resolved scene graph and eagerly warms every shader at load —
+ * trading a longer startup for a hitch-free flight. That is the whole point
+ * of the change; do not revert the placement to make these numbers smaller.
+ *
+ * The cost of that trade: `gl.compile()` runs synchronously on the main
+ * thread during commit, before `DebugBridge`'s passive `useEffect` gets a
+ * turn to run and publish `window.__fitz.scene`. Under headless SwiftShader
+ * (software rasterizer, ~876k triangles in this scene, p50 frame time ~1s)
+ * that compile blocks long enough to blow through a 20s wait outright —
+ * measured at 28,358ms to `window.__fitz.scene` becoming available, versus
+ * 120ms for the canvas selector alone. A real GPU compiles this in a small
+ * fraction of that time; these ceilings exist for the software-rendered
+ * CI/test path, not because startup is actually this slow for a user.
+ *
+ * Every wait for `canvas` or `window.__fitz.scene` anywhere in this suite —
+ * `withPage`'s own initial navigation, or a probe's own `page.reload()` —
+ * pays this same cost and MUST use these constants rather than a bare
+ * timeout literal (audio.probe.mjs and gameplay.probe.mjs each reload
+ * mid-probe and re-wait; basepath.probe.mjs can't use `withPage` at all and
+ * waits on its own puppeteer session — all still pay full eager compile).
+ * Do not lower these without re-measuring on headless SwiftShader first:
+ * that reintroduces the exact class of intermittent 20s-timeout crashes
+ * (reducedmotion, audio, perf, assets, fuel, flight, gameplay, ...) these
+ * constants exist to prevent.
+ */
+export const CANVAS_READY_TIMEOUT_MS = 30_000;
+export const SCENE_READY_TIMEOUT_MS = 60_000;
+
+/**
  * Console errors that are known-benign and must NOT fail the suite.
  * Every entry needs a comment justifying it — an unexplained ignore here is
  * how a real regression hides.
@@ -144,33 +180,10 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     };
     page.on("request", offlineFonts);
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 30_000 });
-    // `<Preload all />` now lives inside the Suspense boundary (Task 7,
-    // 739a523) — deliberately. Outside the boundary it was compiling a
-    // near-empty scene, so materials for the resolved scene compiled lazily
-    // mid-flight instead (measured: +6 shader programs approaching a
-    // planet). Inside the boundary, Preload's gl.compile() walks the fully-
-    // resolved scene graph and eagerly warms every shader at load, trading a
-    // longer startup for a hitch-free flight. That is the whole point of the
-    // change and it must not be reverted here.
-    //
-    // The cost of that trade: gl.compile() runs synchronously on the main
-    // thread during commit, before DebugBridge's passive useEffect gets a
-    // chance to run and publish `window.__fitz.scene`. Under headless
-    // SwiftShader (software rasterizer, ~876k triangles in this scene, p50
-    // frame time ~1s) that compile blocks long enough to blow through the
-    // old 20s wait outright — measured at 28,358ms to `window.__fitz.scene`
-    // becoming available on this branch's HEAD, versus 120ms for the canvas
-    // selector alone. A real GPU compiles this in a small fraction of that
-    // time; this ceiling exists for the software-rendered CI/test path, not
-    // because startup is actually this slow for a user.
-    //
-    // Raise this if you must, but do not lower it back toward 20s without
-    // re-measuring on headless SwiftShader first — that reintroduces the
-    // exact class of intermittent 20s-timeout crashes (reducedmotion, audio,
-    // perf, assets, fuel, flight, gameplay, ...) that this comment is here to
-    // prevent someone from "optimising" back in.
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 60_000 });
+    // See CANVAS_READY_TIMEOUT_MS / SCENE_READY_TIMEOUT_MS above for why
+    // these are this large — eager Preload compile, not a slow app.
+    await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     // Headless SwiftShader is software-rendered and slow enough that the app's
     // real PerformanceMonitor.onDecline always fires, permanently unmounting
     // perf-gated scene objects (WarpTunnel, ShootingStars, ...) via isLowPerf.

@@ -1,4 +1,4 @@
-import { withPage, settle } from "./harness.mjs";
+import { withPage, settle, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 export default async function run() {
   return withPage({ label: "audio" }, async (page, checks) => {
@@ -15,7 +15,9 @@ export default async function run() {
       };
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
+    // See harness.mjs's SCENE_READY_TIMEOUT_MS: this reload pays the same
+    // full eager Preload compile as the initial navigation does.
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     await settle(page, 3000);
 
     const before = await page.evaluate(() => window.__ctxCount);
@@ -44,7 +46,8 @@ export default async function run() {
     checks.check("mute writes localStorage", stored === "1", `value=${stored}`);
 
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
+    // See harness.mjs's SCENE_READY_TIMEOUT_MS: same eager-compile cost.
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     const persisted = await page.evaluate(() => window.__fitz.store.getState().isMuted);
     checks.check("mute persists across reload", persisted === true, `isMuted=${persisted}`);
 

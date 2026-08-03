@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, chatterText } from "./harness.mjs";
+import { withPage, hold, settle, readStore, chatterText, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 /**
  * Teleports the ship next to a world point and zeroes its velocity.
@@ -18,7 +18,9 @@ export default async function run() {
     // SHARDS[0] sits at [8, 1, 22]; park one unit away and let proximity fire.
     await page.evaluate(() => localStorage.removeItem("fitz-shards"));
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
+    // See harness.mjs's SCENE_READY_TIMEOUT_MS: this reload pays the same
+    // full eager Preload compile as the initial navigation does.
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     await settle(page, 3500);
 
     await warpTo(page, 8, 1, 23);
@@ -49,7 +51,8 @@ export default async function run() {
       localStorage.setItem("fitz-shards", JSON.stringify([0, 1, 2, 3, 4, 5, 6, 7, 8]));
     });
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: 20_000 });
+    // See harness.mjs's SCENE_READY_TIMEOUT_MS: same eager-compile cost.
+    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     await settle(page, 3500);
 
     const last = await page.evaluate(async () => {
