@@ -1,43 +1,48 @@
-import { useRef, useImperativeHandle, forwardRef, useState, useMemo } from "react";
+import { useRef, useImperativeHandle, forwardRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight } from "../../store/spaceStore";
 import { assetUrl } from "../../utils/assetUrl";
 
-interface Anomaly {
-  id: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  color: string;
-  /** Marked by the frame step; the parent prunes and re-renders once. */
-  absorbed?: boolean;
-}
-
-/** Scratch vectors, reused every frame so the loop allocates nothing. */
-const shipPos = new THREE.Vector3();
-const pullDir = new THREE.Vector3();
+/** Fixed pool size. Slots are preallocated at load and recycled forever. */
+const ANOMALY_MAX = 40;
 
 /** Roomy 3D box around the play space that anomalies bounce inside (spec §5). */
 const ANOMALY_LIMIT = 60;
 
-/**
- * Advances every anomaly in place and returns true if any was absorbed.
- *
- * Deliberately mutates rather than rebuilding: the previous version cloned two
- * Vector3s and spread a fresh object per anomaly per frame, then handed the new
- * array to `setState` — up to 40 objects and 80 vectors of garbage every frame,
- * plus a React commit. Now the only allocation is at spawn.
- */
-function stepAnomalies(list: Anomaly[], ship: THREE.Vector3): boolean {
-  let absorbedAny = false;
+interface Anomaly {
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  /** Index into COLORS; written to the instance colour buffer on spawn. */
+  colorIdx: number;
+  active: boolean;
+  /** Rotation phase, so a cluster of spawns does not tumble in lockstep. */
+  phase: number;
+}
 
-  for (const m of list) {
+const COLORS = ["#00f0ff", "#bd00ff", "#ec4899", "#00ff87"].map((c) => new THREE.Color(c));
+
+/** Scratch objects, reused every frame so the loop allocates nothing. */
+const shipPos = new THREE.Vector3();
+const pullDir = new THREE.Vector3();
+const dummy = new THREE.Object3D();
+const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
+
+/**
+ * Advances every active anomaly in place. Deactivates absorbed ones.
+ *
+ * Returns nothing and touches no React state: absorption used to trigger a
+ * setState, which meant a canvas commit mid-flight. A slot going inactive is
+ * now expressed purely as a zero-scale matrix.
+ */
+function stepAnomalies(pool: Anomaly[], ship: THREE.Vector3): void {
+  for (const m of pool) {
+    if (!m.active) continue;
     const dist = m.position.distanceTo(ship);
 
     if (dist < 0.4) {
-      m.absorbed = true;
-      absorbedAny = true;
+      m.active = false;
       continue;
     }
 
@@ -64,142 +69,126 @@ function stepAnomalies(list: Anomaly[], ship: THREE.Vector3): boolean {
       m.velocity.z = -m.velocity.z * 0.8;
     }
   }
-
-  return absorbedAny;
 }
 
 export interface AnomaliesRef {
   spawn: (point: THREE.Vector3) => void;
 }
 
-const colors = ["#00f0ff", "#bd00ff", "#ec4899", "#00ff87"];
+/**
+ * Click-spawned plasma anomalies, as a preallocated InstancedMesh pool --
+ * the same shape FuelCrystals and DataShards use.
+ *
+ * The previous version mounted a <pointLight> per anomaly. Three.js bakes the
+ * light count into every shader's program cache key, so each spawn forced a
+ * synchronous scene-wide shader recompile: the visible click stall. It also
+ * cloned the GLTF scene and its materials per anomaly, producing 40 unique
+ * materials and 40+ draw calls with no batching.
+ *
+ * Now: one geometry, one shared emissive material, one draw call, per-instance
+ * colour, and nothing whatsoever allocated at click time. The glow comes from
+ * the Bloom pass, which runs at luminanceThreshold 0.2 and blooms these at
+ * emissiveIntensity 3.6 exactly as the per-anomaly lights used to.
+ */
+export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
+  const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const nextSlot = useRef(0);
 
-interface AnomalyInstanceProps {
-  a: Anomaly;
-  scene: THREE.Group;
-}
+  // Reuse the GLB's first mesh, baked to world scale -- same approach as
+  // FuelCrystals takes with the identical model.
+  const { geometry, material } = useMemo(() => {
+    let src: THREE.Mesh | undefined;
+    scene.traverse((c) => { if (!src && c instanceof THREE.Mesh) src = c; });
+    if (!src) throw new Error("space_crystal.glb contains no mesh");
+    src.updateMatrix();
+    const g = src.geometry.clone();
+    g.applyMatrix4(src.matrix);
+    const m = (src.material as THREE.MeshStandardMaterial).clone();
+    m.emissive = new THREE.Color("#ffffff"); // tinted per-instance below
+    m.emissiveIntensity = 3.6;
+    // Per-instance colour multiplies into both base and emissive only if the
+    // material is told to expect an instance colour attribute.
+    m.vertexColors = false;
+    return { geometry: g, material: m };
+  }, [scene]);
 
-function AnomalyInstance({ a, scene }: AnomalyInstanceProps) {
-  // Clone the scene only once per component mount (prevents memory leak)
-  const cloned = useMemo(() => {
-    const cl = scene.clone();
-    cl.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material) {
-        // Ensure the mesh has a valid material clone before modifying it
-        const originalMat = child.material;
-        const newMat = Array.isArray(originalMat) 
-          ? originalMat.map(m => m.clone()) 
-          : originalMat.clone();
-        
-        child.material = newMat;
-        const targetMat = Array.isArray(newMat) ? newMat[0] : newMat;
-        
-        if (targetMat.emissive) {
-          // Dynamic emissive tint matching the randomized spawn colors
-          targetMat.emissive = new THREE.Color(a.color);
-          targetMat.emissiveIntensity = 3.6; // High intensity for bloom
-        } else {
-          // If no emissive properties, apply basic glowing material
-          child.material = new THREE.MeshBasicMaterial({
-            color: a.color,
-            transparent: true,
-            opacity: 0.85,
-          });
-        }
-      }
-    });
-    return cl;
-  }, [scene, a.color]);
+  useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
-  const localRef = useRef<THREE.Group>(null);
+  /** The pool. Allocated once, never resized. */
+  const pool = useMemo<Anomaly[]>(() =>
+    Array.from({ length: ANOMALY_MAX }, () => ({
+      position: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
+      colorIdx: 0,
+      active: false,
+      phase: 0,
+    })), []);
 
-  /**
-   * Position is written here, per frame, from the shared mutable `Anomaly` —
-   * NOT passed down as a prop. The parent used to rebuild every anomaly object
-   * each frame and re-render, which meant a React commit per frame for as long
-   * as any anomaly was alive: a direct violation of this project's
-   * zero-renders-during-flight guarantee. It escaped `perf.probe.mjs` because
-   * that probe's steady state is empty deep space, so no anomaly ever exists
-   * while it samples.
-   *
-   * Rotation stays on the real clock rather than `ambientTime`: anomalies are
-   * spawned by clicking, so they are user-initiated and the reduced-motion spec
-   * deliberately exempts them.
-   */
+  // Seed every instance colour once so setColorAt never runs during play.
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    for (let i = 0; i < ANOMALY_MAX; i++) mesh.setColorAt(i, COLORS[i % COLORS.length]);
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    spawn(point: THREE.Vector3) {
+      // Round-robin over the fixed pool: the oldest slot is recycled once all
+      // 40 are live, which is what the old `slice(-39)` cap did by rebuilding
+      // the array. No allocation, no state, no render.
+      const i = nextSlot.current;
+      nextSlot.current = (nextSlot.current + 1) % ANOMALY_MAX;
+      const m = pool[i];
+      m.position.set(point.x, point.y + (Math.random() - 0.5) * 0.5, point.z);
+      m.velocity.set(
+        (Math.random() - 0.5) * 0.015,
+        (Math.random() - 0.5) * 0.005,
+        (Math.random() - 0.5) * 0.015,
+      );
+      m.phase = Math.random() * Math.PI * 2;
+      m.active = true;
+    },
+  }));
+
   useFrame((state) => {
-    const g = localRef.current;
-    if (!g) return;
-    g.position.copy(a.position);
-    // Multi-axis tumble with a per-anomaly phase from `id`, so a cluster of
-    // spawns does not rotate in lockstep the way a single shared axis did.
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    shipPos.set(flight.x, flight.y, flight.z);
+    stepAnomalies(pool, shipPos);
+
+    // Rotation stays on the real clock rather than ambientTime: anomalies are
+    // spawned by clicking, so they are user-initiated and the reduced-motion
+    // spec deliberately exempts them.
     const t = state.clock.getElapsedTime();
-    g.rotation.set(0.15 + Math.sin(t * 0.7 + a.id) * 0.25, t * 1.4 + a.id, Math.cos(t * 0.5 + a.id * 1.7) * 0.2);
+    for (let i = 0; i < ANOMALY_MAX; i++) {
+      const m = pool[i];
+      if (!m.active) {
+        dummy.position.set(0, 0, 0);
+        dummy.scale.copy(ZERO_SCALE);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        continue;
+      }
+      dummy.position.copy(m.position);
+      dummy.rotation.set(
+        0.15 + Math.sin(t * 0.7 + m.phase) * 0.25,
+        t * 1.4 + m.phase,
+        Math.cos(t * 0.5 + m.phase * 1.7) * 0.2,
+      );
+      dummy.scale.setScalar(0.55);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   });
 
   return (
-    <group position={[a.position.x, a.position.y, a.position.z]} ref={localRef}>
-      <primitive object={cloned} scale={0.55} />
-      <pointLight color={a.color} intensity={0.9} distance={1.8} />
-    </group>
+    <instancedMesh name="PlasmaAnomalies" ref={meshRef}
+      args={[geometry, material, ANOMALY_MAX]} frustumCulled={false} />
   );
-}
-
-export const PlasmaAnomalies = forwardRef<AnomaliesRef>(
-  (_props, ref) => {
-    const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
-    /**
-     * The live simulation, mutated in place. Deliberately a ref rather than
-     * state: positions change every frame, and holding them in state meant a
-     * React commit every frame while any anomaly lived. `roster` below is the
-     * only thing React renders from, and it changes only on spawn or absorb.
-     */
-    const sim = useRef<Anomaly[]>([]);
-    const [roster, setRoster] = useState<Anomaly[]>([]);
-    const nextId = useRef(0);
-
-    // Expose spawn method
-    useImperativeHandle(ref, () => ({
-      spawn(point: THREE.Vector3) {
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-        const newAnomaly: Anomaly = {
-          id: nextId.current++,
-          position: new THREE.Vector3(point.x, point.y + (Math.random() - 0.5) * 0.5, point.z),
-          velocity: new THREE.Vector3(
-            (Math.random() - 0.5) * 0.015,
-            (Math.random() - 0.5) * 0.005,
-            (Math.random() - 0.5) * 0.015
-          ),
-          color: randomColor,
-        };
-        
-        // Limit to 40 active anomalies
-        sim.current = [...sim.current.slice(-39), newAnomaly];
-        setRoster(sim.current);
-      },
-    }));
-
-    useFrame(() => {
-      const list = sim.current;
-      if (list.length === 0) return;
-
-      shipPos.set(flight.x, flight.y, flight.z);
-      // Mutates each anomaly in place and returns true if any were absorbed.
-      // Only an absorb changes what React renders, so that is the sole case
-      // that touches state — the common case is zero commits.
-      if (stepAnomalies(list, shipPos)) {
-        sim.current = list.filter((m) => !m.absorbed);
-        setRoster(sim.current);
-      }
-    });
-
-    return (
-      <group>
-        {roster.map((a) => (
-          <AnomalyInstance key={a.id} a={a} scene={scene} />
-        ))}
-      </group>
-    );
-  }
-);
+});
 
 PlasmaAnomalies.displayName = "PlasmaAnomalies";

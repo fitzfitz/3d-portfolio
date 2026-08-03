@@ -63,5 +63,50 @@ export default async function run() {
 
     checks.check("zero canvas re-renders across a warp toggle",
       afterWarp - beforeWarp === 0, `delta=${afterWarp - beforeWarp}`);
+
+    // ---- plasma: spawning must not add lights or recompile shaders ----
+    await toDeepSpace(page);
+    await settle(page, 1000);
+
+    const beforePlasma = await page.evaluate(() => {
+      let lights = 0;
+      window.__fitz.scene.traverse((o) => { if (o.isLight) lights++; });
+      return { lights, programs: window.__fitz.gl.info.programs.length,
+        renders: window.__fitz.canvasRenderCount };
+    });
+
+    // 10, measured — see LIGHT_BUDGET in src/constants.ts.
+    checks.check("baseline light count is within LIGHT_BUDGET",
+      beforePlasma.lights <= 10, `lights=${beforePlasma.lights}`);
+
+    // Spawn 40 anomalies through the same ref path a click uses.
+    await page.evaluate(() => {
+      const canvas = document.querySelector("canvas");
+      const r = canvas.getBoundingClientRect();
+      for (let i = 0; i < 40; i++) {
+        const x = r.left + r.width * (0.3 + 0.4 * (i % 7) / 7);
+        const y = r.top + r.height * (0.3 + 0.4 * (i % 5) / 5);
+        canvas.dispatchEvent(new PointerEvent("pointerdown",
+          { clientX: x, clientY: y, bubbles: true, pointerId: 1 }));
+      }
+    });
+    await settle(page, 2000);
+
+    const afterPlasma = await page.evaluate(() => {
+      let lights = 0;
+      window.__fitz.scene.traverse((o) => { if (o.isLight) lights++; });
+      return { lights, programs: window.__fitz.gl.info.programs.length,
+        renders: window.__fitz.canvasRenderCount };
+    });
+
+    checks.check("40 plasma spawns add zero lights",
+      afterPlasma.lights === beforePlasma.lights,
+      `${beforePlasma.lights} -> ${afterPlasma.lights}`);
+    checks.check("40 plasma spawns compile zero new shader programs",
+      afterPlasma.programs === beforePlasma.programs,
+      `${beforePlasma.programs} -> ${afterPlasma.programs}`);
+    checks.check("40 plasma spawns cause zero canvas re-renders",
+      afterPlasma.renders === beforePlasma.renders,
+      `delta=${afterPlasma.renders - beforePlasma.renders}`);
   });
 }
