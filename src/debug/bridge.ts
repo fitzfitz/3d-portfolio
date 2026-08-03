@@ -19,6 +19,14 @@ export interface FitzDebug {
   /** React commits, incremented by the dev-only Profiler in main.tsx. */
   renderCount: number;
   /**
+   * Renders of the GlobalCanvas component, incremented in its render body.
+   * Distinct from `renderCount`: main.tsx's Profiler wraps the DOM tree only
+   * and structurally cannot observe R3F's separate reconciler root, so the
+   * canvas subtree needs its own counter. StrictMode double-renders inflate
+   * the absolute value; only deltas across an action are meaningful.
+   */
+  canvasRenderCount: number;
+  /**
    * Moves the ship immediately. Registered by Spaceship in dev, because
    * `flight.{x,y,z}` is write-only telemetry — see Spaceship's own comment.
    * Null until Spaceship mounts.
@@ -37,6 +45,7 @@ export const fitzDebug: FitzDebug = {
   gl: null,
   camera: null,
   renderCount: 0,
+  canvasRenderCount: 0,
   teleport: null,
   crystals: null,
 };

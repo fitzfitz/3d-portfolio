@@ -1,6 +1,6 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState } from "react";
+import { Suspense, useRef, useMemo, useState, memo } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import Spaceship from "./Spaceship";
@@ -8,7 +8,7 @@ import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays } from "@react-three/postprocessing";
+import PostFX from "./PostFX";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
 import AsteroidBelt from "./AsteroidBelt";
@@ -24,6 +24,7 @@ import Scanner from "./Scanner";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
+import { fitzDebug } from "../../debug/bridge";
 
 interface StarLayerProps {
   count: number;
@@ -161,9 +162,9 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
   );
 }
 
-export default function GlobalCanvas() {
+function GlobalCanvas() {
+  if (import.meta.env.DEV) fitzDebug.canvasRenderCount++;
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
-  const isWarping = useSpaceStore((s) => s.isWarping);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const anomaliesRef = useRef<AnomaliesRef>(null);
@@ -280,28 +281,7 @@ export default function GlobalCanvas() {
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}
         {!isLowPerf && (
           <SafeErrorBoundary>
-            {/* multisampling=0: the GodRays depth passes' buffer formats are incompatible
-                with the MSAA resolve blit (GL_INVALID_OPERATION every frame -> white canvas).
-                Bloom smooths edges anyway, so MSAA here bought nothing. */}
-            <EffectComposer multisampling={0}>
-              {(() => {
-                const effects = [
-                  <Bloom key="bloom" intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />,
-                  <Vignette key="vignette" eskil={false} offset={0.28} darkness={0.72} />,
-                  <ChromaticAberration key="ca" offset={isWarping && !reducedMotion ? [0.0022, 0.0014] : [0, 0]} />,
-                ];
-                if (sunMesh) {
-                  effects.push(
-                    // Accumulator budget: HDR sun (emissive 3.2) x weight x decay-series(~10) x exposure
-                    // must stay well under 1.0 or the clamp saturates to a white wash (seen at spawn
-                    // where the sun is dead-center). 3.2 x 0.08 x 10 x 0.18 = 0.46 peak.
-                    <GodRays key="rays" sun={sunMesh} samples={60} density={0.8} decay={0.9}
-                      weight={0.08} exposure={0.18} clampMax={0.8} blur={true} />
-                  );
-                }
-                return effects;
-              })()}
-            </EffectComposer>
+            <PostFX sunMesh={sunMesh} />
           </SafeErrorBoundary>
         )}
 
@@ -310,3 +290,14 @@ export default function GlobalCanvas() {
     </div>
   );
 }
+
+/**
+ * memo is load-bearing, not an optimisation. GlobalCanvas takes no props and
+ * is rendered by App, which subscribes to ten store values (App.tsx:25-34).
+ * Without memo, every activeZone / isOrbitLocked / isNearSpawn flip re-renders
+ * the entire R3F tree mid-flight. The canvas reads what it needs from the
+ * store directly, so it never needs props to arrive this way.
+ *
+ * Guarded by tests/e2e/transition.probe.mjs.
+ */
+export default memo(GlobalCanvas);

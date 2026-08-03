@@ -1,0 +1,67 @@
+import { withPage, settle, toDeepSpace } from "./harness.mjs";
+
+/** Canvas renders since page load. Deltas across an action are what matter. */
+const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
+
+/**
+ * Teleports into a planet's gravity well but short of the orbit lock.
+ *
+ * Geometry (src/constants.ts): PLANET_SIZE 4.8, ZONE_FACTOR 1.8 and
+ * LOCK_ENGAGE_FACTOR 1.3, so activeZone sets inside 8.64 units and the lock
+ * engages inside 6.24. An offset of (5, 0, 5) is 7.07 units out — inside the
+ * well, outside the lock, and outside the planet's own 4.8 surface. A measured
+ * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
+ * at all, so activeZone stayed null and the check silently proved nothing.
+ */
+async function approachPlanet(page) {
+  return page.evaluate(() => {
+    const b = window.__fitz.bodies;
+    const name = Object.keys(b)[0];
+    const p = b[name];
+    window.__fitz.teleport(p.x + 5, p.y, p.z + 5);
+    return name;
+  });
+}
+
+export default async function run() {
+  return withPage({ label: "transition" }, async (page, checks) => {
+    await toDeepSpace(page);
+    await settle(page, 1000);
+
+    // ---- approach: activeZone flips, canvas must not re-render ----
+    const beforeApproach = await canvasRenders(page);
+    const planet = await approachPlanet(page);
+    await settle(page, 1500);
+    const afterApproach = await canvasRenders(page);
+    const zone = await page.evaluate(() => window.__fitz.store.getState().activeZone);
+
+    checks.check("approach actually entered a gravity well", zone !== null,
+      `planet=${planet} activeZone=${zone}`);
+    checks.check("zero canvas re-renders when activeZone flips",
+      afterApproach - beforeApproach === 0, `delta=${afterApproach - beforeApproach}`);
+
+    // ---- orbit lock: modal opens, canvas must not re-render ----
+    const beforeLock = await canvasRenders(page);
+    await page.evaluate(() => window.__fitz.store.getState().setOrbitLocked(true));
+    await settle(page, 1200);
+    const afterLock = await canvasRenders(page);
+
+    checks.check("zero canvas re-renders when the dossier modal opens",
+      afterLock - beforeLock === 0, `delta=${afterLock - beforeLock}`);
+
+    await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+    await settle(page, 800);
+
+    // ---- warp: isWarping flips on every boost ----
+    await toDeepSpace(page);
+    const beforeWarp = await canvasRenders(page);
+    await page.evaluate(() => window.__fitz.store.getState().setWarping(true));
+    await settle(page, 800);
+    await page.evaluate(() => window.__fitz.store.getState().setWarping(false));
+    await settle(page, 800);
+    const afterWarp = await canvasRenders(page);
+
+    checks.check("zero canvas re-renders across a warp toggle",
+      afterWarp - beforeWarp === 0, `delta=${afterWarp - beforeWarp}`);
+  });
+}
