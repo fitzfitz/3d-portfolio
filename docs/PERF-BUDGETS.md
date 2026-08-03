@@ -93,3 +93,22 @@ legitimately costs draw calls. Re-baseline deliberately: capture the new
 numbers, update the table AND the capture date, and say in the commit message
 what was added. A ceiling raised without a matching scene change is the
 signal this file exists to catch.
+
+## Startup (eager compile) duration
+
+`tests/e2e/harness.mjs`'s `withPage` waits for `window.__fitz.scene` under
+`SCENE_READY_TIMEOUT_MS` (60s) — generous specifically so a slow-but-not-
+broken eager `Preload` compile (Task 7) never crashes the suite. That
+generosity is also a gap: a change that doubled compile time would still
+finish inside 60s and pass with no signal anything regressed.
+
+Measured baseline (bisect in `.superpowers/sdd/2026-08-02-performance-uplift/
+progress.md`, Task 7b): canvas ready at 120ms, `window.__fitz.scene` ready at
+**28,358ms**, on headless Chrome / SwiftShader.
+
+`STARTUP_DURATION_CEILING_MS` (`harness.mjs`) asserts this duration directly,
+set to **45,000ms**: above the measured baseline (so ordinary machine-load
+variance still passes) but below 2x the baseline (56,716ms), so a doubling
+in compile time reliably fails this check red rather than merely running
+slow and silent. This is a real-GPU-irrelevant, CI-only guard — same caveat
+as every other number in this file.
