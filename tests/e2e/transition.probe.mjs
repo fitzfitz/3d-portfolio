@@ -40,14 +40,63 @@ export default async function run() {
     checks.check("zero canvas re-renders when activeZone flips",
       afterApproach - beforeApproach === 0, `delta=${afterApproach - beforeApproach}`);
 
-    // ---- orbit lock: modal opens, canvas must not re-render ----
+    // ---- orbit lock: modal opens, canvas freezes (Task 6) ----
+    // Before Task 6, GlobalCanvas didn't subscribe to isOrbitLocked at all, so
+    // this transition was free the same way activeZone is above. Task 6
+    // deliberately adds a fourth subscription (selectSceneFrozen) so the
+    // canvas CAN react to the lock — that IS the feature: it flips
+    // `frameloop` to stop rendering behind the dossier. So the invariant
+    // changes here, specifically for this transition: opening the modal
+    // SHOULD re-render the canvas (to apply the freeze) — exactly once
+    // React's own commit is concerned (dev-mode StrictMode double-invoke
+    // aside), not once per frame while the modal sits open.
+    //
+    // Engage a REAL lock (teleport into range, same technique
+    // gameplay.probe.mjs uses) rather than calling setOrbitLocked(true)
+    // directly: SpacePlanets' own useFrame calls setOrbitLocked(lockActive)
+    // unconditionally every frame based on actual proximity
+    // (SpacePlanets.tsx ~385), so a manual override made while the ship is
+    // far from any planet gets stomped back to false on the very next frame
+    // — and whether this harness's evaluate() round-trip is observed before
+    // or after that stomp is a pure timing race (measured flaking between
+    // "delta=0" and "delta=4" run to run). A real, in-range lock is held by
+    // SpacePlanets' own hysteresis (LOCK_RETAIN_FACTOR) instead of fighting
+    // it, the same way the actual dossier modal opens during real flight.
+    //
+    // Break any lock first, before moving: the approach above (7.07 units
+    // out) sits only 0.83 units outside LOCK_ENGAGE_FACTOR's 6.24 radius, and
+    // the planet keeps orbiting the whole time this probe runs — its own
+    // motion can close that gap on its own and engage a REAL lock while this
+    // section is still forming its plan. Once that happens the canvas is
+    // already frozen, and — same failure mode as gameplay.probe.mjs's scan
+    // step — a frozen canvas can't run the frame that would copy
+    // toDeepSpace()'s teleport into `flight`, so the "escape" silently never
+    // happens and everything downstream reads stale. breakOrbit() is a plain
+    // store write, unaffected by frameloop, so it reliably clears this
+    // regardless of whether the canvas is currently frozen.
+    await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+    await settle(page, 300);
+    await toDeepSpace(page);
+    const lockPlanet = await page.evaluate(async () => {
+      const { planets } = await import("/src/constants.ts");
+      const p = planets[0];
+      const b = window.__fitz.bodies[p.name];
+      return { name: p.name, size: p.size, x: b.x, y: b.y, z: b.z };
+    });
     const beforeLock = await canvasRenders(page);
-    await page.evaluate(() => window.__fitz.store.getState().setOrbitLocked(true));
+    await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z + p.size * 1.2), lockPlanet);
+    await settle(page, 2500);
+    const afterEngage = await canvasRenders(page);
+    const lockedNow = await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked);
     await settle(page, 1200);
-    const afterLock = await canvasRenders(page);
+    const afterSettle = await canvasRenders(page);
 
-    checks.check("zero canvas re-renders when the dossier modal opens",
-      afterLock - beforeLock === 0, `delta=${afterLock - beforeLock}`);
+    checks.check("approaching close enough engages a real orbit lock", lockedNow,
+      `locked=${lockedNow}`);
+    checks.check("the dossier modal opening re-renders the canvas (to apply the freeze)",
+      afterEngage - beforeLock > 0, `delta=${afterEngage - beforeLock}`);
+    checks.check("the canvas does not keep re-rendering while the modal stays open",
+      afterSettle - afterEngage === 0, `delta=${afterSettle - afterEngage}`);
 
     await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
     await settle(page, 800);

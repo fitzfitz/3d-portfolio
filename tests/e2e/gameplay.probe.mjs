@@ -159,6 +159,23 @@ export default async function run() {
         `radius ${min.toFixed(2)}..${max.toFixed(2)} over 3s`);
       await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
       await settle(page, 2000);
+
+      // Task 6 binds the scene freeze to isOrbitLocked, so a re-lock here
+      // doesn't just re-open the dossier — it re-freezes the canvas, and
+      // nothing but another breakOrbit() (or a real teleport, which itself
+      // needs a running frame to take effect) can undo that. The escape push
+      // on unlock (Spaceship.tsx:120-125) only nudges the ship ~2.8 units
+      // back, which is well inside this planet's LOCK_ENGAGE_FACTOR radius —
+      // the ship never eased out to the full orbit ring before the freeze
+      // stopped that animation, so it's still sitting close in. The instant
+      // the 1800ms isOrbitCooldown above expires, SpacePlanets' own proximity
+      // check re-engages the lock with nothing in this probe having asked for
+      // it, re-freezing the canvas before the scan section below ever runs —
+      // stalling it, since a frozen canvas can't advance Scanner's useFrame
+      // no matter how long the probe holds the key. Break it again
+      // defensively rather than assume one breakOrbit() call is permanent.
+      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+      await settle(page, 300);
     }
 
     // ---- scan loop ----

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight } from "../src/store/spaceStore";
+import { useSpaceStore, flight, selectSceneFrozen } from "../src/store/spaceStore";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -133,6 +133,28 @@ describe("spaceStore", () => {
   it("bumpImpact increments", () => {
     useSpaceStore.getState().bumpImpact();
     expect(useSpaceStore.getState().impactCount).toBe(1);
+  });
+});
+
+describe("selectSceneFrozen", () => {
+  const base = {
+    isOrbitLocked: false, activeZone: null, photoMode: false, showClassicCV: false,
+  } as Parameters<typeof selectSceneFrozen>[0];
+
+  it("is false during ordinary flight", () => {
+    expect(selectSceneFrozen(base)).toBe(false);
+  });
+
+  it("is true while the dossier modal is open", () => {
+    expect(selectSceneFrozen({ ...base, isOrbitLocked: true, activeZone: "contact" })).toBe(true);
+  });
+
+  it("is false in photo mode, which needs live frames for OrbitControls", () => {
+    expect(selectSceneFrozen({ ...base, photoMode: true })).toBe(false);
+  });
+
+  it("is false when merely near a planet but not locked", () => {
+    expect(selectSceneFrozen({ ...base, activeZone: "saas" })).toBe(false);
   });
 });
 

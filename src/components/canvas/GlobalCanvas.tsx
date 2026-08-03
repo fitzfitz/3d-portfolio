@@ -1,6 +1,6 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, invalidate } from "@react-three/fiber";
 import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState, memo } from "react";
+import { Suspense, useRef, useMemo, useState, useEffect, memo } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import Spaceship from "./Spaceship";
@@ -21,7 +21,7 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectSceneFrozen } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
@@ -167,8 +167,17 @@ function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
+  const sceneFrozen = useSpaceStore(selectSceneFrozen);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
+  // frameloop="never" means R3F stops driving rAF entirely; the first frame
+  // after unfreezing has to be requested explicitly or the canvas holds the
+  // stale frame until something else invalidates it.
+  const wasFrozen = useRef(false);
+  useEffect(() => {
+    if (wasFrozen.current && !sceneFrozen) invalidate();
+    wasFrozen.current = sceneFrozen;
+  }, [sceneFrozen]);
   // Snapshot the ship's position the instant photo mode flips true so the orbit
   // target stays fixed for the session — deliberately NOT re-snapshotting every
   // frame (that would fight the user's orbit drag). Re-runs only when photoMode
@@ -180,6 +189,7 @@ function GlobalCanvas() {
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
         dpr={[1, 1.5]}
+        frameloop={sceneFrozen ? "never" : "always"}
         gl={{
           antialias: true,
           alpha: true,

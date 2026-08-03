@@ -27,6 +27,29 @@ export function setAmbientEnabled(value: boolean): void {
   enabled = value;
 }
 
+/**
+ * No legitimate single call advances the clock this far: tests/ambientTime.test.ts's
+ * largest deliberate single-call delta is 10 (simulating an in-flight clock,
+ * not a cold start), and even a badly lagged real frame is sub-second. Set
+ * comfortably above that and far below the failure mode below.
+ *
+ * Task 6's frozen-scene canvas (`frameloop` flips "always" <-> "never" on the
+ * dossier modal) is the one caller that can produce a call far outside that
+ * range. @react-three/fiber's `setFrameloop` resets `THREE.Clock.elapsedTime`
+ * to 0 on every frameloop transition, and on the specific frame where the
+ * transition to "never" lands while a render was already in flight, R3F
+ * re-seeds that reset clock from the raw rAF timestamp -- which is
+ * milliseconds, not seconds -- so `state.clock.getElapsedTime()` reports a
+ * value roughly 1000x too large for exactly one frame (thousands of
+ * "seconds" for a page that's been open mere seconds). Left unguarded, every
+ * consumer keyed off this module (planet orbits, nebula hue drift, cloud
+ * rotation, the sun corona shader) jumps decades into its own cycle the
+ * instant a modal opens. Treated as a fresh seed rather than real elapsed
+ * time, the same way the cold-start branch below handles the very first
+ * reading.
+ */
+const DISCONTINUITY_SECONDS = 30;
+
 export function ambientTime(realElapsed: number): number {
   if (lastReal === null) {
     lastReal = realElapsed;
@@ -35,8 +58,12 @@ export function ambientTime(realElapsed: number): number {
   const delta = realElapsed - lastReal;
   lastReal = realElapsed;
   // A backwards or zero delta advances nothing: repeated calls in one frame
-  // must agree, and a reset clock must not rewind ambient time.
-  if (enabled && delta > 0) t += delta;
+  // must agree, and a reset clock must not rewind ambient time. A delta this
+  // large is the clock-discontinuity artifact described above, not real
+  // elapsed time -- re-seeding (skipping the add) rather than clamping it to
+  // a small step, because a clamped-but-still-added value would still leave
+  // a lasting, if smaller, jump instead of none at all.
+  if (enabled && delta > 0 && delta < DISCONTINUITY_SECONDS) t += delta;
   return t;
 }
 

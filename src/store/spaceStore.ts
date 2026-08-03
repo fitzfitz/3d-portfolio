@@ -269,3 +269,17 @@ export const useSpaceStore = create<SpaceState>()(
     },
   }))
 );
+
+/**
+ * True when an opaque modal covers the scene and rendering it is wasted work.
+ *
+ * Photo mode is deliberately excluded: OrbitControls needs continuous frames
+ * to damp a drag, and photo mode has no modal over the canvas anyway.
+ * Proximity alone is excluded too -- the tooltip is a small strip, and the
+ * visitor is still flying.
+ */
+export function selectSceneFrozen(
+  s: Pick<SpaceState, "isOrbitLocked" | "photoMode">,
+): boolean {
+  return s.isOrbitLocked && !s.photoMode;
+}
