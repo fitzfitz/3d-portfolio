@@ -195,6 +195,39 @@ function GlobalCanvas() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const photoTarget = useMemo(() => new THREE.Vector3(flight.x, flight.y, flight.z), [photoMode]);
 
+  // Walk the low-perf state once at startup so the affected materials compile
+  // during load rather than on the frame the visitor first changes quality.
+  //
+  // Measured, not assumed: gl.info.programs.length stayed flat across an
+  // isLowPerf on/off cycle taken right at boot, but climbed +5/+6 when the
+  // same cycle ran later in the session (near a planet, after other GLTF-
+  // dependent shaders had also warmed) -- and diffing cacheKey identity (not
+  // just the count) showed why. PostFX's Bloom pass (LuminanceMaterial /
+  // DownsamplingMaterial / UpsamplingMaterial, mounted only when !isLowPerf)
+  // builds fresh material instances on every mount, and the postprocessing
+  // library bakes a monotonically-incrementing per-instance id into each
+  // one's shader cache key -- so EVERY remount misses three.js's program
+  // cache, not just the first. A 10s idle control with zero actions stayed
+  // perfectly flat, ruling out coincidental time-based spawners
+  // (ShootingStars/Comets/SpaceJellyfish) as the source.
+  //
+  // This warm-up cannot make later remounts hit the cache -- each one still
+  // gets a fresh id and recompiles Bloom's 3 passes regardless. What it buys
+  // is control over *when* the unavoidable first recompile happens: without
+  // it, the first isLowPerf flip of the session is whenever
+  // PerformanceMonitor.onDecline first fires for real, i.e. mid-flight. With
+  // it, that first flip happens here, during the load screen, before the
+  // visitor is looking at the frame rate.
+  const warmed = useRef(false);
+  useEffect(() => {
+    if (warmed.current) return;
+    warmed.current = true;
+    const original = useSpaceStore.getState().isLowPerf;
+    useSpaceStore.getState().setLowPerf(!original);
+    const id = setTimeout(() => useSpaceStore.getState().setLowPerf(original), 0);
+    return () => clearTimeout(id);
+  }, []);
+
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
@@ -305,6 +338,12 @@ function GlobalCanvas() {
               spawn a plasma anomaly into the clean frame — stopPropagation doesn't
               help across sibling listeners. */}
           {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
+
+          {/* Inside Suspense deliberately: Preload compiles the scene as it
+              exists when it mounts, so as a sibling of the boundary it ran
+              before any GLTF-dependent component had resolved and warmed a
+              near-empty scene. */}
+          <Preload all />
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
@@ -316,8 +355,6 @@ function GlobalCanvas() {
             <PostFX sunMesh={sunMesh} />
           </SafeErrorBoundary>
         )}
-
-        <Preload all />
       </Canvas>
     </div>
   );

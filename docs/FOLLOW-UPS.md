@@ -37,6 +37,34 @@ screenshot of classic-CV mode at 1280px wide.
 so the asterisks are displayed rather than rendering bold. Either drop them or
 split the phrase into a `<strong>`.
 
+## Performance
+
+### PostFX's Bloom pass never hits the shader program cache on remount
+
+`GlobalCanvas.tsx` mounts `<PostFX>` only when `!isLowPerf`
+(`SafeErrorBoundary`-wrapped, sibling of the Suspense boundary). Measured via
+`gl.info.programs` cache-key diffing (not just the count, which hides this):
+every single isLowPerf on/off cycle recompiles Bloom's three passes
+(`LuminanceMaterial`, `DownsamplingMaterial`, `UpsamplingMaterial`) from
+scratch — three consecutive cycles produced three completely disjoint sets of
+cache keys (0 key overlap between any two cycles), with the embedded numeric
+id incrementing monotonically each time (e.g. 43/44/45 -> 48/49/50 ->
+53/54/55). `postprocessing`'s effect passes bake a fresh per-instance id into
+their shader cache key on every construction, so a remounted Bloom pass never
+reuses a previously-compiled program no matter how many times it toggles —
+unlike every other isLowPerf-gated object in the scene (which round-trips
+through the cache cleanly, per a 10s idle control showing zero drift with no
+action taken).
+
+Practical effect: the *first* isLowPerf transition of a session (often
+automatic, via `PerformanceMonitor.onDecline` mid-flight) always pays a real
+GPU shader compile for Bloom, and so does every transition after that — a
+load-time warm-up (Task 7) can only move the first one earlier, not eliminate
+the recurring cost. A real fix would need PostFX to keep its Bloom pass
+mounted at low-perf too (perhaps disabled via `effect.blendMode` or scale-to-
+zero rather than unmounted), so `gl.compile()` only ever needs to see one
+generation of these materials.
+
 ## Tooling
 
 ### `noBackdropFilter` guardrail reports shifted line numbers
