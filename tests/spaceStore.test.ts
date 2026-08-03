@@ -134,6 +134,31 @@ describe("spaceStore", () => {
     useSpaceStore.getState().bumpImpact();
     expect(useSpaceStore.getState().impactCount).toBe(1);
   });
+
+  // Guards the Critical found late in Task 6: showClassicCV is the only thing
+  // that unmounts GlobalCanvas, and without this coupling, isOrbitLocked
+  // survives that unmount untouched — a visitor who opened a dossier, then
+  // round-tripped through classic CV, got a freshly-mounted Canvas whose very
+  // first render already had sceneFrozen=true, with no frozen->unfrozen edge
+  // for GlobalCanvas's invalidate() effect to ever fire on: a blank canvas,
+  // not a stale frame. Previously covered only by transition.probe.mjs
+  // (the classic-CV round trip section) — the most expensive possible place
+  // to assert what is otherwise a pure store invariant.
+  it("setShowClassicCV(true) breaks any held orbit lock", () => {
+    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "saas" });
+    useSpaceStore.getState().setShowClassicCV(true);
+    expect(useSpaceStore.getState().isOrbitLocked).toBe(false);
+    expect(useSpaceStore.getState().activeZone).toBe(null);
+    expect(useSpaceStore.getState().showClassicCV).toBe(true);
+  });
+
+  it("setShowClassicCV(false) does not touch an existing orbit lock", () => {
+    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "saas", showClassicCV: true });
+    useSpaceStore.getState().setShowClassicCV(false);
+    expect(useSpaceStore.getState().isOrbitLocked).toBe(true);
+    expect(useSpaceStore.getState().activeZone).toBe("saas");
+    expect(useSpaceStore.getState().showClassicCV).toBe(false);
+  });
 });
 
 describe("selectSceneFrozen", () => {

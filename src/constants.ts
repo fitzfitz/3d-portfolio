@@ -99,7 +99,7 @@ export const planets: PlanetData[] = projects
  *
  * Current occupants, measured (not enumerated by hand — an earlier hand count
  * said 9 and missed the ambientLight): ambientLight + sun point
- * (GlobalCanvas.tsx:214,217), sun (Sun.tsx), ship x2 (Spaceship.tsx),
+ * (GlobalCanvas.tsx:346,349), sun (Sun.tsx), ship x2 (Spaceship.tsx),
  * portal x2 (PortalRing.tsx), planets x3 (SpacePlanets.tsx).
  * Asserted by tests/e2e/transition.probe.mjs.
  */

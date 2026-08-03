@@ -66,12 +66,18 @@ export default function PerfSampler() {
   // that mutates renderer state itself and was already rejected during this
   // task's design (see docs/PERF-BUDGETS.md and the Task 9 brief).
   useEffect(() => {
+    // Scene is a process-wide-ish object this component doesn't own outright
+    // (R3F's own root), so save whatever was already wired up and restore it
+    // on cleanup rather than clobbering it with a fresh no-op -- the same
+    // save/restore convention GlobalCanvas.tsx's LoadProgress uses for
+    // DefaultLoadingManager.
+    const prevOnAfterRender = scene.onAfterRender;
     scene.onAfterRender = () => {
       perfStats.calls = gl.info.render.calls;
       perfStats.triangles = gl.info.render.triangles;
     };
     return () => {
-      scene.onAfterRender = () => {};
+      scene.onAfterRender = prevOnAfterRender;
     };
   }, [scene, gl]);
 

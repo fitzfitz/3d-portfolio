@@ -146,6 +146,18 @@ function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   );
 }
 
+// Module-scope, not effect-scoped: THREE.DefaultLoadingManager's own
+// loaded/total counters are cumulative for the whole page session and never
+// reset between Suspense fallbacks. An effect-scoped local resets to 0 on
+// every remount (Suspense can fall back more than once), while the manager's
+// counters keep climbing -- so a second batch's very first progress event
+// would already read close to 100%, not the fresh 0% the comment on `update`
+// below promises. Living at module scope makes that promise actually hold:
+// it persists across remounts and is advanced only when a batch fully
+// completes (loaded === total), so each new batch is measured from where the
+// previous one left off, not from an artificial zero.
+let lastTotalLoaded = 0;
+
 // Rendered as the Suspense fallback, so it mounts inside the Canvas tree.
 // 3.6MB across eleven GLBs and three textures is a real wait on a slow
 // connection; report it honestly instead of an indefinite pulse.
@@ -171,18 +183,19 @@ function LoadProgress() {
     // it's a process-wide singleton, not something this component owns --
     // save whatever was already wired up and chain to it rather than
     // clobbering it, and restore it on unmount so a remount (Suspense can
-    // fall back more than once) doesn't stack handlers.
+    // fall back more than once) doesn't stack handlers. onError is not
+    // included here: this component doesn't display an error state, so
+    // reassigning it would only be a pass-through to whatever was already
+    // there -- dead indirection with nothing to add.
     const prevOnStart = manager.onStart;
     const prevOnProgress = manager.onProgress;
     const prevOnLoad = manager.onLoad;
-    const prevOnError = manager.onError;
 
     // Mirrors drei's useProgress math so the readout behaves the same:
     // percentage is relative to the total *since the last fully-completed
     // batch*, not since page load, so a second Suspense fallback later in
     // the session (e.g. a lazily-loaded model) still reads 0% -> 100%
     // instead of picking up from wherever the first batch left off.
-    let lastTotalLoaded = 0;
     const update = (loaded: number, total: number, item: string, fallback: number) => {
       const pct = (loaded - lastTotalLoaded) / (total - lastTotalLoaded) * 100 || fallback;
       stateRef.current = { progress: pct, item };
@@ -201,9 +214,6 @@ function LoadProgress() {
       stateRef.current = { progress: 100, item: "" };
       prevOnLoad?.();
     };
-    manager.onError = (item) => {
-      prevOnError?.(item);
-    };
 
     let raf = 0;
     const tick = () => {
@@ -221,7 +231,6 @@ function LoadProgress() {
       manager.onStart = prevOnStart;
       manager.onProgress = prevOnProgress;
       manager.onLoad = prevOnLoad;
-      manager.onError = prevOnError;
     };
   }, []);
 
@@ -417,7 +426,7 @@ function GlobalCanvas() {
 
 /**
  * memo is load-bearing, not an optimisation. GlobalCanvas takes no props and
- * is rendered by App, which subscribes to ten store values (App.tsx:25-34).
+ * is rendered by App, which subscribes to ten store values (App.tsx:26-35).
  * Without memo, every activeZone / isOrbitLocked / isNearSpawn flip re-renders
  * the entire R3F tree mid-flight. The canvas reads what it needs from the
  * store directly, so it never needs props to arrive this way.
