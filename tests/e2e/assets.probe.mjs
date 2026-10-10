@@ -76,7 +76,7 @@ export default async function run() {
         const m = o.material;
         // Three moon variants (MoonRock / MoonIce / MoonVolcanic): track the
         // most metallic one, and how many distinct variants are on screen.
-        if (m?.name?.startsWith("Moon")) {
+        if (["MoonRock", "MoonIce", "MoonVolcanic"].includes(m?.name)) {
           out.moon = Math.max(out.moon ?? 0, m.metalness);
           (out.moonNames ??= new Set()).add(m.name);
         }
