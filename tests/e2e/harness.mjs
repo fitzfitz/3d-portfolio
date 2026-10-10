@@ -50,17 +50,18 @@ export const SCENE_READY_TIMEOUT_MS = 60_000;
  * opposed to how long it's allowed before the suite gives up entirely
  * (`SCENE_READY_TIMEOUT_MS`).
  *
- * Measured baseline: 28,358ms (`.superpowers/sdd/2026-08-02-performance-
- * uplift/progress.md`, Task 7b bisect; recorded in docs/PERF-BUDGETS.md).
+ * Measured baseline: 16.9-19.8s across a full suite (2026-10-10, after the
+ * phase 3 load/render pass). The original 28,358ms figure was captured under
+ * heavy machine load; see docs/PERF-BUDGETS.md for the re-baseline.
  * `SCENE_READY_TIMEOUT_MS` is set to 60s specifically so a slow-but-not-
  * broken compile never crashes the suite — but that leaves 2.1x of slack in
  * which a change that doubled compile time (56.7s) would still pass
- * silently, with no signal anything regressed. 45s sits above the measured
- * baseline (so ordinary machine-load noise still passes) but below 2x the
- * baseline, so a doubling reliably fails this check red instead of merely
+ * silently, with no signal anything regressed. 30s sits ~1.5x above the
+ * slowest observed run (so ordinary machine-load noise still passes) but
+ * below 2x, so a doubling reliably fails this check red instead of merely
  * being slow. See docs/PERF-BUDGETS.md for the full derivation.
  */
-export const STARTUP_DURATION_CEILING_MS = 45_000;
+export const STARTUP_DURATION_CEILING_MS = 30_000;
 
 /**
  * Console errors that are known-benign and must NOT fail the suite.

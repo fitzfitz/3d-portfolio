@@ -16,6 +16,9 @@ import { join } from "node:path";
  */
 const ALLOWLIST: string[] = [];
 
+/** Replaces a stripped comment with its newlines only, preserving line numbers. */
+const keepNewlines = (m: string) => m.replace(/[^\n]/g, "");
+
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const p = join(dir, entry);
@@ -34,9 +37,10 @@ describe("no backdrop-filter over the live canvas", () => {
       // Detect file type to apply appropriate pattern
       const isCss = /\.css$/.test(file);
 
-      // Strip comments from entire file first to handle multi-line comments
-      // Remove /* */ blocks (including multi-line)
-      text = text.replace(/\/\*[\s\S]*?\*\//g, "");
+      // Strip comments from entire file first to handle multi-line comments.
+      // Each block becomes the same number of newlines, so offenders below a
+      // multi-line comment still report their real line number.
+      text = text.replace(/\/\*[\s\S]*?\*\//g, keepNewlines);
       // Remove // line comments
       text = text.replace(/\/\/.*$/gm, "");
 
@@ -69,5 +73,22 @@ describe("no backdrop-filter over the live canvas", () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+
+  // index.html carries an inline <style> and a style="" on the pre-canvas
+  // loading overlay, outside src/. Low risk (that overlay is gone before the
+  // canvas mounts), but a blur added there would otherwise go unnoticed.
+  it("finds none in index.html either", () => {
+    const text = readFileSync("index.html", "utf8")
+      .replace(/<!--[\s\S]*?-->/g, keepNewlines)
+      .replace(/\/\*[\s\S]*?\*\//g, keepNewlines);
+    const offenders = text.split("\n").flatMap((line, i) =>
+      /backdrop-filter\s*:/.test(line) || /backdrop-blur(-|\b)/.test(line) ? [`index.html:${i + 1}: ${line.trim()}`] : []);
+    expect(offenders).toEqual([]);
+  });
+
+  it("strips comments without shifting line numbers", () => {
+    const src = "a\n/* one\ntwo\nthree */\nb";
+    expect(src.replace(/\/\*[\s\S]*?\*\//g, keepNewlines).split("\n").indexOf("b")).toBe(4);
   });
 });

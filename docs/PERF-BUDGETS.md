@@ -122,9 +122,14 @@ Measured baseline (bisect in `.superpowers/sdd/2026-08-02-performance-uplift/
 progress.md`, Task 7b): canvas ready at 120ms, `window.__fitz.scene` ready at
 **28,358ms**, on headless Chrome / SwiftShader.
 
-`STARTUP_DURATION_CEILING_MS` (`harness.mjs`) asserts this duration directly,
-set to **45,000ms**: above the measured baseline (so ordinary machine-load
-variance still passes) but below 2x the baseline (56,716ms), so a doubling
-in compile time reliably fails this check red rather than merely running
-slow and silent. This is a real-GPU-irrelevant, CI-only guard — same caveat
-as every other number in this file.
+`STARTUP_DURATION_CEILING_MS` (`harness.mjs`) asserts this duration directly.
+
+**Re-baselined 2026-10-10.** The 28,358ms figure above was captured on a
+machine at load average 15. Normal runs measured 17-18s before the phase 3
+pass and **16,952-19,828ms** after it (12 probes, one full suite), so the old
+45,000ms ceiling sat ~2.3x above reality — loose enough that a doubling of
+compile time would still pass. The ceiling is now **30,000ms**: ~1.5x the
+slowest observed run (room for ordinary machine-load noise) and well under
+2x, so a doubling fails red instead of running slow and silent. This is a
+real-GPU-irrelevant, CI-only guard — same caveat as every other number in
+this file.
