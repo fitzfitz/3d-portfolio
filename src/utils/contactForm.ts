@@ -29,11 +29,11 @@ export function buildPayload(fields: ContactFields, accessKey: string): Web3Form
 
 /** Fallback channel: keeps everything the visitor typed when the relay fails. */
 export function buildMailto(fields: ContactFields, to: string): string {
-  const q = new URLSearchParams({
-    subject: `Inbound transmission from ${fields.name}`,
-    body: `${fields.message}\n\n— ${fields.name} <${fields.email}>`,
-  });
-  return `mailto:${to}?${q.toString()}`;
+  // encodeURIComponent, not URLSearchParams: the latter writes spaces as "+",
+  // which mailto URIs (RFC 6068) take literally.
+  const subject = encodeURIComponent(`Inbound transmission from ${fields.name}`);
+  const body = encodeURIComponent(`${fields.message}\n\n— ${fields.name} <${fields.email}>`);
+  return `mailto:${to}?subject=${subject}&body=${body}`;
 }
 
 /**

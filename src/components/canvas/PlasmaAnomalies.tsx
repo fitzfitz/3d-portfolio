@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight } from "../../store/spaceStore";
+import { COSMIC_BOUNDS } from "../../constants";
 import { assetUrl } from "../../utils/assetUrl";
 import { gameTime } from "../../utils/ambientTime";
 import { fitzDebug } from "../../debug/bridge";
@@ -10,8 +11,13 @@ import { fitzDebug } from "../../debug/bridge";
 /** Fixed pool size. Slots are preallocated at load and recycled forever. */
 const ANOMALY_MAX = 40;
 
-/** Roomy 3D box around the play space that anomalies bounce inside (spec §5). */
-const ANOMALY_LIMIT = 60;
+/**
+ * Box anomalies bounce inside (spec §5): the whole play volume. It used to be
+ * ±60 around the origin, but clicks spawn up to ~90u from the ship anywhere in
+ * a ±250 world, so an anomaly spawned outside that box snapped to its wall on
+ * the next frame and was never seen.
+ */
+const ANOMALY_LIMIT = COSMIC_BOUNDS;
 
 interface Anomaly {
   position: THREE.Vector3;
@@ -49,7 +55,11 @@ const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
  * setState, which meant a canvas commit mid-flight. A slot going inactive is
  * now expressed purely as a zero-scale matrix.
  */
-function stepAnomalies(pool: Anomaly[], ship: THREE.Vector3): void {
+function stepAnomalies(pool: Anomaly[], ship: THREE.Vector3, dt: number): void {
+  // Velocities and drag are tuned per 60fps frame; scale them by elapsed
+  // frames so a 120Hz display doesn't run the simulation at double speed.
+  const frames = Math.min(dt, 0.05) * 60;
+  const drag = Math.pow(0.985, frames);
   for (const m of pool) {
     if (!m.active) continue;
     const dist = m.position.distanceTo(ship);
@@ -62,11 +72,11 @@ function stepAnomalies(pool: Anomaly[], ship: THREE.Vector3): void {
     // Magnetic suction toward the ship, strengthening as it closes.
     if (dist < 4.5) {
       pullDir.subVectors(ship, m.position).normalize();
-      m.velocity.addScaledVector(pullDir, (1.0 - dist / 4.5) * 0.003);
+      m.velocity.addScaledVector(pullDir, (1.0 - dist / 4.5) * 0.003 * frames);
     }
 
-    m.position.add(m.velocity);
-    m.velocity.multiplyScalar(0.985); // drag
+    m.position.addScaledVector(m.velocity, frames);
+    m.velocity.multiplyScalar(drag);
 
     // Boundary reflection.
     if (Math.abs(m.position.x) >= ANOMALY_LIMIT) {
@@ -216,12 +226,12 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
     },
   }), [pool]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
     shipPos.set(flight.x, flight.y, flight.z);
-    stepAnomalies(pool, shipPos);
+    stepAnomalies(pool, shipPos, delta);
 
     // Rotation stays on gameTime rather than ambientTime: anomalies are
     // spawned by clicking, so they are user-initiated and the reduced-motion

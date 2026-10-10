@@ -169,7 +169,9 @@ export default function RadarMap() {
   }, []);
 
   return (
-    <div className="absolute bottom-24 left-6 pointer-events-none rounded-full border border-primary/20 bg-black/50" style={{ width: SIZE, height: SIZE }}>
+    // Phones: shrunk and lifted to the upper left, clear of the ship (which
+    // sits low-centre on a tall screen) and of the bottom button row.
+    <div className="absolute top-40 left-4 origin-top-left scale-[0.7] sm:scale-100 sm:top-auto sm:bottom-24 sm:left-6 pointer-events-none rounded-full border border-primary/20 bg-black/50" style={{ width: SIZE, height: SIZE }}>
       <canvas ref={canvasRef} width={SIZE} height={SIZE} style={{ width: SIZE, height: SIZE }} data-testid="radar-canvas" />
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[8px] text-primary/50 font-mono">RADAR.SYS</div>
     </div>

@@ -57,9 +57,37 @@ export default function Experience({
         {/* Layout: Left side has spacer for Global Canvas, Right side has Details Card */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center min-h-[500px]">
           
-          {/* Left Column: Spacer on desktop to let Global Canvas Projects Carousel show through.
-              On mobile, it displays small active project navigation page dots. */}
-          <div className="lg:col-span-6 h-[250px] sm:h-[350px] lg:h-[450px] w-full relative flex items-center justify-center order-2 lg:order-1 pointer-events-none">
+          {/* Left Column: project index on desktop (this was an empty spacer
+              for the 3D canvas, which the classic view never shows); page
+              dots on mobile. */}
+          <div className="lg:col-span-6 w-full relative flex items-center justify-center order-2 lg:order-1">
+            {!isMobile && (
+              <ol className="w-full flex flex-col gap-3">
+                {projects.map((p, idx) => {
+                  const active = activeIndex === idx;
+                  return (
+                    <li key={p.title}>
+                      <button
+                        onClick={() => setActiveIndex(idx)}
+                        aria-current={active ? "true" : undefined}
+                        className={`w-full text-left rounded-xl border px-5 py-4 transition-all duration-300 cursor-pointer ${
+                          active ? "bg-white/5" : "border-white/5 hover:border-white/15 hover:bg-white/2"
+                        }`}
+                        style={active ? { borderColor: `${p.color}66` } : undefined}
+                      >
+                        <span className="flex items-center justify-between gap-4 font-mono text-[11px] text-muted mb-1">
+                          <span>{String(idx + 1).padStart(2, "0")} // {p.role}</span>
+                          <span>{p.duration}</span>
+                        </span>
+                        <span className="block font-display font-bold text-lg" style={{ color: active ? p.color : undefined }}>
+                          {p.title}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
             {isMobile && (
               <div className="flex gap-4 items-center justify-center mt-4 pointer-events-auto">
                 {projects.map((p, idx) => (

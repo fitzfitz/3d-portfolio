@@ -82,8 +82,11 @@ export default function RadioChatter() {
   }, []);
 
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 max-w-[60vw] pointer-events-none">
-      <div ref={lineRef} className="font-mono text-[9px] text-primary/60 whitespace-nowrap overflow-hidden text-ellipsis" />
+    // Phones: left-aligned, clear of the BOOST button on the right.
+    <div className="absolute bottom-16 left-4 w-[55vw] sm:bottom-20 sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(60vw,640px)] pointer-events-none">
+      {/* Wraps instead of truncating: scan reports and shard facts are the
+          payoff for the action, and a single ellipsised line cut them off. */}
+      <div ref={lineRef} data-testid="radio-chatter" className="font-mono text-[10px] leading-snug text-primary/80 sm:text-center" />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { flight, useSpaceStore } from "../store/spaceStore";
+import { flight, useSpaceStore, selectSceneFrozen } from "../store/spaceStore";
 import { SHIP_MAX_SPEED } from "../constants";
 
 /**
@@ -79,6 +79,27 @@ class SoundManager {
     }
   }
 
+  /**
+   * Creates the context if needed and resumes it. Returns true once audio is
+   * actually running. Call from every gesture until it does: on mobile a
+   * touch `pointerdown` does not count as activation, so a context created
+   * there starts suspended, and the old one-shot listener never retried.
+   */
+  unlock(): boolean {
+    this.init();
+    if (!this.ctx) return true; // no Web Audio: nothing left to unlock
+    if (this.ctx.state === "running") return true;
+    this.ctx.resume().catch(() => { /* not a gesture yet; the next one retries */ });
+    return false;
+  }
+
+  /** Hidden tab: stop the hum entirely. Visible again: pick it back up. */
+  setPageVisible(visible: boolean) {
+    if (!this.ctx) return;
+    if (visible) this.ctx.resume().catch(() => {});
+    else this.ctx.suspend().catch(() => {});
+  }
+
   setMuted(v: boolean) {
     this.muted = v;
     if (this.ctx && this.master) {
@@ -91,10 +112,15 @@ class SoundManager {
     const tick = () => {
       if (this.ctx && this.engineFilter && this.engineGain && this.warpGain) {
         const t = this.ctx.currentTime;
-        const speedNorm = Math.min(1, flight.speed / SHIP_MAX_SPEED);
+        // flight.speed is only rewritten by the ship's frame loop. When that
+        // loop stops — dossier open (frozen), classic résumé (unmounted),
+        // photo mode — the last value sticks, so gate on the scene instead.
+        const s = useSpaceStore.getState();
+        const flying = !s.showClassicCV && !s.photoMode && !selectSceneFrozen(s);
+        const speedNorm = flying ? Math.min(1, flight.speed / SHIP_MAX_SPEED) : 0;
         this.engineFilter.frequency.setTargetAtTime(200 + speedNorm * 700, t, 0.1);
         this.engineGain.gain.setTargetAtTime(speedNorm * 0.08, t, 0.15);
-        const warping = useSpaceStore.getState().isWarping;
+        const warping = flying && s.isWarping;
         this.warpGain.gain.setTargetAtTime(warping ? 0.06 : 0, t, warping ? 0.08 : 0.25);
       }
       this.rafId = requestAnimationFrame(tick);

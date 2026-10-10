@@ -67,3 +67,16 @@ describe("trailFade", () => {
     expect(trailFade(0.3)).toBeGreaterThan(trailFade(0.5));
   });
 });
+
+import { headingToward } from "../src/utils/pitchFlight";
+
+describe("headingToward", () => {
+  it("returns the yaw whose level nose points at the target", () => {
+    for (const [fx, fz, tx, tz] of [[0, 18, 115, 0], [0, 0, -10, -10], [5, 5, 5, 50]]) {
+      const n = noseDirection(headingToward(fx, fz, tx, tz), 0);
+      const len = Math.hypot(tx - fx, tz - fz);
+      expect(n.x).toBeCloseTo((tx - fx) / len);
+      expect(n.z).toBeCloseTo((tz - fz) / len);
+    }
+  });
+});

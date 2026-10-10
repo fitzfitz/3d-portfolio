@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { SHARDS } from "../../data/shards";
+import { SHARDS, SHARDS_COMPLETE_MESSAGE, shardBroadcast } from "../../data/shards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
@@ -13,20 +13,35 @@ const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
 const ONE_SCALE = new THREE.Vector3(1, 1, 1);
 
 /**
+ * Gap between the last shard's fact and the completion fanfare. Both go
+ * through RadioChatter's single typewriter line, which cancels whatever it is
+ * typing, so sending them in the same frame meant the tenth fact never showed.
+ */
+const COMPLETE_DELAY_MS = 4500;
+
+/**
  * 10 collectible data shards scattered across the system. One InstancedMesh,
  * no React state/selectors — visibility + pickup are handled entirely via
  * getState() reads inside the frame loop, matrices carry collected/not-collected.
  */
 export default function DataShards() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const completeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const geometry = useMemo(() => new THREE.OctahedronGeometry(0.9), []);
   const material = useMemo(
     () =>
+      // Faceted and lit, with a moderate glow. At emissive 1.6 every face
+      // was the same saturated cyan, so the octahedron read as a flat
+      // diamond — two of them flank the spawn point and looked like
+      // untextured placeholder quads.
       new THREE.MeshStandardMaterial({
-        color: "#124",
-        emissive: "#9ff5ff",
-        emissiveIntensity: 1.6,
+        color: "#3fb6d4",
+        metalness: 0.55,
+        roughness: 0.2,
+        flatShading: true,
+        emissive: "#4fe3ff",
+        emissiveIntensity: 0.45,
         transparent: false,
       }),
     []
@@ -38,6 +53,10 @@ export default function DataShards() {
       material.dispose();
     };
   }, [geometry, material]);
+
+  // Leaving for the classic résumé inside the delay unmounts this; the
+  // fanfare would otherwise play over the résumé.
+  useEffect(() => () => { if (completeTimer.current) clearTimeout(completeTimer.current); }, []);
 
   useFrame((state) => {
     const mesh = meshRef.current;
@@ -81,12 +100,13 @@ export default function DataShards() {
       if (dist < 3) {
         store.collectShard(i);
         soundManager.pickup();
-        store.sendBroadcast(SHARDS[i].fact);
-        if (useSpaceStore.getState().shardsCollected.length === SHARDS.length) {
-          soundManager.fanfare();
-          store.sendBroadcast(
-            "ALL SHARDS RECOVERED // TRANSMISSION COMPLETE. THE PILOT THANKS YOU — NOW GO PRESS P AND TAKE A VICTORY PHOTO"
-          );
+        const count = useSpaceStore.getState().shardsCollected.length;
+        store.sendBroadcast(shardBroadcast(SHARDS[i].fact, count));
+        if (count === SHARDS.length) {
+          completeTimer.current = setTimeout(() => {
+            soundManager.fanfare();
+            useSpaceStore.getState().sendBroadcast(SHARDS_COMPLETE_MESSAGE);
+          }, COMPLETE_DELAY_MS);
         }
       }
     }

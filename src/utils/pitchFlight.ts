@@ -43,3 +43,8 @@ export function noseDirection(yaw: number, pitch: number): { x: number; y: numbe
   const c = Math.cos(pitch);
   return { x: Math.sin(yaw) * c, y: Math.sin(pitch), z: Math.cos(yaw) * c };
 }
+
+/** Yaw (same convention as noseDirection) whose level nose points from (fromX, fromZ) at (toX, toZ). */
+export function headingToward(fromX: number, fromZ: number, toX: number, toZ: number): number {
+  return Math.atan2(toX - fromX, toZ - fromZ);
+}

@@ -65,7 +65,12 @@ export default async function run() {
       const { ASTEROID_COLLIDERS } = await import("/src/data/asteroids.ts");
       return ASTEROID_COLLIDERS[0];
     });
-    await page.evaluate((t) => window.__fitz.teleport(t.x, t.y, t.z - t.r - 2), target);
+    // Nose down +Z (yaw 0, pitch 0) so holding W closes on the rock from its
+    // -Z side; the ship no longer spawns at heading 0.
+    await page.evaluate((t) => {
+      window.__fitz.teleport(t.x, t.y, t.z - t.r - 2);
+      window.__fitz.setAttitude(0, 0);
+    }, target);
 
     // ADAPTED MECHANISM (see task-8-report.md): the chase camera eases toward
     // the ship's new position over several real seconds after a long-distance

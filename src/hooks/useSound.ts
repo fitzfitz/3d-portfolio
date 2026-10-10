@@ -11,9 +11,15 @@ export function useSound() {
   }, [isMuted]);
 
   useEffect(() => {
-    const start = () => soundManager.init();
-    window.addEventListener("pointerdown", start, { once: true });
-    window.addEventListener("keydown", start, { once: true });
+    // Retry on every gesture until the context is running: iOS/Android only
+    // accept touchend/pointerup/click as activation, not pointerdown.
+    const GESTURES = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
+    const start = () => {
+      if (soundManager.unlock()) GESTURES.forEach((g) => window.removeEventListener(g, start));
+    };
+    GESTURES.forEach((g) => window.addEventListener(g, start));
+    const onVisibility = () => soundManager.setPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
 
     const unsubs = [
       useSpaceStore.subscribe(
@@ -28,8 +34,8 @@ export function useSound() {
     soundManager.startLoop();
 
     return () => {
-      window.removeEventListener("pointerdown", start);
-      window.removeEventListener("keydown", start);
+      GESTURES.forEach((g) => window.removeEventListener(g, start));
+      document.removeEventListener("visibilitychange", onVisibility);
       unsubs.forEach((u) => u());
       soundManager.stopLoop();
     };

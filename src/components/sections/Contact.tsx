@@ -317,7 +317,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
 
       <div className="max-w-7xl mx-auto px-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-12 items-center z-10">
         {/* Left Column: Title & Info */}
-        <div className="lg:col-span-4 flex flex-col justify-center text-left">
+        <div className="lg:col-span-5 flex flex-col justify-center text-left">
           <p className="font-mono text-xs text-accent tracking-widest uppercase mb-2">
             // SECURE_COMMUNICATION_TUNNEL
           </p>
@@ -341,11 +341,9 @@ export default function Contact({ isSidebar = false }: ContactProps) {
           </div>
         </div>
 
-        {/* Middle Column */}
-        <div className="hidden lg:block lg:col-span-3 h-[400px] pointer-events-none" />
-
-        {/* Right Column */}
-        <div className="lg:col-span-5 w-full">
+        {/* Right Column. A 3-column spacer used to sit between the two for
+            the 3D canvas, which the classic view never shows. */}
+        <div className="lg:col-span-7 xl:col-span-6 xl:col-start-7 w-full">
           {formCard}
         </div>
       </div>

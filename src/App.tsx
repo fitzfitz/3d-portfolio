@@ -9,15 +9,20 @@ import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import GlobalCanvas from "./components/canvas/GlobalCanvas";
+import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
-import { useSpaceStore } from "./store/spaceStore";
+import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
+
+/** Without WebGL there is no cabin to return to. */
+const CAN_FLY = WEBGL_AVAILABLE;
 
 export default function App() {
   useKeyboardInput();
@@ -33,11 +38,14 @@ export default function App() {
   const photoMode = useSpaceStore((s) => s.photoMode);
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
+  const sceneReady = useSpaceStore((s) => s.sceneReady);
+  const isOrbitCooldown = useSpaceStore((s) => s.isOrbitCooldown);
+  const isCoarse = useMediaQuery("(pointer: coarse)");
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "KeyP") return;
+      if (e.code !== "KeyP" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isEditableTarget(e.target as HTMLElement | null)) return;
       if (useSpaceStore.getState().showClassicCV) return;
       setPhotoMode(!useSpaceStore.getState().photoMode);
@@ -76,7 +84,14 @@ export default function App() {
       {!photoMode && !showClassicCV && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}
-      {!showClassicCV && <GlobalCanvas />}
+      {/* A failed GLB/texture load or a lost WebGL context throws out of the
+          canvas tree. Without this boundary that unmounted the whole React
+          root — a blank page. Fall back to the résumé, which needs no GPU. */}
+      {!showClassicCV && (
+        <SafeErrorBoundary onError={() => setShowClassicCV(true)}>
+          <GlobalCanvas />
+        </SafeErrorBoundary>
+      )}
 
       {/* Photo mode: minimal chrome, orbitable clean frame */}
       {photoMode && (
@@ -85,57 +100,67 @@ export default function App() {
         </div>
       )}
 
-      {/* Accessibility Classic CV Toggle Button */}
-      {!photoMode && (
-        <div className="fixed top-6 right-6 z-50 pointer-events-auto flex gap-3">
+      {/* Classic CV toggle. In classic mode the Navbar carries the way back,
+          so this floating button would sit on top of its links. */}
+      {!photoMode && !showClassicCV && (
+        <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-50 pointer-events-auto flex gap-3">
           <button
-            onClick={() => setShowClassicCV(!showClassicCV)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-mono text-xs text-primary border border-primary/30 bg-black/80 hover:bg-primary/20 hover:border-primary transition-all duration-300 shadow-neonGreen cursor-pointer"
+            onClick={() => setShowClassicCV(true)}
+            className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-mono text-[11px] sm:text-xs text-primary border border-primary/30 bg-black/80 hover:bg-primary/20 hover:border-primary transition-all duration-300 shadow-neonGreen cursor-pointer"
           >
-            {showClassicCV ? (
-              <>
-                <X className="w-4 h-4" />
-                <span>RETURN_TO_PILOT_CABIN</span>
-              </>
-            ) : (
-              <>
-                <FileText className="w-4 h-4" />
-                <span>VIEW_CLASSIC_RESUME</span>
-              </>
-            )}
+            <FileText className="w-4 h-4" />
+            <span>VIEW_CLASSIC_RESUME</span>
           </button>
         </div>
       )}
 
       {/* -------------------- DYNAMIC SPACE INTERACTION MODALS -------------------- */}
       {!photoMode && !showClassicCV && (
-        <div className="absolute inset-0 pointer-events-none z-20 flex items-center justify-center p-6">
+        // z-45: above TouchControls' joystick zone (z-40), which covers the
+        // left half of the screen and otherwise swallowed taps on the cards.
+        // The container itself is pointer-events-none, so flight touches
+        // still reach the joystick everywhere a card isn't.
+        <div className="absolute inset-0 pointer-events-none z-[45] flex items-center justify-center p-6">
           <AnimatePresence mode="wait">
-            {/* Startup Banner Info Card */}
-            {isNearSpawn && !activeZone && (
+            {/* Startup Banner Info Card. Waits for the scene: before that it
+                sat on top of the loading readout. Never centred: the ship sits
+                mid-screen and the planet it is aimed at sits on the horizon
+                just above it, so on desktop the card goes to the right. */}
+            {sceneReady && isNearSpawn && !activeZone && (
               <motion.div
+                key="spawn-banner"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="glass-card rounded-2xl p-6 text-center max-w-sm pointer-events-auto border border-primary/20 bg-black/80 select-none"
+                className="self-start mt-[19vh] md:mt-0 md:absolute md:right-6 md:top-[22vh] glass-card rounded-2xl p-5 sm:p-6 text-center max-w-sm pointer-events-auto border border-primary/20 bg-black/80 select-none"
               >
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[9px] font-mono mb-4">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[10px] font-mono mb-3 sm:mb-4">
                   <Terminal className="w-3.5 h-3.5" />
                   PILOT: {identity.callsign}
                 </div>
-                <h2 className="font-display font-bold text-xl mb-2 text-white">Space Flight CV Sandbox</h2>
-                <p className="text-muted text-[11px] leading-relaxed mb-4">
-                  Pilot your spaceship through deep space using your keyboard. Fly close to neon planets to lock into orbit and reveal fullscreen project dossiers, or click to spawn plasma anomalies.
+                <h2 className="font-display font-bold text-xl mb-2 text-white">Space Flight CV</h2>
+                <p className="text-white/70 text-xs leading-relaxed mb-4">
+                  Three planets, three projects. Fly into one to lock orbit and open its dossier.
+                  {" "}{isCoarse
+                    ? "Drag on the left half of the screen to steer and thrust."
+                    : "W/A/S/D to fly, Space/C to pitch, Shift to warp."}
                 </p>
-                <div className="font-mono text-[9px] text-primary">
-                  &gt; PRESS W/A/S/D TO IGNITE ENGINES
+                <div className="font-mono text-[10px] text-primary mb-4">
+                  &gt; {isCoarse ? "DRAG LEFT SIDE TO IGNITE ENGINES" : "PRESS W TO IGNITE ENGINES"}
                 </div>
+                <button
+                  onClick={() => setShowClassicCV(true)}
+                  className="font-mono text-[11px] text-white/60 hover:text-white underline underline-offset-4 decoration-white/20 hover:decoration-white cursor-pointer"
+                >
+                  Prefer reading? Open the résumé
+                </button>
               </motion.div>
             )}
 
             {/* Planet gravity Orbit Lock details modal */}
             {isOrbitLocked && planetProject && (
               <motion.div
+                key={`dossier-${planetProject.id}`}
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
@@ -222,6 +247,7 @@ export default function App() {
             {/* Portal gravity Orbit Lock: Contact form modal */}
             {isOrbitLocked && activeZone === "contact" && (
               <motion.div
+                key="contact-portal"
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
@@ -239,9 +265,12 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* Proximity hover tip overlays (if within gravity well but not yet locked) */}
-            {activeZone && !isOrbitLocked && (
+            {/* Proximity hover tip overlays (if within gravity well but not yet
+                locked). Hidden during the post-break cooldown, when flying
+                closer would not lock anyway. */}
+            {activeZone && !isOrbitLocked && !isOrbitCooldown && (
               <motion.div
+                key="proximity-tip"
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
@@ -264,7 +293,7 @@ export default function App() {
           exit={{ opacity: 0 }}
           className="relative z-10 w-full min-h-screen flex flex-col pointer-events-auto"
         >
-          <Navbar />
+          <Navbar onReturnToCabin={CAN_FLY ? () => setShowClassicCV(false) : undefined} />
           <main className="flex flex-col">
             <Hero />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />

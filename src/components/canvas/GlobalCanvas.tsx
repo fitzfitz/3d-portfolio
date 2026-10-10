@@ -256,11 +256,33 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
   });
   return (
     <mesh ref={ref}
-      onPointerDown={(e) => { e.stopPropagation(); if (e.point) onSpawn(e.point.clone()); }}>
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        // The event source is #root, so presses on HUD buttons, form fields
+        // and the touch joystick reach this raycast too. Only a press that
+        // landed on the canvas itself is a click into the void.
+        if (!(e.nativeEvent.target instanceof HTMLCanvasElement)) return;
+        if (e.point) onSpawn(e.point.clone());
+      }}>
       <planeGeometry args={[180, 180]} />
       <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
     </mesh>
   );
+}
+
+/**
+ * Mounts only when the Suspense boundary above it resolves, i.e. once every
+ * GLB and texture is in. Gates the spawn banner, which otherwise sat on top
+ * of the loading readout and hid it.
+ */
+function SceneReady() {
+  // Reset on unmount: the classic-résumé round trip remounts the canvas, and
+  // the banner must wait for that load too.
+  useEffect(() => {
+    useSpaceStore.getState().setSceneReady(true);
+    return () => useSpaceStore.getState().setSceneReady(false);
+  }, []);
+  return null;
 }
 
 function GlobalCanvas() {
@@ -319,6 +341,11 @@ function GlobalCanvas() {
           powerPreference: "high-performance",
         }}
         camera={{ position: [0, 5, 8], fov: 60 }}
+        // Neutral rather than R3F's ACES default: it leaves in-gamut neon
+        // colours nearly untouched and only rolls off highlights. PostFX's
+        // ToneMapping pass uses the same curve, so the grade no longer shifts
+        // when the low-perf tier unmounts the composer.
+        onCreated={({ gl }) => { gl.toneMapping = THREE.NeutralToneMapping; }}
         style={{ pointerEvents: "auto" }} // Listen for click spawning
         eventSource={document.getElementById("root") || undefined}
         eventPrefix="client"
@@ -408,6 +435,7 @@ function GlobalCanvas() {
               before any GLTF-dependent component had resolved and warmed a
               near-empty scene. */}
           <Preload all />
+          <SceneReady />
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
