@@ -26,7 +26,8 @@ const tunnelFragment = /* glsl */ `
     float lane = floor(vUv.x * lanes);
     float laneRand = hash(lane);
     // Only some lanes carry a streak at all: sparse reads as speed, dense as a wall.
-    float active = step(0.45, hash(lane + 17.0));
+    // ("active" is a reserved word in GLSL ES: fails to compile on many GPUs.)
+    float laneOn = step(0.45, hash(lane + 17.0));
     float speed = 1.6 + laneRand * 1.8;
     float phase = fract(vUv.y * (0.8 + laneRand * 0.6) + uTime * speed + laneRand * 7.0);
     // Long tail, sharp head.
@@ -34,7 +35,7 @@ const tunnelFragment = /* glsl */ `
     float laneCenter = smoothstep(0.32, 0.0, abs(fract(vUv.x * lanes) - 0.5));
     float endFade = smoothstep(0.0, 0.15, vUv.y) * smoothstep(1.0, 0.75, vUv.y);
     vec3 col = mix(vec3(0.55, 0.9, 1.0), vec3(1.0), laneRand * 0.6);
-    gl_FragColor = vec4(col, active * streak * laneCenter * endFade * uIntensity * 0.85);
+    gl_FragColor = vec4(col, laneOn * streak * laneCenter * endFade * uIntensity * 0.85);
   }
 `;
 

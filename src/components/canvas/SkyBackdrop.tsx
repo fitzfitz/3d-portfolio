@@ -42,7 +42,7 @@ const SKY_FRAG = /* glsl */ `
   }
   float fbm(vec3 p) {
     float v = 0.0, a = 0.5;
-    for (int i = 0; i < 6; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
+    for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
     return v;
   }
 
@@ -78,8 +78,8 @@ const SKY_FRAG = /* glsl */ `
     col += vec3(0.20, 0.03, 0.12) * n3 * 0.16;
 
     // Unresolved star dust: dense in the band, sparse elsewhere.
-    float s = hash(floor(d * 900.0));
-    float starDust = step(1.0 - (0.0012 + 0.008 * band), s) * (0.3 + 0.7 * hash(floor(d * 900.0) + 1.7));
+    float s = hash(floor(d * 600.0));
+    float starDust = step(1.0 - (0.0012 + 0.008 * band), s) * (0.3 + 0.7 * hash(floor(d * 600.0) + 1.7));
     col += vec3(0.85, 0.90, 1.0) * starDust * 0.35;
 
     // Base: deep blue-black, never pure black.
@@ -88,7 +88,10 @@ const SKY_FRAG = /* glsl */ `
   }
 `;
 
-const FACE_SIZE = 1024;
+// 512² is plenty for a sky this soft (the sharp stars are separate point
+// layers in front), and it is a one-time render: at 1024² the six faces of
+// fBm cost seconds of startup under software rendering.
+const FACE_SIZE = 512;
 
 export default function SkyBackdrop() {
   const gl = useThree((s) => s.gl);
