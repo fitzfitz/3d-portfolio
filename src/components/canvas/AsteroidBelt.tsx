@@ -1,10 +1,11 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
+import { lowPolyRock } from "../../utils/lowPolyRock";
 
 const COUNT_FULL = 400;
 const COUNT_LOW = 200;
@@ -98,11 +99,19 @@ export default function AsteroidBelt() {
       if (!src && c instanceof THREE.Mesh && c.name.startsWith("Asteroid1")) src = c;
     });
     if (!src) throw new Error("asteroids.glb is missing mesh Asteroid1");
+    // Size-matched stand-in, not the hero mesh: Asteroid1 is 1,244 triangles,
+    // and drawing it 560 times at scale 0.05-0.22 was ~85% of the whole
+    // scene's triangles for detail nobody can see. The hero asteroids
+    // (Asteroids.tsx) keep the real mesh; the belt keeps its material.
     src.updateMatrix();
-    const g = src.geometry.clone();
-    g.applyMatrix4(src.matrix);
-    return { geometry: g, material: src.material as THREE.Material };
+    const hero = src.geometry.clone();
+    hero.applyMatrix4(src.matrix);
+    hero.computeBoundingSphere();
+    const radius = hero.boundingSphere?.radius ?? 1;
+    hero.dispose();
+    return { geometry: lowPolyRock(radius, 42), material: src.material as THREE.Material };
   }, [scene]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (
     <>

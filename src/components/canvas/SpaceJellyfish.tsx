@@ -114,6 +114,11 @@ export default function SpaceJellyfish() {
     src.updateMatrix();
     const g = src.geometry.clone();
     g.applyMatrix4(src.matrix);
+    // The vertex shader sways tentacles a little past the authored mesh, so
+    // pad the bound rather than disabling culling: at 65k additive,
+    // double-sided triangles it used to draw every frame wherever it was.
+    g.computeBoundingSphere();
+    if (g.boundingSphere) g.boundingSphere.radius *= 1.5;
     return g;
   }, [scene]);
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -174,7 +179,7 @@ export default function SpaceJellyfish() {
 
   return (
     <group ref={groupRef} scale={6}>
-      <mesh geometry={geometry} material={material} frustumCulled={false} />
+      <mesh geometry={geometry} material={material} />
     </group>
   );
 }

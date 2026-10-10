@@ -2,7 +2,8 @@
 
 Captured 2026-08-03 on headless Chrome / SwiftShader (software rendering),
 after the transition-hitch uplift
-(`.superpowers/sdd/2026-08-02-performance-uplift/`).
+(`.superpowers/sdd/2026-08-02-performance-uplift/`); the baseline table was
+re-captured 2026-10-10 after the phase 3 load/render pass (see below).
 
 These are software-rendering figures, captured this way because they are
 deterministic in CI — not real-GPU figures, and not representative of actual
@@ -66,18 +67,25 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 29 | 825376 | 85 | 10 |
-| Close approach | 91 | 886362 | 86 | 10 |
-| Modal open | 89 | 886238 | 86 | 10 |
-| 40 anomalies | 31 | 825888 | 85 | 10 |
+| Deep space | 28 | 108512 | 86 | 10 |
+| Close approach | 87 | 251322 | 87 | 10 |
+| Modal open | 89 | 251334 | 87 | 10 |
+| 40 anomalies | 32 | 109536 | 86 | 10 |
 
-**Programs re-baselined 2026-10-10 (+1 in every state).** The data shards
-moved to a faceted, lit material (`flatShading`, metalness — `DataShards.tsx`)
-so they stop reading as flat placeholder quads; that material no longer
-shares a program with any other, so it compiles one variant of its own
-(verified: its program's `usedTimes` is 1). Measured side by side on the
-same machine the same day: `main` 84/85/85/84, this change 85/86/86/85.
-Calls, triangles and lights did not move.
+**Re-baselined 2026-10-10 (phase 3 load/render pass).** Triangles fell 72-87%:
+the asteroid belt drew the 1,244-triangle hero asteroid 560 times; it now uses
+an 80-triangle size-matched rock (`src/utils/lowPolyRock.ts`). Planets went from
+32 to 64 segments (+~18k), the jellyfish is frustum-culled, and three invisible
+aura spheres inside the planets were removed. Programs are +1 on the previous
+table: SMAA adds two passes and the star shader one, offset by materials that no
+longer exist. Measured identically on three consecutive runs, after the harness
+started locking low-perf off before the canvas mounts (see `harness.mjs`) —
+before that, whether PerformanceMonitor declined first made deep-space programs
+read 82 or 105 run to run.
+
+Previous table (2026-10-10, before phase 3): deep space 29 / 825376 / 85,
+close approach 91 / 886362 / 86, modal open 89 / 886238 / 86,
+40 anomalies 31 / 825888 / 85.
 
 Lights sits at 10 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — the
 whole point of Task 4's plasma-pool fix is that this number does not move

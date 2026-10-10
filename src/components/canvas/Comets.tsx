@@ -6,6 +6,7 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { setScannable } from "../../utils/scannables";
 import { keplerPosition } from "../../utils/kepler";
 import { ambientTime } from "../../utils/ambientTime";
+import { softSprite } from "./softSprite";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
@@ -21,21 +22,7 @@ const DUST_POINTS = 70;
 const DUST_MAX_AGE = 10; // seconds of emission history sampled along the orbit
 
 // Soft round sprite so tail particles read as diffuse gas/dust, not squares.
-const particleSprite = (() => {
-  const canvas = document.createElement("canvas");
-  canvas.width = 32;
-  canvas.height = 32;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-    grad.addColorStop(0, "rgba(255,255,255,1)");
-    grad.addColorStop(0.4, "rgba(255,255,255,0.5)");
-    grad.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 32, 32);
-  }
-  return new THREE.CanvasTexture(canvas);
-})();
+const particleSprite = softSprite;
 
 const head = new THREE.Vector3();
 const away = new THREE.Vector3();

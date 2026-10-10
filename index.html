@@ -66,7 +66,12 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;700&display=swap" />
+    <!-- Only the families/weights the CSS uses (Inter was a fallback that never
+         rendered). Loaded as a non-blocking preload: first paint is the dark
+         loading overlay, so a late font swap (display=swap) costs nothing,
+         while a render-blocking stylesheet delayed everything behind it.
+         No-JS visitors keep system fonts, which the noscript summary uses. -->
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600;700&display=swap" />
 
     <!-- Critical first-paint styles: dark background before any bundle arrives -->
     <style>html,body{background:#020108;margin:0}</style>

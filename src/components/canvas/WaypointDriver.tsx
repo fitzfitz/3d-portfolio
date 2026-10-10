@@ -9,6 +9,7 @@ import { waypointState } from "../../utils/waypointState";
 const PLANET_NAMES = planets.map((p) => p.name);
 const PORTAL = { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2] };
 const MARGIN = 0.88; // NDC fraction treated as "on screen"
+const EDGE_TOP = 0.4; // highest NDC y for the off-screen edge arrow
 const v = new THREE.Vector3();
 
 /** Headless: projects the next unread dossier (then the portal) to the screen. */
@@ -31,6 +32,9 @@ export default function WaypointDriver() {
     if (!onScreen) {
       const k = MARGIN / Math.max(Math.abs(nx), Math.abs(ny), 1e-6);
       nx *= k; ny *= k;
+      // Keep the edge arrow below the top HUD band (telemetry, controls
+      // strip, target readout), which fills roughly the top 30% of the screen.
+      ny = Math.min(ny, EDGE_TOP);
     }
     waypointState.active = true;
     waypointState.onScreen = onScreen;

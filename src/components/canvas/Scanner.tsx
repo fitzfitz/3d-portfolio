@@ -4,9 +4,8 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { nearestScannable } from "../../utils/scannables";
 import { generateScanReport } from "../../utils/scanReport";
 import { soundManager } from "../../audio/soundManager";
+import { scanState } from "../../utils/scanState";
 
-/** Mutable HUD telemetry for ScanRing — deliberately outside React state (read via rAF). */
-export const scanState = { progress: 0, label: "" };
 
 /** Headless: drives scan targeting/progress/report dispatch each frame. Renders nothing. */
 export default function Scanner() {
