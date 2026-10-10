@@ -3,10 +3,12 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
-import { pitchStep, noseDirection, trailFade } from "../../utils/pitchFlight";
+import { pitchStep, noseDirection, trailFade, headingToward } from "../../utils/pitchFlight";
+import { escapePosition } from "../../utils/orbitEscape";
+import { interceptAim } from "../../utils/intercept";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
@@ -32,6 +34,19 @@ const SHIP_IDLE_BOB = 0.48;
 // Frame-rate independent lerp: equivalent to lerp(a, b, k) once per frame at 60fps.
 const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
 
+/**
+ * Breaking orbit puts the ship this far past the body's proximity zone, so it
+ * leaves both the lock radius and the "fly closer" tooltip radius. Planets
+ * drift ~1.8 u/s, so the margin also outlasts the 1.8s lock cooldown.
+ */
+const ESCAPE_MARGIN = 1.15;
+/** Outward drift after breaking orbit, so the ship keeps opening the gap. */
+const ESCAPE_SPEED = 4;
+
+/** Spawn point, and the first planet the ship faces there. */
+const SPAWN = { x: 0, y: 0, z: 18 };
+const FIRST_TARGET = planets[0];
+
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
@@ -53,7 +68,7 @@ export default function Spaceship() {
     return engine as THREE.MeshStandardMaterial | null;
   }, [scene]);
 
-  const pos = useRef(new THREE.Vector3(0, 0, 18));
+  const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
 
   // Dev-only: e2e probes and the QA checklist need to reposition the ship.
@@ -65,10 +80,23 @@ export default function Spaceship() {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
     };
-    return () => { fitzDebug.teleport = null; };
+    fitzDebug.setAttitude = (yaw: number, nosePitch: number) => {
+      angle.current = yaw;
+      pitch.current = nosePitch;
+      turnVelocity.current = 0;
+      pitchVel.current = 0;
+      hasFlown.current = true;
+    };
+    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; };
   }, []);
 
-  const angle = useRef(0);
+  // Spawn nose-on to the first planet, so the first W press flies toward a
+  // project rather than into empty space. bodies[] is seeded at t=0 at import.
+  const angle = useRef(
+    FIRST_TARGET
+      ? headingToward(SPAWN.x, SPAWN.z, bodies[FIRST_TARGET.name].x, bodies[FIRST_TARGET.name].z)
+      : 0
+  );
   const roll = useRef(0);
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
@@ -76,13 +104,18 @@ export default function Spaceship() {
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
+  // False until the pilot's first input. Until then the parked ship keeps its
+  // nose on an intercept course, so the first W press flies into a planet.
+  const hasFlown = useRef(false);
 
   const lockedCenter = useRef(new THREE.Vector3());
   const targetLockRadius = useRef(6);
+  const escapeRadius = useRef(10);
   const orbitRadius = useRef(6); // eased ring radius — starts at arrival distance, eases toward targetLockRadius
   const orbitAngle = useRef(0);
 
   const prevOrbitLocked = useRef(false);
+  const lockedZone = useRef<string | null>(null);
   useEffect(() => {
     const wasLocked = prevOrbitLocked.current;
     prevOrbitLocked.current = isOrbitLocked;
@@ -91,18 +124,22 @@ export default function Spaceship() {
       // Lock entry: resolve the locked body and start the orbit from wherever
       // the ship arrived (no snap).
       const activeZone = useSpaceStore.getState().activeZone;
+      lockedZone.current = activeZone;
       const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
       if (planet) {
         const b = bodies[planet.name];
         lockedCenter.current.set(b.x, b.y, b.z);
         targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
+        escapeRadius.current = planet.size * ZONE_FACTOR * ESCAPE_MARGIN;
       } else if (activeZone === "contact") {
         lockedCenter.current.set(...PORTAL_POS);
         targetLockRadius.current = PORTAL_ORBIT_R;
+        escapeRadius.current = PORTAL_ZONE_R * ESCAPE_MARGIN * 1.5;
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
         targetLockRadius.current = 6;
+        escapeRadius.current = 10;
       }
       // Ease the ring out/in from wherever the ship arrived, rather than
       // snapping straight to the target radius (see tests/orbitInvariant.test.ts).
@@ -118,11 +155,15 @@ export default function Spaceship() {
     }
 
     if (!wasLocked || isOrbitLocked) return; // only true→false = real orbit break
-    if (pos.current.length() > 0.5) {
-      const d = noseDirection(angle.current, pitch.current);
-      pos.current.add(new THREE.Vector3(-d.x * 2.8, -d.y * 2.8, -d.z * 2.8));
-      vel.current.set(0, 0, 0);
-    }
+    // Out along the body->ship line past the proximity zone, then drift
+    // outward. The old fixed 2.8u push backwards along the nose left the ship
+    // inside the lock radius, so a planet drifting toward it re-locked it.
+    // The live body position is used: the lock centre was captured at entry.
+    const zoneBody = bodies[lockedZone.current ?? ""];
+    if (zoneBody) lockedCenter.current.set(zoneBody.x, zoneBody.y, zoneBody.z);
+    const out = escapePosition(pos.current, lockedCenter.current, escapeRadius.current);
+    pos.current.set(out.x, out.y, out.z);
+    vel.current.subVectors(pos.current, lockedCenter.current).setLength(ESCAPE_SPEED);
   }, [isOrbitLocked]);
 
   const shipRef = useRef<THREE.Group>(null);
@@ -266,6 +307,30 @@ export default function Spaceship() {
 
       applyChaseCam(false);
       return;
+    }
+
+    // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
+    // before touching anything, and the planets drift meanwhile, so a heading
+    // fixed at spawn goes stale. Track an intercept (with orbital lead) until
+    // the first input, then hand over and never touch the controls again.
+    if (!hasFlown.current) {
+      const touched = input.forward || input.backward || input.left || input.right
+        || input.ascend || input.descend || input.boost || input.steer !== 0 || input.thrust !== 0;
+      // Leaving the spawn pad by any other route (a dev/e2e teleport, a
+      // collision push) also ends the auto-aim: it only exists to point a
+      // parked, untouched ship at a planet.
+      if (touched || !store.isNearSpawn) {
+        hasFlown.current = true;
+      } else {
+        const aim = interceptAim(pos.current, planets, ambient, MAX_SPEED, COLLIDERS, !store.reducedMotion);
+        if (aim) {
+          const k = frameLerp(0.04, dt);
+          // Shortest way round, so the nose never spins the long way.
+          const dYaw = Math.atan2(Math.sin(aim.yaw - angle.current), Math.cos(aim.yaw - angle.current));
+          angle.current += dYaw * k;
+          pitch.current += (aim.pitch - pitch.current) * k;
+        }
+      }
     }
 
     // 1. Steering: keyboard is full-rate, touch joystick is analog

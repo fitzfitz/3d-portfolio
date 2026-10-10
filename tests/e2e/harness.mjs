@@ -338,11 +338,12 @@ export function readStore(page) {
  * So this DOM node — not `store.broadcast` — is the only place that sees every
  * line, which is why assertions read it rather than the store.
  *
- * `text-primary/60` is a className unique to this node in the whole component
- * tree (verified via grep), so a substring match is a safe, stable selector.
+ * Selected by `data-testid="radio-chatter"`. It used to match the
+ * `text-primary/60` className, which silently broke when the line's styling
+ * changed — a test id survives restyling.
  */
 export const chatterText = (page) => page.evaluate(() => {
-  const el = [...document.querySelectorAll("div")].find((d) => d.className?.includes?.("text-primary/60"));
+  const el = document.querySelector('[data-testid="radio-chatter"]');
   return el ? el.textContent ?? "" : null;
 });
 

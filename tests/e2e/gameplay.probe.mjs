@@ -66,8 +66,12 @@ export default async function run() {
     s = await readStore(page);
     checks.check("collecting the 10th shard completes the set",
       s.shardsCollected.length === 10, `count=${s.shardsCollected.length}`);
-    // DataShards.tsx:68-76 fires TWO sendBroadcast calls back-to-back on the
-    // 10th pickup: the shard's own fact line, then the completion line.
+    // DataShards.tsx sends the 10th shard's own fact first, then the
+    // completion line COMPLETE_DELAY_MS (4.5s) later — sent together, the
+    // single typewriter line cancelled the fact before it could be read.
+    // So wait out the delay before reading.
+    await settle(page, 5500);
+    s = await readStore(page);
     // Asserting merely `!!s.broadcast` would also pass for an unrelated
     // chatter broadcast — require a NEW id whose text is the actual
     // completion line ("ALL SHARDS RECOVERED...", DataShards.tsx:74).
@@ -99,13 +103,12 @@ export default async function run() {
 
     if (target) {
       const before = (await readStore(page)).impactCount;
-      // noseDirection(yaw=0, pitch=0) = (0, 0, 1) — see src/utils/pitchFlight.ts
-      // and flight.probe.mjs's own comment ("holding forward drives flight.z
-      // toward +BOUNDS"). The ship's angle/pitch refs are still at their mount
-      // defaults here (no steering input has happened all probe), so holding
-      // forward moves the ship toward +Z. Approach from the -Z side so "forward"
-      // actually closes the gap, instead of flying away from the target.
+      // noseDirection(yaw=0, pitch=0) = (0, 0, 1) — see src/utils/pitchFlight.ts.
+      // The ship spawns aimed at a planet, so pin yaw/pitch to 0 explicitly;
+      // holding forward then moves the ship toward +Z. Approach from the -Z
+      // side so "forward" actually closes the gap, instead of flying away.
       await warpTo(page, target.x, target.y, target.z - target.r - 2);
+      await page.evaluate(() => window.__fitz.setAttitude(0, 0));
       await hold(page, ["KeyW"], 2500);
       const midResult = await page.evaluate(() => (
         { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }

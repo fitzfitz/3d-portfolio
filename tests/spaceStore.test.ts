@@ -9,7 +9,7 @@ beforeEach(() => {
     cometNear: false, altitudeWarn: false,
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
     reducedMotion: false, reducedMotionManual: false,
-    fuelEmpty: false,
+    fuelEmpty: false, sceneReady: false,
   });
 });
 
@@ -204,5 +204,51 @@ describe("reducedMotion / ambientTime sync at module load", () => {
     expect(ambient.ambientTime(5)).toBe(0); // seeds the cold-start clock
     expect(ambient.ambientTime(6)).toBe(0); // frozen: would be 1 if still enabled
     vi.unstubAllGlobals();
+  });
+});
+
+describe("warp state on scene freeze", () => {
+  // The dossier freezes the frame loop, so the ship can't clear isWarping
+  // itself: a lock entered mid-boost left the warp drone and HUD "ACTIVE".
+  it("orbit lock clears isWarping", () => {
+    useSpaceStore.setState({ isWarping: true });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().isWarping).toBe(false);
+  });
+
+  it("entering the classic résumé clears isWarping", () => {
+    useSpaceStore.setState({ isWarping: true });
+    useSpaceStore.getState().setShowClassicCV(true);
+    expect(useSpaceStore.getState().isWarping).toBe(false);
+  });
+});
+
+describe("sceneReady", () => {
+  it("flips once and does not notify on repeats", () => {
+    const spy = vi.fn();
+    const unsub = useSpaceStore.subscribe((s) => s.sceneReady, spy);
+    useSpaceStore.getState().setSceneReady();
+    useSpaceStore.getState().setSceneReady();
+    expect(useSpaceStore.getState().sceneReady).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(1);
+    unsub();
+  });
+});
+
+describe("hasWebGL", () => {
+  it("is false when no context can be created", async () => {
+    const { hasWebGL } = await import("../src/store/spaceStore");
+    const doc = { createElement: () => ({ getContext: () => null }) };
+    expect(hasWebGL(doc as unknown as Document)).toBe(false);
+  });
+  it("is true when a webgl2 context is available", async () => {
+    const { hasWebGL } = await import("../src/store/spaceStore");
+    const doc = { createElement: () => ({ getContext: (k: string) => (k === "webgl2" ? {} : null) }) };
+    expect(hasWebGL(doc as unknown as Document)).toBe(true);
+  });
+  it("never throws", async () => {
+    const { hasWebGL } = await import("../src/store/spaceStore");
+    const doc = { createElement: () => { throw new Error("blocked"); } };
+    expect(hasWebGL(doc as unknown as Document)).toBe(false);
   });
 });

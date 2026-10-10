@@ -1,10 +1,6 @@
 import { motion } from "framer-motion";
 import { Terminal, Cpu, ArrowRight } from "lucide-react";
-import { useIsMobile } from "../../hooks/useMediaQuery";
-
 export default function Hero() {
-  const isMobile = useIsMobile();
-
   return (
     <section
       id="home"
@@ -48,7 +44,7 @@ export default function Hero() {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="text-muted text-base sm:text-lg max-w-xl font-sans font-light leading-relaxed mb-8"
           >
-            Hey there! I am a **Creative Software Engineer** specializing in modern reactive frontend apps, high-throughput backend APIs, and custom multi-agent AI tooling architectures.
+            Hey there! I am a <strong className="font-medium text-white">Creative Software Engineer</strong> specializing in modern reactive frontend apps, high-throughput backend APIs, and custom multi-agent AI tooling architectures.
           </motion.p>
 
           {/* Buttons CTA */}
@@ -74,23 +70,22 @@ export default function Hero() {
           </motion.div>
         </div>
 
-        {/* Right side: Space overlay. On desktop, this is transparent, showing the global canvas */}
+        {/* Right side: orbital emblem. This column used to be a transparent
+            window onto the 3D canvas, but the classic view unmounts the canvas,
+            so on desktop it rendered as a blank half-page. */}
         <div className="lg:col-span-5 h-[300px] sm:h-[400px] lg:h-[500px] relative w-full flex items-center justify-center pointer-events-none">
-          {isMobile && (
-            // Mobile Graceful Degradation Fallback (Static CSS Animation visual)
-            <div className="relative w-64 h-64 rounded-full border border-primary/20 flex items-center justify-center animate-pulse-glow">
-              <div className="absolute inset-4 rounded-full border border-secondary/15 flex items-center justify-center">
-                <div className="absolute inset-8 rounded-full border border-accent/10 flex items-center justify-center">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent opacity-30 blur-md" />
-                  <Cpu className="w-8 h-8 text-primary animate-spin" style={{ animationDuration: "12s" }} />
-                </div>
+          <div className="relative w-64 h-64 lg:w-96 lg:h-96 rounded-full border border-primary/20 flex items-center justify-center animate-pulse-glow">
+            <div className="absolute inset-4 rounded-full border border-secondary/15 flex items-center justify-center">
+              <div className="absolute inset-8 rounded-full border border-accent/10 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent opacity-30 blur-md" />
+                <Cpu className="w-8 h-8 text-primary animate-spin" style={{ animationDuration: "12s" }} />
               </div>
-              {/* Particle nodes around rings */}
-              <div className="absolute top-10 left-10 w-2.5 h-2.5 rounded-full bg-primary shadow-neonGreen" />
-              <div className="absolute bottom-16 right-10 w-3 h-3 rounded-full bg-secondary shadow-neonCyan" />
-              <div className="absolute top-24 right-16 w-2 h-2 rounded-full bg-accent shadow-neonPurple" />
             </div>
-          )}
+            {/* Particle nodes around rings */}
+            <div className="absolute top-10 left-10 w-2.5 h-2.5 rounded-full bg-primary shadow-neonGreen" />
+            <div className="absolute bottom-16 right-10 w-3 h-3 rounded-full bg-secondary shadow-neonCyan" />
+            <div className="absolute top-24 right-16 w-2 h-2 rounded-full bg-accent shadow-neonPurple" />
+          </div>
         </div>
       </div>
     </section>

@@ -33,6 +33,13 @@ export interface FitzDebug {
    * Null until Spaceship mounts.
    */
   teleport: ((x: number, y: number, z: number) => void) | null;
+  /**
+   * Sets the ship's yaw/pitch (radians) and ends the spawn auto-aim, so a
+   * probe can fly a known heading. The ship now spawns aimed at a planet, so
+   * "heading 0 at mount" is no longer something a probe can rely on.
+   * Registered by Spaceship in dev. Null until Spaceship mounts.
+   */
+  setAttitude: ((yaw: number, pitch: number) => void) | null;
   /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
   crystals: { x: number; y: number; z: number; active: boolean }[] | null;
   /**
@@ -65,6 +72,7 @@ export const fitzDebug: FitzDebug = {
   renderCount: 0,
   canvasRenderCount: 0,
   teleport: null,
+  setAttitude: null,
   crystals: null,
   anomalies: null,
   perfStats,

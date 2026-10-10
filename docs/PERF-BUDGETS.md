@@ -66,10 +66,18 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 29 | 825376 | 84 | 10 |
-| Close approach | 91 | 886362 | 85 | 10 |
-| Modal open | 89 | 886238 | 85 | 10 |
+| Deep space | 29 | 825376 | 85 | 10 |
+| Close approach | 91 | 886362 | 86 | 10 |
+| Modal open | 89 | 886238 | 86 | 10 |
 | 40 anomalies | 31 | 825888 | 85 | 10 |
+
+**Programs re-baselined 2026-10-10 (+1 in every state).** The data shards
+moved to a faceted, lit material (`flatShading`, metalness — `DataShards.tsx`)
+so they stop reading as flat placeholder quads; that material no longer
+shares a program with any other, so it compiles one variant of its own
+(verified: its program's `usedTimes` is 1). Measured side by side on the
+same machine the same day: `main` 84/85/85/84, this change 85/86/86/85.
+Calls, triangles and lights did not move.
 
 Lights sits at 10 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — the
 whole point of Task 4's plasma-pool fix is that this number does not move

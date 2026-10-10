@@ -62,6 +62,21 @@ function safeGetReducedMotionQueryMatches(): boolean {
   }
 }
 
+/**
+ * Whether this browser can create a WebGL context at all. Without one the 3D
+ * scene cannot run, so the visitor starts on the classic résumé instead of a
+ * blank page. Never throws: a blocked or broken canvas counts as "no".
+ */
+export function hasWebGL(doc: Document | undefined = typeof document !== "undefined" ? document : undefined): boolean {
+  try {
+    if (!doc) return false;
+    const c = doc.createElement("canvas");
+    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 function safeGetJSON<T>(key: string, fallback: T): T {
   try {
     if (typeof localStorage === "undefined") return fallback;
@@ -166,6 +181,9 @@ interface SpaceState {
   reducedMotion: boolean;
   reducedMotionManual: boolean;
   fuelEmpty: boolean;
+  /** True once every Suspense-loaded asset has resolved and the scene is on screen. */
+  sceneReady: boolean;
+  setSceneReady: () => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
@@ -208,7 +226,8 @@ export const useSpaceStore = create<SpaceState>()(
     isWarping: false,
     isLowPerf: false,
     lowPerfManual: false,
-    showClassicCV: false,
+    // No WebGL means no scene: start on the résumé rather than a blank page.
+    showClassicCV: !hasWebGL(),
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
@@ -222,13 +241,20 @@ export const useSpaceStore = create<SpaceState>()(
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
+    sceneReady: false,
+    setSceneReady: () => { if (!get().sceneReady) set({ sceneReady: true }); },
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
     // Change-guarded: called from a frame loop, so it must not notify unless the
     // value actually flipped.
     setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
-    setOrbitLocked: (v) => { if (get().isOrbitLocked !== v) set({ isOrbitLocked: v }); },
+    // Locking freezes the frame loop (selectSceneFrozen), so the ship can no
+    // longer clear isWarping itself — clear it here or the warp drone and the
+    // HUD's "ACTIVE" line outlive the boost for as long as the dossier is open.
+    setOrbitLocked: (v) => {
+      if (get().isOrbitLocked !== v) set(v ? { isOrbitLocked: true, isWarping: false } : { isOrbitLocked: false });
+    },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
     setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
@@ -248,7 +274,8 @@ export const useSpaceStore = create<SpaceState>()(
     // reading the résumé.
     setShowClassicCV: (v) => {
       if (v) get().breakOrbit();
-      set({ showClassicCV: v });
+      // The ship unmounts with the canvas, so nothing else would clear warp.
+      set(v ? { showClassicCV: true, isWarping: false } : { showClassicCV: false });
     },
     setMuted: (v) => {
       set({ isMuted: v });

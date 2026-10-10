@@ -11,16 +11,16 @@ import { withPage, settle, toDeepSpace, hold } from "./harness.mjs";
 // is the regression this file exists to catch.
 const DEEP_CALLS_CEILING = 40;
 const DEEP_TRIS_CEILING = 949190;
-const DEEP_PROGRAMS_CEILING = 85;
+const DEEP_PROGRAMS_CEILING = 86;
 
 const APPROACH_CALLS_CEILING = 110;
 const APPROACH_TRIS_CEILING = 1019320;
-const APPROACH_PROGRAMS_CEILING = 86;
+const APPROACH_PROGRAMS_CEILING = 87;
 const APPROACH_LIGHTS_CEILING = 11;
 
 const MODAL_CALLS_CEILING = 110;
 const MODAL_TRIS_CEILING = 1019180;
-const MODAL_PROGRAMS_CEILING = 86;
+const MODAL_PROGRAMS_CEILING = 87;
 const MODAL_LIGHTS_CEILING = 11;
 
 const ANOMALIES_CALLS_CEILING = 40;
@@ -383,7 +383,12 @@ export default async function run() {
       const impactBefore = await page.evaluate(() => window.__fitz.store.getState().impactCount);
       // Approach from outside the collider radius and ram forward into it —
       // same technique gameplay.probe.mjs's "ramming an asteroid" check uses.
-      await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z - p.r - 2), asteroid);
+      // Nose down +Z so W closes on the rock from its -Z side: the ship spawns
+      // aimed at a planet, so heading 0 has to be set, not assumed.
+      await page.evaluate((p) => {
+        window.__fitz.teleport(p.x, p.y, p.z - p.r - 2);
+        window.__fitz.setAttitude(0, 0);
+      }, asteroid);
       await hold(page, ["KeyW"], 2500);
       const impactAfter = await page.evaluate(() => window.__fitz.store.getState().impactCount);
       checks.check("collided with an asteroid for the regression setup (precondition)",

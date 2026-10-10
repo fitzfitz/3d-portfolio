@@ -1,4 +1,5 @@
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
@@ -52,6 +53,13 @@ export default function PostFX({ sunMesh }: PostFXProps) {
           <GodRays sun={sunMesh} samples={60} density={0.8} decay={0.9}
             weight={0.08} exposure={0.18} clampMax={0.8} blur={true} />
         ) : <></>}
+        {/* EffectComposer forces the renderer's own tone mapping off while it
+            is mounted, so without this pass HDR emissives (sun 7.6, engine
+            4.5, plasma 3.6) clipped to flat white — and the image changed
+            grade whenever PerformanceMonitor dropped to low-perf, where the
+            renderer's mapping applies again. Same curve as the renderer
+            (GlobalCanvas onCreated), last so it sees the full HDR result. */}
+        <ToneMapping mode={ToneMappingMode.NEUTRAL} />
       </EffectComposer>
     </>
   );

@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { motion, useMotionValue, useSpring } from "framer-motion";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 
+/** Touch screens have no cursor; taps synthesise mousemove and left a ring behind. */
 export default function CustomCursor() {
+  const hasPointer = useMediaQuery("(pointer: fine)");
+  return hasPointer ? <FineCursor /> : null;
+}
+
+function FineCursor() {
   const [hovered, setHovered] = useState(false);
   const [cursorText, setCursorText] = useState("");
   const [isVisible, setIsVisible] = useState(false);

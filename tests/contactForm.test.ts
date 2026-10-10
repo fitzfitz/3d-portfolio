@@ -35,6 +35,14 @@ describe("buildMailto", () => {
     const q = new URLSearchParams(url.slice(url.indexOf("?") + 1));
     expect(q.get("body")).toContain("a&b=c d");
   });
+
+  it("encodes spaces as %20, never +", () => {
+    // URLSearchParams writes spaces as "+", which mailto (RFC 6068) does not
+    // decode — mail clients showed "Inbound+transmission+from+Ada".
+    const url = buildMailto(fields, "me@domain.dev");
+    expect(url).not.toContain("+");
+    expect(decodeURIComponent(url)).toContain("Inbound transmission from Ada");
+  });
 });
 
 describe("classifyResponse", () => {

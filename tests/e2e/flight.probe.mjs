@@ -104,14 +104,16 @@ export default async function run() {
     // (`flight.x = pos.current.x`, etc.), so an external write is clobbered
     // on the very next frame and the ship's real position never moves. There
     // is no debug-bridge teleport hook, so the only way to actually get the
-    // ship near the seam is to fly it there for real. From spawn, heading 0
-    // already points the nose down +Z (`noseDirection(0,0) = (0,0,1)`), so
+    // ship near the seam is to fly it there for real. The ship now spawns
+    // aimed at a planet, so pin heading 0 first via `__fitz.setAttitude`;
+    // heading 0 points the nose down +Z (`noseDirection(0,0) = (0,0,1)`), so
     // holding forward+boost with NO turning drives flight.z toward +BOUNDS
     // and across — measured live at ~37 u/s effective, i.e. ~19s from spawn
     // to the wrap. Poll every 500ms and stop the instant a wrap is detected
     // (z drops by >100 between polls — the only way that happens, since
     // forward flight only ever increases z) rather than holding for a fixed
     // guess, so the check can't pass on a race and can't hang indefinitely.
+    await page.evaluate(() => window.__fitz.setAttitude(0, 0));
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
     let pre = null, post = null, preZ = null, postZ = null, wrapped = false;

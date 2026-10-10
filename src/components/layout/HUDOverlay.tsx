@@ -38,6 +38,11 @@ export default function HUDOverlay() {
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const fuelEmpty = useSpaceStore((s) => s.fuelEmpty);
   const isCoarse = useMediaQuery("(pointer: coarse)");
+  // Mirrors App's spawn-banner condition. On a phone the banner spans the
+  // full width over the radar's spot, and the radar is no use before flying.
+  const sceneReady = useSpaceStore((s) => s.sceneReady);
+  const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
+  const bannerUp = sceneReady && isNearSpawn && !activeZone;
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
@@ -96,18 +101,24 @@ export default function HUDOverlay() {
 
   return (
     <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
-      <RadarMap />
+      <div className={bannerUp ? "max-sm:hidden" : undefined}>
+        <RadarMap />
+      </div>
       <RadioChatter />
-      <ScanRing />
-      <div className="absolute top-24 left-6 flex flex-col gap-1.5">
+      {/* The Scanner stops with the frozen scene, so its last label would
+          otherwise hang over the dossier. */}
+      {!isOrbitLocked && <ScanRing />}
+      {/* Phones get the three readouts that matter mid-flight; the rest of
+          the telemetry is desktop flavour and collided with everything. */}
+      <div className="absolute top-16 left-4 sm:top-24 sm:left-6 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 text-primary">
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>
         </div>
-        <div ref={locRef}>NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
-        <div>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
+        <div ref={locRef} className="hidden sm:block">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
+        <div className="hidden sm:block">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
-        <div>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div className="hidden sm:block">WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
         <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
         <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
@@ -117,8 +128,8 @@ export default function HUDOverlay() {
         </div>
       </div>
 
-      <div className="absolute top-24 right-6 flex flex-col items-end gap-1.5">
-        <div className="flex items-center gap-1.5 text-secondary">
+      <div className="absolute top-16 right-4 sm:top-24 sm:right-6 flex flex-col items-end gap-1.5">
+        <div className="hidden sm:flex items-center gap-1.5 text-secondary">
           <span>SCANNING_CELESTIALS</span>
           <Cpu className="w-3.5 h-3.5" />
         </div>
@@ -129,14 +140,15 @@ export default function HUDOverlay() {
           </span>
         </div>
         {activeZone && (
-          <div className="text-[8px] text-primary/70 animate-pulse">
+          <div className="text-[9px] text-primary/70 animate-pulse">
             {isOrbitLocked ? "> [GRAVITY LOCK] ENTERING ORBIT..." : "> [WARNING] GRAVITY FIELD DETECTED"}
           </div>
         )}
       </div>
 
-      {/* Center Top: Space flight instruction card */}
-      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl flex gap-6 text-[9px] pointer-events-auto">
+      {/* Center Top: Space flight instruction card. Desktop only: on a phone
+          there is no room, and the touch buttons label themselves. */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] pointer-events-auto">
         <div className="flex flex-col">
           <span className="text-white/25">PILOT_STEER</span>
           <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
@@ -156,39 +168,59 @@ export default function HUDOverlay() {
           <span className="text-white/25">SPAWN_PLASMA</span>
           <span className="text-white">{isCoarse ? "TAP VOID" : "CLICK VOID"}</span>
         </div>
+        {!isCoarse && (
+          <>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/25">SCAN</span>
+              <span className="text-white">HOLD E</span>
+            </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/25">PHOTO_MODE</span>
+              <span className="text-white">P</span>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="absolute bottom-10 left-6 flex gap-2 pointer-events-auto">
-        <button onClick={() => setLowPerf(!isLowPerf, true)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
+      {/* Icon-only on phones: four labelled buttons ran off the screen edge. */}
+      <div className="absolute bottom-5 left-4 sm:bottom-10 sm:left-6 flex gap-2 pointer-events-auto">
+        <button onClick={() => setLowPerf(!isLowPerf, true)}
+          aria-label={isLowPerf ? "Enable bloom" : "Low performance mode"} aria-pressed={isLowPerf}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
             isLowPerf ? "border-red-500/25 bg-red-500/5 text-red-400"
               : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"}`}>
           {isLowPerf ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          <span>{isLowPerf ? "ENABLE_BLOOM" : "LOW_PERF"}</span>
+          <span className="hidden sm:inline">{isLowPerf ? "ENABLE_BLOOM" : "LOW_PERF"}</span>
         </button>
 
         <button
           data-testid="hud-reduced-motion"
           onClick={() => setReducedMotion(!reducedMotion, true)}
           title="Freeze ambient motion; flight still works"
+          aria-label="Reduce motion" aria-pressed={reducedMotion}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
             reducedMotion ? "border-amber-400/25 bg-amber-400/5 text-amber-300"
               : "border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20"}`}>
           {reducedMotion ? <ZapOff className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
-          <span>{reducedMotion ? "MOTION_OFF" : "REDUCE_MOTION"}</span>
+          <span className="hidden sm:inline">{reducedMotion ? "MOTION_OFF" : "REDUCE_MOTION"}</span>
         </button>
 
         <button
           onClick={() => {
             window.location.reload();
           }}
+          aria-label="Reset sector"
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-white"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>RESET_SECTOR</span>
+          <span className="hidden sm:inline">RESET_SECTOR</span>
         </button>
 
         <button
           onClick={() => setMuted(!isMuted)}
+          aria-label={isMuted ? "Sound off" : "Sound on"} aria-pressed={!isMuted}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${
             isMuted
               ? "border-white/5 bg-white/2 text-white/30"
@@ -196,12 +228,12 @@ export default function HUDOverlay() {
           }`}
         >
           {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-          <span>{isMuted ? "SOUND_OFF" : "SOUND_ON"}</span>
+          <span className="hidden sm:inline">{isMuted ? "SOUND_OFF" : "SOUND_ON"}</span>
         </button>
       </div>
 
       {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
-      <div className="absolute bottom-10 right-6 flex flex-col gap-2 items-end">
+      <div className="absolute bottom-10 right-6 hidden md:flex flex-col gap-2 items-end">
         <div className="text-[8px] text-white/20">{"// SECTOR_PLANETS"}</div>
         {planets.map((p) => (
           <div key={p.name} className={`flex items-center gap-1.5 transition-colors ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/20"}`}>
