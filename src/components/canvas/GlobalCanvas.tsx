@@ -3,6 +3,7 @@ import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightforme
 import { Suspense, useRef, useMemo, useState, useEffect, memo } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
+import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
@@ -31,19 +32,59 @@ interface StarLayerProps {
   count: number;
   radiusMin: number;
   radiusMax: number;
-  size: number;
+  /** Largest star diameter in CSS pixels; most stars are far smaller. */
+  maxPx: number;
   opacity: number;
   /** rad/s around Y; sign controls direction */
   speed: number;
   twinkle?: boolean;
 }
 
-function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle = false }: StarLayerProps) {
+/**
+ * Round, soft-edged stars with per-star brightness and twinkle phase. The old
+ * PointsMaterial drew every star as a same-size square (sub-pixel at these
+ * distances, so 1px boxes) and "twinkled" by pulsing a whole layer's size in
+ * unison. Sizes are in screen pixels, unattenuated: the shells are a sky at
+ * infinity riding with the ship, not objects at a distance.
+ */
+const STAR_VERT = /* glsl */ `
+  attribute float aSize;
+  attribute float aPhase;
+  uniform float uTime;
+  uniform float uPixelRatio;
+  uniform float uTwinkle;
+  varying vec3 vColor;
+  varying float vFlicker;
+  void main() {
+    vColor = color;
+    float flicker = 1.0 + uTwinkle * 0.35 * sin(uTime * (1.3 + aPhase * 0.25) + aPhase * 6.2831);
+    vFlicker = flicker;
+    gl_PointSize = max(1.0, aSize * flicker * uPixelRatio);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const STAR_FRAG = /* glsl */ `
+  uniform float uOpacity;
+  varying vec3 vColor;
+  varying float vFlicker;
+  void main() {
+    float d = length(gl_PointCoord - 0.5);
+    // Bright core plus a soft halo; zero at the sprite edge so no square rim.
+    float a = smoothstep(0.5, 0.0, d);
+    a = a * a * (0.6 + 0.4 * vFlicker);
+    if (a < 0.003) discard;
+    gl_FragColor = vec4(vColor * a * uOpacity, 1.0);
+  }
+`;
+
+function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity, speed, twinkle = false }: StarLayerProps) {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const [positions, colors] = useMemo(() => {
+  const [positions, colors, sizes, phases] = useMemo(() => {
     const posArr = new Float32Array(count * 3);
     const colArr = new Float32Array(count * 3);
+    const sizeArr = new Float32Array(count);
+    const phaseArr = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       // Uniform on the sphere: y = cos(polar) uniform in [-1, 1)
       const u = Math.random() * 2 - 1;
@@ -53,35 +94,56 @@ function StarLayer({ count, radiusMin, radiusMax, size, opacity, speed, twinkle 
       posArr[i * 3] = sr * Math.cos(az) * radius;
       posArr[i * 3 + 1] = u * radius;
       posArr[i * 3 + 2] = sr * Math.sin(az) * radius;
+      // Magnitude skewed hard toward faint, as in a real sky: a few bright
+      // stars carry the field, the rest are texture. Brightness rides in the
+      // colour (additive blend), size in aSize.
+      const m = Math.pow(Math.random(), 3);
+      const bright = 0.35 + 0.65 * m;
       const rand = Math.random();
-      if (rand < 0.75) colArr.set([1, 1, 1], i * 3);
-      else if (rand < 0.9) colArr.set([0.72, 0.88, 1.0], i * 3);
-      else colArr.set([1.0, 0.78, 0.58], i * 3);
+      const tint = rand < 0.75 ? [1, 1, 1] : rand < 0.9 ? [0.72, 0.88, 1.0] : [1.0, 0.78, 0.58];
+      colArr.set([tint[0] * bright, tint[1] * bright, tint[2] * bright], i * 3);
+      sizeArr[i] = maxPx * (0.35 + 0.65 * m);
+      phaseArr[i] = Math.random();
     }
-    return [posArr, colArr];
-  }, [count, radiusMin, radiusMax]);
+    return [posArr, colArr, sizeArr, phaseArr];
+  }, [count, radiusMin, radiusMax, maxPx]);
+
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: STAR_VERT,
+    fragmentShader: STAR_FRAG,
+    vertexColors: true,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uPixelRatio: { value: 1 },
+      uOpacity: { value: opacity },
+      uTwinkle: { value: twinkle ? 1 : 0 },
+    },
+  }), [opacity, twinkle]);
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
+    // ambientTime freezes under reduced motion, so twinkle and drift stop too.
     const time = ambientTime(state.clock.getElapsedTime());
     // The shells are the infinite sky: they translate with the ship (no positional
     // parallax — the DustField supplies that) and keep their slow rotation drift.
     pointsRef.current.position.set(flight.x, flight.y, flight.z);
     pointsRef.current.rotation.y = time * speed;
-    if (twinkle) {
-      const mat = pointsRef.current.material as THREE.PointsMaterial;
-      mat.size = size + Math.sin(time * 2.5) * size * 0.3;
-    }
+    material.uniforms.uTime.value = time;
+    material.uniforms.uPixelRatio.value = state.gl.getPixelRatio();
   });
 
   return (
-    <points ref={pointsRef}>
+    <points ref={pointsRef} material={material}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} count={count} array={positions} itemSize={3} />
         <bufferAttribute attach="attributes-color" args={[colors, 3]} count={count} array={colors} itemSize={3} />
+        <bufferAttribute attach="attributes-aSize" args={[sizes, 1]} count={count} array={sizes} itemSize={1} />
+        <bufferAttribute attach="attributes-aPhase" args={[phases, 1]} count={count} array={phases} itemSize={1} />
       </bufferGeometry>
-      <pointsMaterial vertexColors={true} size={size} transparent={true} opacity={opacity}
-        blending={THREE.AdditiveBlending} depthWrite={false} />
     </points>
   );
 }
@@ -124,7 +186,7 @@ function DustField() {
         <bufferAttribute attach="attributes-position" args={[positions, 3]}
           count={DUST_COUNT} array={positions} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial color="#9fb4d8" size={0.05} transparent={true} opacity={0.5}
+      <pointsMaterial color="#9fb4d8" size={0.08} map={softSprite} transparent={true} opacity={0.6}
         blending={THREE.AdditiveBlending} depthWrite={false} />
     </points>
   );
@@ -139,9 +201,9 @@ function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
           by eye and baked at 12x those originals, giving ~5.2 / 2.6 / 1.3 minute
           periods, so the parallax between the three counter-rotating depths
           actually reads. Free — one rotation write per layer per frame. */}
-      <StarLayer count={1300} radiusMin={140} radiusMax={260} size={0.04} opacity={0.35} speed={0.02} />
-      <StarLayer count={800} radiusMin={80} radiusMax={180} size={0.05} opacity={0.45} speed={-0.04} />
-      <StarLayer count={400} radiusMin={40} radiusMax={120} size={0.07} opacity={0.6} speed={0.08} twinkle={true} />
+      <StarLayer count={1300} radiusMin={140} radiusMax={260} maxPx={2.2} opacity={0.8} speed={0.02} />
+      <StarLayer count={800} radiusMin={80} radiusMax={180} maxPx={2.8} opacity={0.9} speed={-0.04} />
+      <StarLayer count={400} radiusMin={40} radiusMax={120} maxPx={3.6} opacity={1.0} speed={0.08} twinkle={true} />
       {!isLowPerf && <DustField />}
     </>
   );
@@ -446,11 +508,11 @@ function GlobalCanvas() {
         {photoMode && <OrbitControls makeDefault enableDamping target={photoTarget} />}
 
         {/* Cinematic glow filters (outside Suspense so they don't unmount, protected by Error Boundary) */}
-        {!isLowPerf && (
-          <SafeErrorBoundary>
-            <PostFX sunMesh={sunMesh} />
-          </SafeErrorBoundary>
-        )}
+        {/* Always mounted; low-perf disables it (see PostFX) rather than
+            unmounting, which recompiled Bloom/SMAA on every round trip. */}
+        <SafeErrorBoundary>
+          <PostFX sunMesh={sunMesh} enabled={!isLowPerf} />
+        </SafeErrorBoundary>
       </Canvas>
     </div>
   );

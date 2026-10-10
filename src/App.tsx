@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
@@ -9,7 +9,10 @@ import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
-import GlobalCanvas from "./components/canvas/GlobalCanvas";
+// The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
+// it lazily lets the HUD and classic résumé paint from a small chunk, and a
+// `?cv` or no-WebGL visitor never downloads it at all.
+const GlobalCanvas = lazy(() => import("./components/canvas/GlobalCanvas"));
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
@@ -21,6 +24,19 @@ import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById, planets } from "./constants";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
+
+/**
+ * Shown while the engine chunk downloads. Matches index.html's pre-React
+ * overlay, so the hand-off from HTML to React to the canvas's own progress
+ * readout doesn't flash.
+ */
+function EngineLoading() {
+  return (
+    <div className="fixed inset-0 z-0 flex items-center justify-center bg-[#020108] font-mono text-[11px] tracking-[0.22em] text-primary">
+      INITIALIZING STAR SYSTEM...
+    </div>
+  );
+}
 
 /** Jump destinations, in key order: each planet's project, then the portal. */
 const JUMP_TARGETS = [
@@ -120,7 +136,9 @@ export default function App() {
           root — a blank page. Fall back to the résumé, which needs no GPU. */}
       {!showClassicCV && (
         <SafeErrorBoundary onError={() => setShowClassicCV(true)}>
-          <GlobalCanvas />
+          <Suspense fallback={<EngineLoading />}>
+            <GlobalCanvas />
+          </Suspense>
         </SafeErrorBoundary>
       )}
 

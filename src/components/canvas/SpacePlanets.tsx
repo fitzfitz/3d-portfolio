@@ -205,6 +205,13 @@ function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, sp
   );
 }
 
+/**
+ * Sphere tessellation for the three planets. 32 faceted visibly on the limb at
+ * lock distance, where a planet fills half the screen; 64 is smooth there and
+ * costs ~18k triangles across all three, next to an 840k-triangle scene.
+ */
+const PLANET_SEGMENTS = 64;
+
 export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
@@ -391,18 +398,12 @@ export default function SpacePlanets() {
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={saasPlanetRef}>
-          <sphereGeometry args={[planets[0].size, 32, 32]} />
+          <sphereGeometry args={[planets[0].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
           <meshStandardMaterial map={earthTex} roughness={0.5} metalness={0.0} />
         </mesh>
         <Atmosphere radius={planets[0].size} color="#6fd8ff" planetPos={bodies[planets[0].name]} intensity={1.2} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
         <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
-
-        {/* Glowing aura core */}
-        <mesh scale={0.94}>
-          <sphereGeometry args={[planets[0].size, 16, 16]} />
-          <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.06} />
-        </mesh>
 
         {/* Orbit Grid Ring */}
         <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]}>
@@ -423,18 +424,13 @@ export default function SpacePlanets() {
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={videoPlanetRef}>
-          <sphereGeometry args={[planets[1].size, 32, 32]} />
+          <sphereGeometry args={[planets[1].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
           <meshStandardMaterial map={jupiterTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
         <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
         <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} />
-
-        <mesh scale={0.94}>
-          <sphereGeometry args={[planets[1].size, 16, 16]} />
-          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.06} />
-        </mesh>
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -449,17 +445,12 @@ export default function SpacePlanets() {
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={agentPlanetRef}>
-          <sphereGeometry args={[planets[2].size, 32, 32]} />
+          <sphereGeometry args={[planets[2].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
           <meshStandardMaterial map={marsTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <Atmosphere radius={planets[2].size} color="#e8b48a" planetPos={bodies[planets[2].name]} intensity={0.4} thickness={1.05} />
         <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
         <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
-
-        <mesh scale={0.94}>
-          <sphereGeometry args={[planets[2].size, 16, 16]} />
-          <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.06} />
-        </mesh>
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>

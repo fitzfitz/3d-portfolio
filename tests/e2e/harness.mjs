@@ -198,6 +198,16 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     };
     page.on("request", offlineFonts);
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+    // Lock low-perf off as early as possible: `window.__fitz` exists from
+    // main.tsx's module evaluation, before React renders and so before the
+    // (lazily loaded) Canvas and its PerformanceMonitor can mount. Locking it
+    // only after scene-ready (below) raced the monitor's decline under
+    // SwiftShader: whether low-perf had flipped on and back first decided
+    // whether the low tier's tone-mapped shader variants were in the program
+    // count, which made the transition probe's program budgets flaky (82 vs
+    // 105 on consecutive runs).
+    await page.waitForFunction(() => !!window.__fitz?.store, { timeout: CANVAS_READY_TIMEOUT_MS });
+    await page.evaluate(() => window.__fitz.store.getState().setLowPerf(false, true));
     // See CANVAS_READY_TIMEOUT_MS / SCENE_READY_TIMEOUT_MS above for why
     // these are this large — eager Preload compile, not a slow app.
     await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });

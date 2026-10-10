@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { scanState } from "../canvas/Scanner";
+import { scanState } from "../../utils/scanState";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const RING_MASK = "radial-gradient(circle, transparent 23px, #000 24px)";

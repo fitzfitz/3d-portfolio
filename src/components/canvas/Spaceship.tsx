@@ -15,6 +15,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
+import { softSprite } from "./softSprite";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -605,7 +606,8 @@ export default function Spaceship() {
         </mesh>
       </Trail>
       <points ref={particlesRef} geometry={particleGeometry}>
-        <pointsMaterial color="#00f0ff" size={0.06} transparent={true} opacity={0.8}
+        {/* Soft sprite: without a map these drew as flat cyan squares. */}
+        <pointsMaterial color="#00f0ff" size={0.1} map={softSprite} transparent={true} opacity={0.9}
           blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
       <lineSegments ref={streaksRef} geometry={streakGeometry}>

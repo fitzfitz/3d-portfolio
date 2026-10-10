@@ -10,22 +10,22 @@ import { withPage, settle, toDeepSpace, hold } from "./harness.mjs";
 // material. A ceiling going up without a matching, deliberate scene change
 // is the regression this file exists to catch.
 const DEEP_CALLS_CEILING = 40;
-const DEEP_TRIS_CEILING = 949190;
-const DEEP_PROGRAMS_CEILING = 86;
+const DEEP_TRIS_CEILING = 124790;
+const DEEP_PROGRAMS_CEILING = 87;
 
 const APPROACH_CALLS_CEILING = 110;
-const APPROACH_TRIS_CEILING = 1019320;
-const APPROACH_PROGRAMS_CEILING = 87;
+const APPROACH_TRIS_CEILING = 289030;
+const APPROACH_PROGRAMS_CEILING = 88;
 const APPROACH_LIGHTS_CEILING = 11;
 
 const MODAL_CALLS_CEILING = 110;
-const MODAL_TRIS_CEILING = 1019180;
-const MODAL_PROGRAMS_CEILING = 87;
+const MODAL_TRIS_CEILING = 289040;
+const MODAL_PROGRAMS_CEILING = 88;
 const MODAL_LIGHTS_CEILING = 11;
 
 const ANOMALIES_CALLS_CEILING = 40;
-const ANOMALIES_TRIS_CEILING = 949780;
-const ANOMALIES_PROGRAMS_CEILING = 86;
+const ANOMALIES_TRIS_CEILING = 125970;
+const ANOMALIES_PROGRAMS_CEILING = 87;
 const ANOMALIES_LIGHTS_CEILING = 11;
 
 /** Canvas renders since page load. Deltas across an action are what matter. */

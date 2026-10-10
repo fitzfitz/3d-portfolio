@@ -1,6 +1,7 @@
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays, ToneMapping } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays, ToneMapping, SMAA } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect } from "react";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
 
@@ -31,6 +32,8 @@ function WarpAberration() {
 
 interface PostFXProps {
   sunMesh: THREE.Mesh | null;
+  /** False in the low-perf tier: the chain stays mounted but stops rendering. */
+  enabled: boolean;
 }
 
 /**
@@ -38,11 +41,23 @@ interface PostFXProps {
  * with the MSAA resolve blit (GL_INVALID_OPERATION every frame -> white
  * canvas). Bloom smooths edges anyway, so MSAA here bought nothing.
  */
-export default function PostFX({ sunMesh }: PostFXProps) {
+export default function PostFX({ sunMesh, enabled }: PostFXProps) {
+  const gl = useThree((s) => s.gl);
+  // Low-perf disables the composer instead of unmounting it. Unmounting threw
+  // away Bloom's and SMAA's programs, and postprocessing bakes a fresh id into
+  // each pass's cache key, so every remount recompiled them from scratch
+  // (~10 programs per low-perf round trip, never released). While disabled,
+  // R3F's own render runs, so the renderer has to tone-map (same Neutral
+  // curve as the ToneMapping pass); while enabled the pass does it, so the
+  // renderer must not. This effect runs after EffectComposer's own mount
+  // effect (child effects first), so it has the last word.
+  useEffect(() => {
+    gl.toneMapping = enabled ? THREE.NoToneMapping : THREE.NeutralToneMapping;
+  }, [gl, enabled]);
   return (
     <>
       <WarpAberration />
-      <EffectComposer multisampling={0}>
+      <EffectComposer multisampling={0} enabled={enabled}>
         <Bloom intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />
         <Vignette eskil={false} offset={0.28} darkness={0.72} />
         <ChromaticAberration offset={CA_OFFSET} />
@@ -60,6 +75,11 @@ export default function PostFX({ sunMesh }: PostFXProps) {
             renderer's mapping applies again. Same curve as the renderer
             (GlobalCanvas onCreated), last so it sees the full HDR result. */}
         <ToneMapping mode={ToneMappingMode.NEUTRAL} />
+        {/* The composer renders into an offscreen target, so the canvas's
+            MSAA never touched this tier (and multisampling stays 0, see
+            above): planet limbs, rings and the ship edges were fully aliased.
+            SMAA runs on the final tone-mapped image, where it is designed to. */}
+        <SMAA />
       </EffectComposer>
     </>
   );

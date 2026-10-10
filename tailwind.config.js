@@ -24,7 +24,7 @@ export default {
         muted: "#8f9bb3",
       },
       fontFamily: {
-        sans: ["Outfit", "Inter", "sans-serif"],
+        sans: ["Outfit", "sans-serif"],
         display: ["Orbitron", "sans-serif"],
         mono: ["JetBrains Mono", "Fira Code", "monospace"],
       },
