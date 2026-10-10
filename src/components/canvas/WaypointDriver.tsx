@@ -9,7 +9,14 @@ import { waypointState } from "../../utils/waypointState";
 const PLANET_NAMES = planets.map((p) => p.name);
 const PORTAL = { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2] };
 const MARGIN = 0.88; // NDC fraction treated as "on screen"
-const EDGE_TOP = 0.4; // highest NDC y for the off-screen edge arrow
+/**
+ * Off-screen targets get an arrow on an ellipse around the screen centre (in
+ * NDC), not on the screen edge: the edges are lined with HUD panels
+ * (telemetry, radar, sector list, controls strip), and an edge arrow kept
+ * landing on one of them. The ellipse clears the ship below centre.
+ */
+const RING_X = 0.6;
+const RING_Y = 0.5;
 const v = new THREE.Vector3();
 
 /** Headless: projects the next unread dossier (then the portal) to the screen. */
@@ -30,11 +37,11 @@ export default function WaypointDriver() {
     let ny = behind ? -v.y : v.y;
     const onScreen = !behind && Math.abs(nx) < MARGIN && Math.abs(ny) < MARGIN;
     if (!onScreen) {
-      const k = MARGIN / Math.max(Math.abs(nx), Math.abs(ny), 1e-6);
-      nx *= k; ny *= k;
-      // Keep the edge arrow below the top HUD band (telemetry, controls
-      // strip, target readout), which fills roughly the top 30% of the screen.
-      ny = Math.min(ny, EDGE_TOP);
+      // Direction measured in pixels, so the arrow points the true way on a
+      // wide screen, then placed on the ring.
+      const a = Math.atan2(ny * size.height, nx * size.width);
+      nx = Math.cos(a) * RING_X;
+      ny = Math.sin(a) * RING_Y;
     }
     waypointState.active = true;
     waypointState.onScreen = onScreen;

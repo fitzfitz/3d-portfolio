@@ -67,12 +67,26 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 28 | 108512 | 86 | 10 |
-| Close approach | 87 | 251322 | 87 | 10 |
-| Modal open | 89 | 251334 | 87 | 10 |
-| 40 anomalies | 32 | 109536 | 86 | 10 |
+| Deep space | 28 | 108512 | 74 | 4 |
+| Close approach | 89 | 251390 | 78 | 4 |
+| Modal open | 110 | 268110 | 78 | 4 |
+| 40 anomalies | 32 | 109536 | 73 | 4 |
 
-**Re-baselined 2026-10-10 (phase 3 load/render pass).** Triangles fell 72-87%:
+**Re-baselined 2026-10-10 (leftovers pass: lights, nebula, async warm-up).**
+drei's `<Preload all>` was replaced by `ShaderWarmup` (`GlobalCanvas.tsx`):
+`compileAsync` plus per-task texture uploads instead of a synchronous compile
+followed by six CubeCamera renders. Programs fell 86 -> 74 in deep space — the
+cube renders compiled variants the scene never draws. Calls and triangles at
+close approach / modal open are higher only because the warm-up shifted *when*
+the probe reaches the planet, so a different slice of the system is in frame
+behind it; three consecutive runs gave identical numbers except 40-anomalies
+programs (68-73, so the table uses the max). Close approach was re-measured
+after `approachPlanet` moved to the planet's outward radial (it used a fixed
+offset that orbital motion could close into a lock): 89 / 251390 on most runs,
+72 / 230258 once, depending on what is in frame. Lights 10 -> 4 (see below).
+
+Earlier the same day, **phase 3 load/render pass** (28 / 108512 / 86,
+87 / 251322 / 87, 89 / 251334 / 87, 32 / 109536 / 86): triangles fell 72-87%:
 the asteroid belt drew the 1,244-triangle hero asteroid 560 times; it now uses
 an 80-triangle size-matched rock (`src/utils/lowPolyRock.ts`). Planets went from
 32 to 64 segments (+~18k), the jellyfish is frustum-culled, and three invisible
@@ -87,20 +101,22 @@ Previous table (2026-10-10, before phase 3): deep space 29 / 825376 / 85,
 close approach 91 / 886362 / 86, modal open 89 / 886238 / 86,
 40 anomalies 31 / 825888 / 85.
 
-Lights sits at 10 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — the
-whole point of Task 4's plasma-pool fix is that this number does not move
-across gameplay. `transition.probe.mjs`'s deep-space check asserts directly
-against the imported `LIGHT_BUDGET` constant rather than a separately-derived
-ceiling, since that constant already **is** the intended hard limit; the other
-three states use `LIGHT_BUDGET + 1` (11) per the derivation rule above, as
-slack for measurement noise rather than as license to add a light.
+Lights sits at 4 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — cut
+from 10 on 2026-10-10 (duplicate sun light, three planet glow lights sealed
+inside opaque spheres, a 1.2u ship light, and the portal pair merged into one;
+see the comment on `LIGHT_BUDGET`). The whole point of Task 4's plasma-pool fix
+is that this number does not move across gameplay. `transition.probe.mjs`'s
+deep-space check asserts directly against the imported `LIGHT_BUDGET` constant
+rather than a separately-derived ceiling, since that constant already **is**
+the intended hard limit; the other three states use `LIGHT_BUDGET + 1` (5) per
+the derivation rule above, as slack for measurement noise rather than as
+license to add a light.
 
-Programs climbs from 84 (deep space, the very first state measured after
-page load) to 85 everywhere else, regardless of which state is measured
-second — a one-time lazy shader compile that isn't specific to any one
-transition. Task 7's eager `Preload` warm-up compiles nearly everything up
-front, but not quite everything; this is within the `+1` slack the derivation
-rule already allows for exactly this kind of driver/compile variance.
+Programs climbs from 74 (deep space, the very first state measured after
+page load) to 78 in the planet states, regardless of which is measured
+second. `ShaderWarmup` compiles nearly everything up front; the remaining four
+compile once, lazily, on the first close approach. That is why the planet
+states carry their own baselines rather than sharing deep space's.
 
 ## Changing these
 
@@ -112,9 +128,9 @@ signal this file exists to catch.
 
 ## Startup (eager compile) duration
 
-`tests/e2e/harness.mjs`'s `withPage` waits for `window.__fitz.scene` under
+`tests/e2e/harness.mjs`'s `withPage` waits for the scene to be ready under
 `SCENE_READY_TIMEOUT_MS` (60s) — generous specifically so a slow-but-not-
-broken eager `Preload` compile (Task 7) never crashes the suite. That
+broken eager compile never crashes the suite. That
 generosity is also a gap: a change that doubled compile time would still
 finish inside 60s and pass with no signal anything regressed.
 
@@ -122,9 +138,14 @@ Measured baseline (bisect in `.superpowers/sdd/2026-08-02-performance-uplift/
 progress.md`, Task 7b): canvas ready at 120ms, `window.__fitz.scene` ready at
 **28,358ms**, on headless Chrome / SwiftShader.
 
-`STARTUP_DURATION_CEILING_MS` (`harness.mjs`) asserts this duration directly,
-set to **45,000ms**: above the measured baseline (so ordinary machine-load
-variance still passes) but below 2x the baseline (56,716ms), so a doubling
-in compile time reliably fails this check red rather than merely running
-slow and silent. This is a real-GPU-irrelevant, CI-only guard — same caveat
-as every other number in this file.
+`STARTUP_DURATION_CEILING_MS` (`harness.mjs`) asserts this duration directly.
+
+**Re-baselined 2026-10-10, twice.** The 28,358ms figure above was captured
+on a machine at load average 15; normal runs measured 17-20s. The leftovers
+pass then replaced the synchronous Preload with `ShaderWarmup`, and the
+harness now times the store's `sceneReady` (set after shaders link and
+textures upload) rather than DebugBridge's commit-time `window.__fitz.scene`,
+which would have dropped compile from the measurement entirely. Measured:
+**10.6-11.8s**. The ceiling is **20,000ms**: ~1.7x the slowest run, under 2x,
+so a doubling fails red. Same caveat as every other number in this file:
+a real-GPU-irrelevant, CI-only guard.

@@ -70,9 +70,10 @@ Two things to know before running the whole suite:
 
 - It needs a real Chrome at the path hardcoded in `tests/e2e/harness.mjs`, so
   it is a local gate rather than a CI one. CI runs the unit tests only.
-- **The `assets` probe invokes Blender against `assets-src/`**, which is
-  gitignored and local-only. It asserts a sha256 byte-for-byte restore
-  afterwards. If that check ever fails, stop — see `assets-src/MANIFEST.md`.
+- **The `assets` probe invokes Blender against `assets-src/`**, which this
+  repo gitignores (it is its own repo, see below). It asserts a sha256
+  byte-for-byte restore afterwards. If that check ever fails, stop — see
+  `assets-src/MANIFEST.md`.
 
 `docs/QA-CHECKLIST.md` covers the handful of checks a machine genuinely cannot
 judge — whether banking *reads* as banking, whether the audio mix is balanced —
@@ -89,12 +90,16 @@ npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public
 
 The optimize pass is deliberately **visually lossless**: weld, dedup, prune,
 WebP textures, then quantize and meshopt-compress. Geometry is never
-simplified — that is a standing constraint, not an oversight.
+simplified — that is a standing constraint, not an oversight. (The asteroid
+belt draws a procedural 80-triangle stand-in at runtime,
+`src/utils/lowPolyRock.ts`, rather than a simplified copy of the asset; the
+GLB itself is untouched and the hero asteroids still use it.)
 
 Six assets are **not** reproducible — external files of unknown provenance
-listed in `assets-src/MANIFEST.md`. That manifest is this repo's only record of
-what would be unrecoverable if the local `assets-src/` directory were lost, so
-back it up before touching the machine it lives on.
+listed in `assets-src/MANIFEST.md`. `assets-src/` is gitignored here but is
+its own git repository, backed up to the private
+`fitzfitz/3d-portfolio-assets-src`. Keep it pushed: that remote is the only
+copy of those six files outside this machine.
 
 ## Architecture
 

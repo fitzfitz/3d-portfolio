@@ -209,6 +209,9 @@ interface SpaceState {
   fuelEmpty: boolean;
   /** True once every Suspense-loaded asset has resolved and the scene is on screen. */
   sceneReady: boolean;
+  /** True while ShaderWarmup holds the frame loop for async shader compile. */
+  warmingUp: boolean;
+  setWarmingUp: (v: boolean) => void;
   /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
   visitedDossiers: string[];
   /**
@@ -276,6 +279,8 @@ export const useSpaceStore = create<SpaceState>()(
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
     sceneReady: false,
+    warmingUp: false,
+    setWarmingUp: (v) => { if (get().warmingUp !== v) set({ warmingUp: v }); },
     visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
     requestJump: (id) => {

@@ -120,4 +120,19 @@ describe("ambientTime cold start", () => {
     expect(fresh.ambientTime(5)).toBe(0);
     expect(fresh.ambientTime(6)).toBe(1);
   });
+
+  // The upper bound is the guard's whole reason to exist: under
+  // frameloop="never" R3F can hand clock.elapsedTime the raw rAF timestamp in
+  // milliseconds, a ~1000x jump. Such a step must be skipped, not added.
+  it("skips a forward jump of DISCONTINUITY_SECONDS or more, then keeps counting", () => {
+    gameTime(0);
+    expect(gameTime(1)).toBe(1);
+    expect(gameTime(1 + 1734.5)).toBe(1); // ms-scale artifact: ignored
+    expect(gameTime(1 + 1734.5 + 0.5)).toBeCloseTo(1.5, 5); // resumes from the new base
+  });
+
+  it("still counts a large-but-legal step just under the bound", () => {
+    gameTime(0);
+    expect(gameTime(29.9)).toBeCloseTo(29.9, 5);
+  });
 });

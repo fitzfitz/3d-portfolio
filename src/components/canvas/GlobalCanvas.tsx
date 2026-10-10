@@ -1,6 +1,6 @@
-import { Canvas, useFrame, invalidate } from "@react-three/fiber";
-import { Preload, Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState, useEffect, memo } from "react";
+import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
+import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
+import { Suspense, useRef, useMemo, useState, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
@@ -334,17 +334,85 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
 }
 
 /**
- * Mounts only when the Suspense boundary above it resolves, i.e. once every
- * GLB and texture is in. Gates the spawn banner, which otherwise sat on top
- * of the loading readout and hid it.
+ * Warms every shader and texture before the first real frame, then marks the
+ * scene ready (which gates the spawn banner). Mounts when the Suspense
+ * boundary resolves, i.e. once every GLB and texture is in.
+ *
+ * Replaces drei's <Preload all>, which called the synchronous gl.compile and
+ * then rendered the whole scene six more times through a CubeCamera to force
+ * texture uploads: a single ~560ms main-thread freeze on a real GPU, right as
+ * the loader handed over. compileAsync issues the same programs but, with
+ * KHR_parallel_shader_compile, lets the driver link them off the main thread
+ * and polls readiness without blocking. The frame loop is held meanwhile, so
+ * no frame stalls on a half-linked program; textures are then uploaded
+ * directly. Without the extension (e.g. SwiftShader) compile() is as
+ * synchronous as before, so nothing regresses there.
+ *
+ * Like Preload, it briefly makes invisible objects visible so their
+ * materials compile too. Runs in a layout effect so the loop is held before
+ * the first post-commit frame.
  */
-function SceneReady() {
-  // Reset on unmount: the classic-résumé round trip remounts the canvas, and
-  // the banner must wait for that load too.
-  useEffect(() => {
-    useSpaceStore.getState().setSceneReady(true);
-    return () => useSpaceStore.getState().setSceneReady(false);
-  }, []);
+/** Upper bound on holding the frame loop for compileAsync (see below). */
+const WARMUP_TIMEOUT_MS = 8000;
+
+function ShaderWarmup() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  useLayoutEffect(() => {
+    let cancelled = false;
+    const store = useSpaceStore.getState();
+    setFrameloop("never");
+    store.setWarmingUp(true);
+
+    const hidden: THREE.Object3D[] = [];
+    scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    // compile() inside compileAsync runs synchronously, so visibility can be
+    // restored as soon as the call returns.
+    const ready = gl.compileAsync(scene, camera);
+    for (const o of hidden) o.visible = false;
+
+    // compileAsync polls program readiness forever: a context lost mid-load,
+    // or a throw inside its setTimeout poll, would leave it unsettled and the
+    // loop frozen for good. Cap the wait; past it, programs still compiling
+    // simply finish on first use, as they did under Preload.
+    const settled = Promise.race([
+      ready,
+      new Promise<void>((resolve) => setTimeout(resolve, WARMUP_TIMEOUT_MS)),
+    ]).catch(() => {});
+    settled.then(() => {
+      if (cancelled) return;
+      // Upload textures one per task rather than in one loop: a single
+      // 2048² map is tens of ms, and all of them back to back was a ~300ms
+      // freeze of its own. Spread out, the page stays responsive throughout.
+      const textures = new Set<THREE.Texture>();
+      scene.traverse((o) => {
+        const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) {
+          for (const v of Object.values(m)) if (v instanceof THREE.Texture) textures.add(v);
+        }
+      });
+      const queue = [...textures];
+      const step = () => {
+        if (cancelled) return;
+        const t = queue.pop();
+        if (t) { gl.initTexture(t); setTimeout(step, 0); return; }
+        const s = useSpaceStore.getState();
+        s.setWarmingUp(false); // GlobalCanvas resumes the loop and invalidates
+        s.setSceneReady(true);
+      };
+      step();
+    });
+    // Reset on unmount: the classic-résumé round trip remounts the canvas, and
+    // the banner must wait for that load too.
+    return () => {
+      cancelled = true;
+      const s = useSpaceStore.getState();
+      s.setWarmingUp(false);
+      s.setSceneReady(false);
+    };
+  }, [gl, scene, camera, setFrameloop]);
   return null;
 }
 
@@ -353,7 +421,8 @@ function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
-  const sceneFrozen = useSpaceStore(selectSceneFrozen);
+  // A dossier freezes the loop; so does the shader warm-up (ShaderWarmup).
+  const sceneFrozen = useSpaceStore((s) => selectSceneFrozen(s) || s.warmingUp);
   const anomaliesRef = useRef<AnomaliesRef>(null);
   const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
   // frameloop="never" means R3F stops driving rAF entirely; the first frame
@@ -436,7 +505,10 @@ function GlobalCanvas() {
           <ambientLight intensity={0.15} />
           {/* The sun: single dominant light at the origin — gives every body a
               real day side and terminator (realistic-planets spec G2) */}
-          <pointLight position={[0, 0, 0]} intensity={2.0} decay={0} color="#fff4e0" />
+          {/* 2.1, up from 2.0: absorbs Sun.tsx's second light at the origin
+              (4.8, decay 0.8), which added only ~5% at planet distance and
+              cost a full light in every lit fragment. */}
+          <pointLight position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />
 
           {/* Starfield particles */}
           <GalaxyStarfield isLowPerf={isLowPerf} />
@@ -496,12 +568,11 @@ function GlobalCanvas() {
               help across sibling listeners. */}
           {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
 
-          {/* Inside Suspense deliberately: Preload compiles the scene as it
-              exists when it mounts, so as a sibling of the boundary it ran
-              before any GLTF-dependent component had resolved and warmed a
-              near-empty scene. */}
-          <Preload all />
-          <SceneReady />
+          {/* Inside Suspense deliberately: the warm-up compiles the scene as
+              it exists when it mounts, so as a sibling of the boundary it
+              would run before any GLTF-dependent component had resolved and
+              warm a near-empty scene. */}
+          <ShaderWarmup />
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}

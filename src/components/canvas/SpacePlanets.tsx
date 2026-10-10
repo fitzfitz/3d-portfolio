@@ -30,20 +30,48 @@ const ORBIT_RING_OPACITY = 0.35;
 const ORBIT_RING_BREATH = 0.35;
 const ORBIT_RING_BREATH_MULT = 16;
 
-// Procedurally generated soft radial gradient sprite for gas clouds rendering
+/**
+ * Wispy gas sprite: 4-octave value-noise fBm under a soft radial falloff,
+ * generated once at load. It replaced a smooth radial gradient, which needed
+ * 45 stacked sprites per cloud to suggest any structure — and every one of
+ * them is screen-sized additive overdraw when the camera is inside a cloud.
+ * With the structure in the texture, far fewer sprites read as gas.
+ */
 const nebulaTexture = (() => {
+  const N = 128;
   const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
+  canvas.width = N;
+  canvas.height = N;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, "rgba(255, 255, 255, 1)");
-    grad.addColorStop(0.2, "rgba(255, 255, 255, 0.4)");
-    grad.addColorStop(0.6, "rgba(255, 255, 255, 0.08)");
-    grad.addColorStop(1, "rgba(255, 255, 255, 0)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
+    // Seeded lattice so every load draws the same clouds.
+    let seed = 1337;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const G = 32;
+    const lattice = Array.from({ length: G * G }, rand);
+    const at = (x: number, y: number) => lattice[((y % G + G) % G) * G + ((x % G + G) % G)];
+    const smooth = (t: number) => t * t * (3 - 2 * t);
+    const noise = (x: number, y: number) => {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const u = smooth(x - xi), v = smooth(y - yi);
+      const a = at(xi, yi), b = at(xi + 1, yi), c = at(xi, yi + 1), d = at(xi + 1, yi + 1);
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    };
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        let f = 0, amp = 0.5, freq = 4 / N;
+        for (let o = 0; o < 4; o++) { f += noise(x * freq, y * freq) * amp; amp *= 0.5; freq *= 2; }
+        const dx = (x + 0.5) / N - 0.5, dy = (y + 0.5) / N - 0.5;
+        const r = Math.min(1, Math.hypot(dx, dy) * 2);
+        const fall = Math.pow(1 - r, 2);
+        const alpha = fall * (0.25 + 0.75 * Math.pow(f, 1.6));
+        const i = (y * N + x) * 4;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(alpha * 255);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
   }
   return new THREE.CanvasTexture(canvas);
 })();
@@ -85,7 +113,11 @@ interface NebulaClusterProps {
 
 // Renders a volumetric deep-space nebula by stacking multiple soft gradient particles
 function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
-  const pointsCount = 45;
+  // 45 -> 22: the wispy texture carries the structure that stacking used to
+  // fake, and each sprite removed is one fewer screen-sized additive layer
+  // when flying through a cloud (overdraw roughly halved). Size and opacity
+  // below compensate.
+  const pointsCount = 22;
   const pointsRef = useRef<THREE.Points>(null);
 
   // Generate initial structural parameters for each particle
@@ -159,9 +191,9 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
       <pointsMaterial
         map={nebulaTexture}
         color={color}
-        size={size * 1.6} // Large soft overlapping particles
+        size={size * 1.9} // Large soft overlapping particles
         transparent={true}
-        opacity={opacity * 0.9} // Soft layering opacity
+        opacity={opacity * 1.9} // Fewer layers, so each carries more
         blending={THREE.AdditiveBlending}
         depthWrite={false}
       />
@@ -416,8 +448,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.3} />
         </mesh>
-        
-        <pointLight color="#00ff87" intensity={0.6} distance={planets[0].size * 4.5} />
       </group>
 
       {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
@@ -437,8 +467,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.3} />
         </mesh>
-
-        <pointLight color="#00f0ff" intensity={0.6} distance={planets[1].size * 4.5} />
       </group>
 
       {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
@@ -457,8 +485,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.3} />
         </mesh>
-
-        <pointLight color="#bd00ff" intensity={0.6} distance={planets[2].size * 4.5} />
       </group>
 
       {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}

@@ -614,7 +614,6 @@ export default function Spaceship() {
         <lineBasicMaterial color="#00f0ff" transparent={true} opacity={0.5}
           blending={THREE.AdditiveBlending} depthWrite={false} />
       </lineSegments>
-      <pointLight position={[0, 0, -0.6]} color="#00f0ff" intensity={0.4} distance={1.2} />
     </group>
   );
 }

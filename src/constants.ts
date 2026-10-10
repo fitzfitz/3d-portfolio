@@ -97,10 +97,15 @@ export const planets: PlanetData[] = projects
  * This is not a shading-cost budget, it is a "do not recompile during play"
  * budget, and it is why particles must never carry their own light.
  *
+ * It is also a shading-cost budget in practice: every lit fragment loops over
+ * every light. 2026-10-10 cut it from 10 to 4 — a duplicate sun light, three
+ * planet "glow" lights sealed inside opaque spheres (they only tinted moons
+ * and the ship), a 1.2u ship light, and one of the portal's pair (merged:
+ * PortalRing drives one light with both flickers).
+ *
  * Current occupants, measured (not enumerated by hand — an earlier hand count
- * said 9 and missed the ambientLight): ambientLight + sun point
- * (GlobalCanvas.tsx:346,349), sun (Sun.tsx), ship x2 (Spaceship.tsx),
- * portal x2 (PortalRing.tsx), planets x3 (SpacePlanets.tsx).
+ * missed the ambientLight): ambientLight + sun point (GlobalCanvas.tsx),
+ * engine glow (Spaceship.tsx), portal (PortalRing.tsx).
  * Asserted by tests/e2e/transition.probe.mjs.
  */
-export const LIGHT_BUDGET = 10;
+export const LIGHT_BUDGET = 4;
