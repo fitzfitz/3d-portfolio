@@ -71,7 +71,7 @@ const STAR_FRAG = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5);
     // Bright core plus a soft halo; zero at the sprite edge so no square rim.
-    float a = smoothstep(0.5, 0.0, d);
+    float a = 1.0 - smoothstep(0.0, 0.5, d);  // edge0 < edge1: reversed edges are undefined in GLSL
     a = a * a * (0.6 + 0.4 * vFlicker);
     if (a < 0.003) discard;
     gl_FragColor = vec4(vColor * a * uOpacity, 1.0);

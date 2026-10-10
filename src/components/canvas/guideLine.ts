@@ -102,7 +102,8 @@ const RING_FRAG = /* glsl */ `
   void main() {
     float t = clamp((vR - uInner) / (uOuter - uInner), 0.0, 1.0);
     float edge = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.9, 1.0, t));
-    float division = 1.0 - 0.85 * exp(-pow((t - 0.62) / 0.025, 2.0));
+    float dv = (t - 0.62) / 0.025;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
+    float division = 1.0 - 0.85 * exp(-dv * dv);
     float a = uOpacity * bands(t) * edge * division;
     vec3 col = mix(uColor, vec3(0.92, 1.0, 0.95), 0.35 * bands(t + 0.3));
     gl_FragColor = vec4(col, a);

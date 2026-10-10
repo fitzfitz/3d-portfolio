@@ -57,8 +57,13 @@ const SKY_FRAG = /* glsl */ `
 
     // Warped band profile so the edges are ragged, not a clean stripe.
     float warp = (fbm(d * 3.0) - 0.5) * 0.22;
-    float band = exp(-pow((lat + warp) / 0.17, 2.0));
-    float core = exp(-pow((lat + warp * 0.6) / 0.09, 2.0)) * smoothstep(-0.2, 1.0, lon);
+    // Gaussians squared explicitly: pow() of a negative base is undefined in
+    // GLSL and returns NaN on some drivers — baked into the cube, that would
+    // blank half the sky and let bloom smear NaN across the frame.
+    float bu = (lat + warp) / 0.17;
+    float cu = (lat + warp * 0.6) / 0.09;
+    float band = exp(-bu * bu);
+    float core = exp(-cu * cu) * smoothstep(-0.2, 1.0, lon);
 
     // Star clouds and dust lanes inside the band.
     float clouds = fbm(d * 7.0 + 3.1);
@@ -108,8 +113,12 @@ export default function SkyBackdrop() {
     });
     skyScene.add(new THREE.Mesh(geo, mat));
 
+    // Half-float keeps the faint gradients smooth, but rendering to it needs
+    // an extension some mobile GPUs lack; fall back to 8-bit rather than a
+    // black (incomplete) target.
+    const halfOk = gl.extensions.has("EXT_color_buffer_half_float") || gl.extensions.has("EXT_color_buffer_float");
     const target = new THREE.WebGLCubeRenderTarget(FACE_SIZE, {
-      type: THREE.HalfFloatType,
+      type: halfOk ? THREE.HalfFloatType : THREE.UnsignedByteType,
       generateMipmaps: true,
       minFilter: THREE.LinearMipmapLinearFilter,
     });

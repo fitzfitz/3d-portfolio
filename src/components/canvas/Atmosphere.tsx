@@ -38,7 +38,8 @@ const fragmentShader = /* glsl */ `
     float sunCos = dot(normalize(vWorldNormal), uSunDir);
     float lit = smoothstep(-0.25, 0.45, sunCos);
     // Warm, sunset-tinted band right at the terminator.
-    float dusk = exp(-pow(sunCos / 0.18, 2.0));
+    float du = sunCos / 0.18;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
+    float dusk = exp(-du * du);
     vec3 col = mix(uColor, vec3(1.0, 0.62, 0.38), dusk * 0.55);
     float a = density * (0.04 + 0.96 * lit) * uIntensity * 1.15;
     gl_FragColor = vec4(col, a);

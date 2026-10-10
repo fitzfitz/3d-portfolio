@@ -98,10 +98,11 @@ const membraneFragment = /* glsl */ `
     float swirl = sin(a * 3.0 + r * 9.0 - uTime * 2.6) * 0.5 + 0.5;
     float counter = sin(a * 5.0 - r * 14.0 + uTime * 1.7) * 0.5 + 0.5;
     float bands = swirl * 0.7 + counter * 0.3;
-    float core = smoothstep(0.55, 0.0, r);
+    // edge0 < edge1 throughout: reversed smoothstep edges are undefined in GLSL
+    float core = 1.0 - smoothstep(0.0, 0.55, r);
     vec3 col = mix(vec3(0.45, 0.05, 0.55), vec3(1.0, 0.25, 0.75), bands); // deep violet -> neon pink
     col = mix(col, vec3(1.0, 0.9, 0.6), core * (0.6 + bands * 0.4));       // white-hot center
-    float alpha = (0.35 + bands * 0.5) * smoothstep(1.05, 0.8, r) + core * 0.5;
+    float alpha = (0.35 + bands * 0.5) * (1.0 - smoothstep(0.8, 1.05, r)) + core * 0.5;
     gl_FragColor = vec4(col * (0.8 + core), alpha);
   }
 `;

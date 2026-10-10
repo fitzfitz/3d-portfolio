@@ -82,7 +82,7 @@ const coronaFragment = /* glsl */ `
     float glow = exp(-x * 7.0) * 0.9 + exp(-x * 2.6) * 0.25;
     float corona = glow * (0.45 + 1.4 * rays * exp(-x * 1.4));
     vec3 col = mix(vec3(1.0, 0.45, 0.12), vec3(1.0, 0.85, 0.6), exp(-x * 4.0));
-    gl_FragColor = vec4(col * corona, corona * smoothstep(1.0, 0.85, r));
+    gl_FragColor = vec4(col * corona, corona * (1.0 - smoothstep(0.85, 1.0, r)));
   }
 `;
 
