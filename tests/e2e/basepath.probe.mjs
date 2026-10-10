@@ -40,9 +40,11 @@ const REQUIRED_ASSETS = [
   "models/moon.glb",
   "models/portal_gateway.glb",
   "models/space_crystal.glb",
-  "models/earth.webp",
-  "models/jupiter.webp",
-  "models/mars.webp",
+  "models/ruangrapi.webp",
+  "models/ruangrapi_glow.webp",
+  "models/portfolio.webp",
+  "models/fuxx.webp",
+  "models/fuxx_glow.webp",
 ];
 
 function run(cmd, args, env) {

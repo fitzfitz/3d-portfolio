@@ -63,15 +63,17 @@ export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
 
-  // Dim decorative emissives, but keep the engine material hot — it paints the
+  // Dim incidental emissives, but keep the engine material hot — it paints the
   // ship's three real nozzle spots, and the frame loop drives it with throttle.
+  // Materials named Neon_* are deliberate accent strips/nav lights on the
+  // generated ship (scripts/blender/gen_spaceship.py) and keep their glow.
   const engineMat = useMemo(() => {
     let engine: THREE.MeshStandardMaterial | null = null;
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const mat = child.material as THREE.MeshStandardMaterial;
         if (/engine/i.test(mat.name)) engine = mat;
-        else if (mat.emissive) mat.emissiveIntensity = 0.08;
+        else if (mat.emissive && !/^neon_/i.test(mat.name)) mat.emissiveIntensity = 0.08;
       }
     });
     return engine as THREE.MeshStandardMaterial | null;

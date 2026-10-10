@@ -238,6 +238,30 @@ function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, sp
 }
 
 /**
+ * City lights only on the night side. three.js adds an emissive map on the
+ * lit hemisphere too, which would put RuangRapi's settlement lights in broad
+ * daylight. This injects a mask after the emissive map is applied: the sun
+ * is a point light at the world origin, so its view-space position is
+ * re-uploaded each frame and compared with the surface normal.
+ */
+const sunView = new THREE.Vector3();
+function useNightSideEmissive() {
+  const uniform = useMemo(() => ({ value: new THREE.Vector3() }), []);
+  useFrame(({ camera }) => {
+    sunView.set(0, 0, 0).applyMatrix4(camera.matrixWorldInverse);
+    uniform.value.copy(sunView);
+  });
+  return useMemo(() => (shader: THREE.WebGLProgramParametersWithUniforms) => {
+    shader.uniforms.uSunView = uniform;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        vec3 toSun = normalize(uSunView + vViewPosition);
+        totalEmissiveRadiance *= smoothstep(0.12, -0.2, dot(normal, toSun));`);
+  }, [uniform]);
+}
+
+/**
  * Sphere tessellation for the three planets. 32 faceted visibly on the limb at
  * lock distance, where a planet fills half the screen; 64 is smooth there and
  * costs ~18k triangles across all three, next to an 840k-triangle scene.
@@ -259,21 +283,28 @@ export default function SpacePlanets() {
   const portalFrameRef = useRef<THREE.Group>(null);
 
   // Load planet textures maps
-  const [earthTex, jupiterTex, marsTex] = useTexture([
-    assetUrl("/models/earth.webp"),
-    assetUrl("/models/jupiter.webp"),
-    assetUrl("/models/mars.webp")
+  // One original procedural world per project (scripts/textures/
+  // gen_planets.mjs): an archipelago ocean world, a cyan gas giant, and a
+  // violet world cut by glowing rifts. Glow maps carry RuangRapi's city
+  // lights and fuxx's rift network.
+  const [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow] = useTexture([
+    assetUrl("/models/ruangrapi.webp"),
+    assetUrl("/models/portfolio.webp"),
+    assetUrl("/models/fuxx.webp"),
+    assetUrl("/models/ruangrapi_glow.webp"),
+    assetUrl("/models/fuxx_glow.webp"),
   ]);
+  const cityLights = useNightSideEmissive();
 
   const gl = useThree((s) => s.gl);
   useEffect(() => {
     const maxAniso = gl.capabilities.getMaxAnisotropy();
-    for (const tex of [earthTex, jupiterTex, marsTex]) {
+    for (const tex of [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow]) {
       tex.anisotropy = maxAniso;
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.needsUpdate = true;
     }
-  }, [earthTex, jupiterTex, marsTex, gl]);
+  }, [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow, gl]);
 
   // Load custom stargate portal gateway model
   const { scene: portalScene } = useGLTF(assetUrl("/models/portal_gateway.glb"));
@@ -431,9 +462,11 @@ export default function SpacePlanets() {
         {/* Planet Sphere */}
         <mesh ref={saasPlanetRef}>
           <sphereGeometry args={[planets[0].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={earthTex} roughness={0.5} metalness={0.0} />
+          <meshStandardMaterial map={ruangrapiTex} roughness={0.5} metalness={0.0}
+            emissiveMap={ruangrapiGlow} emissive="#ffd9a0" emissiveIntensity={1.4}
+            onBeforeCompile={cityLights} />
         </mesh>
-        <Atmosphere radius={planets[0].size} color="#6fd8ff" planetPos={bodies[planets[0].name]} intensity={1.2} />
+        <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
         <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
 
@@ -455,7 +488,7 @@ export default function SpacePlanets() {
         {/* Planet Sphere */}
         <mesh ref={videoPlanetRef}>
           <sphereGeometry args={[planets[1].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={jupiterTex} roughness={0.95} metalness={0.0} />
+          <meshStandardMaterial map={portfolioTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
@@ -474,9 +507,10 @@ export default function SpacePlanets() {
         {/* Planet Sphere */}
         <mesh ref={agentPlanetRef}>
           <sphereGeometry args={[planets[2].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={marsTex} roughness={0.95} metalness={0.0} />
+          <meshStandardMaterial map={fuxxTex} roughness={0.9} metalness={0.0}
+            emissiveMap={fuxxGlow} emissive="#e070ff" emissiveIntensity={1.2} />
         </mesh>
-        <Atmosphere radius={planets[2].size} color="#e8b48a" planetPos={bodies[planets[2].name]} intensity={0.4} thickness={1.05} />
+        <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} intensity={0.5} thickness={1.05} />
         <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
         <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
 

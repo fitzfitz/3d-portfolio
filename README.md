@@ -81,12 +81,19 @@ with console snippets that set each scenario up in seconds.
 
 ## Assets
 
-`public/models/` is ~3.6MB, and most of it is reproducible:
+`public/models/` is ~3.5MB, and **all of it is original and reproducible**:
+every model and planet texture comes from a deterministic script in this repo.
 
 ```bash
-npm run assets:generate   # regenerate GLBs via headless Blender (scripts/blender/)
+npm run assets:generate   # regenerate everything (Blender headless + scripts/textures/)
 npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public/
 ```
+
+| Asset | Generator |
+| --- | --- |
+| Hero ship, contact portal, fuel crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
+| Asteroids, cargo ship, moon, comet head, jellyfish | `scripts/blender/gen_*.py` |
+| Planet colour + glow maps (one world per project) | `scripts/textures/gen_planets.mjs` |
 
 The optimize pass is deliberately **visually lossless**: weld, dedup, prune,
 WebP textures, then quantize and meshopt-compress. Geometry is never
@@ -95,11 +102,10 @@ belt draws a procedural 80-triangle stand-in at runtime,
 `src/utils/lowPolyRock.ts`, rather than a simplified copy of the asset; the
 GLB itself is untouched and the hero asteroids still use it.)
 
-Six assets are **not** reproducible — external files of unknown provenance
-listed in `assets-src/MANIFEST.md`. `assets-src/` is gitignored here but is
-its own git repository, backed up to the private
-`fitzfitz/3d-portfolio-assets-src`. Keep it pushed: that remote is the only
-copy of those six files outside this machine.
+`assets-src/` (the raw generator output) is gitignored here but is its own git
+repository, backed up to the private `fitzfitz/3d-portfolio-assets-src`, with a
+provenance manifest in `assets-src/MANIFEST.md`. `tests/assetProvenance.test.ts`
+fails if a shipped file has no generator, so an unowned asset can't slip in.
 
 ## Architecture
 

@@ -39,9 +39,14 @@ for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal",
   await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", quality: 92 })]);
 }
 
-// Planet equirect maps: keep 2048x1024 resolution, convert JPEG -> WebP.
-for (const name of ["earth", "jupiter", "mars"]) {
-  await sharp(`${SRC}/${name}.jpg`).webp({ quality: 88 }).toFile(`${OUT}/${name}.webp`);
-  console.log(`${name}.webp  ${mb(`${SRC}/${name}.jpg`)} -> ${mb(`${OUT}/${name}.webp`)}`);
+// Planet equirect maps (one per project planet, original procedural art from
+// scripts/textures/ or scripts/blender/): keep 2048x1024, convert JPEG -> WebP.
+// A `<name>_glow.jpg` emissive map is optional per planet.
+for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
+  for (const file of [name, `${name}_glow`]) {
+    if (!existsSync(`${SRC}/${file}.jpg`)) continue;
+    await sharp(`${SRC}/${file}.jpg`).webp({ quality: 88 }).toFile(`${OUT}/${file}.webp`);
+    console.log(`${file}.webp  ${mb(`${SRC}/${file}.jpg`)} -> ${mb(`${OUT}/${file}.webp`)}`);
+  }
 }
 console.log("Done.");
