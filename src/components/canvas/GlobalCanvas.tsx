@@ -436,7 +436,10 @@ function GlobalCanvas() {
           <ambientLight intensity={0.15} />
           {/* The sun: single dominant light at the origin — gives every body a
               real day side and terminator (realistic-planets spec G2) */}
-          <pointLight position={[0, 0, 0]} intensity={2.0} decay={0} color="#fff4e0" />
+          {/* 2.1, up from 2.0: absorbs Sun.tsx's second light at the origin
+              (4.8, decay 0.8), which added only ~5% at planet distance and
+              cost a full light in every lit fragment. */}
+          <pointLight position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />
 
           {/* Starfield particles */}
           <GalaxyStarfield isLowPerf={isLowPerf} />

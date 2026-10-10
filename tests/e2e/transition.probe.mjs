@@ -16,17 +16,17 @@ const DEEP_PROGRAMS_CEILING = 87;
 const APPROACH_CALLS_CEILING = 110;
 const APPROACH_TRIS_CEILING = 289030;
 const APPROACH_PROGRAMS_CEILING = 88;
-const APPROACH_LIGHTS_CEILING = 11;
+const APPROACH_LIGHTS_CEILING = 5;
 
 const MODAL_CALLS_CEILING = 110;
 const MODAL_TRIS_CEILING = 289040;
 const MODAL_PROGRAMS_CEILING = 88;
-const MODAL_LIGHTS_CEILING = 11;
+const MODAL_LIGHTS_CEILING = 5;
 
 const ANOMALIES_CALLS_CEILING = 40;
 const ANOMALIES_TRIS_CEILING = 125970;
 const ANOMALIES_PROGRAMS_CEILING = 87;
-const ANOMALIES_LIGHTS_CEILING = 11;
+const ANOMALIES_LIGHTS_CEILING = 5;
 
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);

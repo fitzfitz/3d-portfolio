@@ -67,10 +67,10 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 28 | 108512 | 86 | 10 |
-| Close approach | 87 | 251322 | 87 | 10 |
-| Modal open | 89 | 251334 | 87 | 10 |
-| 40 anomalies | 32 | 109536 | 86 | 10 |
+| Deep space | 28 | 108512 | 86 | 4 |
+| Close approach | 87 | 251322 | 87 | 4 |
+| Modal open | 89 | 251334 | 87 | 4 |
+| 40 anomalies | 32 | 109536 | 86 | 4 |
 
 **Re-baselined 2026-10-10 (phase 3 load/render pass).** Triangles fell 72-87%:
 the asteroid belt drew the 1,244-triangle hero asteroid 560 times; it now uses
@@ -87,16 +87,19 @@ Previous table (2026-10-10, before phase 3): deep space 29 / 825376 / 85,
 close approach 91 / 886362 / 86, modal open 89 / 886238 / 86,
 40 anomalies 31 / 825888 / 85.
 
-Lights sits at 10 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — the
-whole point of Task 4's plasma-pool fix is that this number does not move
-across gameplay. `transition.probe.mjs`'s deep-space check asserts directly
-against the imported `LIGHT_BUDGET` constant rather than a separately-derived
-ceiling, since that constant already **is** the intended hard limit; the other
-three states use `LIGHT_BUDGET + 1` (11) per the derivation rule above, as
-slack for measurement noise rather than as license to add a light.
+Lights sits at 4 (`LIGHT_BUDGET`, `src/constants.ts`) in every state — cut
+from 10 on 2026-10-10 (duplicate sun light, three planet glow lights sealed
+inside opaque spheres, a 1.2u ship light, and the portal pair merged into one;
+see the comment on `LIGHT_BUDGET`). The whole point of Task 4's plasma-pool fix
+is that this number does not move across gameplay. `transition.probe.mjs`'s
+deep-space check asserts directly against the imported `LIGHT_BUDGET` constant
+rather than a separately-derived ceiling, since that constant already **is**
+the intended hard limit; the other three states use `LIGHT_BUDGET + 1` (5) per
+the derivation rule above, as slack for measurement noise rather than as
+license to add a light.
 
-Programs climbs from 84 (deep space, the very first state measured after
-page load) to 85 everywhere else, regardless of which state is measured
+Programs climbs from 86 (deep space, the very first state measured after
+page load) to 87 in the planet states, regardless of which is measured
 second — a one-time lazy shader compile that isn't specific to any one
 transition. Task 7's eager `Preload` warm-up compiles nearly everything up
 front, but not quite everything; this is within the `+1` slack the derivation

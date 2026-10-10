@@ -416,8 +416,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.3} />
         </mesh>
-        
-        <pointLight color="#00ff87" intensity={0.6} distance={planets[0].size * 4.5} />
       </group>
 
       {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
@@ -437,8 +435,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.3} />
         </mesh>
-
-        <pointLight color="#00f0ff" intensity={0.6} distance={planets[1].size * 4.5} />
       </group>
 
       {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
@@ -457,8 +453,6 @@ export default function SpacePlanets() {
           <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.04), 32]} />
           <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.3} />
         </mesh>
-
-        <pointLight color="#bd00ff" intensity={0.6} distance={planets[2].size * 4.5} />
       </group>
 
       {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}

@@ -3,12 +3,15 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 
+/** The portal light blends between these by its two flickers' ratio. */
+const PORTAL_RED = new THREE.Color("#ff3300");
+const PORTAL_AMBER = new THREE.Color("#ffaa00");
+
 export default function PortalRing() {
   const outerRingRef = useRef<THREE.Mesh>(null);
   const innerRingRef = useRef<THREE.Mesh>(null);
   const particleGroupRef = useRef<THREE.Group>(null);
-  const lightARef = useRef<THREE.PointLight>(null);
-  const lightBRef = useRef<THREE.PointLight>(null);
+  const lightRef = useRef<THREE.PointLight>(null);
 
   // Generate orbital particles around the portal
   const particleCount = 40;
@@ -48,21 +51,23 @@ export default function PortalRing() {
     // core all pulse, while the light *sources* sat at fixed intensity, which
     // flattened the whole effect. Two incommensurate frequencies per light
     // (11/23 and 13/27) so they never settle into a visible repeating beat.
-    if (lightARef.current) {
-      lightARef.current.intensity = 2.5 + Math.sin(time * 11) * 1.4 + Math.sin(time * 23) * 0.72;
-    }
-    if (lightBRef.current) {
-      // Baseline raised 1.5 -> 1.68 so the x4 swing cannot go negative; a
-      // negative pointLight intensity subtracts light rather than dimming.
-      lightBRef.current.intensity = 1.68 + Math.sin(time * 13 + 1.7) * 1.2 + Math.sin(time * 27) * 0.48;
+    //
+    // One light now carries both flickers: their summed intensity, and a
+    // colour blended red->amber by their ratio, so the shimmer survives at
+    // half the cost (every lit fragment in the scene loops over every light).
+    if (lightRef.current) {
+      const a = 2.5 + Math.sin(time * 11) * 1.4 + Math.sin(time * 23) * 0.72;
+      // Baseline 1.68 so this swing cannot go negative.
+      const b = 1.68 + Math.sin(time * 13 + 1.7) * 1.2 + Math.sin(time * 27) * 0.48;
+      lightRef.current.intensity = a + b;
+      lightRef.current.color.lerpColors(PORTAL_RED, PORTAL_AMBER, b / (a + b));
     }
   });
 
   return (
     <group>
       {/* Lights inside the portal */}
-      <pointLight ref={lightARef} color="#ff3300" intensity={2.5} distance={5} />
-      <pointLight ref={lightBRef} color="#ffaa00" intensity={1.5} distance={5} />
+      <pointLight ref={lightRef} color="#ff3300" intensity={4} distance={5} />
 
       {/* Outer Torus Ring */}
       <mesh ref={outerRingRef}>
