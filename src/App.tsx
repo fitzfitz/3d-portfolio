@@ -120,6 +120,18 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Cinematic letterbox while docked in orbit (behind the dossier,
+          under the HUD). Skipped under reduced motion. */}
+      {!photoMode && !showClassicCV && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30">
+          {(["top-0", "bottom-0"] as const).map((pos) => (
+            <div key={pos}
+              className={`absolute inset-x-0 ${pos} h-[8vh] bg-black/85 ${reducedMotion ? "" : "transition-transform duration-700 ease-out"} ${
+                isOrbitLocked ? "translate-y-0" : pos === "top-0" ? "-translate-y-full" : "translate-y-full"}`} />
+          ))}
+        </div>
+      )}
+
       {/* Dynamic scanline overlay visual */}
       <div className="pointer-events-none fixed inset-0 z-40 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,3px_100%] opacity-[0.12]" />
 

@@ -19,15 +19,30 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uColor;
   uniform vec3 uSunDir;
   uniform float uIntensity;
+  uniform float uLimbFacing;
   varying vec3 vNormal;
   varying vec3 vViewDir;
   varying vec3 vWorldNormal;
   void main() {
-    // clamp: |dot| can exceed 1.0 by float epsilon and pow(negative, x) is NaN on some GPUs
-    float fresnel = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 3.0);
-    // Scattering needs sunlight: bright on the lit limb, dying past the terminator
-    float lit = clamp(dot(normalize(vWorldNormal), uSunDir), 0.0, 1.0);
-    gl_FragColor = vec4(uColor, fresnel * (0.25 + 0.85 * lit) * uIntensity);
+    // The shell is drawn from its back faces, so what is visible is the ring
+    // between the planet's limb and the shell's silhouette. "facing" is
+    // uLimbFacing at the planet's limb and 0 at the outer edge. The old
+    // fresnel term peaked at the OUTER edge — an even glass-bubble halo.
+    // Real scattering is densest at the limb and thins outward.
+    // clamp: |dot| can exceed 1.0 by float epsilon.
+    float facing = clamp(abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0);
+    float h = clamp(facing / uLimbFacing, 0.0, 1.0);  // 1 at limb, 0 at edge
+    float density = pow(h, 2.2);
+    // Sunlit side only, with a soft terminator; the night side keeps a
+    // faint airglow rather than a quarter of the day-side glow.
+    float sunCos = dot(normalize(vWorldNormal), uSunDir);
+    float lit = smoothstep(-0.25, 0.45, sunCos);
+    // Warm, sunset-tinted band right at the terminator.
+    float du = sunCos / 0.18;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
+    float dusk = exp(-du * du);
+    vec3 col = mix(uColor, vec3(1.0, 0.62, 0.38), dusk * 0.55);
+    float a = density * (0.04 + 0.96 * lit) * uIntensity * 1.15;
+    gl_FragColor = vec4(col, a);
   }
 `;
 
@@ -58,6 +73,9 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
         uColor: { value: new THREE.Color(color) },
         uSunDir: { value: sunDir },
         uIntensity: { value: intensity },
+        // facing (|N·V|) of the shell's back face where it passes the
+        // planet's limb: sqrt(1 - (r/R)²) for shell radius R = r·thickness.
+        uLimbFacing: { value: Math.sqrt(1 - 1 / (thickness * thickness)) },
       },
       vertexShader,
       fragmentShader,
@@ -69,7 +87,7 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- planetPos is a
     // stable mutated-in-place object; only its identity (not its contents)
     // should retrigger material creation.
-  }, [color, intensity]);
+  }, [color, intensity, thickness]);
 
   // Planet moves every frame (SpacePlanets writes into the same object) — the
   // sun-facing gradient must track it live rather than freeze at mount time.

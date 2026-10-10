@@ -29,6 +29,9 @@ let dryAnnouncedThisSpell = false;
 /** Module-level for the same remount reason as dryAnnouncedThisSpell. */
 let completionAnnounced = false;
 
+/** How long after leaving the spawn pad the HUD quiets down. */
+const QUIET_AFTER_MS = 6000;
+
 export default function HUDOverlay() {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
@@ -49,6 +52,20 @@ export default function HUDOverlay() {
   const sceneReady = useSpaceStore((s) => s.sceneReady);
   const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
   const bannerUp = sceneReady && isNearSpawn && !activeZone;
+  // Quiet HUD: once the pilot has left the spawn pad and kept flying for a
+  // few seconds, the controls strip and the flavour telemetry fold away so
+  // the scene gets the screen. Back at spawn (or after RESET) they return.
+  // Toggled as a data attribute on the HUD root, not React state: a state
+  // flip would be a React commit mid-flight, breaking the zero-renders-in-
+  // flight guarantee the perf probe enforces.
+  const hudRootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = hudRootRef.current;
+    if (!root) return;
+    if (isNearSpawn) { root.dataset.quiet = "false"; return; }
+    const id = setTimeout(() => { root.dataset.quiet = "true"; }, QUIET_AFTER_MS);
+    return () => clearTimeout(id);
+  }, [isNearSpawn]);
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
@@ -117,7 +134,7 @@ export default function HUDOverlay() {
   }, [allRead, isOrbitLocked]);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/60 select-none">
+    <div ref={hudRootRef} data-quiet="false" className="group/hud fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/60 select-none">
       {/* Same phone rule as the radar: the full-width banner already offers
           jumps, and the marker's label would draw over it. */}
       <div className={bannerUp ? "max-sm:hidden" : undefined}>
@@ -137,10 +154,11 @@ export default function HUDOverlay() {
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>
         </div>
-        <div ref={locRef} className="hidden sm:block">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
-        <div className="hidden sm:block">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
+        {/* Flavour readouts fold away once the pilot is flying (data-quiet). */}
+        <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
+        <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
-        <div className="hidden sm:block">WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
           DOSSIERS: {visitedDossiers.length}/{planets.length}
         </div>
@@ -173,7 +191,7 @@ export default function HUDOverlay() {
 
       {/* Center Top: Space flight instruction card. Desktop only: on a phone
           there is no room, and the touch buttons label themselves. */}
-      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] pointer-events-auto">
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] transition-opacity duration-700 pointer-events-auto group-data-[quiet=true]/hud:opacity-0 group-data-[quiet=true]/hud:pointer-events-none">
         <div className="flex flex-col">
           <span className="text-white/45">PILOT_STEER</span>
           <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>

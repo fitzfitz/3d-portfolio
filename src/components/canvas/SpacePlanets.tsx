@@ -17,6 +17,7 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
+import { makeGuideLineMaterial, makePlanetRingMaterial } from "./guideLine";
 import { assetUrl } from "../../utils/assetUrl";
 
 /**
@@ -97,10 +98,11 @@ const membraneFragment = /* glsl */ `
     float swirl = sin(a * 3.0 + r * 9.0 - uTime * 2.6) * 0.5 + 0.5;
     float counter = sin(a * 5.0 - r * 14.0 + uTime * 1.7) * 0.5 + 0.5;
     float bands = swirl * 0.7 + counter * 0.3;
-    float core = smoothstep(0.55, 0.0, r);
+    // edge0 < edge1 throughout: reversed smoothstep edges are undefined in GLSL
+    float core = 1.0 - smoothstep(0.0, 0.55, r);
     vec3 col = mix(vec3(0.45, 0.05, 0.55), vec3(1.0, 0.25, 0.75), bands); // deep violet -> neon pink
     col = mix(col, vec3(1.0, 0.9, 0.6), core * (0.6 + bands * 0.4));       // white-hot center
-    float alpha = (0.35 + bands * 0.5) * smoothstep(1.05, 0.8, r) + core * 0.5;
+    float alpha = (0.35 + bands * 0.5) * (1.0 - smoothstep(0.8, 1.05, r)) + core * 0.5;
     gl_FragColor = vec4(col * (0.8 + core), alpha);
   }
 `;
@@ -285,7 +287,18 @@ export default function SpacePlanets() {
   const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
   /** Orbit-path ring materials, one per planet, for the opacity breathe. */
-  const orbitRingMats = useRef<(THREE.MeshBasicMaterial | null)[]>([]);
+  // Thin dashed orbit paths that fade out near the camera (guideLine.ts).
+  const orbitRingMats = useMemo(() => planets.map((p) => makeGuideLineMaterial({
+    color: p.color, opacity: ORBIT_RING_OPACITY, dashes: 220, fadeIn: [10, 55],
+  })), []);
+  // Gravity-field circles: only shown on approach, faded in near and out far.
+  const gravityMats = useMemo(() => planets.map((p) => makeGuideLineMaterial({
+    color: p.color, opacity: 0.4, dashes: 48, fadeIn: [4, 9], fadeOut: [28, 55],
+  })), []);
+  const planetRingMat = useMemo(
+    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6), []);
+  useEffect(() => () => [...orbitRingMats, ...gravityMats, planetRingMat].forEach((m) => m.dispose()),
+    [orbitRingMats, gravityMats, planetRingMat]);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
   const portalInnerAuraRef = useRef<THREE.Mesh>(null);
@@ -388,10 +401,8 @@ export default function SpacePlanets() {
     // At x16 the periods land around 26/32/37s: a slow, calm pulse that reads
     // without competing with a dossier for attention.
     for (let i = 0; i < planets.length; i++) {
-      const mat = orbitRingMats.current[i];
-      if (!mat) continue;
       const rate = planets[i].orbit.angularSpeed * ORBIT_RING_BREATH_MULT;
-      mat.opacity = ORBIT_RING_OPACITY +
+      orbitRingMats[i].uniforms.uOpacity.value = ORBIT_RING_OPACITY +
         Math.sin(time * rate + planets[i].orbit.phase) * ORBIT_RING_BREATH;
     }
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
@@ -480,16 +491,14 @@ export default function SpacePlanets() {
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
         <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" variant="Rock" />
 
-        {/* Orbit Grid Ring */}
-        <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]}>
-          <ringGeometry args={[planets[0].size * 1.15, planets[0].size * 1.45, 64]} />
-          <meshStandardMaterial color="#00ff87" emissive="#00ff87" emissiveIntensity={0.8} side={THREE.DoubleSide} transparent={true} opacity={0.35} />
+        {/* Planetary ring: banded, translucent, with a division (guideLine.ts) */}
+        <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]} material={planetRingMat}>
+          <ringGeometry args={[planets[0].size * 1.15, planets[0].size * 1.6, 160, 1]} />
         </mesh>
 
-        {/* Proximity Gravity Field Dotted circle */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.04), 32]} />
-          <meshBasicMaterial color="#00ff87" transparent={true} opacity={0.3} />
+        {/* Proximity gravity-field circle: dashed, shown only on approach */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[0]}>
+          <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.02), 192]} />
         </mesh>
       </group>
 
@@ -505,10 +514,9 @@ export default function SpacePlanets() {
         <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} variant="Ice" />
         <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} variant="Rock" />
 
-        {/* Proximity Gravity Field Dotted circle */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.04), 32]} />
-          <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.3} />
+        {/* Proximity gravity-field circle: dashed, shown only on approach */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[1]}>
+          <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.02), 192]} />
         </mesh>
       </group>
 
@@ -524,10 +532,9 @@ export default function SpacePlanets() {
         <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" variant="Volcanic" />
         <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} variant="Ice" />
 
-        {/* Proximity Gravity Field Dotted circle */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.04), 32]} />
-          <meshBasicMaterial color="#bd00ff" transparent={true} opacity={0.3} />
+        {/* Proximity gravity-field circle: dashed, shown only on approach */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[2]}>
+          <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.02), 192]} />
         </mesh>
       </group>
 
@@ -535,12 +542,8 @@ export default function SpacePlanets() {
       {planets.map((p, i) => (
         <group key={`ring-${p.name}`} rotation={[0, p.orbit.node, 0]}>
           <group rotation={[p.orbit.inclination, 0, 0]}>
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[p.orbit.radius - 0.15, p.orbit.radius + 0.15, 128]} />
-              <meshBasicMaterial
-                ref={(m: THREE.MeshBasicMaterial | null) => { orbitRingMats.current[i] = m; }}
-                color={p.color} transparent={true} opacity={ORBIT_RING_OPACITY}
-                side={THREE.DoubleSide} depthWrite={false} />
+            <mesh rotation={[-Math.PI / 2, 0, 0]} material={orbitRingMats[i]}>
+              <ringGeometry args={[p.orbit.radius - 0.06, p.orbit.radius + 0.06, 512]} />
             </mesh>
           </group>
         </group>

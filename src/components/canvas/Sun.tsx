@@ -1,173 +1,264 @@
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useSpaceStore } from "../../store/spaceStore";
+import { useSpaceStore, bodies } from "../../store/spaceStore";
+import { planets } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 
-/**
- * Core pulse, calibrated by eye at animScale 4 and baked.
- *
- * Rebased rather than literally 3.2 ± 4.4: that swing dipped to -1.2, and a
- * negative emissiveIntensity is undefined in three.js. 3.8 ± 3.8 reproduces the
- * SAME observed range (0 .. 7.6) with a well-defined floor. Note this means the
- * core genuinely pulses to fully dark at the trough — a dramatic beat, not a
- * gentle breath. That is what was approved; drop SUN_CORE_PULSE toward ~1.5 for
- * something subtler without touching the peak.
- */
-const SUN_CORE_EMISSIVE = 3.8;
-/**
- * Pulse depth. Started at 0.25 (±8%), which was invisible: the core sits deep in
- * bloom saturation against a threshold of 0.2, so a small intensity swing does
- * not survive the bloom pass at all.
- */
-const SUN_CORE_PULSE = 3.8;
-/**
- * Emissive colour swing, and the real fix for visibility. Where raw intensity is
- * swallowed by bloom saturation, HUE still reads — a star shifting between deep
- * orange and hot yellow-white is legible even when its brightness is clipped.
- */
-const SUN_HOT = new THREE.Color("#ffd08a");
-const SUN_COOL = new THREE.Color("#ff3300");
-
-const coronaVertex = /* glsl */ `
+// Photosphere: boiling granulation cells and limb darkening, in HDR so
+// bloom and the god-ray pass keep their punch. Replaces a flat
+// MeshStandardMaterial ball.
+const surfaceVertex = /* glsl */ `
+  varying vec3 vPos;
   varying vec3 vNormal;
   varying vec3 vViewDir;
   void main() {
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vPos = position;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vNormal = normalize(normalMatrix * normal);
-    vViewDir = normalize(-mvPos.xyz);
-    gl_Position = projectionMatrix * mvPos;
+    vViewDir = normalize(-mv.xyz);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const NOISE = /* glsl */ `
+  float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float noise3(vec3 x) {
+    vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x), mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
+               mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x), mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+  float fbm3(vec3 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * noise3(p); p *= 2.07; a *= 0.5; } return v; }
+`;
+const surfaceFragment = /* glsl */ `
+  uniform float uTime;
+  uniform float uHeat;   // 0 cool .. 1 hot (the breathing pulse)
+  varying vec3 vPos;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  ${NOISE}
+  void main() {
+    vec3 p = normalize(vPos);
+    // Two scales of convection, slowly churning.
+    float cells = fbm3(p * 6.0 + vec3(0.0, uTime * 0.05, uTime * 0.03));
+    float fine = fbm3(p * 22.0 - vec3(uTime * 0.11, 0.0, uTime * 0.07));
+    float g = smoothstep(0.25, 0.85, cells * 0.7 + fine * 0.45);
+    float mu = clamp(dot(normalize(vNormal), normalize(vViewDir)), 0.0, 1.0);
+    // Limb darkening: centre white-hot, edge deep orange.
+    float limb = pow(mu, 0.45);
+    vec3 edge = vec3(1.0, 0.28, 0.04);
+    vec3 mid = vec3(1.0, 0.62, 0.22);
+    vec3 hot = vec3(1.0, 0.93, 0.78);
+    vec3 col = mix(edge, mid, limb);
+    col = mix(col, hot, limb * limb * (0.55 + 0.45 * g));
+    col *= 0.75 + 0.5 * g;
+    gl_FragColor = vec4(col * (2.6 + 2.2 * uHeat), 1.0);
   }
 `;
 
-// Cheap animated value noise: two scrolling sine fields beat against each other.
+// Corona: a camera-facing billboard with radial streamers that churn
+// slowly, falling off with distance from the disc. Replaces a uniform rim
+// shell plus two round flare sprites.
+const coronaVertex = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv * 2.0 - 1.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
 const coronaFragment = /* glsl */ `
   uniform float uTime;
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  float vnoise(vec3 p) {
-    return sin(p.x * 5.1 + uTime * 1.7) * sin(p.y * 4.3 - uTime * 1.1) * sin(p.z * 6.7 + uTime * 2.3);
-  }
+  uniform float uDisc;     // disc radius as a fraction of the billboard half-size
+  varying vec2 vUv;
+  ${NOISE}
   void main() {
-    // clamp: |dot| can exceed 1.0 by float epsilon and pow(negative, x) is NaN on some GPUs
-    float rim = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 2.0);
-    float n = 0.5 + 0.5 * vnoise(vNormal * 2.0);
-    float flicker = 0.65 + 0.35 * vnoise(vNormal * 4.0 + vec3(0.0, uTime * 0.2, 0.0));
-    vec3 col = mix(vec3(1.0, 0.33, 0.0), vec3(1.0, 0.75, 0.35), n);
-    gl_FragColor = vec4(col, rim * flicker * 0.85);
+    float r = length(vUv);
+    if (r > 1.0) discard;
+    float a = atan(vUv.y, vUv.x);
+    float x = max(r - uDisc, 0.0) / (1.0 - uDisc);   // 0 at the limb, 1 at the edge
+    // Streamers: angular noise stretched radially, rotating very slowly.
+    vec3 q = vec3(cos(a) * 2.2, sin(a) * 2.2, uTime * 0.06);
+    float streak = fbm3(q * 1.6 + vec3(0.0, 0.0, x * 0.8));
+    float rays = pow(smoothstep(0.35, 0.95, streak), 1.6);
+    float glow = exp(-x * 7.0) * 0.9 + exp(-x * 2.6) * 0.25;
+    float corona = glow * (0.45 + 1.4 * rays * exp(-x * 1.4));
+    vec3 col = mix(vec3(1.0, 0.45, 0.12), vec3(1.0, 0.85, 0.6), exp(-x * 4.0));
+    gl_FragColor = vec4(col * corona, corona * (1.0 - smoothstep(0.85, 1.0, r)));
   }
 `;
-
-/** Shared soft radial flare texture (canvas-generated once). */
-const flareTexture = (() => {
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 128;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, "rgba(255, 220, 160, 0.85)");
-    g.addColorStop(0.35, "rgba(255, 130, 40, 0.35)");
-    g.addColorStop(1, "rgba(255, 85, 0, 0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
-  }
-  return new THREE.CanvasTexture(canvas);
-})();
 
 interface SunProps {
   onSunReady: (mesh: THREE.Mesh) => void;
 }
 
+const CORE_R = 2.5;
+const CORONA_SIZE = 16;
+
 export default function Sun({ onSunReady }: SunProps) {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
-  const flareARef = useRef<THREE.Sprite>(null);
-  const flareBRef = useRef<THREE.Sprite>(null);
+  const coronaRef = useRef<THREE.Mesh>(null);
 
-  const coronaMaterial = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
-        vertexShader: coronaVertex,
-        fragmentShader: coronaFragment,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        side: THREE.BackSide,
-        depthWrite: false,
-      }),
+  const surfaceMaterial = useMemo(
+    () => new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uHeat: { value: 1 } },
+      vertexShader: surfaceVertex,
+      fragmentShader: surfaceFragment,
+    }),
     []
   );
+  const coronaMaterial = useMemo(
+    () => new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uDisc: { value: (CORE_R * 2) / CORONA_SIZE } },
+      vertexShader: coronaVertex,
+      fragmentShader: coronaFragment,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+    []
+  );
+  useEffect(() => () => { surfaceMaterial.dispose(); coronaMaterial.dispose(); }, [surfaceMaterial, coronaMaterial]);
 
-  // The core mesh, held for per-frame access. `coreRef` below is a *callback*
-  // ref (it notifies the parent for the GodRays pass), so it has no `.current`
-  // — this is the handle the frame loop needs.
-  const coreMesh = useRef<THREE.Mesh | null>(null);
-
-  // Callback ref: fires once when the core mesh mounts.
+  // Callback ref: fires once when the core mesh mounts (feeds the GodRays pass).
   const coreRef = useCallback(
-    (mesh: THREE.Mesh | null) => {
-      coreMesh.current = mesh;
-      if (mesh) onSunReady(mesh);
-    },
+    (mesh: THREE.Mesh | null) => { if (mesh) onSunReady(mesh); },
     [onSunReady]
   );
 
   useFrame((state) => {
     const t = ambientTime(state.clock.getElapsedTime());
+    // Breathing: hotter/cooler over ~7s. Drives brightness, not scale — the
+    // GodRays pass samples this mesh's silhouette, so a pulsing silhouette
+    // would make the rays throb.
+    surfaceMaterial.uniforms.uTime.value = t;
+    surfaceMaterial.uniforms.uHeat.value = 0.5 + 0.5 * Math.sin(t * 0.9);
     coronaMaterial.uniforms.uTime.value = t;
-    // Core breathing. The corona, flares and god rays are ALL gated behind
-    // !isLowPerf, so without this the sun — dead centre of the scene — was
-    // 100% frozen for exactly the visitors on modest hardware who land in
-    // low-perf mode. Driving emissiveIntensity and emissive COLOUR rather than
-    // scale, because the GodRays pass samples this mesh's silhouette and a
-    // pulsing silhouette would make the rays throb.
-    if (coreMesh.current) {
-      const mat = coreMesh.current.material as THREE.MeshStandardMaterial;
-      // Faster too: 0.35 rad/s was an 18s period, slow enough that a visitor
-      // glancing at the scene never saw a full breath. 0.9 gives ~7s.
-      const breath = Math.sin(t * 0.9);
-      mat.emissiveIntensity = SUN_CORE_EMISSIVE + breath * SUN_CORE_PULSE;
-      // Colour carries the pulse where intensity cannot. The x4 saturates this
-      // lerp for most of the cycle, so the core reads hot except near the
-      // trough — preserved deliberately, it is what made the pulse legible.
-      mat.emissive.copy(SUN_COOL).lerp(SUN_HOT, Math.min(1, (breath * 0.5 + 0.5) * 4));
-    }
-    // Asynchronous flare pulses
-    if (flareARef.current) {
-      const s = 9 + Math.sin(t * 0.9) * 1.4 + Math.sin(t * 2.7) * 0.7;
-      flareARef.current.scale.set(s, s, 1);
-    }
-    if (flareBRef.current) {
-      const s = 13 + Math.sin(t * 0.53 + 2.1) * 2.0;
-      flareBRef.current.scale.set(s, s, 1);
-      (flareBRef.current.material as THREE.SpriteMaterial).opacity = 0.4 + 0.15 * Math.sin(t * 1.3 + 1.0);
-    }
+    if (coronaRef.current) coronaRef.current.quaternion.copy(state.camera.quaternion);
   });
 
   return (
     <group position={[0, 0, 0]}>
       {/* Core (this mesh feeds the GodRays pass) */}
-      <mesh ref={coreRef} rotation={[0, 0, 0]}>
-        <sphereGeometry args={[2.5, 32, 32]} />
-        <meshStandardMaterial color="#ff5500" emissive="#ff3300" emissiveIntensity={3.2} roughness={0.15} metalness={0.1} />
+      <mesh ref={coreRef} material={surfaceMaterial}>
+        <sphereGeometry args={[CORE_R, 64, 64]} />
       </mesh>
 
-      {/* Animated corona shell + flares (skipped in low-perf) */}
+      {/* Streamer corona billboard (skipped in low-perf) */}
       {!isLowPerf && (
-        <>
-          <mesh name="SunCorona" material={coronaMaterial}>
-            <sphereGeometry args={[3.2, 48, 48]} />
-          </mesh>
-          <sprite ref={flareARef}>
-            <spriteMaterial map={flareTexture} transparent={true} opacity={0.55}
-              blending={THREE.AdditiveBlending} depthWrite={false} />
-          </sprite>
-          <sprite ref={flareBRef}>
-            <spriteMaterial map={flareTexture} transparent={true} opacity={0.4}
-              blending={THREE.AdditiveBlending} depthWrite={false} />
-          </sprite>
-        </>
+        <mesh ref={coronaRef} name="SunCorona" material={coronaMaterial} renderOrder={2}>
+          <planeGeometry args={[CORONA_SIZE, CORONA_SIZE]} />
+        </mesh>
       )}
+      {!isLowPerf && <SunFlare />}
+    </group>
+  );
+}
 
+/**
+ * Lens flare: a few soft ghosts and a hex iris along the line from the sun
+ * through the screen centre, in camera space so they stay screen-locked.
+ * Hidden when the sun is behind the camera or off screen, and when a planet
+ * disc covers it (analytic ray-sphere test against the live bodies).
+ */
+// Kept small and faint: ghosts land wherever the sun's mirror line crosses
+// the screen, which from a chase camera is usually right over the ship, so
+// big saturated rings there read as an overlay rather than a lens.
+const FLARE_GHOSTS = [
+  { t: 0.3, size: 0.05, color: "#9fe0ff", tex: "soft" as const },
+  { t: 0.62, size: 0.03, color: "#ffc38a", tex: "hex" as const },
+  { t: 1.0, size: 0.07, color: "#c9a8ff", tex: "ring" as const },
+  { t: 1.35, size: 0.035, color: "#8fffe0", tex: "hex" as const },
+];
+function flareTexture(kind: "soft" | "hex" | "ring"): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    ctx.translate(64, 64);
+    if (kind === "hex") {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 54, Math.sin(a) * 54); }
+      ctx.closePath();
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 56);
+      g.addColorStop(0, "rgba(255,255,255,0.10)"); g.addColorStop(0.8, "rgba(255,255,255,0.25)"); g.addColorStop(1, "rgba(255,255,255,0.0)");
+      ctx.fillStyle = g; ctx.fill();
+    } else if (kind === "ring") {
+      const g = ctx.createRadialGradient(0, 0, 30, 0, 0, 62);
+      g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.7, "rgba(255,255,255,0.35)"); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(-64, -64, 128, 128);
+    } else {
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 62);
+      g.addColorStop(0, "rgba(255,255,255,0.45)"); g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(-64, -64, 128, 128);
+    }
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+const _sun = new THREE.Vector3();
+const _ndc = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _toBody = new THREE.Vector3();
+const FLARE_DEPTH = 4; // world units in front of the camera
+
+function SunFlare() {
+  const groupRef = useRef<THREE.Group>(null);
+  const sprites = useRef<(THREE.Sprite | null)[]>([]);
+  const vis = useRef(0);
+  const textures = useMemo(() => ({ soft: flareTexture("soft"), hex: flareTexture("hex"), ring: flareTexture("ring") }), []);
+  useEffect(() => () => Object.values(textures).forEach((t) => t.dispose()), [textures]);
+
+  useFrame(({ camera }, delta) => {
+    const g = groupRef.current;
+    if (!g) return;
+    const cam = camera as THREE.PerspectiveCamera;
+    _sun.set(0, 0, 0);
+    _ndc.copy(_sun).project(cam);
+    const inFront = _ndc.z < 1;
+    const onScreen = inFront && Math.abs(_ndc.x) < 1.1 && Math.abs(_ndc.y) < 1.1;
+    // Occlusion by planets: ray from camera toward the sun vs each body sphere.
+    let occluded = false;
+    if (onScreen) {
+      _dir.subVectors(_sun, cam.position);
+      const sunDist = _dir.length();
+      _dir.divideScalar(sunDist);
+      for (const p of planets) {
+        const b = bodies[p.name];
+        _toBody.set(b.x - cam.position.x, b.y - cam.position.y, b.z - cam.position.z);
+        const along = _toBody.dot(_dir);
+        if (along <= 0 || along >= sunDist) continue;
+        const perp2 = _toBody.lengthSq() - along * along;
+        if (perp2 < p.size * p.size) { occluded = true; break; }
+      }
+    }
+    const target = onScreen && !occluded ? 1 - Math.min(1, Math.hypot(_ndc.x, _ndc.y) / 1.4) * 0.6 : 0;
+    vis.current += (target - vis.current) * (1 - Math.pow(0.001, Math.min(delta, 0.05)));
+    g.visible = vis.current > 0.01;
+    if (!g.visible) return;
+    // Place ghosts along the line sun -> centre -> beyond, at FLARE_DEPTH.
+    const halfH = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * FLARE_DEPTH;
+    const halfW = halfH * cam.aspect;
+    g.position.copy(cam.position);
+    g.quaternion.copy(cam.quaternion);
+    FLARE_GHOSTS.forEach((gh, i) => {
+      const s = sprites.current[i];
+      if (!s) return;
+      const nx = _ndc.x * (1 - gh.t * 1.25);
+      const ny = _ndc.y * (1 - gh.t * 1.25);
+      s.position.set(nx * halfW, ny * halfH, -FLARE_DEPTH);
+      const size = gh.size * halfH * 2;
+      s.scale.set(size, size, 1);
+      (s.material as THREE.SpriteMaterial).opacity = vis.current * 0.3;
+    });
+  });
+
+  return (
+    <group ref={groupRef} visible={false}>
+      {FLARE_GHOSTS.map((gh, i) => (
+        <sprite key={i} ref={(s) => { sprites.current[i] = s; }} renderOrder={10}>
+          <spriteMaterial map={textures[gh.tex]} color={gh.color} transparent depthTest={false} depthWrite={false}
+            blending={THREE.AdditiveBlending} />
+        </sprite>
+      ))}
     </group>
   );
 }

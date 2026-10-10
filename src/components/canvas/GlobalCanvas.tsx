@@ -23,6 +23,7 @@ import DataShards from "./DataShards";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
+import SkyBackdrop from "./SkyBackdrop";
 import { flight, useSpaceStore, selectSceneFrozen } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
@@ -70,7 +71,7 @@ const STAR_FRAG = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5);
     // Bright core plus a soft halo; zero at the sprite edge so no square rim.
-    float a = smoothstep(0.5, 0.0, d);
+    float a = 1.0 - smoothstep(0.0, 0.5, d);  // edge0 < edge1: reversed edges are undefined in GLSL
     a = a * a * (0.6 + 0.4 * vFlicker);
     if (a < 0.003) discard;
     gl_FragColor = vec4(vColor * a * uOpacity, 1.0);
@@ -509,6 +510,9 @@ function GlobalCanvas() {
               (4.8, decay 0.8), which added only ~5% at planet distance and
               cost a full light in every lit fragment. */}
           <pointLight position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />
+
+          {/* Painted galactic sky (scene.background, rendered once) */}
+          <SkyBackdrop />
 
           {/* Starfield particles */}
           <GalaxyStarfield isLowPerf={isLowPerf} />

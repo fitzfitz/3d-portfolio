@@ -12,24 +12,36 @@ const tunnelVertex = /* glsl */ `
   }
 `;
 
-// Scrolling streaks: thin bright lines racing along the tube, fading at both ends.
+// Hyperspace streaks: long, hair-thin lines racing along a wide, long tube
+// that encloses the camera, so they converge on the vanishing point ahead.
+// The old tube was 3.5u wide and 14u long around the ship — seen from the
+// chase camera down its short end, its streaks read as a ring of confetti.
 const tunnelFragment = /* glsl */ `
   uniform float uTime;
   uniform float uIntensity;
   varying vec2 vUv;
   float hash(float n) { return fract(sin(n) * 43758.5453123); }
   void main() {
-    float lane = floor(vUv.x * 48.0);
+    float lanes = 140.0;
+    float lane = floor(vUv.x * lanes);
     float laneRand = hash(lane);
-    float speed = 2.2 + laneRand * 2.4;
-    float phase = fract(vUv.y * (1.5 + laneRand) + uTime * speed + laneRand * 7.0);
-    float streak = smoothstep(0.0, 0.12, phase) * smoothstep(0.5, 0.13, phase);
-    float laneCenter = smoothstep(0.45, 0.0, abs(fract(vUv.x * 48.0) - 0.5));
-    float endFade = smoothstep(0.0, 0.25, vUv.y) * smoothstep(1.0, 0.6, vUv.y);
-    vec3 col = mix(vec3(0.0, 0.94, 1.0), vec3(0.85, 0.98, 1.0), laneRand);
-    gl_FragColor = vec4(col, streak * laneCenter * endFade * uIntensity * 0.75);
+    // Only some lanes carry a streak at all: sparse reads as speed, dense as a wall.
+    // ("active" is a reserved word in GLSL ES: fails to compile on many GPUs.)
+    float laneOn = step(0.72, hash(lane + 17.0));
+    float speed = 1.6 + laneRand * 1.8;
+    float phase = fract(vUv.y * (0.8 + laneRand * 0.6) + uTime * speed + laneRand * 7.0);
+    // Long tail, sharp head.
+    float streak = smoothstep(0.0, 0.42, phase) * (1.0 - smoothstep(0.44, 0.5, phase));
+    float laneCenter = 1.0 - smoothstep(0.0, 0.09, abs(fract(vUv.x * lanes) - 0.5));
+    // (edge0 < edge1 throughout: reversed smoothstep edges are undefined in GLSL)
+    float endFade = smoothstep(0.0, 0.15, vUv.y) * (1.0 - smoothstep(0.75, 1.0, vUv.y));
+    vec3 col = mix(vec3(0.55, 0.9, 1.0), vec3(1.0), laneRand * 0.6);
+    gl_FragColor = vec4(col, laneOn * streak * laneCenter * endFade * uIntensity * 0.45);
   }
 `;
+
+/** Tunnel is centred this far ahead of the ship, so the camera sits inside its rear section. */
+const TUNNEL_AHEAD = 24;
 
 export default function WarpTunnel() {
   const meshRef = useRef<THREE.Mesh>(null);
@@ -67,7 +79,13 @@ export default function WarpTunnel() {
     const visible = intensity.current > 0.01;
     meshRef.current.visible = visible;
     if (visible) {
-      meshRef.current.position.set(flight.x, flight.y, flight.z);
+      // Centred ahead along the nose (same convention as noseDirection).
+      const cp = Math.cos(flight.pitch);
+      meshRef.current.position.set(
+        flight.x + Math.sin(flight.heading) * cp * TUNNEL_AHEAD,
+        flight.y + Math.sin(flight.pitch) * TUNNEL_AHEAD,
+        flight.z + Math.cos(flight.heading) * cp * TUNNEL_AHEAD,
+      );
       // Follow both heading and pitch (R_y(heading)·R_x(π/2−pitch) on the cylinder's
       // +Y long axis == noseDirection(yaw, pitch)) — yaw-only left a pitched warp
       // flying out through the tunnel wall.
@@ -77,8 +95,8 @@ export default function WarpTunnel() {
 
   return (
     <mesh name="WarpTunnel" ref={meshRef} material={material} visible={false}>
-      {/* open-ended tube around the ship, long axis = flight direction */}
-      <cylinderGeometry args={[3.5, 3.5, 14, 32, 1, true]} />
+      {/* open-ended tube enclosing ship and camera, long axis = flight direction */}
+      <cylinderGeometry args={[11, 11, 80, 64, 1, true]} />
     </mesh>
   );
 }
