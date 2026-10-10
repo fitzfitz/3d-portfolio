@@ -99,7 +99,6 @@ export default async function run() {
   }
 
   const scratch = mkdtempSync(join(tmpdir(), "fitz-regen-"));
-  const REGENERABLE = ["cargo_ship", "moon", "comet_head", "creature"];
 
   // gen_moon.py:68 hardcodes its output to assets-src/moon.glb and reads no env
   // var (verified). Regenerating therefore OVERWRITES an original in a
@@ -144,8 +143,6 @@ export default async function run() {
     checks.check("regenerated moon file size stays within a sane band (±25%)",
       byteDrift <= 0.25,
       `${shipped.bytes} -> ${fresh.bytes} bytes (${(byteDrift * 100).toFixed(2)}%)`);
-    checks.check("only 4 of 11 assets are regenerable (documented in MANIFEST.md)",
-      REGENERABLE.length === 4, REGENERABLE.join(","));
   } catch (e) {
     checks.check("regeneration check completed", false, e.message.slice(0, 200));
   } finally {

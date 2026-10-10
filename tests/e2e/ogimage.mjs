@@ -40,6 +40,9 @@ await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
       const b = window.__fitz.bodies[planets[0].name];
       // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
       window.__fitz.teleport(b.x, b.y + 2, b.z - 10);
+      // The ship now spawns aimed at a planet, so the +z heading this
+      // framing assumes has to be set explicitly.
+      window.__fitz.setAttitude(0, 0);
     });
     await pump(page, 30);                     // let the chase-cam actually arrive
     await page.keyboard.press("KeyP");        // photo mode: no HUD, no modals
@@ -57,6 +60,11 @@ await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
         if (el.children.length === 0 && el.textContent?.includes("PHOTO_MODE")) {
           el.style.display = "none";
         }
+      }
+      // The dev-only perf overlay (debug/PerfOverlay.tsx) must not end up in
+      // a share image.
+      for (const el of document.querySelectorAll('[data-testid="perf-overlay"]')) {
+        el.style.display = "none";
       }
     });
 

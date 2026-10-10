@@ -30,6 +30,7 @@ export default function PerfOverlay() {
   return (
     <pre
       ref={ref}
+      data-testid="perf-overlay"
       className="fixed bottom-4 left-4 z-[100] pointer-events-none select-none
                  font-mono text-[10px] leading-relaxed text-primary/80
                  bg-black/70 border border-primary/20 rounded-lg px-3 py-2"

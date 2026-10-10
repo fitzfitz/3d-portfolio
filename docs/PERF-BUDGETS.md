@@ -67,10 +67,18 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 28 | 108512 | 74 | 4 |
-| Close approach | 89 | 251390 | 78 | 4 |
-| Modal open | 110 | 268110 | 78 | 4 |
-| 40 anomalies | 32 | 109536 | 73 | 4 |
+| Deep space | 32 | 147092 | 74 | 4 |
+| Close approach | 91 | 289834 | 78 | 4 |
+| Modal open | 114 | 306690 | 78 | 4 |
+| 40 anomalies | 34 | 147604 | 73 | 4 |
+
+**Re-baselined 2026-10-10 (original assets).** The ship, portal, fuel crystal
+and planet maps were replaced with scripted originals (see
+`assets-src/MANIFEST.md`). Triangles rose ~38k in deep space, deliberately: the
+hero ship went from 2.7k to 18k triangles, and the fuel crystal now draws its
+whole 366-triangle cluster (x40 instances) where the old file's first mesh was
+a ~37-triangle base. Calls and programs barely moved. Still 82% below the
+825k this scene drew before phase 3.
 
 **Re-baselined 2026-10-10 (leftovers pass: lights, nebula, async warm-up).**
 drei's `<Preload all>` was replaced by `ShaderWarmup` (`GlobalCanvas.tsx`):
