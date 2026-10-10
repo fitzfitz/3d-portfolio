@@ -50,18 +50,18 @@ export const SCENE_READY_TIMEOUT_MS = 60_000;
  * opposed to how long it's allowed before the suite gives up entirely
  * (`SCENE_READY_TIMEOUT_MS`).
  *
- * Measured baseline: 16.9-19.8s across a full suite (2026-10-10, after the
- * phase 3 load/render pass). The original 28,358ms figure was captured under
- * heavy machine load; see docs/PERF-BUDGETS.md for the re-baseline.
+ * Measured baseline: 10.6-11.8s to sceneReady (2026-10-10, after the async
+ * ShaderWarmup replaced Preload). The original 28,358ms figure was captured
+ * under heavy machine load; see docs/PERF-BUDGETS.md for the re-baselines.
  * `SCENE_READY_TIMEOUT_MS` is set to 60s specifically so a slow-but-not-
  * broken compile never crashes the suite — but that leaves 2.1x of slack in
  * which a change that doubled compile time (56.7s) would still pass
- * silently, with no signal anything regressed. 30s sits ~1.5x above the
+ * silently, with no signal anything regressed. 20s sits ~1.7x above the
  * slowest observed run (so ordinary machine-load noise still passes) but
  * below 2x, so a doubling reliably fails this check red instead of merely
  * being slow. See docs/PERF-BUDGETS.md for the full derivation.
  */
-export const STARTUP_DURATION_CEILING_MS = 30_000;
+export const STARTUP_DURATION_CEILING_MS = 20_000;
 
 /**
  * Console errors that are known-benign and must NOT fail the suite.
@@ -213,7 +213,12 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     // these are this large — eager Preload compile, not a slow app.
     await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });
     const sceneReadyStart = Date.now();
-    await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
+    // "Ready" is the store's sceneReady, set by ShaderWarmup once shaders are
+    // linked and textures uploaded — not window.__fitz.scene, which DebugBridge
+    // sets at commit, before the (now asynchronous) warm-up even starts.
+    // Timing the commit would drop compile from the startup budget entirely.
+    await page.waitForFunction(() => !!window.__fitz?.scene && window.__fitz.store.getState().sceneReady,
+      { timeout: SCENE_READY_TIMEOUT_MS });
     const sceneReadyMs = Date.now() - sceneReadyStart;
     // A real regression assertion, not just a generous outer timeout: see
     // STARTUP_DURATION_CEILING_MS above for why 60s alone lets a 2x slowdown
