@@ -16,6 +16,7 @@ mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_spaceship.py
 "$BLENDER" --background --python scripts/blender/gen_portal.py
 "$BLENDER" --background --python scripts/blender/gen_crystal.py
+"$BLENDER" --background --python scripts/blender/gen_shard.py
 # Planet colour + glow maps (pure Node + sharp, no Blender).
 node scripts/textures/gen_planets.mjs
 npm run assets:optimize

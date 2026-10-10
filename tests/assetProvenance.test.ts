@@ -12,6 +12,7 @@ const GENERATORS: Record<string, string> = {
   "spaceship.glb": "scripts/blender/gen_spaceship.py",
   "portal_gateway.glb": "scripts/blender/gen_portal.py",
   "space_crystal.glb": "scripts/blender/gen_crystal.py",
+  "data_shard.glb": "scripts/blender/gen_shard.py",
   "asteroids.glb": "scripts/blender/gen_asteroids.py",
   "cargo_ship.glb": "scripts/blender/gen_cargo_ship.py",
   "moon.glb": "scripts/blender/gen_moon.py",

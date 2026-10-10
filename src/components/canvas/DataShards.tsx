@@ -6,6 +6,9 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { COSMIC_BOUNDS } from "../../constants";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { soundManager } from "../../audio/soundManager";
+import { useGLTF } from "@react-three/drei";
+import { assetUrl } from "../../utils/assetUrl";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { ambientTime } from "../../utils/ambientTime";
 
 const dummy = new THREE.Object3D();
@@ -28,24 +31,21 @@ export default function DataShards() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const completeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const geometry = useMemo(() => new THREE.OctahedronGeometry(0.9), []);
-  const material = useMemo(
-    () =>
-      // Faceted and lit, with a moderate glow. At emissive 1.6 every face
-      // was the same saturated cyan, so the octahedron read as a flat
-      // diamond — two of them flank the spawn point and looked like
-      // untextured placeholder quads.
-      new THREE.MeshStandardMaterial({
-        color: "#3fb6d4",
-        metalness: 0.55,
-        roughness: 0.2,
-        flatShading: true,
-        emissive: "#4fe3ff",
-        emissiveIntensity: 0.45,
-        transparent: false,
-      }),
-    []
-  );
+  // Original data-core model (scripts/blender/gen_shard.py): dark faceted
+  // crystal in two machined collars with glowing cyan data traces. Replaces
+  // a code-drawn octahedron — the last placeholder shape in the scene, and
+  // the first thing a visitor saw beside the ship at spawn.
+  const { scene } = useGLTF(assetUrl("/models/data_shard.glb"));
+  const { geometry, material } = useMemo(() => {
+    let src: THREE.Mesh | undefined;
+    scene.traverse((o) => { if (!src && o instanceof THREE.Mesh) src = o; });
+    if (!src) throw new Error("data_shard.glb contains no mesh");
+    const g = bakeNodeTransform(src, { center: true });
+    g.scale(0.95, 0.95, 0.95);
+    const m = (src.material as THREE.MeshStandardMaterial).clone();
+    m.emissiveIntensity = 1.6;
+    return { geometry: g, material: m };
+  }, [scene]);
 
   useEffect(() => {
     return () => {
