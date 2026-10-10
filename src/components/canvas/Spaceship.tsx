@@ -1,12 +1,11 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF, Trail } from "@react-three/drei";
-import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
+import { useGLTF } from "@react-three/drei";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R, PORTAL_LOCK_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
-import { pitchStep, noseDirection, trailFade, headingToward } from "../../utils/pitchFlight";
+import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
 import { jumpPoint } from "../../utils/navigation";
@@ -16,6 +15,7 @@ import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
 import { softSprite } from "./softSprite";
+import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -51,6 +51,15 @@ const ESCAPE_SPEED = 4;
  */
 const JUMP_PLANET_FACTOR = 1.2;
 const JUMP_PORTAL_R = PORTAL_LOCK_R * 0.8;
+
+/**
+ * Nozzle exit centres in ship space: the GLB's Engine_Emissive clusters at
+ * model (±0.582, -0.05, 3.25) with exit lips at z 3.5, scaled 0.35 and
+ * turned π about Y.
+ */
+const NOZZLE_X = [-0.204, 0, 0.204] as const;
+const NOZZLE_Y = -0.068;
+const NOZZLE_Z = -1.225;
 
 /** Spawn point, and the first planet the ship faces there. */
 const SPAWN = { x: 0, y: 0, z: 18 };
@@ -192,27 +201,53 @@ export default function Spaceship() {
   }, [isOrbitLocked]);
 
   const shipRef = useRef<THREE.Group>(null);
-  const trailRef = useRef<TrailMesh>(null);
-  const thrusterRef = useRef<THREE.Group>(null);
   const engineLightRef = useRef<THREE.PointLight>(null);
 
-  const particleCount = 20;
+  // Fine sparks shed from the plumes, dimming as they age (vertex colour).
+  // Was 20 large soft dots that read as floating bubbles.
+  const particleCount = 48;
   const [particleGeometry, particleVelocities] = useMemo(() => {
     const geom = new THREE.BufferGeometry();
     const posArr = new Float32Array(particleCount * 3);
+    const colArr = new Float32Array(particleCount * 3);
     const vArr = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
       // seed each particle behind one of the three nozzles
-      posArr[i * 3] = [-0.204, 0, 0.204][i % 3] + (Math.random() - 0.5) * 0.06;
-      posArr[i * 3 + 1] = -0.068 + (Math.random() - 0.5) * 0.06;
-      posArr[i * 3 + 2] = -1.25 - Math.random() * 0.5;
-      vArr[i * 3] = (Math.random() - 0.5) * 0.02;
-      vArr[i * 3 + 1] = (Math.random() - 0.5) * 0.02;
-      vArr[i * 3 + 2] = -0.05 - Math.random() * 0.05;
+      posArr[i * 3] = NOZZLE_X[i % 3] + (Math.random() - 0.5) * 0.05;
+      posArr[i * 3 + 1] = NOZZLE_Y + (Math.random() - 0.5) * 0.05;
+      posArr[i * 3 + 2] = NOZZLE_Z - Math.random() * 1.4;
+      vArr[i * 3] = (Math.random() - 0.5) * 0.012;
+      vArr[i * 3 + 1] = (Math.random() - 0.5) * 0.012;
+      vArr[i * 3 + 2] = -0.06 - Math.random() * 0.06;
     }
     geom.setAttribute("position", new THREE.BufferAttribute(posArr, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(colArr, 3));
     return [geom, vArr];
   }, []);
+
+  // Engine plumes (enginePlume.ts), one per nozzle.
+  const plumeGeometry = useMemo(() => makePlumeGeometry(0.07), []);
+  const plumeMaterials = useMemo(() => NOZZLE_X.map((_, i) => makePlumeMaterial(i * 1.7)), []);
+  useEffect(() => () => { plumeGeometry.dispose(); plumeMaterials.forEach((m) => m.dispose()); },
+    [plumeGeometry, plumeMaterials]);
+  const plumeMeshes = useRef<(THREE.Mesh | null)[]>([]);
+  const plumeLen = useRef(0.35);
+  const plumePower = useRef(0.25);
+  /** Eases plume length/brightness toward a throttle target. */
+  const drivePlumes = (targetLen: number, targetPower: number, t: number, dt: number) => {
+    const k = frameLerp(0.18, dt);
+    plumeLen.current += (targetLen - plumeLen.current) * k;
+    plumePower.current += (targetPower - plumePower.current) * k;
+    for (let i = 0; i < plumeMaterials.length; i++) {
+      const m = plumeMeshes.current[i];
+      if (m) {
+        m.scale.y = plumeLen.current;
+        m.position.z = NOZZLE_Z - plumeLen.current / 2;
+      }
+      plumeMaterials[i].uniforms.uTime.value = t;
+      plumeMaterials[i].uniforms.uPower.value = plumePower.current;
+    }
+  };
   const particlesRef = useRef<THREE.Points>(null);
 
   const streakCount = 60;
@@ -246,24 +281,15 @@ export default function Spaceship() {
     // effect — the ship's position/physics themselves stay on `time` (spec §1).
     const ambient = ambientTime(rawElapsed);
 
-    // Engine trail fades with |pitch|: pitched flight puts the chase cam almost
-    // on the trail axis, where the billboarded ribbon projects as a giant beam
-    // (see trailFade). Runs in every branch so photo/orbit poses stay clean.
-    if (trailRef.current) {
-      const trailMat = trailRef.current.material as THREE.Material & { opacity: number };
-      trailMat.transparent = true;
-      trailMat.depthWrite = false;
-      trailMat.opacity = trailFade(pitch.current);
-    }
 
     if (store.photoMode) {
       // Photo mode: freeze input/physics/camera/shake entirely so OrbitControls
       // owns the camera. The ship just idles in place — bob + a low idle
-      // thruster glow + its existing Trail — at whatever pos.current was when
+      // plume glow — at whatever pos.current was when
       // photo mode was toggled on. flight.x/y/z are republished from the same
       // frozen pos.current, so they hold steady (nothing here advances them).
       shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
-      if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.4);
+      drivePlumes(0.35, 0.25, time, dt);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.pitch = pitch.current;
@@ -324,7 +350,7 @@ export default function Spaceship() {
       shipRef.current.position.copy(pos.current);
       shipRef.current.position.y += Math.sin(ambient * 2) * 0.05; // bob
       shipRef.current.rotation.set(-pitch.current, angle.current, roll.current, "YXZ");
-      if (thrusterRef.current) thrusterRef.current.scale.setScalar(0.35);
+      drivePlumes(0.3, 0.2, time, dt);
       store.setWarping(false);
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.heading = angle.current;
@@ -495,12 +521,10 @@ export default function Spaceship() {
     );
 
     // 3. Thruster scale + engine light breathing with throttle
-    if (thrusterRef.current) {
-      const targetScale = warpActive ? 2.5 : thrustInput > 0 ? 1.4 : 0.4;
-      thrusterRef.current.scale.y = THREE.MathUtils.lerp(thrusterRef.current.scale.y, targetScale, frameLerp(0.2, dt));
-      thrusterRef.current.scale.x = THREE.MathUtils.lerp(thrusterRef.current.scale.x, warpActive ? 1.4 : 1.0, frameLerp(0.2, dt));
-      thrusterRef.current.scale.z = thrusterRef.current.scale.x;
-    }
+    drivePlumes(
+      warpActive ? 2.8 : thrustInput > 0 ? 0.8 + 0.9 * thrustInput : 0.35,
+      warpActive ? 2.0 : thrustInput > 0 ? 0.55 + 0.45 * thrustInput : 0.25,
+      time, dt);
     if (engineLightRef.current) {
       const targetGlow = (warpActive ? 2.2 : 0.25 + thrustInput * 0.15) * (0.92 + Math.sin(time * 21) * 0.08);
       engineLightRef.current.intensity = THREE.MathUtils.lerp(engineLightRef.current.intensity, targetGlow, frameLerp(0.25, dt));
@@ -509,7 +533,7 @@ export default function Spaceship() {
     if (engineMat) {
       // Bloom saturates above ~0.2 luminance, so throttling emissive up only
       // grows the aura — hold the idle level and let the exhaust visuals
-      // (cone stretch, trail, particles) carry the sense of thrust.
+      // (plume length and brightness, sparks) carry the sense of thrust.
       const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06);
       engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
     }
@@ -517,20 +541,28 @@ export default function Spaceship() {
     // 4. Exhaust particles (velocities were per-frame — scale by dt*60)
     if (particlesRef.current) {
       const attr = particlesRef.current.geometry.attributes.position;
+      const colAttr = particlesRef.current.geometry.attributes.color;
       const data = attr.array as Float32Array;
+      const cols = colAttr.array as Float32Array;
       const step = dt * 60;
+      const reach = 0.9 + plumeLen.current * 0.8;
       for (let i = 0; i < particleCount; i++) {
         const idx = i * 3;
         data[idx] += particleVelocities[idx] * step;
         data[idx + 1] += particleVelocities[idx + 1] * step;
-        data[idx + 2] += particleVelocities[idx + 2] * step;
-        if (data[idx + 2] < -3.0) {
-          data[idx] = [-0.204, 0, 0.204][i % 3] + (Math.random() - 0.5) * 0.08;
-          data[idx + 1] = -0.068 + (Math.random() - 0.5) * 0.08;
-          data[idx + 2] = -1.2;
+        data[idx + 2] += particleVelocities[idx + 2] * step * (0.6 + plumePower.current * 0.5);
+        if (data[idx + 2] < NOZZLE_Z - reach) {
+          data[idx] = NOZZLE_X[i % 3] + (Math.random() - 0.5) * 0.05;
+          data[idx + 1] = NOZZLE_Y + (Math.random() - 0.5) * 0.05;
+          data[idx + 2] = NOZZLE_Z - 0.05;
         }
+        // Brightness falls with age (distance travelled), pale cyan.
+        const age = Math.min(1, (NOZZLE_Z - data[idx + 2]) / reach);
+        const b = (1 - age) * (1 - age) * (0.35 + 0.4 * plumePower.current);
+        cols[idx] = 0.55 * b; cols[idx + 1] = 1.0 * b; cols[idx + 2] = 1.0 * b;
       }
       attr.needsUpdate = true;
+      colAttr.needsUpdate = true;
     }
 
     // 4.5. Local warp streaks
@@ -587,29 +619,17 @@ export default function Spaceship() {
           (±0.582, -0.05, 3.25) in model space -> (±0.204, -0.068, -1.14) here,
           exhaust exit plane at z ≈ -1.23. */}
       <pointLight ref={engineLightRef} position={[0, -0.068, -1.5]} color="#00f0ff" intensity={0.3} distance={5} decay={2} />
-      <group ref={thrusterRef}>
-        {[-0.204, 0, 0.204].map((x) => (
-          <mesh key={x} position={[x, -0.068, -1.32]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.04, 0.22, 8]} />
-            <meshBasicMaterial color="#00f0ff" transparent={true} opacity={0.22} />
-          </mesh>
-        ))}
-      </group>
-      <Trail
-        ref={trailRef}
-        width={1.4}
-        length={5}
-        color="#00f0ff"
-        attenuation={(t) => t * t}
-      >
-        <mesh position={[0, -0.068, -1.25]}>
-          <sphereGeometry args={[0.02, 4, 4]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-      </Trail>
+      {/* Plumes: unit tubes along +Y turned to stream back (-Z) from each
+          nozzle; drivePlumes() sets their length every frame. */}
+      {NOZZLE_X.map((x, i) => (
+        <mesh key={x} ref={(m) => { plumeMeshes.current[i] = m; }}
+          geometry={plumeGeometry} material={plumeMaterials[i]}
+          position={[x, NOZZLE_Y, NOZZLE_Z - 0.175]} rotation={[Math.PI / 2, 0, 0]}
+          scale={[1, 0.35, 1]} frustumCulled={false} />
+      ))}
       <points ref={particlesRef} geometry={particleGeometry}>
         {/* Soft sprite: without a map these drew as flat cyan squares. */}
-        <pointsMaterial color="#00f0ff" size={0.1} map={softSprite} transparent={true} opacity={0.9}
+        <pointsMaterial vertexColors={true} size={0.05} map={softSprite} transparent={true} opacity={1}
           blending={THREE.AdditiveBlending} depthWrite={false} />
       </points>
       <lineSegments ref={streaksRef} geometry={streakGeometry}>
