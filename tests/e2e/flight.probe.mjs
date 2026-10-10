@@ -64,8 +64,8 @@ export default async function run() {
     // produce more than 2 buckets (green ring/sweep/ladder + white ship
     // chevron) with zero planet/portal blips rendered. Strengthened below by
     // also checking for the exact quantized colours of bodies that are drawn
-    // NOWHERE else on the canvas: video (#00f0ff) and agent (#bd00ff) planets
-    // and the contact portal (#ec4899). (saas' #00ff87 is excluded from the
+    // NOWHERE else on the canvas: portfolio (#00f0ff) and fuxx (#bd00ff) planets
+    // and the contact portal (#ec4899). (ruangrapi's #00ff87 is excluded from the
     // strong check because it quantizes to the same bucket as the green
     // rings/sweep/pitch-dot, so its presence alone wouldn't prove a blip was
     // drawn.) RadarMap draws every target every frame — clamped to the rim
@@ -87,7 +87,7 @@ export default async function run() {
     checks.check("radar canvas is painting", colours !== null && colours.length > 2,
       `${colours?.length ?? 0} colour buckets`);
 
-    const blipColours = { video: "#00f0ff", agent: "#bd00ff", contact: "#ec4899" };
+    const blipColours = { portfolio: "#00f0ff", fuxx: "#bd00ff", contact: "#ec4899" };
     const foundBlipColours = colours
       ? Object.entries(blipColours).filter(([, hex]) => colours.includes(hexBucket(hex))).map(([name]) => name)
       : [];

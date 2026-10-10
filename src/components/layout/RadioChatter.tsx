@@ -7,6 +7,7 @@ import { soundManager } from "../../audio/soundManager";
 /** Typewriter terminal line, bottom-center HUD. rAF + DOM writes, no React state. */
 export default function RadioChatter() {
   const lineRef = useRef<HTMLDivElement>(null);
+  const liveRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const scheduler = new ChatterScheduler(chatterPools);
@@ -63,7 +64,14 @@ export default function RadioChatter() {
       ),
       useSpaceStore.subscribe(
         (s) => s.broadcast,
-        (b) => { if (b) typeLine(b.text); }
+        (b) => {
+          if (!b) return;
+          typeLine(b.text);
+          // Broadcasts carry real content (shard facts, scan reports, the
+          // completion pointer). Announce them whole: the typewriter line
+          // changes every 22ms and would be noise to a screen reader.
+          if (liveRef.current) liveRef.current.textContent = b.text;
+        }
       ),
       useSpaceStore.subscribe(
         (s) => s.impactCount,
@@ -86,7 +94,8 @@ export default function RadioChatter() {
     <div className="absolute bottom-16 left-4 w-[55vw] sm:bottom-20 sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(60vw,640px)] pointer-events-none">
       {/* Wraps instead of truncating: scan reports and shard facts are the
           payoff for the action, and a single ellipsised line cut them off. */}
-      <div ref={lineRef} data-testid="radio-chatter" className="font-mono text-[10px] leading-snug text-primary/80 sm:text-center" />
+      <div ref={liveRef} className="sr-only" aria-live="polite" />
+      <div ref={lineRef} data-testid="radio-chatter" aria-hidden="true" className="font-mono text-[10px] leading-snug text-primary/80 sm:text-center" />
     </div>
   );
 }

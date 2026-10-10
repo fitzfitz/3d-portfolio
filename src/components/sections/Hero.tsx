@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import { Terminal, Cpu, ArrowRight } from "lucide-react";
+import { identity } from "../../data/identity";
+import { EXPERIENCE_LABEL } from "../../data/career";
 export default function Hero() {
   return (
     <section
@@ -21,7 +23,7 @@ export default function Hero() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-primary text-xs font-mono w-fit mb-6"
           >
             <Terminal className="w-3.5 h-3.5" />
-            <span>SYSTEM_ONLINE // INIT_PORTFOLIO</span>
+            <span>{identity.name.toUpperCase()} // {identity.role.toUpperCase()}</span>
           </motion.div>
 
           {/* Headline */}
@@ -44,7 +46,7 @@ export default function Hero() {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="text-muted text-base sm:text-lg max-w-xl font-sans font-light leading-relaxed mb-8"
           >
-            Hey there! I am a <strong className="font-medium text-white">Creative Software Engineer</strong> specializing in modern reactive frontend apps, high-throughput backend APIs, and custom multi-agent AI tooling architectures.
+            Hey there! I am a <strong className="font-medium text-white">{identity.role}</strong> with {EXPERIENCE_LABEL} of building React and TypeScript front ends, currently at Hubexo. Off the clock I ship full-stack SaaS, real-time 3D and tools for AI coding agents.
           </motion.p>
 
           {/* Buttons CTA */}

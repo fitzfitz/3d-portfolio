@@ -51,7 +51,7 @@ export default function RadarMap() {
 
       // Blips (heading-up: rotate world deltas by ship heading)
       const a = flight.heading;
-      const activeZone = useSpaceStore.getState().activeZone;
+      const { activeZone, visitedDossiers: visited } = useSpaceStore.getState();
       const targets = [
         ...PLANET_COLORS.map((p) => {
           const b = bodies[p.name];
@@ -78,6 +78,14 @@ export default function RadarMap() {
         ctx.beginPath();
         ctx.arc(c + px, c + py, (t.name === "sun" ? 3 : 2.4) * pulse, 0, Math.PI * 2);
         ctx.fill();
+        // Read dossiers get an outline ring, so what's left reads at a glance.
+        if (visited.includes(t.name)) {
+          ctx.strokeStyle = t.color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(c + px, c + py, 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         // Relative-altitude chevron: ▲ target above, ▼ below (Y-wrap aware)
         const dy = wrapDelta(flight.y, t.y, COSMIC_BOUNDS);
         const cue = altitudeCue(dy);

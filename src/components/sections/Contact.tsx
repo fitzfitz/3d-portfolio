@@ -128,7 +128,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
       {isSidebar && (
         <h3 className="font-display font-extrabold text-xl mb-4 text-white flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          Send Secure Message
+          Send Message
         </h3>
       )}
       <AnimatePresence mode="wait">
@@ -271,7 +271,7 @@ export default function Contact({ isSidebar = false }: ContactProps) {
             {/* Message field */}
             <div>
               <label htmlFor="message" className="block text-xs font-mono text-muted mb-2 tracking-wide uppercase">
-                Secure Message Packet
+                Message
               </label>
               <textarea
                 id="message"
@@ -319,13 +319,13 @@ export default function Contact({ isSidebar = false }: ContactProps) {
         {/* Left Column: Title & Info */}
         <div className="lg:col-span-5 flex flex-col justify-center text-left">
           <p className="font-mono text-xs text-accent tracking-widest uppercase mb-2">
-            // SECURE_COMMUNICATION_TUNNEL
+            // OPEN_CHANNEL
           </p>
           <h2 className="font-display font-black text-3xl sm:text-4xl lg:text-5xl mb-6">
             Get In Touch
           </h2>
           <p className="text-muted text-sm sm:text-base font-light leading-relaxed mb-8 max-w-sm">
-            Have a project in mind, want to explore custom AI integrations, or looking to collaborate? Drop me a secure packet transmission.
+            Have a project in mind, want to explore custom AI integrations, or looking to collaborate? Drop me a message.
           </p>
 
           <div className="flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/2 max-w-sm">

@@ -35,7 +35,7 @@ npm run dev
 | --- | --- |
 | `__fitz.store` | The zustand store itself — call `__fitz.store.getState()` to read current state, or `.getState().someAction(...)` to call an action. |
 | `__fitz.flight` | Read-only per-frame telemetry: `x`, `y`, `z`, `speed`, `heading`, `pitch`, `input`. Written every frame by `Spaceship.tsx` — do not assign to it (see the teleport warning below). |
-| `__fitz.bodies` | Live world positions of the orbiting planets, keyed by name (`saas`, `video`, `agent`), updated every frame. |
+| `__fitz.bodies` | Live world positions of the orbiting planets, keyed by name (`ruangrapi`, `portfolio`, `fuxx`), updated every frame. |
 | `__fitz.sound` | The sound manager instance. |
 | `__fitz.scene` | The live `THREE.Scene`, for `.getObjectByName(...)` lookups. |
 | `__fitz.gl` | The `THREE.WebGLRenderer`. |
@@ -89,8 +89,8 @@ setInterval(() => console.log(__fitz.renderCount), 1000)
 __fitz.store.getState().setMuted(false)
 
 // Get a planet's live position (orbits move every frame — there's no fixed
-// coordinate to hardcode). Names are "saas", "video", "agent".
-__fitz.bodies.saas
+// coordinate to hardcode). Names are "ruangrapi", "portfolio", "fuxx".
+__fitz.bodies.ruangrapi
 ```
 
 ### Controls reference
@@ -178,7 +178,7 @@ alone better)?
 ```js
 // Aim the ship at a planet, then climb toward it. Orbits move every frame,
 // so read the live position rather than hardcoding one.
-const p = __fitz.bodies.saas; // or .video / .agent
+const p = __fitz.bodies.ruangrapi; // or .portfolio / .fuxx
 __fitz.teleport(p.x, p.y, p.z - 80)
 ```
 
@@ -252,7 +252,7 @@ machine-gun during a sustained grind?
 // sun-to-planet line, so the planet sits roughly between you and the sun.
 // Orbits move — you may need to nudge sideways (A/D) to walk the planet
 // across the line, or just wait a few seconds as its own orbit carries it.
-const p = __fitz.bodies.saas; // sun is always at (0,0,0)
+const p = __fitz.bodies.ruangrapi; // sun is always at (0,0,0)
 const k = 1.6; // ship further out than the planet, same direction from the sun
 __fitz.teleport(p.x * k, p.y * k, p.z * k)
 ```

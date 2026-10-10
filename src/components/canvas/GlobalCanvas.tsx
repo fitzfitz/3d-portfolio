@@ -21,6 +21,7 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
+import WaypointDriver from "./WaypointDriver";
 import { flight, useSpaceStore, selectSceneFrozen } from "../../store/spaceStore";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
@@ -422,6 +423,9 @@ function GlobalCanvas() {
 
           {/* Headless: drives proximity scan targeting/progress/report dispatch */}
           <Scanner />
+
+          {/* Headless: projects the next unread dossier for the HUD waypoint */}
+          <WaypointDriver />
 
           {/* Clickable space trigger plane (follows ship and expanded to cover viewport).
               Unmounted in photo mode: R3F synthetic pointer events and OrbitControls

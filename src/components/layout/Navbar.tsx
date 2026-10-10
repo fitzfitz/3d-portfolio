@@ -22,6 +22,7 @@ export default function Navbar({ onReturnToCabin }: NavbarProps) {
   const navLinks = [
     { name: "Home", href: "#home" },
     { name: "Projects", href: "#projects" },
+    { name: "Career", href: "#career" },
     { name: "Skills", href: "#skills" },
     { name: "Contact", href: "#contact" },
   ];

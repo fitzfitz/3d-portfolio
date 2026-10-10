@@ -3,12 +3,13 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import type { MeshLineGeometry as TrailMesh } from "@react-three/drei/core/Trail";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R, PORTAL_LOCK_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, trailFade, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
+import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
@@ -42,6 +43,13 @@ const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
 const ESCAPE_MARGIN = 1.15;
 /** Outward drift after breaking orbit, so the ship keeps opening the gap. */
 const ESCAPE_SPEED = 4;
+
+/**
+ * Jump standoffs: inside each lock radius (planet 1.3x size, portal 1.5) and
+ * outside the body, so the lock engages on the frame the ship arrives.
+ */
+const JUMP_PLANET_FACTOR = 1.2;
+const JUMP_PORTAL_R = PORTAL_LOCK_R * 0.8;
 
 /** Spawn point, and the first planet the ship faces there. */
 const SPAWN = { x: 0, y: 0, z: 18 };
@@ -107,6 +115,20 @@ export default function Spaceship() {
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on an intercept course, so the first W press flies into a planet.
   const hasFlown = useRef(false);
+  // A requested jump target, applied by the frame loop. Held in a ref rather
+  // than applied in the store subscription: an open dossier freezes the frame
+  // loop, so the jump first breaks orbit and lands on the next live frame.
+  const pendingJump = useRef<string | null>(null);
+  const snapCamera = useRef(false);
+  useEffect(() => useSpaceStore.subscribe(
+    (s) => s.jumpRequest,
+    (req) => {
+      if (!req) return;
+      pendingJump.current = req.id;
+      const s = useSpaceStore.getState();
+      if (s.isOrbitLocked) s.breakOrbit();
+    },
+  ), []);
 
   const lockedCenter = useRef(new THREE.Vector3());
   const targetLockRadius = useRef(6);
@@ -255,7 +277,7 @@ export default function Spaceship() {
       const targetFov = warpActive ? 86 : 60;
       const perspCam = state.camera as THREE.PerspectiveCamera;
       if (Math.abs(perspCam.fov - targetFov) > 0.01) {
-        perspCam.fov = THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
+        perspCam.fov = snapCamera.current ? targetFov : THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
         perspCam.updateProjectionMatrix();
       }
       const nose = noseDirection(angle.current, pitch.current);
@@ -264,7 +286,10 @@ export default function Spaceship() {
         pos.current.y - nose.y * camDistance + camHeight,
         pos.current.z - nose.z * camDistance
       );
-      const f = frameLerp(0.05, dt);
+      // A jump snaps the camera with the ship: easing across ~150u would swing
+      // it through the sun, and is exactly the motion reduced motion avoids.
+      const f = snapCamera.current ? 1 : frameLerp(0.05, dt);
+      snapCamera.current = false;
       state.camera.position.lerp(targetCamPos, f);
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,
@@ -307,6 +332,28 @@ export default function Spaceship() {
 
       applyChaseCam(false);
       return;
+    }
+
+    // Jump: drop in nose-on at the target's lock standoff. SpacePlanets runs
+    // after this component each frame, so the lock (and dossier) engage on
+    // this same frame. The post-break cooldown would block that, so clear it.
+    if (pendingJump.current) {
+      const id = pendingJump.current;
+      pendingJump.current = null;
+      const planet = planets.find((p) => p.name === id);
+      const target = planet ? bodies[planet.name] : { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2] };
+      const standoff = planet ? planet.size * JUMP_PLANET_FACTOR : JUMP_PORTAL_R;
+      const j = jumpPoint(pos.current, target, standoff);
+      pos.current.set(j.x, j.y, j.z);
+      vel.current.set(0, 0, 0);
+      angle.current = j.yaw;
+      pitch.current = 0;
+      turnVelocity.current = 0;
+      pitchVel.current = 0;
+      hasFlown.current = true;
+      snapCamera.current = true;
+      useSpaceStore.setState({ isOrbitCooldown: false });
+      store.triggerTeleportFlash();
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while

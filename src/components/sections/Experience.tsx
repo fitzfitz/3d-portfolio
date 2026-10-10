@@ -50,7 +50,7 @@ export default function Experience({
             // THE_PROOF_OF_WORK
           </p>
           <h2 className="font-display font-black text-3xl sm:text-4xl lg:text-5xl">
-            Experience & Projects
+            Projects
           </h2>
         </div>
 
@@ -188,7 +188,7 @@ export default function Experience({
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"
                   >
-                    VIEW_CODE
+                    {activeProject.repo ? "VIEW_SOURCE" : "GITHUB_PROFILE"}
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>

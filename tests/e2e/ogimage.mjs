@@ -25,7 +25,7 @@ async function pump(page, n) {
 
 await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
   async (page, checks) => {
-    // Park just past the saas planet along the ship's fixed spawn heading
+    // Park just past the first (ruangrapi) planet along the ship's fixed spawn heading
     // (nose points world +z when angle==0, and no steer input is ever sent,
     // so it stays +z the whole time — see Spaceship.tsx's noseDirection).
     // The offset is deliberately small: dx/dy only nudge the planet off the

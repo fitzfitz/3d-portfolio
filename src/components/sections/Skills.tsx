@@ -1,36 +1,40 @@
 import { motion } from "framer-motion";
-import { Monitor, Server, Cloud, Cpu, ArrowUpRight } from "lucide-react";
+import { Monitor, Server, Box, Cpu, ArrowUpRight } from "lucide-react";
 
 const skillCategories = [
   {
     title: "Frontend Core",
+    note: "// IN PRODUCTION SINCE 2015",
     icon: Monitor,
-    description: "Creating highly interactive, fluid, responsive and accessible user interfaces.",
-    skills: ["React", "Vite", "TypeScript", "Astro", "Tailwind CSS", "HTML5/CSS3"],
+    description: "A decade of production front ends, from jQuery and Ext JS to React, React Native, micro-frontends and monorepos.",
+    skills: ["React", "TypeScript", "Next.js", "React Native", "Tailwind CSS", "Micro-frontends"],
     color: "#00ff87", // Green
     bgGlow: "rgba(0, 255, 135, 0.05)",
   },
   {
-    title: "Backend & DB",
+    title: "Backend & Data",
+    note: "// SIDE PROJECTS",
     icon: Server,
-    description: "Designing low-latency, scalable microservices, routing layers and transactional schemas.",
-    skills: ["Hono", "Node.js", "PostgreSQL", "Redis", "REST/GraphQL", "Prisma ORM"],
+    description: "Typed APIs and relational schemas for full-stack side projects, including row-level security on Supabase.",
+    skills: ["Hono", "Node.js / Express", "PostgreSQL", "Supabase", "Prisma", "Cloudflare Workers"],
     color: "#00f0ff", // Cyan
     bgGlow: "rgba(0, 240, 255, 0.05)",
   },
   {
-    title: "DevOps & Cloud",
-    icon: Cloud,
-    description: "Managing server nodes, isolated runtimes, reverse proxies and deploy scripts.",
-    skills: ["VPS Management", "Docker", "Portainer", "Nginx", "GitHub Actions", "Linux (Ubuntu)"],
+    title: "3D & Native",
+    note: "// SIDE PROJECTS",
+    icon: Box,
+    description: "Real-time 3D in the browser and native desktop UI in Rust.",
+    skills: ["three.js", "React Three Fiber", "Blender (bpy)", "Rust", "GPUI", "Web performance"],
     color: "#bd00ff", // Purple
     bgGlow: "rgba(189, 0, 255, 0.05)",
   },
   {
-    title: "AI Workflows",
+    title: "AI-Assisted Engineering",
+    note: "// DAILY WORKFLOW",
     icon: Cpu,
-    description: "Leveraging closed-loop agent structures, TDD loops, and specification-driven automation.",
-    skills: ["LangChain", "OpenSpec", "TDD Workflows", "AI Agents Orchestration", "Prompt Ops", "Auto-testing"],
+    description: "Spec-first, test-first development with coding agents, and building the tools to run them.",
+    skills: ["Claude Code", "Codex", "Spec-first docs", "TDD", "Agent tooling", "MCP"],
     color: "#ec4899", // Pink
     bgGlow: "rgba(236, 72, 153, 0.05)",
   },
@@ -126,7 +130,7 @@ export default function Skills({ isSidebar = false }: SkillsProps) {
 
                 {/* Bottom line spacer decoration */}
                 <div className="mt-8 flex items-center justify-between text-[10px] font-mono text-white/20 border-t border-white/5 pt-4">
-                  <span>// STATUS: MASTERED</span>
+                  <span>{category.note}</span>
                   <ArrowUpRight className="w-3.5 h-3.5 text-white/10 group-hover:text-white/40 transition-colors" />
                 </div>
               </motion.div>

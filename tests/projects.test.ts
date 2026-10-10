@@ -61,7 +61,7 @@ describe("project <-> planet mapping", () => {
   });
 
   it("resolves a project by zone id, and nothing for a non-project zone", () => {
-    expect(projectById("saas")?.title).toBe("Multi-Tenant SaaS Platform");
+    expect(projectById("ruangrapi")?.title).toBe("RuangRapi");
     expect(projectById("contact")).toBeUndefined();
     expect(projectById("nope")).toBeUndefined();
   });
@@ -74,28 +74,35 @@ describe("refactor is behaviour-preserving", () => {
   it("keeps the orbital elements the engine was tuned against", () => {
     expect(planets).toEqual([
       {
-        name: "saas", color: "#00ff87", size: 4.8,
+        name: "ruangrapi", color: "#00ff87", size: 4.8,
         orbit: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
       },
       {
-        name: "video", color: "#00f0ff", size: 4.8,
+        name: "portfolio", color: "#00f0ff", size: 4.8,
         orbit: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
       },
       {
-        name: "agent", color: "#bd00ff", size: 4.8,
+        name: "fuxx", color: "#bd00ff", size: 4.8,
         orbit: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
       },
     ]);
   });
 
+  // 2026-10-10: the template's placeholder projects were replaced with the
+  // owner's real ones. Colours and order (and so each planet's look and
+  // orbit) are unchanged; only ids and content moved.
   it("keeps the three projects, in order, with their content intact", () => {
     expect(projects.map((p) => [p.id, p.title, p.role, p.duration, p.color])).toEqual([
-      ["saas", "Multi-Tenant SaaS Platform", "Lead Architect", "2024 - Present", "#00ff87"],
-      ["video", "Viral Video Generator", "Core ML Engineer", "2023 - 2024", "#00f0ff"],
-      ["agent", "Custom Multi-Agent Architecture", "R&D AI Engineer", "2024", "#bd00ff"],
+      ["ruangrapi", "RuangRapi", "Personal project", "2026", "#00ff87"],
+      ["portfolio", "This Flight-Sim CV", "Personal project", "2026", "#00f0ff"],
+      ["fuxx", "fuxx", "Personal project", "2026", "#bd00ff"],
     ]);
-    expect(projects[0].tech).toEqual(["React", "TypeScript", "Hono", "PostgreSQL", "Stripe", "Docker"]);
-    expect(projects[1].description).toContain("Whisper");
-    expect(projects[2].tech).toContain("LangChain");
+    expect(projects[0].tech).toContain("Supabase");
+    expect(projects[1].tech).toContain("React Three Fiber");
+    expect(projects[2].tech).toEqual(["Rust", "GPUI"]);
+  });
+
+  it("links every project to a public source repo", () => {
+    for (const p of projects) expect(p.repo).toMatch(/^https:\/\/github\.com\/fitzfitz\//);
   });
 });
