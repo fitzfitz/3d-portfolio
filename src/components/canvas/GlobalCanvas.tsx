@@ -352,6 +352,9 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
  * materials compile too. Runs in a layout effect so the loop is held before
  * the first post-commit frame.
  */
+/** Upper bound on holding the frame loop for compileAsync (see below). */
+const WARMUP_TIMEOUT_MS = 8000;
+
 function ShaderWarmup() {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -370,7 +373,15 @@ function ShaderWarmup() {
     const ready = gl.compileAsync(scene, camera);
     for (const o of hidden) o.visible = false;
 
-    ready.then(() => {
+    // compileAsync polls program readiness forever: a context lost mid-load,
+    // or a throw inside its setTimeout poll, would leave it unsettled and the
+    // loop frozen for good. Cap the wait; past it, programs still compiling
+    // simply finish on first use, as they did under Preload.
+    const settled = Promise.race([
+      ready,
+      new Promise<void>((resolve) => setTimeout(resolve, WARMUP_TIMEOUT_MS)),
+    ]).catch(() => {});
+    settled.then(() => {
       if (cancelled) return;
       // Upload textures one per task rather than in one loop: a single
       // 2048² map is tens of ms, and all of them back to back was a ~300ms
