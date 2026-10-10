@@ -61,6 +61,10 @@ const NOZZLE_X = [-0.204, 0, 0.204] as const;
 const NOZZLE_Y = -0.068;
 const NOZZLE_Z = -1.225;
 
+/** Chase-camera scratch vectors (no per-frame allocation). */
+const _camTarget = new THREE.Vector3();
+const _camSide = new THREE.Vector3();
+
 /** Spawn point, and the first planet the ship faces there. */
 const SPAWN = { x: 0, y: 0, z: 18 };
 const FIRST_TARGET = planets[0];
@@ -300,26 +304,35 @@ export default function Spaceship() {
 
     // Chase-cam follow + FOV, shared by free flight and orbit lock so the
     // camera keeps framing the ship in both states.
-    const applyChaseCam = (warpActive: boolean) => {
-      const camDistance = warpActive ? 6.8 : 4.8;
+    const applyChaseCam = (warpActive: boolean, orbiting = false) => {
+      const rm = store.reducedMotion;
+      // Speed-driven framing: the camera eases back and the lens widens a
+      // little with throttle, more at warp — the "push" of acceleration.
+      const speedNorm = Math.min(1, vel.current.length() / MAX_SPEED);
+      const camDistance = warpActive ? 6.8 : 4.6 + 0.6 * speedNorm;
       const camHeight = warpActive ? 2.8 : 1.8;
-      const targetFov = warpActive ? 86 : 60;
+      const targetFov = warpActive ? 86 : 58 + (rm ? 0 : 6 * speedNorm);
       const perspCam = state.camera as THREE.PerspectiveCamera;
       if (Math.abs(perspCam.fov - targetFov) > 0.01) {
-        perspCam.fov = snapCamera.current ? targetFov : THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.1, dt));
+        perspCam.fov = snapCamera.current ? targetFov : THREE.MathUtils.lerp(perspCam.fov, targetFov, frameLerp(0.08, dt));
         perspCam.updateProjectionMatrix();
       }
       const nose = noseDirection(angle.current, pitch.current);
-      const targetCamPos = new THREE.Vector3(
-        pos.current.x - nose.x * camDistance,
-        pos.current.y - nose.y * camDistance + camHeight,
-        pos.current.z - nose.z * camDistance
+      // Turn lag: the camera swings slightly to the outside of a turn, so
+      // the ship visibly carves rather than the world rotating around it.
+      // Orbit lock adds a slow cinematic offset to one side.
+      const swing = rm ? 0 : (orbiting ? 1.6 : -turnVelocity.current * 0.55);
+      _camSide.set(nose.z, 0, -nose.x).normalize().multiplyScalar(swing);
+      _camTarget.set(
+        pos.current.x - nose.x * camDistance + _camSide.x,
+        pos.current.y - nose.y * camDistance + camHeight + (orbiting && !rm ? 0.8 : 0),
+        pos.current.z - nose.z * camDistance + _camSide.z
       );
       // A jump snaps the camera with the ship: easing across ~150u would swing
       // it through the sun, and is exactly the motion reduced motion avoids.
-      const f = snapCamera.current ? 1 : frameLerp(0.05, dt);
+      const f = snapCamera.current ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
-      state.camera.position.lerp(targetCamPos, f);
+      state.camera.position.lerp(_camTarget, f);
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,
         pos.current.y + nose.y * 1.5 + 0.2,
@@ -359,7 +372,7 @@ export default function Spaceship() {
       // matching the frozen orbitAngle above.
       flight.speed = store.reducedMotion ? 0 : orbitRadius.current * 0.25; // tangential speed for the HUD
 
-      applyChaseCam(false);
+      applyChaseCam(false, true);
       return;
     }
 
