@@ -11,6 +11,8 @@ export const identity = {
    * they must be kept in sync with this value by hand, not by import.
    */
   name: "Fitzgeral",
+  /** One-line professional title: spawn banner (App.tsx) and Hero. */
+  role: "Creative Software Engineer",
   /** In-world handle shown in the spawn banner's "PILOT:" line (App.tsx). */
   callsign: "FITZGERAL_SYS",
   /** Public contact address. Also the mailto fallback target. */

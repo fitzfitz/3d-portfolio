@@ -6,6 +6,8 @@ import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "
 import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
 
+const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
+
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
@@ -75,6 +77,17 @@ export function hasWebGL(doc: Document | undefined = typeof document !== "undefi
   } catch {
     return false;
   }
+}
+
+/**
+ * True when the URL asks for the résumé directly (`?cv`, `?resume`, `#cv`,
+ * `#resume`) — a link a visitor can be sent that skips the flight entirely.
+ */
+export function wantsResume(loc: { search: string; hash: string } | undefined =
+  typeof window !== "undefined" ? window.location : undefined): boolean {
+  if (!loc) return false;
+  const q = new URLSearchParams(loc.search);
+  return q.has("cv") || q.has("resume") || /^#(cv|resume)$/i.test(loc.hash);
 }
 
 /** Probed once at import: each probe creates a throwaway WebGL context. */
@@ -186,6 +199,14 @@ interface SpaceState {
   fuelEmpty: boolean;
   /** True once every Suspense-loaded asset has resolved and the scene is on screen. */
   sceneReady: boolean;
+  /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
+  visitedDossiers: string[];
+  /**
+   * Pending jump to a planet id or "contact", consumed by Spaceship's frame
+   * loop. `seq` makes a repeat request for the same target a new value.
+   */
+  jumpRequest: { id: string; seq: number } | null;
+  requestJump: (id: string) => void;
   setSceneReady: (v: boolean) => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
@@ -230,7 +251,7 @@ export const useSpaceStore = create<SpaceState>()(
     isLowPerf: false,
     lowPerfManual: false,
     // No WebGL means no scene: start on the résumé rather than a blank page.
-    showClassicCV: !WEBGL_AVAILABLE,
+    showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
@@ -245,6 +266,12 @@ export const useSpaceStore = create<SpaceState>()(
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
     sceneReady: false,
+    visitedDossiers: safeGetJSON<string[]>("fitz-dossiers", []).filter((id) => PLANET_IDS.includes(id)),
+    jumpRequest: null,
+    requestJump: (id) => {
+      if (id !== "contact" && !PLANET_IDS.includes(id)) return;
+      set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
+    },
     setSceneReady: (v) => { if (get().sceneReady !== v) set({ sceneReady: v }); },
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
@@ -255,8 +282,19 @@ export const useSpaceStore = create<SpaceState>()(
     // Locking freezes the frame loop (selectSceneFrozen), so the ship can no
     // longer clear isWarping itself — clear it here or the warp drone and the
     // HUD's "ACTIVE" line outlive the boost for as long as the dossier is open.
+    // Locking onto a project planet also records the dossier as read.
     setOrbitLocked: (v) => {
-      if (get().isOrbitLocked !== v) set(v ? { isOrbitLocked: true, isWarping: false } : { isOrbitLocked: false });
+      if (get().isOrbitLocked === v) return;
+      if (!v) { set({ isOrbitLocked: false }); return; }
+      const zone = get().activeZone;
+      const visited = get().visitedDossiers;
+      if (zone && PLANET_IDS.includes(zone) && !visited.includes(zone)) {
+        const next = [...visited, zone];
+        safeSetJSON("fitz-dossiers", next);
+        set({ isOrbitLocked: true, isWarping: false, visitedDossiers: next });
+      } else {
+        set({ isOrbitLocked: true, isWarping: false });
+      }
     },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },

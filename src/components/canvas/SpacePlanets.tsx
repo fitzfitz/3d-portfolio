@@ -387,7 +387,7 @@ export default function SpacePlanets() {
 
   return (
     <group>
-      {/* 1. SAAS PLANET (Neon Green, Rings) */}
+      {/* 1. RUANGRAPI PLANET (Neon Green, Rings) */}
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={saasPlanetRef}>
@@ -419,7 +419,7 @@ export default function SpacePlanets() {
         <pointLight color="#00ff87" intensity={0.6} distance={planets[0].size * 4.5} />
       </group>
 
-      {/* 2. VIRAL VIDEO PLANET (Neon Cyan, Moon) */}
+      {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={videoPlanetRef}>
@@ -445,7 +445,7 @@ export default function SpacePlanets() {
         <pointLight color="#00f0ff" intensity={0.6} distance={planets[1].size * 4.5} />
       </group>
 
-      {/* 3. MULTI-AGENT PLANET (Neon Purple, Banded Grid Clouds) */}
+      {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
         <mesh ref={agentPlanetRef}>

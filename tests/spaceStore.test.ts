@@ -10,13 +10,14 @@ beforeEach(() => {
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
+    visitedDossiers: [], jumpRequest: null,
   });
 });
 
 describe("spaceStore", () => {
   it("breakOrbit clears lock+zone and runs an 1800ms cooldown", () => {
     vi.useFakeTimers();
-    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "saas" });
+    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "ruangrapi" });
     useSpaceStore.getState().breakOrbit();
     expect(useSpaceStore.getState().isOrbitLocked).toBe(false);
     expect(useSpaceStore.getState().activeZone).toBe(null);
@@ -31,7 +32,7 @@ describe("spaceStore", () => {
     const unsub = useSpaceStore.subscribe(spy);
     useSpaceStore.getState().setActiveZone(null); // already null
     expect(spy).not.toHaveBeenCalled();
-    useSpaceStore.getState().setActiveZone("video");
+    useSpaceStore.getState().setActiveZone("portfolio");
     expect(spy).toHaveBeenCalledTimes(1);
     unsub();
   });
@@ -145,7 +146,7 @@ describe("spaceStore", () => {
   // (the classic-CV round trip section) — the most expensive possible place
   // to assert what is otherwise a pure store invariant.
   it("setShowClassicCV(true) breaks any held orbit lock", () => {
-    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "saas" });
+    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "ruangrapi" });
     useSpaceStore.getState().setShowClassicCV(true);
     expect(useSpaceStore.getState().isOrbitLocked).toBe(false);
     expect(useSpaceStore.getState().activeZone).toBe(null);
@@ -153,10 +154,10 @@ describe("spaceStore", () => {
   });
 
   it("setShowClassicCV(false) does not touch an existing orbit lock", () => {
-    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "saas", showClassicCV: true });
+    useSpaceStore.setState({ isOrbitLocked: true, activeZone: "ruangrapi", showClassicCV: true });
     useSpaceStore.getState().setShowClassicCV(false);
     expect(useSpaceStore.getState().isOrbitLocked).toBe(true);
-    expect(useSpaceStore.getState().activeZone).toBe("saas");
+    expect(useSpaceStore.getState().activeZone).toBe("ruangrapi");
     expect(useSpaceStore.getState().showClassicCV).toBe(false);
   });
 });
@@ -179,7 +180,7 @@ describe("selectSceneFrozen", () => {
   });
 
   it("is false when merely near a planet but not locked", () => {
-    expect(selectSceneFrozen({ ...base, activeZone: "saas" })).toBe(false);
+    expect(selectSceneFrozen({ ...base, activeZone: "ruangrapi" })).toBe(false);
   });
 });
 
@@ -253,5 +254,53 @@ describe("hasWebGL", () => {
     const { hasWebGL } = await import("../src/store/spaceStore");
     const doc = { createElement: () => { throw new Error("blocked"); } };
     expect(hasWebGL(doc as unknown as Document)).toBe(false);
+  });
+});
+
+describe("dossier progress", () => {
+  it("locking onto a project planet records it once", () => {
+    useSpaceStore.setState({ activeZone: "ruangrapi" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    useSpaceStore.getState().setOrbitLocked(false);
+    useSpaceStore.setState({ activeZone: "ruangrapi" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().visitedDossiers).toEqual(["ruangrapi"]);
+  });
+
+  it("the contact portal is not a dossier", () => {
+    useSpaceStore.setState({ activeZone: "contact" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().visitedDossiers).toEqual([]);
+  });
+});
+
+describe("requestJump", () => {
+  it("issues a fresh request each time, even for the same target", () => {
+    useSpaceStore.getState().requestJump("portfolio");
+    const a = useSpaceStore.getState().jumpRequest;
+    useSpaceStore.getState().requestJump("portfolio");
+    const b = useSpaceStore.getState().jumpRequest;
+    expect(a?.id).toBe("portfolio");
+    expect(b?.seq).toBeGreaterThan(a!.seq);
+  });
+
+  it("ignores unknown targets", () => {
+    useSpaceStore.getState().requestJump("nowhere");
+    expect(useSpaceStore.getState().jumpRequest).toBe(null);
+  });
+});
+
+describe("wantsResume", () => {
+  it("recognises the résumé deep links", async () => {
+    const { wantsResume } = await import("../src/store/spaceStore");
+    for (const [search, hash] of [["?cv", ""], ["?resume", ""], ["?utm=x&cv=1", ""], ["", "#resume"], ["", "#CV"]]) {
+      expect(wantsResume({ search, hash })).toBe(true);
+    }
+  });
+  it("ignores everything else", async () => {
+    const { wantsResume } = await import("../src/store/spaceStore");
+    for (const [search, hash] of [["", ""], ["?cvx", ""], ["", "#projects"], ["?ref=cv", ""]]) {
+      expect(wantsResume({ search, hash })).toBe(false);
+    }
   });
 });

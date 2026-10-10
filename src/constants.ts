@@ -63,9 +63,9 @@ const PLANET_SIZE = 4.8;
  * with no entry here, and on an entry with no project.
  */
 export const PLANET_ORBITS: Record<string, OrbitalElements> = {
-  saas: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
-  video: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
-  agent: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
+  ruangrapi: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
+  portfolio: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
+  fuxx: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
 };
 
 const byId = new Map(projects.map((p) => [p.id, p]));

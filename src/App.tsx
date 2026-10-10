@@ -3,6 +3,7 @@ import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
 import Skills from "./components/sections/Skills";
+import Career from "./components/sections/Career";
 import Contact from "./components/sections/Contact";
 import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
@@ -10,16 +11,22 @@ import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import GlobalCanvas from "./components/canvas/GlobalCanvas";
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
 import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
-import { projects, projectById } from "./constants";
+import { projects, projectById, planets } from "./constants";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
+
+/** Jump destinations, in key order: each planet's project, then the portal. */
+const JUMP_TARGETS = [
+  ...planets.map((p) => ({ id: p.name, label: projectById(p.name)?.title ?? p.name, color: p.color })),
+  { id: "contact", label: "Contact", color: "#ec4899" },
+];
 
 /** Without WebGL there is no cabin to return to. */
 const CAN_FLY = WEBGL_AVAILABLE;
@@ -43,12 +50,33 @@ export default function App() {
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const [activeIndex, setActiveIndex] = useState(0);
 
+  // Dossier/contact dialogs close on Esc (outside text fields, so Esc while
+  // typing a message doesn't throw the draft away). Focus moves in via the
+  // close buttons' autoFocus: AnimatePresence mode="wait" mounts a dialog only
+  // after the previous card's exit, so a ref read here would still be empty.
+  useEffect(() => {
+    if (!isOrbitLocked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isEditableTarget(e.target as HTMLElement | null)) return;
+      breakOrbit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOrbitLocked, activeZone, breakOrbit]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "KeyP" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isEditableTarget(e.target as HTMLElement | null)) return;
-      if (useSpaceStore.getState().showClassicCV) return;
-      setPhotoMode(!useSpaceStore.getState().photoMode);
+      const s = useSpaceStore.getState();
+      if (s.showClassicCV) return;
+      if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
+      // 1..n jump to each planet in order, n+1 to the contact portal.
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit && !s.photoMode) {
+        const target = JUMP_TARGETS[Number(digit[1]) - 1];
+        if (target) s.requestJump(target.id);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -59,6 +87,9 @@ export default function App() {
   const planetProject = projectById(activeZone);
 
   return (
+    // framer-motion ignores the CSS reduced-motion rule; drive it from the
+    // store, which already merges the OS preference with the HUD toggle.
+    <MotionConfig reducedMotion={reducedMotion ? "always" : "never"}>
     <div className="relative w-full min-h-screen bg-[#020108] text-white selection:bg-primary selection:text-black overflow-hidden">
       {/* Visual Warp Teleport Screen Flash */}
       <AnimatePresence>
@@ -132,21 +163,38 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="self-start mt-[19vh] md:mt-0 md:absolute md:right-6 md:top-[22vh] glass-card rounded-2xl p-5 sm:p-6 text-center max-w-sm pointer-events-auto border border-primary/20 bg-black/80 select-none"
+                className={`self-start mt-[19vh] md:mt-0 md:absolute md:right-6 md:top-[22vh] glass-card rounded-2xl p-5 sm:p-6 text-center max-w-sm border border-primary/20 bg-black/80 select-none ${
+                  // On touch the card sits over the joystick's half of the
+                  // screen; let drags on its text fall through to steer, and
+                  // keep only the buttons tappable.
+                  isCoarse ? "pointer-events-none [&_button]:pointer-events-auto" : "pointer-events-auto"}`}
               >
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[10px] font-mono mb-3 sm:mb-4">
+                <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[10px] font-mono mb-4">
                   <Terminal className="w-3.5 h-3.5" />
-                  PILOT: {identity.callsign}
+                  SPACE FLIGHT CV
                 </div>
-                <h2 className="font-display font-bold text-xl mb-2 text-white">Space Flight CV</h2>
-                <p className="text-white/70 text-xs leading-relaxed mb-4">
-                  Three planets, three projects. Fly into one to lock orbit and open its dossier.
-                  {" "}{isCoarse
-                    ? "Drag on the left half of the screen to steer and thrust."
-                    : "W/A/S/D to fly, Space/C to pitch, Shift to warp."}
+                <h2 className="font-display font-bold text-2xl text-white">{identity.name}</h2>
+                <p className="font-mono text-[11px] text-primary/90 mb-3">{identity.role}</p>
+                <p className="text-white/70 text-xs leading-relaxed mb-3">
+                  Three planets, three projects. Fly into one to open its dossier.
                 </p>
-                <div className="font-mono text-[10px] text-primary mb-4">
-                  &gt; {isCoarse ? "DRAG LEFT SIDE TO IGNITE ENGINES" : "PRESS W TO IGNITE ENGINES"}
+                <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
+                  &gt; {isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP"}
+                </div>
+                {/* Fast path: straight into a dossier, no piloting required. */}
+                <div className="text-[10px] font-mono text-white/50 mb-2">OR JUMP STRAIGHT TO</div>
+                <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+                  {JUMP_TARGETS.map((t, i) => (
+                    <button
+                      key={t.id}
+                      onClick={() => useSpaceStore.getState().requestJump(t.id)}
+                      className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 font-mono text-[10px] text-white/80 hover:text-white cursor-pointer transition-colors"
+                      style={{ borderColor: `${t.color}55` }}
+                    >
+                      {!isCoarse && <span className="text-white/40 mr-1">[{i + 1}]</span>}
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
                 <button
                   onClick={() => setShowClassicCV(true)}
@@ -164,14 +212,19 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dossier-title"
                 className="w-full max-w-2xl pointer-events-auto glass-card rounded-3xl p-8 relative border max-h-[85vh] overflow-y-auto pr-4 select-none bg-black/90"
                 style={{ borderColor: `${planetProject.color}33`, boxShadow: `0 0 40px ${planetProject.color}11` }}
               >
                 {/* Close modal / Break Orbit Button */}
                 <button
+                  autoFocus
                   onClick={breakOrbit}
+                  aria-label="Close dossier (Esc)"
                   className="absolute top-6 right-6 p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
-                  title="Warp boost engine to break orbit"
+                  title="Close dossier (Esc)"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -195,7 +248,7 @@ export default function App() {
                 </div>
 
                 {/* Planet name heading */}
-                <h3 className="font-display font-black text-3xl sm:text-4xl mb-4 text-white">
+                <h3 id="dossier-title" className="font-display font-black text-3xl sm:text-4xl mb-4 text-white">
                   {planetProject.title}
                 </h3>
 
@@ -237,7 +290,7 @@ export default function App() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"
                   >
-                    VIEW_PLANET_CODE
+                    {planetProject.repo ? "VIEW_SOURCE" : "GITHUB_PROFILE"}
                     <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
@@ -251,11 +304,17 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Contact"
                 className="w-full max-w-lg pointer-events-auto bg-black/90 rounded-3xl p-2 relative"
               >
                 <div className="absolute top-8 right-8 z-50">
                   <button
+                    autoFocus
                     onClick={breakOrbit}
+                    aria-label="Close contact form (Esc)"
+                    title="Close contact form (Esc)"
                     className="p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-5 h-5" />
@@ -303,6 +362,8 @@ export default function App() {
               projects={projects}
             />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+            <Career />
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Skills />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Contact />
@@ -311,5 +372,6 @@ export default function App() {
         </motion.div>
       )}
     </div>
+    </MotionConfig>
   );
 }

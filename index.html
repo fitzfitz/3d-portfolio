@@ -7,8 +7,8 @@
     
     <!-- SEO Meta Tags -->
     <title>Fitzgeral — Software Engineer | 3D Flight-Sim CV</title>
-    <meta name="description" content="The interactive CV of Fitzgeral, a software engineer working across modern frontend, scalable backend architecture, and AI agent workflows. Fly a spaceship through the projects, or read the classic resume." />
-    <meta name="keywords" content="Software Engineer, 3D CV, Portfolio, React Three Fiber, WebGL, React, Vite, TypeScript, Hono, PostgreSQL, AI Agent" />
+    <meta name="description" content="The interactive CV of Fitzgeral, a Jakarta-based front-end engineer with 10+ years of React and TypeScript. Fly a spaceship through the projects, or read the classic resume." />
+    <meta name="keywords" content="Front-End Engineer, Software Engineer, 3D CV, Portfolio, React, TypeScript, React Native, React Three Fiber, WebGL, Jakarta" />
     <meta name="theme-color" content="#020108" />
 
     <!-- Open Graph / Facebook -->
@@ -30,12 +30,39 @@
     <meta property="og:image:height" content="630" />
 
     <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="Fitzgeral — Software Engineer | 3D Flight-Sim CV" />
-    <meta property="twitter:description" content="An interactive CV you fly through. Lock orbit around a planet to open the project dossier." />
-    <meta property="twitter:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Fitzgeral — Software Engineer | 3D Flight-Sim CV" />
+    <meta name="twitter:description" content="An interactive CV you fly through. Lock orbit around a planet to open the project dossier." />
+    <meta name="twitter:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
 
     <link rel="canonical" href="https://fitzfitz.github.io/3d-portfolio/" />
+
+    <!-- Structured data. Static HTML cannot import src/data/identity.ts, so
+         keep name, title and profile URLs in sync with it by hand. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "Fitzgeral",
+        "jobTitle": "Creative Software Engineer",
+        "url": "https://fitzfitz.github.io/3d-portfolio/",
+        "address": { "@type": "PostalAddress", "addressLocality": "Jakarta", "addressCountry": "ID" },
+        "worksFor": { "@type": "Organization", "name": "Hubexo" },
+        "sameAs": [
+          "https://github.com/fitzfitz",
+          "https://www.linkedin.com/in/fitzgeral/"
+        ],
+        "knowsAbout": [
+          "React",
+          "TypeScript",
+          "React Native",
+          "Next.js",
+          "Three.js",
+          "Rust",
+          "AI-assisted engineering"
+        ]
+      }
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,6 +77,29 @@
         INITIALIZING STAR SYSTEM...
       </div>
     </div>
+    <!-- What crawlers and no-JS visitors get instead of a loading message.
+         Hand-kept in sync with src/data/projects.json and identity.ts. -->
+    <noscript>
+      <main style="max-width:44rem;margin:0 auto;padding:3rem 1.5rem;color:#e5e7eb;font-family:system-ui,sans-serif;line-height:1.6;background:#020108">
+        <h1>Fitzgeral — Creative Software Engineer</h1>
+        <p>Front-end engineer with 10+ years of React and TypeScript, based in Jakarta, building full-stack SaaS, real-time 3D and AI developer tools on the side. This site is an interactive 3D CV and needs JavaScript; the essentials are below.</p>
+        <h2>Work history</h2>
+        <ul>
+          <li><strong>Front End Developer</strong>, Hubexo (formerly BCI Central), Nov 2020 – present, Jakarta</li>
+          <li><strong>Lead Front End Developer</strong> (contract), Ericsson, Apr 2020 – Apr 2022, Jakarta</li>
+          <li><strong>React Js Developer</strong> (contract), Indocyber Global Teknologi, on site at Blue Bird Group, Sep 2019 – Dec 2020</li>
+          <li><strong>Senior Front-End &amp; JavaScript Developer</strong>, PT Agape Software Internasional, Jan 2017 – Sep 2019</li>
+          <li><strong>Front-End Developer</strong>, SoftwareSeni, Jun 2015 – Jan 2016, Yogyakarta</li>
+        </ul>
+        <h2>Projects</h2>
+        <ul>
+          <li><strong>RuangRapi</strong>: rental operations SaaS for Indonesian landlords (units, tenants, leases, billing, WhatsApp reminders). React, TypeScript, Supabase, PostgreSQL. <a style="color:#00ff87" href="https://github.com/fitzfitz/ruangrapi">Source</a></li>
+          <li><strong>This Flight-Sim CV</strong>: the interactive 3D portfolio at this address. React 19, three.js, React Three Fiber, scripted Blender. <a style="color:#00ff87" href="https://github.com/fitzfitz/3d-portfolio">Source</a></li>
+          <li><strong>fuxx</strong>: GPU-accelerated terminal for running several AI coding agents at once. Rust, GPUI. <a style="color:#00ff87" href="https://github.com/fitzfitz/fuxx-cli">Source</a></li>
+        </ul>
+        <p>Contact: <a style="color:#00ff87" href="mailto:fitzgeralmedia@gmail.com">fitzgeralmedia@gmail.com</a> · <a style="color:#00ff87" href="https://github.com/fitzfitz">GitHub</a> · <a style="color:#00ff87" href="https://www.linkedin.com/in/fitzgeral/">LinkedIn</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

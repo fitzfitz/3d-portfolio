@@ -9,7 +9,8 @@ describe("generateScanReport", () => {
     expect(generateScanReport("asteroid_3")).not.toBe(generateScanReport("asteroid_7"));
   });
   it("returns project-flavored reports for planets", () => {
-    expect(generateScanReport("saas")).toContain("SUBSCRIPTIONS");
+    expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
+    expect(generateScanReport("fuxx")).toContain("RUST");
     expect(generateScanReport("contact")).toContain("COMM");
   });
   it("always uppercases and prefixes SCAN[", () => {

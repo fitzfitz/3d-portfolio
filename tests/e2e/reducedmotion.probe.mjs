@@ -30,9 +30,9 @@ export default async function run() {
       `y ${rot0.rotation?.y} -> ${rot1.rotation?.y}`);
 
     // Orbits are frozen: a body's position must not change.
-    const p0 = await page.evaluate(() => ({ ...window.__fitz.bodies.saas }));
+    const p0 = await page.evaluate(() => ({ ...window.__fitz.bodies.ruangrapi }));
     await settle(page, 2000);
-    const p1 = await page.evaluate(() => ({ ...window.__fitz.bodies.saas }));
+    const p1 = await page.evaluate(() => ({ ...window.__fitz.bodies.ruangrapi }));
     const moved = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
     checks.check("planet orbit is frozen", moved < 0.01, `moved ${moved.toFixed(4)}`);
 

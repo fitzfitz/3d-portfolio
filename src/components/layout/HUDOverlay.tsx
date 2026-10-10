@@ -8,9 +8,10 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
 import ScanRing from "./ScanRing";
+import WaypointMarker from "./WaypointMarker";
 
 const ZONE_COLORS: Record<string, string> = {
-  saas: "text-primary", video: "text-secondary", agent: "text-accent", contact: "text-pink-500",
+  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
 };
 
 /**
@@ -25,6 +26,9 @@ const ZONE_COLORS: Record<string, string> = {
  */
 let dryAnnouncedThisSpell = false;
 
+/** Module-level for the same remount reason as dryAnnouncedThisSpell. */
+let completionAnnounced = false;
+
 export default function HUDOverlay() {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
@@ -37,6 +41,8 @@ export default function HUDOverlay() {
   const setReducedMotion = useSpaceStore((s) => s.setReducedMotion);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const fuelEmpty = useSpaceStore((s) => s.fuelEmpty);
+  const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
+  const requestJump = useSpaceStore((s) => s.requestJump);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   // Mirrors App's spawn-banner condition. On a phone the banner spans the
   // full width over the radar's spot, and the radar is no use before flying.
@@ -99,8 +105,24 @@ export default function HUDOverlay() {
     );
   }, [fuelEmpty]);
 
+  // Once every dossier is read, point the pilot at the portal — announced on
+  // leaving the last dossier, when the chatter line is actually visible.
+  const allRead = visitedDossiers.length >= planets.length;
+  useEffect(() => {
+    if (!allRead || isOrbitLocked || completionAnnounced) return;
+    completionAnnounced = true;
+    useSpaceStore.getState().sendBroadcast(
+      `ALL ${planets.length} DOSSIERS READ // THE PILOT TAKES MESSAGES AT THE PORTAL ABOVE THE SUN — PRESS ${planets.length + 1} TO JUMP THERE`
+    );
+  }, [allRead, isOrbitLocked]);
+
   return (
-    <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/40 select-none">
+    <div className="fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/60 select-none">
+      {/* Same phone rule as the radar: the full-width banner already offers
+          jumps, and the marker's label would draw over it. */}
+      <div className={bannerUp ? "max-sm:hidden" : undefined}>
+        <WaypointMarker />
+      </div>
       <div className={bannerUp ? "max-sm:hidden" : undefined}>
         <RadarMap />
       </div>
@@ -119,6 +141,9 @@ export default function HUDOverlay() {
         <div className="hidden sm:block">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
         <div className="hidden sm:block">WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
+          DOSSIERS: {visitedDossiers.length}/{planets.length}
+        </div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
         <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
         <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
@@ -150,34 +175,34 @@ export default function HUDOverlay() {
           there is no room, and the touch buttons label themselves. */}
       <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] pointer-events-auto">
         <div className="flex flex-col">
-          <span className="text-white/25">PILOT_STEER</span>
+          <span className="text-white/45">PILOT_STEER</span>
           <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
-          <span className="text-white/25">PITCH</span>
+          <span className="text-white/45">PITCH</span>
           <span className="text-white">{isCoarse ? "PITCH ▲ / ▼" : "SPACE / C"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
-          <span className="text-white/25">WARP_DRIVE</span>
+          <span className="text-white/45">WARP_DRIVE</span>
           <span className="text-white">{isCoarse ? "BOOST BUTTON" : "SHIFT"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
-          <span className="text-white/25">SPAWN_PLASMA</span>
+          <span className="text-white/45">SPAWN_PLASMA</span>
           <span className="text-white">{isCoarse ? "TAP VOID" : "CLICK VOID"}</span>
         </div>
         {!isCoarse && (
           <>
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">
-              <span className="text-white/25">SCAN</span>
+              <span className="text-white/45">SCAN</span>
               <span className="text-white">HOLD E</span>
             </div>
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">
-              <span className="text-white/25">PHOTO_MODE</span>
+              <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">P</span>
             </div>
           </>
@@ -234,19 +259,28 @@ export default function HUDOverlay() {
 
       {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
       <div className="absolute bottom-10 right-6 hidden md:flex flex-col gap-2 items-end">
-        <div className="text-[8px] text-white/20">{"// SECTOR_PLANETS"}</div>
-        {planets.map((p) => (
-          <div key={p.name} className={`flex items-center gap-1.5 transition-colors ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/20"}`}>
+        <div className="text-[9px] text-white/30">{"// SECTOR_PLANETS — CLICK TO JUMP"}</div>
+        {/* Rows double as jump buttons (same as keys 1..n+1). */}
+        {planets.map((p, i) => (
+          <button key={p.name} onClick={() => requestJump(p.name)}
+            title={`Jump to ${p.name} [${i + 1}]`}
+            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/40"}`}>
+            <span className="text-white/30">[{i + 1}]</span>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
             <span ref={(el) => { planetRowRefs.current[p.name] = el; }}>
               PLANET_{p.name.toUpperCase()}
             </span>
-          </div>
+            <span className="w-3 text-primary">{visitedDossiers.includes(p.name) ? "✓" : ""}</span>
+          </button>
         ))}
-        <div className={`flex items-center gap-1.5 transition-colors ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/20"}`}>
+        <button onClick={() => requestJump("contact")}
+          title={`Jump to the contact portal [${planets.length + 1}]`}
+          className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/40"}`}>
+          <span className="text-white/30">[{planets.length + 1}]</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
           <span>PORTAL_SUN ([{PORTAL_POS.join(", ")}])</span>
-        </div>
+          <span className="w-3" />
+        </button>
       </div>
     </div>
   );

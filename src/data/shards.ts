@@ -12,18 +12,18 @@ export interface Shard {
 export const SHARDS: Shard[] = [
   // Near spawn — easy first find
   { pos: [8, 1, 22], fact: "WELCOME, PILOT. THIS PORTFOLIO IS ALSO A FLIGHT SIM. NO REFUNDS" },
-  // On the saas orbit ring, ahead of the planet's start position
-  { pos: [80, -28, 75], fact: "THE PILOT SHIPS SCHEMA-ISOLATED TENANTS BEFORE BREAKFAST — 15,000 SUBSCRIPTIONS, ZERO CROSS-TALK" },
+  // On the first planet's orbit ring, ahead of its start position
+  { pos: [80, -28, 75], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
   // High above the sun (fact says so)
-  { pos: [0, 140, 0], fact: "STRIPE CONNECT SPLITS FEES IN REAL TIME. THE PILOT SPLITS ATOMS. KIDDING. MOSTLY" },
-  // High cluster, near the video orbit's upper reach
-  { pos: [-95, 120, 60], fact: "WHISPER TRANSCRIBES EVERY FRAME. THE AI VIRAL-VIDEO PIPELINE NEVER SLEEPS, NEVER COMPLAINS" },
+  { pos: [0, 140, 0], fact: "FROM UP HERE THE WHOLE SOLAR SYSTEM IS ONE REACT TREE. THE PILOT FINDS THIS CALMING" },
+  // High cluster, near the second planet's upper orbital reach
+  { pos: [-95, 120, 60], fact: "ALL TEN SHARDS ARE ONE INSTANCED MESH. ONE DRAW CALL, TEN SECRETS" },
   // Deep below (fact says so)
   { pos: [6, -140, -10], fact: "DOWN HERE IT'S DARK, COLD, AND FULL OF UNIT TESTS" },
   // Deep cluster, far side
   { pos: [-110, -135, -90], fact: "3 AI CODE REVIEWERS APPROVED THIS UNIVERSE. A FOURTH IS STILL THINKING" },
   // Near the sun
-  { pos: [4, 4, 8], fact: "THE MULTI-AGENT TDD FRAMEWORK WRITES THE FAILING TEST FIRST. SO DOES THIS SENTENCE" },
+  { pos: [4, 4, 8], fact: "FUXX RUNS A FLEET OF AI CODING AGENTS IN ONE TERMINAL. THE PILOT RUNS ONE SPACESHIP. FOR NOW" },
   // Beside the portal — reward for the climb
   { pos: [10, 98, -140], fact: "ASTEROIDS DO NOT HAVE STANDUPS. THE PILOT ENVIES THIS" },
   // Far corner, high

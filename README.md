@@ -20,6 +20,14 @@ Tailwind, on Vite.
 | `E` (hold) | Scan a nearby object |
 | `P` | Photo mode |
 | `J` | Summon the space jellyfish |
+| `1`–`3` | Jump straight into a project's orbit (opens its dossier) |
+| `4` | Jump to the contact portal |
+| `Esc` | Close the open dossier or contact form |
+
+No flying required: the spawn card has jump buttons for each project, the
+sector list (bottom right) jumps on click, and a waypoint marks the next unread
+dossier. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
+the link to send someone who won't fly.
 
 Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
