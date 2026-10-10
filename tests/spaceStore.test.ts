@@ -304,3 +304,25 @@ describe("wantsResume", () => {
     }
   });
 });
+
+describe("visitedDossiers at module load", () => {
+  const loadWith = async (stored: string) => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => (k === "fitz-dossiers" ? stored : null),
+      setItem: () => {},
+    });
+    const fresh = await import("../src/store/spaceStore");
+    vi.unstubAllGlobals();
+    return fresh.useSpaceStore.getState().visitedDossiers;
+  };
+
+  it("drops ids from an older content set", async () => {
+    expect(await loadWith(JSON.stringify(["saas", "ruangrapi", "video"]))).toEqual(["ruangrapi"]);
+  });
+
+  it("survives a stored value that isn't an array", async () => {
+    expect(await loadWith(JSON.stringify({ saas: true }))).toEqual([]);
+    expect(await loadWith(JSON.stringify("fuxx"))).toEqual([]);
+  });
+});

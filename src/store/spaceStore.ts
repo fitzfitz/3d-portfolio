@@ -90,6 +90,16 @@ export function wantsResume(loc: { search: string; hash: string } | undefined =
   return q.has("cv") || q.has("resume") || /^#(cv|resume)$/i.test(loc.hash);
 }
 
+/**
+ * Read dossiers from storage, keeping only current planet ids: ids from an
+ * older content set (e.g. "saas") must not count toward n/3, and a value that
+ * isn't an array (hand-edited storage) must not crash the store at import.
+ */
+function loadVisitedDossiers(): string[] {
+  const raw = safeGetJSON<unknown>("fitz-dossiers", []);
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PLANET_IDS.includes(id)) : [];
+}
+
 /** Probed once at import: each probe creates a throwaway WebGL context. */
 export const WEBGL_AVAILABLE = hasWebGL();
 
@@ -266,7 +276,7 @@ export const useSpaceStore = create<SpaceState>()(
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
     sceneReady: false,
-    visitedDossiers: safeGetJSON<string[]>("fitz-dossiers", []).filter((id) => PLANET_IDS.includes(id)),
+    visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
     requestJump: (id) => {
       if (id !== "contact" && !PLANET_IDS.includes(id)) return;
