@@ -117,7 +117,10 @@ export default async function run() {
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
     let pre = null, post = null, preZ = null, postZ = null, wrapped = false;
-    const deadline = Date.now() + 45_000;
+    // 90s, not 45: under full-suite load SwiftShader can drop to a few
+    // frames a second, and the flight is ~230u at warp. The loop exits the
+    // moment the wrap is seen, so a generous deadline costs nothing when fast.
+    const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
       await settle(page, 500);
       const zNow = await page.evaluate(() => window.__fitz.flight.z);
@@ -139,7 +142,7 @@ export default async function run() {
     checks.check("ship actually crossed the wrap seam (z jumped by > bounds)",
       wrapped && Math.abs(postZ - preZ) > BOUNDS,
       wrapped ? `z ${preZ.toFixed(1)} -> ${postZ.toFixed(1)} (Δ=${(postZ - preZ).toFixed(1)})`
-        : `no wrap within 45s (last z=${preZ?.toFixed(1)})`);
+        : `no wrap within 90s (last z=${preZ?.toFixed(1)})`);
 
     // Check ALL THREE components, not just the axis the manoeuvre happens to
     // travel along. An earlier version of this check only compared `dx`

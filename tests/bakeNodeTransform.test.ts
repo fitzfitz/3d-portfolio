@@ -37,4 +37,16 @@ describe("bakeNodeTransform", () => {
     bakeNodeTransform(m);
     expect(m.geometry.getAttribute("position").array).toBeInstanceOf(Int16Array);
   });
+
+  it("center: true pivots the geometry on its own bounds (side-by-side variants)", () => {
+    const m = quantizedMesh();
+    m.position.set(-4.5, -1.74, 0); // a variant laid out off-origin in the GLB
+    const g = bakeNodeTransform(m, { center: true });
+    g.computeBoundingBox();
+    const c = new THREE.Vector3();
+    g.boundingBox!.getCenter(c);
+    expect(c.length()).toBeCloseTo(0, 5);
+    // Height is preserved, only the offset is removed.
+    expect(g.boundingBox!.max.y - g.boundingBox!.min.y).toBeCloseTo(4.92, 2);
+  });
 });

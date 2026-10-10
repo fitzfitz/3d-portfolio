@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 
 const VARIANTS = 4;
@@ -31,9 +32,11 @@ export default function Asteroids() {
         if (!mesh && o instanceof THREE.Mesh && o.name.startsWith(`Asteroid${v}`)) mesh = o;
       });
       if (!mesh) throw new Error(`asteroids.glb is missing mesh Asteroid${v}`);
-      mesh.updateMatrix();
-      const geometry = mesh.geometry.clone();
-      geometry.applyMatrix4(mesh.matrix);
+      // Float-safe and recentred. The four variants sit side by side in the
+      // GLB (node x up to ±4.5); baking that offset straight into the
+      // quantized [-1, 1] storage clamped every rock into a flat slab, and
+      // even un-clamped it would pivot each rock 4.5u off its collider.
+      const geometry = bakeNodeTransform(mesh, { center: true });
       const material = (mesh.material as THREE.MeshStandardMaterial).clone();
       // Slightly glossier than the baked default so tumbling facets catch
       // the sun — the "glint" is free specular from sharp facet normals.
