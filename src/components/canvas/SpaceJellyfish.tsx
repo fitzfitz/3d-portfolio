@@ -6,6 +6,7 @@ import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfi
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
@@ -61,15 +62,26 @@ const fragmentShader = /* glsl */ `
   varying float vContract;
   void main() {
     float fresnel = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 1.8);
-    vec3 cyan = vec3(0.0, 0.94, 1.0);
-    vec3 magenta = vec3(0.93, 0.28, 0.6);
-    vec3 col = mix(cyan, magenta, 0.5 + 0.5 * sin(uTime * 0.5 + vY * 0.8));
+    // Bell (above the rim) vs tentacles/oral arms (below), by authored height.
+    float bellMask = smoothstep(-0.3, 0.25, vY);
+    // Bell: lavender shimmering toward pink. Tentacles: cyan. A per-height
+    // gradient like a real moon jelly, instead of the whole body cycling
+    // cyan<->magenta, which washed it into one pink volume.
+    vec3 bellCol = mix(vec3(0.72, 0.58, 1.0), vec3(1.0, 0.45, 0.82), 0.5 + 0.5 * sin(uTime * 0.4));
+    vec3 tentCol = vec3(0.1, 0.92, 1.0);
+    vec3 col = mix(tentCol, bellCol, bellMask);
     // Bioluminescent rings pulsing DOWN the body — the strongest "alive" cue
     float ring = smoothstep(0.78, 1.0, sin(vY * 2.4 - uTime * 2.4));
-    // Rim brightens on each contraction stroke
+    // Bell: rim brightens on each contraction stroke.
     float rim = fresnel * (0.55 + 0.45 * vContract);
     float core = smoothstep(0.0, 0.8, vY) * (0.30 + 0.25 * vContract);
-    gl_FragColor = vec4(col + ring * vec3(0.5, 0.9, 1.0) * 0.5, rim + ring * 0.25 + core * 0.3);
+    float bellAlpha = rim + ring * 0.25 + core * 0.3;
+    // Tentacles are hair-thin tubes: a fresnel term flips 0<->1 across a
+    // pixel-wide tube and shimmered into dashes. Steady soft alpha instead,
+    // fading toward the tips.
+    float tipFade = 1.0 - smoothstep(1.2, 4.2, -vY);
+    float tentAlpha = (0.34 + ring * 0.22) * tipFade;
+    gl_FragColor = vec4(col + ring * vec3(0.5, 0.9, 1.0) * 0.4, mix(tentAlpha, bellAlpha, bellMask));
   }
 `;
 
@@ -111,9 +123,8 @@ export default function SpaceJellyfish() {
     // Bake the node's dequantization transform (KHR_mesh_quantization) so the
     // shader's y-based masks operate on authored coordinates, and regeneration
     // can't silently rescale the creature.
-    src.updateMatrix();
-    const g = src.geometry.clone();
-    g.applyMatrix4(src.matrix);
+    // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
+    const g = bakeNodeTransform(src);
     // The vertex shader sways tentacles a little past the authored mesh, so
     // pad the bound rather than disabling culling: at 65k additive,
     // double-sided triangles it used to draw every frame wherever it was.

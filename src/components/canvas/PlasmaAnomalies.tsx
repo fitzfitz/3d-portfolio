@@ -6,6 +6,7 @@ import { flight } from "../../store/spaceStore";
 import { COSMIC_BOUNDS } from "../../constants";
 import { assetUrl } from "../../utils/assetUrl";
 import { gameTime } from "../../utils/ambientTime";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { fitzDebug } from "../../debug/bridge";
 
 /** Fixed pool size. Slots are preallocated at load and recycled forever. */
@@ -139,9 +140,8 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
     let src: THREE.Mesh | undefined;
     scene.traverse((c) => { if (!src && c instanceof THREE.Mesh) src = c; });
     if (!src) throw new Error("space_crystal.glb contains no mesh");
-    src.updateMatrix();
-    const g = src.geometry.clone();
-    g.applyMatrix4(src.matrix);
+    // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
+    const g = bakeNodeTransform(src);
     const m = new THREE.MeshBasicMaterial({ toneMapped: false });
     return { geometry: g, material: m };
   }, [scene]);

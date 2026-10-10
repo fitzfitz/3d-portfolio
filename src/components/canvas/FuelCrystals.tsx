@@ -13,6 +13,7 @@ import {
 } from "../../utils/crystalField";
 import { soundManager } from "../../audio/soundManager";
 import { fitzDebug } from "../../debug/bridge";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 
 const dummy = new THREE.Object3D();
@@ -55,9 +56,8 @@ export default function FuelCrystals() {
     let src: THREE.Mesh | undefined;
     scene.traverse((c) => { if (!src && c instanceof THREE.Mesh) src = c; });
     if (!src) throw new Error("space_crystal.glb contains no mesh");
-    src.updateMatrix();
-    const g = src.geometry.clone();
-    g.applyMatrix4(src.matrix);
+    // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
+    const g = bakeNodeTransform(src);
     const m = (src.material as THREE.MeshStandardMaterial).clone();
     m.emissive = new THREE.Color("#ffd24a");
     m.emissiveIntensity = 1.8;
