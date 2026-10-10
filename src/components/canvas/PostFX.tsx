@@ -12,8 +12,10 @@ import { useSpaceStore } from "../../store/spaceStore";
  * children means recompiling every pass -- a hitch mid-flight.
  */
 const CA_OFFSET = new THREE.Vector2(0, 0);
-const WARP_X = 0.0022;
-const WARP_Y = 0.0014;
+// A whisper of lens fringing at warp. At 0.0022/0.0014 it split every bright
+// streak into red/green/blue copies and the warp read as glitchy confetti.
+const WARP_X = 0.0006;
+const WARP_Y = 0.0004;
 
 /**
  * Drives chromatic aberration from the store imperatively. This exists so
