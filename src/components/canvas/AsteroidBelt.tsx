@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { lowPolyRock } from "../../utils/lowPolyRock";
 
 const COUNT_FULL = 400;
@@ -103,9 +104,8 @@ export default function AsteroidBelt() {
     // and drawing it 560 times at scale 0.05-0.22 was ~85% of the whole
     // scene's triangles for detail nobody can see. The hero asteroids
     // (Asteroids.tsx) keep the real mesh; the belt keeps its material.
-    src.updateMatrix();
-    const hero = src.geometry.clone();
-    hero.applyMatrix4(src.matrix);
+    // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
+    const hero = bakeNodeTransform(src);
     hero.computeBoundingSphere();
     const radius = hero.boundingSphere?.radius ?? 1;
     hero.dispose();

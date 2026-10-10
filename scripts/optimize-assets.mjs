@@ -19,6 +19,12 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 
 const mb = (p) => (statSync(p).size / 1024 / 1024).toFixed(2) + "MB";
 
+// Optional filter: `npm run assets:optimize -- creature fuxx` re-encodes only
+// those. Without one, everything is processed — but meshopt re-encoding is
+// non-deterministic, so a full run rewrites unchanged files byte-differently.
+const only = new Set(process.argv.slice(2));
+const wanted = (name) => only.size === 0 || only.has(name);
+
 async function processGlb(name, textureTransforms) {
   const src = `${SRC}/${name}.glb`;
   const out = `${OUT}/${name}.glb`;
@@ -32,6 +38,7 @@ async function processGlb(name, textureTransforms) {
 // (asteroids.glb = 4 sculpted variants with 512px bakes, replaces the old
 // single 4K-textured asteroid.glb)
 for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
+  if (!wanted(name)) continue;
   if (!existsSync(`${SRC}/${name}.glb`)) {
     console.log(`skip ${name}.glb (not in assets-src)`);
     continue;
@@ -43,6 +50,7 @@ for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal",
 // scripts/textures/ or scripts/blender/): keep 2048x1024, convert JPEG -> WebP.
 // A `<name>_glow.jpg` emissive map is optional per planet.
 for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
+  if (!wanted(name)) continue;
   for (const file of [name, `${name}_glow`]) {
     if (!existsSync(`${SRC}/${file}.jpg`)) continue;
     await sharp(`${SRC}/${file}.jpg`).webp({ quality: 88 }).toFile(`${OUT}/${file}.webp`);
