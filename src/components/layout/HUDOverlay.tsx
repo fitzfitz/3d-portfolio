@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
@@ -29,6 +29,9 @@ let dryAnnouncedThisSpell = false;
 /** Module-level for the same remount reason as dryAnnouncedThisSpell. */
 let completionAnnounced = false;
 
+/** How long after leaving the spawn pad the HUD quiets down. */
+const QUIET_AFTER_MS = 6000;
+
 export default function HUDOverlay() {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
@@ -49,6 +52,15 @@ export default function HUDOverlay() {
   const sceneReady = useSpaceStore((s) => s.sceneReady);
   const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
   const bannerUp = sceneReady && isNearSpawn && !activeZone;
+  // Quiet HUD: once the pilot has left the spawn pad and kept flying for a
+  // few seconds, the controls strip and the flavour telemetry fold away so
+  // the scene gets the screen. Back at spawn (or after RESET) they return.
+  const [quietHud, setQuietHud] = useState(false);
+  useEffect(() => {
+    if (isNearSpawn) { setQuietHud(false); return; }
+    const id = setTimeout(() => setQuietHud(true), QUIET_AFTER_MS);
+    return () => clearTimeout(id);
+  }, [isNearSpawn]);
 
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
@@ -137,10 +149,11 @@ export default function HUDOverlay() {
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>
         </div>
-        <div ref={locRef} className="hidden sm:block">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
-        <div className="hidden sm:block">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
+        {/* Flavour readouts fold away once the pilot is flying (quietHud). */}
+        <div ref={locRef} className={`hidden sm:block transition-opacity duration-700 ${quietHud ? "sm:hidden" : ""}`}>NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
+        <div className={`hidden sm:block ${quietHud ? "sm:hidden" : ""}`}>SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
         <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
-        <div className="hidden sm:block">WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
+        <div className={`hidden sm:block ${quietHud && !isWarping && !fuelEmpty ? "sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
           DOSSIERS: {visitedDossiers.length}/{planets.length}
         </div>
@@ -173,7 +186,8 @@ export default function HUDOverlay() {
 
       {/* Center Top: Space flight instruction card. Desktop only: on a phone
           there is no room, and the touch buttons label themselves. */}
-      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] pointer-events-auto">
+      <div className={`absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] transition-opacity duration-700 ${
+        quietHud ? "opacity-0 pointer-events-none" : "pointer-events-auto"}`}>
         <div className="flex flex-col">
           <span className="text-white/45">PILOT_STEER</span>
           <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
