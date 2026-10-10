@@ -34,7 +34,23 @@ async function processGlb(name, textureTransforms) {
   console.log(`${name}.glb  ${mb(src)} -> ${mb(out)}`);
 }
 
-// Player-facing / already-baked models: format conversion only, no resize.
+// Per-asset texture settings. Default: WebP q92 at authored size. Moons and
+// comet nuclei never fill more than a small part of the screen (moon radius
+// <= 0.55u; the nucleus sits inside its coma), so their 1024² bakes are
+// halved — that alone was ~1MB of download. Hero asteroids keep 1024² (close
+// passes at radius up to 7u) with a slightly lighter quality.
+const TEXTURE_OPTS = {
+  moon: { quality: 88, resize: [512, 512] },
+  comet_head: { quality: 88, resize: [512, 512] },
+  asteroids: { quality: 85 },
+};
+const DEFAULT_TEXTURE_OPTS = { quality: 92 };
+for (const k of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
+  TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
+}
+
+// Player-facing / already-baked models: format conversion only, no resize
+// (except the TEXTURE_OPTS above).
 // (asteroids.glb = 4 sculpted variants with 512px bakes, replaces the old
 // single 4K-textured asteroid.glb)
 for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "cargo_ship", "creature", "moon", "comet_head"]) {
@@ -43,7 +59,7 @@ for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal",
     console.log(`skip ${name}.glb (not in assets-src)`);
     continue;
   }
-  await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", quality: 92 })]);
+  await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })]);
 }
 
 // Planet equirect maps (one per project planet, original procedural art from

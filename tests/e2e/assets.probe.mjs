@@ -74,13 +74,21 @@ export default async function run() {
       const out = {};
       window.__fitz.scene.traverse((o) => {
         const m = o.material;
-        if (m?.name === "MoonBaked") out.moon = m.metalness;
+        // Three moon variants (MoonRock / MoonIce / MoonVolcanic): track the
+        // most metallic one, and how many distinct variants are on screen.
+        if (["MoonRock", "MoonIce", "MoonVolcanic"].includes(m?.name)) {
+          out.moon = Math.max(out.moon ?? 0, m.metalness);
+          (out.moonNames ??= new Set()).add(m.name);
+        }
         if (m?.name?.startsWith("Asteroid")) out.asteroid = m.metalness;
       });
-      return out;
+      return { ...out, moonNames: [...(out.moonNames ?? [])].sort() };
     });
-    checks.check("moon material stays non-metallic", (rock.moon ?? 1) <= 0.1,
-      `metalness=${rock.moon}`);
+    checks.check("moon materials stay non-metallic", (rock.moon ?? 1) <= 0.1,
+      `max metalness=${rock.moon}`);
+    checks.check("all three moon variants are in the scene",
+      ["MoonIce", "MoonRock", "MoonVolcanic"].every((n) => rock.moonNames.includes(n)),
+      rock.moonNames.join(","));
   });
 
   // ---- regeneration: structural, not byte-exact ----

@@ -16,6 +16,7 @@ import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 
 /**
@@ -204,24 +205,33 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
 interface OrbitingMoonProps {
   distance: number; speed: number; inclination: number;
   size: number; color: string; phase?: number; spin?: number;
+  /** Which moon in moon.glb: rocky, icy (fractured), or volcanic (glowing fissures). */
+  variant?: "Rock" | "Ice" | "Volcanic";
 }
 
-function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, spin = 0.15 }: OrbitingMoonProps) {
+function OrbitingMoon({ distance, speed, inclination, size, color, phase = 0, spin = 0.15, variant = "Rock" }: OrbitingMoonProps) {
   const { scene } = useGLTF(assetUrl("/models/moon.glb"));
   const orbitRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
 
   const { geometry, material } = useMemo(() => {
-    let g: THREE.BufferGeometry | undefined;
-    let m: THREE.MeshStandardMaterial | undefined;
+    // Prefer the named variant (Moon_Rock / Moon_Ice / Moon_Volcanic); fall
+    // back to the first mesh so a single-moon file still renders.
+    let src: THREE.Mesh | undefined;
+    let first: THREE.Mesh | undefined;
     scene.traverse((o) => {
-      if (!g && o instanceof THREE.Mesh) { g = o.geometry; m = (o.material as THREE.MeshStandardMaterial).clone(); }
+      if (!(o instanceof THREE.Mesh)) return;
+      first ??= o;
+      if (!src && o.name === `Moon_${variant}`) src = o;
     });
-    if (!g || !m) throw new Error("moon.glb contains no mesh");
+    src ??= first;
+    if (!src) throw new Error("moon.glb contains no mesh");
+    const g = bakeNodeTransform(src, { center: true });
+    const m = (src.material as THREE.MeshStandardMaterial).clone();
     m.color.multiply(new THREE.Color(color)); // per-moon tint over the baked gray
     return { geometry: g, material: m };
-  }, [scene, color]);
-  useEffect(() => () => material.dispose(), [material]);
+  }, [scene, color, variant]);
+  useEffect(() => () => { material.dispose(); geometry.dispose(); }, [material, geometry]);
 
   useFrame((state) => {
     const t = ambientTime(state.clock.getElapsedTime());
@@ -468,7 +478,7 @@ export default function SpacePlanets() {
         </mesh>
         <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
-        <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" />
+        <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={0.5} color="#8fffc9" variant="Rock" />
 
         {/* Orbit Grid Ring */}
         <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]}>
@@ -492,8 +502,8 @@ export default function SpacePlanets() {
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
-        <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} />
-        <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} />
+        <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={0.42} color="#9be8ff" phase={2} variant="Ice" />
+        <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={0.55} color="#9be8ff" phase={4.2} variant="Rock" />
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -511,8 +521,8 @@ export default function SpacePlanets() {
             emissiveMap={fuxxGlow} emissive="#e070ff" emissiveIntensity={1.2} />
         </mesh>
         <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} intensity={0.5} thickness={1.05} />
-        <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" />
-        <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} />
+        <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={0.45} color="#e3b8ff" variant="Volcanic" />
+        <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={0.3} color="#caa2ff" phase={3.5} variant="Ice" />
 
         {/* Proximity Gravity Field Dotted circle */}
         <mesh rotation={[-Math.PI / 2, 0, 0]}>

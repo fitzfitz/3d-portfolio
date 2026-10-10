@@ -67,10 +67,19 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 32 | 147092 | 74 | 4 |
-| Close approach | 91 | 289834 | 78 | 4 |
-| Modal open | 114 | 306690 | 78 | 4 |
-| 40 anomalies | 34 | 147604 | 73 | 4 |
+| Deep space | 32 | 217892 | 76 | 4 |
+| Close approach | 93 | 365726 | 82 | 4 |
+| Modal open | 94 | 365738 | 82 | 4 |
+| 40 anomalies | 32 | 217892 | 75 | 4 |
+
+**Re-baselined 2026-10-10 (cinematic asteroids, moons, comets).** The 20 hero
+asteroids went from ~3k to ~6.9k triangles each, moons from 1.3k to 4.5k
+(three distinct variants) and comet nuclei to 5.6k: +71k triangles in deep
+space, deliberately. Programs +2-3 for the new material combinations
+(emissive mineral veins on two asteroid variants; MoonRock / MoonIce /
+MoonVolcanic). Still 74% below the 825k drawn before phase 3. Earlier the
+same day (original ship/portal/crystal/planets): 32 / 147092 / 74,
+91 / 289834 / 78, 114 / 306690 / 78, 34 / 147604 / 73.
 
 **Re-baselined 2026-10-10 (original assets).** The ship, portal, fuel crystal
 and planet maps were replaced with scripted originals (see

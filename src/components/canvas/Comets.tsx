@@ -7,6 +7,7 @@ import { setScannable } from "../../utils/scannables";
 import { keplerPosition } from "../../utils/kepler";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
+import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
@@ -52,11 +53,16 @@ const comaFragment = /* glsl */ `
   varying vec3 vViewDir;
   void main() {
     float facing = clamp(abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0);
-    // Diffuse gas ball: densest toward the center line of sight, soft rim falloff
-    float density = pow(facing, 1.6);
-    float flick = 0.85 + 0.15 * sin(uTime * 3.1 + vNormal.x * 5.0) * sin(uTime * 2.3 + vNormal.y * 4.0);
-    vec3 col = mix(vec3(0.30, 0.95, 0.48), vec3(0.75, 1.0, 0.85), density * 0.35); // C2 green
-    gl_FragColor = vec4(col, density * flick * uAct * 0.55);
+    // Two-part coma: a tight, hot inner glow around the nucleus and a faint
+    // wide halo. The old single pow(facing, 1.6) term was a flat, dense green
+    // disc — up close it filled the screen and hid the nucleus.
+    float core = pow(facing, 14.0);
+    float halo = pow(facing, 2.6);
+    float flick = 0.88 + 0.12 * sin(uTime * 3.1 + vNormal.x * 5.0) * sin(uTime * 2.3 + vNormal.y * 4.0);
+    // Cyan-white core over a faint teal halo (C2 green kept as a tint).
+    vec3 col = mix(vec3(0.35, 0.95, 0.80), vec3(0.85, 1.0, 1.0), core);
+    float a = (core * 0.22 + halo * 0.08) * flick * uAct;
+    gl_FragColor = vec4(col, a);
   }
 `;
 
@@ -92,13 +98,15 @@ export default function Comets() {
     let m: THREE.MeshStandardMaterial | undefined;
     scene.traverse((o) => {
       if (!g && o instanceof THREE.Mesh) {
-        g = o.geometry;
+        // Baked (not the raw quantized geometry, which drew at the node's
+        // unscaled [-1, 1] size) and centred so the tumble pivots on the body.
+        g = bakeNodeTransform(o, { center: true });
         m = (o.material as THREE.MeshStandardMaterial).clone();
       }
     });
     return { headGeometry: g, headMaterial: m };
   }, [scene]);
-  useEffect(() => () => headMaterial?.dispose(), [headMaterial]);
+  useEffect(() => () => { headMaterial?.dispose(); headGeometry?.dispose(); }, [headMaterial, headGeometry]);
 
   // Ion tail (I1-I4): straight, narrow, blue — particles race anti-sunward.
   const ions = useMemo(
@@ -168,7 +176,7 @@ export default function Comets() {
       const coma = comaRefs.current[i];
       if (coma) {
         coma.position.copy(head);
-        coma.scale.setScalar(1.1 * (2.0 + 3.5 * act));
+        coma.scale.setScalar(1.6 + 2.6 * act);
       }
       comaMaterials[i].uniforms.uTime.value = time;
       comaMaterials[i].uniforms.uAct.value = act;

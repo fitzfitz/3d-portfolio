@@ -5,7 +5,6 @@ import { useGLTF } from "@react-three/drei";
 import { useSpaceStore } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
-import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { lowPolyRock } from "../../utils/lowPolyRock";
 
 const COUNT_FULL = 400;
@@ -88,6 +87,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
 }
 
 const HALO_FULL = 160;
+const BELT_ROCK_RADIUS = 1.1;
 
 export default function AsteroidBelt() {
   const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
@@ -104,12 +104,10 @@ export default function AsteroidBelt() {
     // and drawing it 560 times at scale 0.05-0.22 was ~85% of the whole
     // scene's triangles for detail nobody can see. The hero asteroids
     // (Asteroids.tsx) keep the real mesh; the belt keeps its material.
-    // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
-    const hero = bakeNodeTransform(src);
-    hero.computeBoundingSphere();
-    const radius = hero.boundingSphere?.radius ?? 1;
-    hero.dispose();
-    return { geometry: lowPolyRock(radius, 42), material: src.material as THREE.Material };
+    // Fixed radius rather than measured from the hero mesh: the hero rocks
+    // are authored at radius ~2 to match their colliders, and the belt's
+    // per-instance scales (0.05-0.22) were tuned against a ~1.1u rock.
+    return { geometry: lowPolyRock(BELT_ROCK_RADIUS, 42), material: src.material as THREE.Material };
   }, [scene]);
   useEffect(() => () => geometry.dispose(), [geometry]);
 
