@@ -12,7 +12,7 @@ import GlobalCanvas from "./components/canvas/GlobalCanvas";
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
-import { useSpaceStore, hasWebGL } from "./store/spaceStore";
+import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useSound } from "./hooks/useSound";
@@ -21,8 +21,8 @@ import { projects, projectById } from "./constants";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
 
-/** Evaluated once: without WebGL there is no cabin to return to. */
-const CAN_FLY = hasWebGL();
+/** Without WebGL there is no cabin to return to. */
+const CAN_FLY = WEBGL_AVAILABLE;
 
 export default function App() {
   useKeyboardInput();

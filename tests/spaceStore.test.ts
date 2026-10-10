@@ -224,13 +224,16 @@ describe("warp state on scene freeze", () => {
 });
 
 describe("sceneReady", () => {
-  it("flips once and does not notify on repeats", () => {
+  it("notifies only on change", () => {
     const spy = vi.fn();
     const unsub = useSpaceStore.subscribe((s) => s.sceneReady, spy);
-    useSpaceStore.getState().setSceneReady();
-    useSpaceStore.getState().setSceneReady();
+    useSpaceStore.getState().setSceneReady(true);
+    useSpaceStore.getState().setSceneReady(true);
     expect(useSpaceStore.getState().sceneReady).toBe(true);
     expect(spy).toHaveBeenCalledTimes(1);
+    useSpaceStore.getState().setSceneReady(false);
+    expect(useSpaceStore.getState().sceneReady).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(2);
     unsub();
   });
 });

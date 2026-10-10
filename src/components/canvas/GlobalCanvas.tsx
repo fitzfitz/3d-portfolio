@@ -276,7 +276,12 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
  * of the loading readout and hid it.
  */
 function SceneReady() {
-  useEffect(() => { useSpaceStore.getState().setSceneReady(); }, []);
+  // Reset on unmount: the classic-résumé round trip remounts the canvas, and
+  // the banner must wait for that load too.
+  useEffect(() => {
+    useSpaceStore.getState().setSceneReady(true);
+    return () => useSpaceStore.getState().setSceneReady(false);
+  }, []);
   return null;
 }
 

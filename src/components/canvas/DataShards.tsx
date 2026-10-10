@@ -26,6 +26,7 @@ const COMPLETE_DELAY_MS = 4500;
  */
 export default function DataShards() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const completeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const geometry = useMemo(() => new THREE.OctahedronGeometry(0.9), []);
   const material = useMemo(
@@ -52,6 +53,10 @@ export default function DataShards() {
       material.dispose();
     };
   }, [geometry, material]);
+
+  // Leaving for the classic résumé inside the delay unmounts this; the
+  // fanfare would otherwise play over the résumé.
+  useEffect(() => () => { if (completeTimer.current) clearTimeout(completeTimer.current); }, []);
 
   useFrame((state) => {
     const mesh = meshRef.current;
@@ -98,7 +103,7 @@ export default function DataShards() {
         const count = useSpaceStore.getState().shardsCollected.length;
         store.sendBroadcast(shardBroadcast(SHARDS[i].fact, count));
         if (count === SHARDS.length) {
-          setTimeout(() => {
+          completeTimer.current = setTimeout(() => {
             soundManager.fanfare();
             useSpaceStore.getState().sendBroadcast(SHARDS_COMPLETE_MESSAGE);
           }, COMPLETE_DELAY_MS);

@@ -77,6 +77,9 @@ export function hasWebGL(doc: Document | undefined = typeof document !== "undefi
   }
 }
 
+/** Probed once at import: each probe creates a throwaway WebGL context. */
+export const WEBGL_AVAILABLE = hasWebGL();
+
 function safeGetJSON<T>(key: string, fallback: T): T {
   try {
     if (typeof localStorage === "undefined") return fallback;
@@ -183,7 +186,7 @@ interface SpaceState {
   fuelEmpty: boolean;
   /** True once every Suspense-loaded asset has resolved and the scene is on screen. */
   sceneReady: boolean;
-  setSceneReady: () => void;
+  setSceneReady: (v: boolean) => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
@@ -227,7 +230,7 @@ export const useSpaceStore = create<SpaceState>()(
     isLowPerf: false,
     lowPerfManual: false,
     // No WebGL means no scene: start on the résumé rather than a blank page.
-    showClassicCV: !hasWebGL(),
+    showClassicCV: !WEBGL_AVAILABLE,
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
@@ -242,7 +245,7 @@ export const useSpaceStore = create<SpaceState>()(
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
     sceneReady: false,
-    setSceneReady: () => { if (!get().sceneReady) set({ sceneReady: true }); },
+    setSceneReady: (v) => { if (get().sceneReady !== v) set({ sceneReady: v }); },
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
