@@ -180,7 +180,7 @@ The final constants are recorded in the module's doc comment, with a pointer to 
 
 - **Beam cone:** a tapered cone mesh at the nose using the engine plume's existing `ShaderMaterial`. Add a `uColor` uniform to `enginePlume.ts`, which defaults to the current colours so the plume is unchanged; the beam sets it to teal. A uniform adds no program. The e2e probe verifies that the program count stays at 79 or below.
 - **Tethers:** one line from the nose to each target, reusing the streak line material's parameters.
-- **Absorb spark:** reuse the ship's existing spark burst at the nose.
+- **Absorb feedback:** each pebble plays `oreTick()`, raises the hum's pitch and updates the ORE readout. (No spark: the ship's sparks are bound to the engine nozzles, and a new nose effect would cost a shader program.)
 - **Sound:** `soundManager.beamOn()` on activation, and a quiet `oreTick()` per pebble. A soft hum loop, built like the existing engine loop, while the beam is active; its pitch rises slightly with each pebble and resets on release.
 - **HUD:** a small `ORE n/16` readout next to the fuel bar, visible while mining and for 2s after.
 - **Radio:** a first-ore-of-the-session line in the house voice, for example "ORE IN THE HOLD. IT'S ROCKS. WE'RE CALLING IT FUEL." Same busy and race rules as the other pools.
@@ -212,7 +212,7 @@ New `tests/e2e/mechanics.probe.mjs`, registered in `run.mjs` before `basepath`:
 4. **Budgets:** with the beam on and speed over the cap, the program count is ≤ 79 and the frame-time budget holds.
 5. **Reduced motion:** the haze shows and the beam works.
 
-Updated: `flight.probe.mjs`, because the wrap seam no longer flashes; `basepath.probe.mjs` (P8). Test hooks go through the existing debug bridge (`window.__fitz` / `fitzDebug`), which is dead-code-eliminated in production.
+Updated: `reducedmotion.probe.mjs` (its flash check used the wrap, which no longer flashes; it now fires the jump flash directly), `events.probe.mjs` (convoy radius, P4) and `basepath.probe.mjs` (P8). `flight.probe.mjs` needs no change: it never asserted the flash, and warp ignores gravity. Test hooks go through the existing debug bridge (`window.__fitz` / `fitzDebug`), which is dead-code-eliminated in production.
 
 ### 7.3 Verification bar
 
