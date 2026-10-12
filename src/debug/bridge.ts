@@ -4,6 +4,7 @@ import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
 import { raceClock } from "../utils/raceClock";
 import type { JellyState } from "../utils/jellyMood";
+import type { WorldEventKind } from "../utils/eventDirector";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -58,6 +59,8 @@ export interface FitzDebug {
   cargoSwerve: { x: number; y: number; z: number }[] | null;
   /** Live jellyfish mood and offset, registered by SpaceJellyfish in dev. */
   jelly: JellyState | null;
+  /** Starts a world event now (dev only), registered by WorldEventDirector. */
+  triggerEvent: ((kind: WorldEventKind) => void) | null;
   /**
    * Live renderer counters sampled in-frame by PerfSampler, before
    * EffectComposer resets `gl.info` — see PerfSampler's own comment. Exposed
@@ -86,5 +89,6 @@ export const fitzDebug: FitzDebug = {
   anomalies: null,
   cargoSwerve: null,
   jelly: null,
+  triggerEvent: null,
   perfStats,
 };

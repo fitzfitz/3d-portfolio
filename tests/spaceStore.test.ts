@@ -10,7 +10,7 @@ beforeEach(() => {
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
-    visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null,
+    visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
   });
 });
 

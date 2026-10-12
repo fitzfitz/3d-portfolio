@@ -18,6 +18,7 @@ import ShootingStars from "./ShootingStars";
 import DistantGalaxies from "./DistantGalaxies";
 import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
+import WorldEventDirector from "./WorldEventDirector";
 import Comets from "./Comets";
 import DataShards from "./DataShards";
 import RingCourse from "./RingCourse";
@@ -526,6 +527,9 @@ function GlobalCanvas() {
 
           {/* Distant procedural spiral galaxies */}
           <DistantGalaxies />
+
+          {/* Schedules comet passes, solar flares and cargo convoys (world events) */}
+          <WorldEventDirector />
 
           {/* Spaceship craft */}
           <Spaceship />

@@ -74,3 +74,31 @@ export const chatterPools: ChatterPools = {
     "HAULER: IF YOU'RE HIRING, OUR CAPTAIN WRITES TYPESCRIPT",
   ],
 };
+
+/** World-event announcements (WorldEventDirector). Convoy lines are keyed by planet id. */
+export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]> } = {
+  comet: [
+    "INTERSTELLAR VISITOR INBOUND // CLOSEST PASS 35U. WAVE",
+    "UNSCHEDULED COMET ON APPROACH. IT DID NOT BOOK A MEETING",
+    "ROGUE COMET CROSSING YOUR BOW. TAIL LENGTH: EXCESSIVE",
+  ],
+  flare: [
+    "SOLAR FLARE // HULL TEMP RISING. THE PILOT WEARS SUNSCREEN",
+    "STAR ACTIVITY SPIKE. SHIELDS 100%. DIGNITY 80%",
+    "FLARE IN PROGRESS. PLEASE DO NOT STARE DIRECTLY AT THE PORTFOLIO",
+  ],
+  convoy: {
+    ruangrapi: [
+      "CONVOY 7 INBOUND TO RUANGRAPI // CARGO: NEW TENANTS",
+      "RUANGRAPI DELIVERY RUN // 40 LEASES, SIGNED AND SEALED",
+    ],
+    portfolio: [
+      "CONVOY 3 INBOUND TO THIS FLIGHT-SIM CV // CARGO: FRESH SHADERS",
+      "PORTFOLIO RESUPPLY // MORE POLYGONS, AS REQUESTED",
+    ],
+    fuxx: [
+      "CONVOY 9 INBOUND TO FUXX // CARGO: IDLE AI AGENTS",
+      "FUXX SUPPLY DROP // TERMINAL SESSIONS, STILL WARM",
+    ],
+  },
+};
