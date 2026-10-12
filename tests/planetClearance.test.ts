@@ -4,6 +4,7 @@ import { orbitPosition } from "../src/utils/orbits";
 import { SHARDS } from "../src/data/shards";
 import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { JELLY_PATH } from "../src/data/jellyfishPath";
+import { JELLY_RADIUS } from "../src/utils/jellyMood";
 import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import { crystalAvoidPoints, isRejectedSpawn } from "../src/utils/crystalField";
 
@@ -27,8 +28,6 @@ function closestApproach(planet: (typeof planets)[number], p: readonly number[])
   return min;
 }
 
-/** Jellyfish body radius: creature.glb spans ±1, drawn at scale 6, sway-padded 1.5x. */
-const JELLY_RADIUS = 9;
 
 describe("planet clearance along the full orbit", () => {
   it("never engulfs a shard or pulls its pickup into orbit lock", () => {
