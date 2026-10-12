@@ -11,7 +11,7 @@ import { assetUrl } from "../../utils/assetUrl";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { planets, ZONE_FACTOR } from "../../constants";
 import { damp } from "../../utils/reactions";
-import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut } from "../../utils/jellyMood";
+import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
 import { fitzDebug } from "../../debug/bridge";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
@@ -104,8 +104,16 @@ export default function SpaceJellyfish() {
   const tOffset = useRef(0);
   const jelly = useMemo(createJellyState, []);
   const pathPos = useMemo(() => new THREE.Vector3(), []);
+  /** The path point before surge and bob (jellyMood measures drift from it). */
+  const basePos = useMemo(() => new THREE.Vector3(), []);
+  const tangent = useMemo(() => new THREE.Vector3(), []);
   const keepOut = useMemo<JellyKeepOut[]>(
     () => planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size * ZONE_FACTOR + JELLY_RADIUS, body: p.size + JELLY_RADIUS })), []);
+  /** Reused every frame: the mood step's input, so the loop allocates nothing. */
+  const jellyInput = useMemo<JellyInput>(
+    () => ({ pathPos, basePos, player: flight, playerSpeed: 0, boosting: false, keepOut, dt: 0 }),
+    [pathPos, basePos, keepOut],
+  );
   // The pulse runs on its own accumulated clock so its rate can follow the
   // mood without jumping the phase. It advances on ambient time, so it still
   // freezes under reduced motion.
@@ -201,7 +209,8 @@ export default function SpaceJellyfish() {
     material.uniforms.uTime.value = pulseTime;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
     JELLY_PATH.getPointAt(t, pathPos);
-    const tangent = JELLY_PATH.getTangentAt(t);
+    basePos.copy(pathPos);
+    JELLY_PATH.getTangentAt(t, tangent);
     // Jet propulsion: surge forward on each contraction stroke, plus a slow bob —
     // the drift is no longer a constant glide.
     // Surge reads the same warped clock as the shader, so the propulsion stroke
@@ -213,13 +222,14 @@ export default function SpaceJellyfish() {
     // Mood: an eased offset off the path toward or away from the pilot.
     const store = useSpaceStore.getState();
     if (!store.reducedMotion) {
-      planets.forEach((p, i) => {
-        const b = bodies[p.name];
+      for (let i = 0; i < planets.length; i++) {
+        const b = bodies[planets[i].name];
         keepOut[i].x = b.x; keepOut[i].y = b.y; keepOut[i].z = b.z;
-      });
-      stepJelly(jelly, {
-        pathPos, player: flight, playerSpeed: flight.speed, boosting: store.isWarping, keepOut, dt,
-      });
+      }
+      jellyInput.playerSpeed = flight.speed;
+      jellyInput.boosting = store.isWarping;
+      jellyInput.dt = dt;
+      stepJelly(jelly, jellyInput);
     }
     groupRef.current.position.set(pathPos.x + jelly.offset.x, pathPos.y + jelly.offset.y, pathPos.z + jelly.offset.z);
     groupRef.current.rotation.set(
