@@ -33,7 +33,8 @@ export default function BeaconPicker() {
         className="w-full max-w-sm rounded-2xl border border-[#00ff87]/25 bg-[#05040c]/95 p-5 font-mono text-[11px] text-white/80">
         <h2 id="beacon-title" className="text-[#00ff87] text-xs tracking-[0.2em] mb-1">DROP A BEACON</h2>
         <p className="text-white/50 text-[10px] mb-4">
-          Left where your ship is now, for every pilot who flies past. One every 10 minutes.
+          Left where your ship is now, for every pilot who flies past. Shows your
+          country and how long ago. One every 10 minutes.
         </p>
         <ol className="flex flex-col gap-1.5">
           {BEACON_PHRASES.map((p, i) => (

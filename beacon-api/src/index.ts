@@ -1,4 +1,4 @@
-import { handleRequest, type BeaconStore, type StoredBeacon } from "./handler";
+import { handleRequest, withListCache, type BeaconStore, type StoredBeacon } from "./handler";
 
 /**
  * Cloudflare Worker entry: binds the handler to D1. Deploy steps are in
@@ -8,11 +8,11 @@ import { handleRequest, type BeaconStore, type StoredBeacon } from "./handler";
 // The slice of the D1 API used here, declared locally so the repo needs no
 // @cloudflare/workers-types dependency.
 interface D1Result<T> { results: T[] }
+interface D1RunResult { meta: { changes: number } }
 interface D1Stmt {
   bind(...values: unknown[]): D1Stmt;
   all<T>(): Promise<D1Result<T>>;
-  first<T>(): Promise<T | null>;
-  run(): Promise<unknown>;
+  run(): Promise<D1RunResult>;
 }
 interface D1Database { prepare(sql: string): D1Stmt }
 
@@ -20,7 +20,7 @@ interface Env {
   DB: D1Database;
   /** Comma-separated origins allowed to read and drop, e.g. the Pages and Cloudflare hosts. */
   ALLOWED_ORIGINS: string;
-  /** Secret (wrangler secret put IP_SALT). Salts IP hashes; rotate to forget them. */
+  /** Secret (wrangler secret put IP_SALT), 16+ chars or POSTs fail closed. HMAC key for IP hashes; rotate to forget them. */
   IP_SALT: string;
 }
 
@@ -35,26 +35,33 @@ function d1Store(db: D1Database): BeaconStore {
       const { results } = await db.prepare("SELECT * FROM beacons ORDER BY at DESC LIMIT ?").bind(limit).all<Row>();
       return results.map(fromRow);
     },
-    async countSince(ipHash, since) {
-      const r = await db.prepare("SELECT COUNT(*) AS n FROM beacons WHERE ip_hash = ? AND at >= ?")
-        .bind(ipHash, since).first<{ n: number }>();
-      return r?.n ?? 0;
+    // One statement, so SQLite makes check-and-insert atomic: a parallel burst
+    // cannot all pass the check before the first row lands.
+    async insertIfAllowed(b, keySince, globalSince, globalMax) {
+      const r = await db.prepare(
+        `INSERT INTO beacons (id, x, y, z, phrase, at, country, ip_hash)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM beacons WHERE ip_hash = ? AND at >= ?)
+           AND (SELECT COUNT(*) FROM beacons WHERE at >= ?) < ?`,
+      ).bind(b.id, b.x, b.y, b.z, b.phrase, b.at, b.country, b.ipHash, b.ipHash, keySince, globalSince, globalMax).run();
+      return r.meta.changes > 0;
     },
-    async insert(b) {
-      await db.prepare("INSERT INTO beacons (id, x, y, z, phrase, at, country, ip_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(b.id, b.x, b.y, b.z, b.phrase, b.at, b.country, b.ipHash).run();
-    },
+    // Walks the `at` index to the keep-th row instead of scanning a NOT IN set.
     async prune(keep) {
-      await db.prepare("DELETE FROM beacons WHERE id NOT IN (SELECT id FROM beacons ORDER BY at DESC LIMIT ?)")
-        .bind(keep).run();
+      await db.prepare("DELETE FROM beacons WHERE at < (SELECT at FROM beacons ORDER BY at DESC LIMIT 1 OFFSET ?)")
+        .bind(keep - 1).run();
     },
   };
 }
 
+/** Per isolate: survives across requests, so repeat GETs skip D1 for 30s. */
+let store: BeaconStore | null = null;
+
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
+    store ??= withListCache(d1Store(env.DB), 30_000, Date.now);
     return handleRequest(req, {
-      store: d1Store(env.DB),
+      store,
       allowedOrigins: env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
       salt: env.IP_SALT,
       now: () => Date.now(),

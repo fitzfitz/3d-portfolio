@@ -18,6 +18,13 @@ export interface BeaconDrop { x: number; y: number; z: number; phrase: number }
 /** Live beacons by scannable id ("beacon_<id>"), for scan reports. Written by Beacons.tsx. */
 export const beaconRegistry = new Map<string, Beacon>();
 
+/**
+ * No beacons within this distance of the spawn pad (0, 0, 18): every visitor
+ * starts there, so a pile of them would be the first thing a recruiter sees.
+ */
+export const SPAWN_KEEP_OUT = 15;
+const SPAWN = { x: 0, y: 0, z: 18 };
+
 /** Most beacons the scene renders, and the most the API serves. */
 export const BEACON_LIMIT = 40;
 
@@ -34,6 +41,7 @@ export function validateDrop(body: unknown): { ok: true; drop: BeaconDrop } | { 
   if (!isObj(body)) return { ok: false };
   const { x, y, z, phrase } = body;
   if (!inBounds(x) || !inBounds(y) || !inBounds(z) || !isPhrase(phrase)) return { ok: false };
+  if (Math.hypot(x - SPAWN.x, y - SPAWN.y, z - SPAWN.z) < SPAWN_KEEP_OUT) return { ok: false };
   return { ok: true, drop: { x: round1(x), y: round1(y), z: round1(z), phrase } };
 }
 

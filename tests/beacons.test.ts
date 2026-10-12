@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateDrop, parseBeacons, beaconReport, BEACON_LIMIT } from "../src/utils/beacons";
+import { validateDrop, parseBeacons, beaconReport, BEACON_LIMIT, SPAWN_KEEP_OUT } from "../src/utils/beacons";
 import { BEACON_PHRASES } from "../src/data/beaconPhrases";
 
 const good = { x: 10, y: -4.26, z: 120, phrase: 2 };
@@ -17,6 +17,12 @@ describe("validateDrop", () => {
   });
   it("rejects positions outside the system or not finite", () => {
     for (const x of [251, -251, Number.NaN, Infinity, "3"]) expect(validateDrop({ ...good, x }).ok).toBe(false);
+  });
+  // Every visitor starts at the spawn pad (0, 0, 18): a pile of beacons there
+  // would be the first thing a recruiter sees.
+  it("refuses drops near the spawn pad", () => {
+    expect(validateDrop({ x: 3, y: 0, z: 20, phrase: 0 }).ok).toBe(false);
+    expect(validateDrop({ x: 0, y: 0, z: 18 + SPAWN_KEEP_OUT + 1, phrase: 0 }).ok).toBe(true);
   });
   it("rejects non-objects", () => {
     for (const b of [null, "x", 3, []]) expect(validateDrop(b).ok).toBe(false);

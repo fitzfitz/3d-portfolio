@@ -32,6 +32,9 @@ export async function dropBeacon(phrase: number): Promise<void> {
     now.sendBroadcast(`BEACON DROPPED // "${BEACON_PHRASES[phrase]}" · VISIBLE TO EVERY PILOT WHO PASSES`);
   } else if (r.reason === "rate") {
     now.sendBroadcast("BEACON RELAY // ONE BEACON PER PILOT EVERY 10 MINUTES");
+  } else if (r.reason === "invalid") {
+    // The only drop a configured client can make that fails validation.
+    now.sendBroadcast("BEACON REFUSED // TOO CLOSE TO THE SPAWN PAD. FLY OUT A LITTLE");
   } else {
     now.sendBroadcast("BEACON RELAY OFFLINE // TRY AGAIN LATER");
   }

@@ -108,7 +108,17 @@ export default async function run() {
       { timeoutMs: 8_000, intervalMs: 150 });
     checks.check("a second drop inside the window reports the rate limit", limited.ok);
 
+    // The spawn pad is a keep-out zone, refused before anything is sent.
+    await page.evaluate(() => window.__fitz.teleport(2, 0, 20)); await frames(page, 3);
     await page.keyboard.press("KeyB"); await frames(page, 2);
+    await page.keyboard.press("Digit1");
+    const refused = await pollUntil(async () => /TOO CLOSE TO THE SPAWN PAD/.test((await readStore(page)).broadcast?.text ?? ""),
+      { timeoutMs: 8_000, intervalMs: 150 });
+    checks.check("a drop on the spawn pad is refused without a request", refused.ok && posts.length === 2,
+      `posts=${posts.length}`);
+    await page.keyboard.press("KeyB"); await frames(page, 2);
+    const disclosure = await page.evaluate(() => document.querySelector('[data-testid="beacon-picker"]')?.textContent ?? "");
+    checks.check("the picker discloses that country and time are shown", /country/i.test(disclosure), disclosure.slice(0, 120));
     await page.keyboard.press("Escape"); await frames(page, 2);
     checks.check("Esc cancels the picker", !(await page.$('[data-testid="beacon-picker"]')));
     checks.check("cancelling drops nothing", posts.length === 2, `posts=${posts.length}`);

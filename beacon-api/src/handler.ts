@@ -9,14 +9,19 @@ import { validateDrop, BEACON_LIMIT, type Beacon } from "../../src/utils/beacons
  */
 
 export interface StoredBeacon extends Beacon {
-  /** SHA-256 of salt + client IP. The raw IP is never stored. */
+  /** HMAC-SHA256(IP_SALT, rate key). The raw IP is never stored. */
   ipHash: string;
 }
 
 export interface BeaconStore {
   list(limit: number): Promise<StoredBeacon[]>;
-  countSince(ipHash: string, since: number): Promise<number>;
-  insert(row: StoredBeacon): Promise<void>;
+  /**
+   * Inserts `row` unless its ipHash already has a row at or after `keySince`,
+   * or `globalMax` rows exist at or after `globalSince`. Must be ONE atomic
+   * statement: a separate check and insert let a parallel burst from one
+   * client all pass the check before any insert lands.
+   */
+  insertIfAllowed(row: StoredBeacon, keySince: number, globalSince: number, globalMax: number): Promise<boolean>;
   /** Deletes all but the newest `keep` rows. */
   prune(keep: number): Promise<void>;
 }
@@ -30,9 +35,16 @@ export interface Deps {
 
 /** One beacon per pilot per window. */
 export const RATE_WINDOW_MS = 10 * 60_000;
+/**
+ * Drops per minute across everyone. Bounds a flood from rotating IPs, and
+ * keeps the table (KEEP_ROWS) from turning over inside RATE_WINDOW_MS — the
+ * per-pilot limit lives in those rows, so pruning them early would forget it.
+ */
+export const GLOBAL_PER_MINUTE = 10;
 /** Rows kept; older beacons fall off. The scene only shows BEACON_LIMIT anyway. */
 export const KEEP_ROWS = 500;
 const MAX_BODY_BYTES = 1024;
+const MIN_SALT_LENGTH = 16;
 
 function cors(origin: string | null, deps: Deps): Record<string, string> {
   if (!origin || !deps.allowedOrigins.includes(origin)) return {};
@@ -54,9 +66,48 @@ function json(status: number, body: unknown, headers: Record<string, string>): R
 
 const publicView = ({ ipHash: _ipHash, ...b }: StoredBeacon): Beacon => b;
 
-async function sha256Hex(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/**
+ * The part of a client address that identifies one pilot. IPv4 whole; IPv6 to
+ * its /64, since a single home connection is handed 2^64 addresses and could
+ * otherwise rotate past the limit at will.
+ */
+export function rateKey(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  const [head, tail = ""] = ip.toLowerCase().split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = ip.includes("::") ? [...h, ...Array(8 - h.length - t.length).fill("0"), ...t] : h;
+  return groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":");
+}
+
+async function hmacHex(key: string, text: string): Promise<string> {
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(text));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Serves list() from memory for `ttlMs`. Cache-Control alone does not cache a
+ * Worker's own responses, so without this every GET is a D1 read. Per
+ * isolate, which is fine: a few-second-stale sky is invisible.
+ */
+export function withListCache(store: BeaconStore, ttlMs: number, now: () => number): BeaconStore {
+  let cached: { at: number; limit: number; rows: StoredBeacon[] } | null = null;
+  return {
+    async list(limit) {
+      if (cached && cached.limit === limit && now() - cached.at < ttlMs) return cached.rows;
+      const rows = await store.list(limit);
+      cached = { at: now(), limit, rows };
+      return rows;
+    },
+    async insertIfAllowed(...args) {
+      const ok = await store.insertIfAllowed(...args);
+      if (ok) cached = null;
+      return ok;
+    },
+    prune: (keep) => store.prune(keep),
+  };
 }
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
@@ -73,9 +124,18 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   }
 
   if (req.method !== "POST") return json(405, { error: "method not allowed" }, h);
-  // Browsers always send Origin on a cross-origin POST; refusing others keeps
-  // casual scripts and other sites from writing into the sky.
+  // Not a security control — any non-browser client can send any Origin. It
+  // stops other sites' pages from writing into this sky; the rate limits
+  // below are what bound abuse.
   if (!origin || !deps.allowedOrigins.includes(origin)) return json(403, { error: "origin" }, {});
+  // Fail closed: an unset salt would make every stored hash brute-forceable.
+  if (deps.salt.length < MIN_SALT_LENGTH) return json(500, { error: "misconfigured" }, h);
+  if (!(req.headers.get("Content-Type") ?? "").startsWith("application/json")) {
+    return json(415, { error: "json only" }, h);
+  }
+  // Refuse a declared oversized body before buffering any of it.
+  const declared = Number(req.headers.get("Content-Length") ?? "0");
+  if (declared > MAX_BODY_BYTES) return json(413, { error: "too large" }, h);
 
   const text = await req.text();
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return json(413, { error: "too large" }, h);
@@ -86,16 +146,14 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
   const now = deps.now();
   const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
-  const ipHash = await sha256Hex(`${deps.salt}:${ip}`);
-  if (await deps.store.countSince(ipHash, now - RATE_WINDOW_MS + 1) > 0) {
-    return json(429, { error: "rate" }, { ...h, "Retry-After": String(RATE_WINDOW_MS / 1000) });
-  }
-
+  const ipHash = await hmacHex(deps.salt, rateKey(ip));
   // CF-IPCountry is "XX" when unknown and "T1" for Tor; keep real codes only.
   const cc = req.headers.get("CF-IPCountry");
   const country = cc && /^[A-Z]{2}$/.test(cc) && cc !== "XX" && cc !== "T1" ? cc : null;
   const row: StoredBeacon = { id: crypto.randomUUID(), ...v.drop, at: now, country, ipHash };
-  await deps.store.insert(row);
+
+  const inserted = await deps.store.insertIfAllowed(row, now - RATE_WINDOW_MS + 1, now - 60_000 + 1, GLOBAL_PER_MINUTE);
+  if (!inserted) return json(429, { error: "rate" }, { ...h, "Retry-After": "60" });
   await deps.store.prune(KEEP_ROWS);
   return json(201, { beacon: publicView(row) }, h);
 }
