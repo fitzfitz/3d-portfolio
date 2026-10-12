@@ -15,6 +15,23 @@ export default async function run() {
     const coarse = await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches);
     checks.check("emulated viewport reports pointer: coarse", coarse);
 
+    // The flight buttons are thumbed mid-flight without looking: every pair
+    // needs a real gap, or reaching for BOOST lands on BEAM.
+    const gaps = await page.evaluate(() => {
+      const ids = ["touch-rise", "touch-dive", "touch-beam", "touch-boost"];
+      const r = Object.fromEntries(ids.map((id) => [id, document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect()]));
+      const gap = (a, b) => Math.max(b.left - a.right, a.left - b.right, b.top - a.bottom, a.top - b.bottom);
+      const out = [];
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        const a = r[ids[i]], b = r[ids[j]];
+        if (a && b) out.push({ pair: `${ids[i]}/${ids[j]}`, gap: Math.round(gap(a, b)) });
+      }
+      return out;
+    });
+    const tight = gaps.filter((g) => g.gap < 8);
+    checks.check("touch flight buttons keep at least 8px between them", gaps.length === 6 && tight.length === 0,
+      tight.map((g) => `${g.pair}=${g.gap}px`).join(" ") || `${gaps.length} pairs checked`);
+
     // Joystick: drag right-and-up from the middle of the left half.
     const vp = page.viewport();
     const cx = Math.round(vp.width * 0.25), cy = Math.round(vp.height * 0.6);
@@ -94,6 +111,17 @@ export default async function run() {
     const boosting = await readInput(page);
     await page.touchscreen.touchEnd();
     checks.check("BOOST sets the boost input", boosting.boost === true);
+
+    const beamEl = await page.$('[data-testid="touch-beam"]');
+    const eb = await beamEl.boundingBox();
+    await page.touchscreen.touchStart(eb.x + eb.width / 2, eb.y + eb.height / 2);
+    await settle(page, 400);
+    const beaming = await readInput(page);
+    await page.touchscreen.touchEnd();
+    await settle(page, 200);
+    const beamReleased = await readInput(page);
+    checks.check("BEAM sets the beam input while held", beaming.beam === true);
+    checks.check("releasing BEAM clears the beam input", beamReleased.beam === false);
 
     // SCAN only exists while a scannable is in range — put one there.
     const name = await page.evaluate(async () => {

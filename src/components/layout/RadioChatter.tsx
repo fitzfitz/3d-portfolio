@@ -44,15 +44,11 @@ export default function RadioChatter() {
       }, scheduler.nextDelayMs());
     };
 
-    // Zone entry + boundary wrap interrupt the ambient cadence immediately
+    // Zone entry interrupts the ambient cadence immediately
     const unsubs = [
       useSpaceStore.subscribe(
         (s) => s.activeZone,
         (zone) => { if (zone) typeLine(scheduler.pick("zone", zone)); }
-      ),
-      useSpaceStore.subscribe(
-        (s) => s.isTeleporting,
-        (flash) => { if (flash) typeLine(scheduler.pick("wrap")); }
       ),
       useSpaceStore.subscribe(
         (s) => s.cometNear,
@@ -69,8 +65,9 @@ export default function RadioChatter() {
           typeLine(b.text);
           // Broadcasts carry real content (shard facts, scan reports, the
           // completion pointer). Announce them whole: the typewriter line
-          // changes every 22ms and would be noise to a screen reader.
-          if (liveRef.current) liveRef.current.textContent = b.text;
+          // changes every 22ms and would be noise to a screen reader. Silent
+          // lines (hails, flavour callouts) are shown but not announced.
+          if (liveRef.current && !b.silent) liveRef.current.textContent = b.text;
         }
       ),
       useSpaceStore.subscribe(

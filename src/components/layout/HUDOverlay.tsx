@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower } from "lucide-react";
-import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
+import { beamState } from "../../store/beamState";
+import { ORE_PER_CRYSTAL } from "../../utils/mining";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -74,6 +76,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const velRef = useRef<HTMLDivElement>(null);
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
+  const oreRef = useRef<HTMLDivElement>(null);
   const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
@@ -84,6 +87,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      // Accent while a gravity assist carries the ship past cruise speed.
+      if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
       if (fuelFillRef.current) {
         fuelFillRef.current.style.width = `${(pct * 100).toFixed(1)}%`;
@@ -95,6 +100,12 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (fuelLabelRef.current)
         fuelLabelRef.current.textContent =
           pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`;
+      // Mining readout: shown while pebbles are coming in, and 2s after.
+      if (oreRef.current) {
+        const show = performance.now() - beamState.oreAt < 2000;
+        oreRef.current.style.display = show ? "" : "none";
+        if (show) oreRef.current.textContent = `ORE ${beamState.ore}/${ORE_PER_CRYSTAL}`;
+      }
       for (const p of planets) {
         const el = planetRowRefs.current[p.name];
         const b = bodies[p.name];
@@ -173,6 +184,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             className="h-full rounded-full transition-none"
             style={{ width: "100%", backgroundColor: "#00ff87" }} />
         </div>
+        <div ref={oreRef} data-testid="hud-ore" className="text-[#3ff2d0]" style={{ display: "none" }} />
       </div>
 
       <div className="absolute top-16 right-4 sm:top-24 sm:right-6 flex flex-col items-end gap-1.5">
@@ -221,6 +233,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <div className="flex flex-col">
               <span className="text-white/45">SCAN</span>
               <span className="text-white">{pad ? "HOLD A" : "HOLD E"}</span>
+            </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">TRACTOR_BEAM</span>
+              <span className="text-white">{pad ? "HOLD LB" : "HOLD F"}</span>
             </div>
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">

@@ -44,10 +44,19 @@ export const chatterPools: ChatterPools = {
     "RELATIVISTIC EFFECTS DETECTED IN CSS ANIMATIONS",
     "SPEED LIMIT? IN DEEP SPACE? BOLD ASSUMPTION",
   ],
-  wrap: [
-    "SECTOR BOUNDARY CROSSED. TOPOLOGY: TOROIDAL. YOU'RE BACK",
-    "CONGRATULATIONS: YOU CIRCUMNAVIGATED THE PORTFOLIO",
-    "EDGE OF SPACE REACHED. SPACE DISAGREES",
+  haze: [
+    "NEBULA DENSITY RISING. SENSORS GOING SOFT",
+    "THE MAP SAYS 'HERE BE MORE OF THIS'",
+    "VISIBILITY ZERO. CONFIDENCE, ALSO ZERO",
+    "EDGE HAZE. WHATEVER'S PAST IT, IT'S MORE OF THIS",
+  ],
+  slingshot: [
+    "GRAVITY ASSIST LOGGED. PHYSICS SENDS ITS REGARDS",
+    "SLINGSHOT CLEAN. THE PLANET DID MOST OF THE WORK",
+    "FREE SPEED, COURTESY OF A LARGE ROCK",
+  ],
+  ore: [
+    "ORE IN THE HOLD. IT'S ROCKS. WE'RE CALLING IT FUEL",
   ],
   comet: [
     "COMET DETECTED // TAIL COMPOSITION: ICE, DUST, DEADLINES",
@@ -76,7 +85,7 @@ export const chatterPools: ChatterPools = {
 };
 
 /** World-event announcements (WorldEventDirector). Convoy lines are keyed by planet id. */
-export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]> } = {
+export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]>; convoyAny: string[] } = {
   comet: [
     "INTERSTELLAR VISITOR INBOUND // CLOSEST PASS 35U. WAVE",
     "UNSCHEDULED COMET ON APPROACH. IT DID NOT BOOK A MEETING",
@@ -101,4 +110,9 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Record<stri
       "FUXX SUPPLY DROP // TERMINAL SESSIONS, STILL WARM",
     ],
   },
+  /** Any planet without its own convoy lines (a project added later). */
+  convoyAny: [
+    "CONVOY INBOUND // CARGO MANIFEST: CLASSIFIED. PROBABLY SNACKS",
+    "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",
+  ],
 };

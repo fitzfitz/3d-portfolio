@@ -27,6 +27,7 @@ const FRAG = /* glsl */ `
   uniform float uTime;
   uniform float uPower;   // 0 idle .. 1 cruise .. ~2 warp
   uniform float uSeed;
+  uniform vec3 uColor;   // the plume's cool end (engine cyan by default)
   varying float vAlong;
   varying vec3 vNormal;
   varying vec3 vView;
@@ -40,7 +41,7 @@ const FRAG = /* glsl */ `
     float flicker = 0.85 + 0.15 * sin(uTime * 37.0 + uSeed * 3.0) * sin(uTime * 23.0 + uSeed);
     float fall = pow(1.0 - t, 1.7);
     vec3 hot = vec3(0.92, 1.0, 1.0);
-    vec3 cool = vec3(0.0, 0.85, 1.0);
+    vec3 cool = uColor;
     vec3 col = mix(hot, cool, smoothstep(0.0, 0.45, t));
     float a = core * fall * mix(1.0, diamonds, smoothstep(0.05, 0.3, t)) * flicker
             * (0.25 + 0.55 * min(uPower, 1.6));
@@ -48,7 +49,10 @@ const FRAG = /* glsl */ `
   }
 `;
 
-export function makePlumeMaterial(seed: number): THREE.ShaderMaterial {
+/** Default "cool" end of the plume: the engine's cyan (0, 0.85, 1). */
+const ENGINE_COOL = new THREE.Color(0, 0.85, 1);
+
+export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -60,6 +64,7 @@ export function makePlumeMaterial(seed: number): THREE.ShaderMaterial {
       uTime: { value: 0 },
       uPower: { value: 0.3 },
       uSeed: { value: seed },
+      uColor: { value: color.clone() },
     },
   });
 }
@@ -67,4 +72,17 @@ export function makePlumeMaterial(seed: number): THREE.ShaderMaterial {
 /** Unit-length open tube along +Y (top = nozzle), tapering to the tip. */
 export function makePlumeGeometry(nozzleRadius: number): THREE.BufferGeometry {
   return new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * 0.18, 1, 20, 12, true);
+}
+
+/**
+ * The tractor beam's cone, drawn with the plume material: an open tube that
+ * is a point at the nose (top, y = 0, the plume shader's bright end) and the
+ * full unit radius at y = -1, so scaling it by (r, range, r) matches the catch
+ * cone in utils/tractorBeam.ts. The plume tube tapers the other way; reusing
+ * it put a 22u-wide bright mouth around the chase camera.
+ */
+export function makeBeamGeometry(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.02, 1, 1, 20, 12, true);
+  g.translate(0, -0.5, 0);
+  return g;
 }

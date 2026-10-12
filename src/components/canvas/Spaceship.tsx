@@ -14,6 +14,17 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
+import { wrapCoord } from "../../utils/edgeHaze";
+import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
+import { beamState } from "../../store/beamState";
+import { reelStep } from "../../utils/tractorBeam";
+import {
+  stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
+  PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
+} from "../../utils/gravityWell";
+import { toroidalDistance3 } from "../../utils/toroidal";
+import { ChatterScheduler } from "../../utils/chatterScheduler";
+import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
@@ -72,6 +83,22 @@ const FIRST_TARGET = planets[0];
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
+/**
+ * Gravity wells, one per planet plus the sun, reused every frame: planet
+ * entries are refreshed from `bodies`, and the active ones are copied to the
+ * front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
+ */
+const PLANET_WELLS: Well[] = planets.map((p) => ({
+  x: 0, y: 0, z: 0, g: PLANET_WELL_G, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
+}));
+const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
+const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
+const slingshotLines = new ChatterScheduler(chatterPools);
+/** SlingshotWatch result scratch. */
+const slingshotOut = { whoosh: false, line: false };
+/** Total velocity (pilot + gravity) scratch. */
+const _total = new THREE.Vector3();
+
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
@@ -94,6 +121,14 @@ export default function Spaceship() {
 
   const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
+  // Gravity momentum (spec §5): built by wells, decays slowly; the ship moves
+  // by vel + gravity. Zeroed wherever the ship is placed, docked or bounced.
+  const gravity = useRef({ x: 0, y: 0, z: 0 });
+  const idleFor = useRef(0);
+  const escapeGrace = useRef(new EscapeGrace());
+  /** Well exits -> whoosh and slingshot callout (gravityWell.ts). */
+  const slingshotWatch = useRef(new SlingshotWatch());
+  const zeroGravity = () => { gravity.current.x = 0; gravity.current.y = 0; gravity.current.z = 0; };
 
   // Dev-only: e2e probes and the QA checklist need to reposition the ship.
   // `flight` cannot be used for this — it is written FROM pos every frame, so
@@ -103,6 +138,7 @@ export default function Spaceship() {
     fitzDebug.teleport = (x: number, y: number, z: number) => {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
+      zeroGravity();
     };
     fitzDebug.setAttitude = (yaw: number, nosePitch: number) => {
       angle.current = yaw;
@@ -111,7 +147,9 @@ export default function Spaceship() {
       pitchVel.current = 0;
       hasFlown.current = true;
     };
-    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; };
+    fitzDebug.gravity = gravity.current;
+    fitzDebug.beam = beamState;
+    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; };
   }, []);
 
   // Spawn nose-on to the first planet, so the first W press flies toward a
@@ -148,6 +186,8 @@ export default function Spaceship() {
 
   const lockedCenter = useRef(new THREE.Vector3());
   const targetLockRadius = useRef(6);
+  /** Closest a docked ship may sit to the body's centre (0 = no limit, e.g. the portal). */
+  const dockMinRadius = useRef(0);
   const escapeRadius = useRef(10);
   const orbitRadius = useRef(6); // eased ring radius — starts at arrival distance, eases toward targetLockRadius
   const orbitAngle = useRef(0);
@@ -161,6 +201,8 @@ export default function Spaceship() {
     if (!wasLocked && isOrbitLocked) {
       // Lock entry: resolve the locked body and start the orbit from wherever
       // the ship arrived (no snap).
+      zeroGravity();
+      escapeGrace.current.clear();
       const activeZone = useSpaceStore.getState().activeZone;
       lockedZone.current = activeZone;
       const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
@@ -168,14 +210,17 @@ export default function Spaceship() {
         const b = bodies[planet.name];
         lockedCenter.current.set(b.x, b.y, b.z);
         targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
+        dockMinRadius.current = planet.size + CAPTURE_SURFACE_MARGIN;
         escapeRadius.current = planet.size * ZONE_FACTOR * ESCAPE_MARGIN;
       } else if (activeZone === "contact") {
         lockedCenter.current.set(...PORTAL_POS);
+        dockMinRadius.current = 0;
         targetLockRadius.current = PORTAL_ORBIT_R;
         escapeRadius.current = PORTAL_ZONE_R * ESCAPE_MARGIN * 1.5;
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
+        dockMinRadius.current = 0;
         targetLockRadius.current = 6;
         escapeRadius.current = 10;
       }
@@ -202,6 +247,11 @@ export default function Spaceship() {
     const out = escapePosition(pos.current, lockedCenter.current, escapeRadius.current);
     pos.current.set(out.x, out.y, out.z);
     vel.current.subVectors(pos.current, lockedCenter.current).setLength(ESCAPE_SPEED);
+    zeroGravity();
+    // The escape push leaves the ship inside this planet's well; skip its pull
+    // until the ship is clear, or it would be dragged straight back into lock.
+    const left = lockedZone.current;
+    if (left && planets.some((p) => p.name === left)) escapeGrace.current.arm(left);
   }, [isOrbitLocked]);
 
   const shipRef = useRef<THREE.Group>(null);
@@ -295,6 +345,7 @@ export default function Spaceship() {
       shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
       drivePlumes(0.35, 0.25, time, dt);
       store.setWarping(false);
+      beamState.active = false; beamState.reel.active = false;
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.pitch = pitch.current;
       return;
@@ -308,7 +359,7 @@ export default function Spaceship() {
       const rm = store.reducedMotion;
       // Speed-driven framing: the camera eases back and the lens widens a
       // little with throttle, more at warp — the "push" of acceleration.
-      const speedNorm = Math.min(1, vel.current.length() / MAX_SPEED);
+      const speedNorm = Math.min(1, _total.length() / MAX_SPEED);
       const camDistance = warpActive ? 6.8 : 4.6 + 0.6 * speedNorm;
       const camHeight = warpActive ? 2.8 : 1.8;
       const targetFov = warpActive ? 86 : 58 + (rm ? 0 : 6 * speedNorm);
@@ -355,6 +406,8 @@ export default function Spaceship() {
       pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;
       pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * orbitRadius.current;
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
+      // Settling into orbit must not dip the ship toward the surface (utils/capture.ts).
+      if (dockMinRadius.current > 0) keepOutside(pos.current, lockedCenter.current, dockMinRadius.current);
       angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
       roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
       pitch.current = THREE.MathUtils.lerp(pitch.current, 0, frameLerp(0.05, dt)); // level out in orbit
@@ -372,6 +425,9 @@ export default function Spaceship() {
       // matching the frozen orbitAngle above.
       flight.speed = store.reducedMotion ? 0 : orbitRadius.current * 0.25; // tangential speed for the HUD
 
+      zeroGravity();
+      _total.set(0, 0, 0);
+      beamState.active = false; beamState.reel.active = false;
       applyChaseCam(false, true);
       return;
     }
@@ -388,6 +444,7 @@ export default function Spaceship() {
       const j = jumpPoint(pos.current, target, standoff);
       pos.current.set(j.x, j.y, j.z);
       vel.current.set(0, 0, 0);
+      zeroGravity();
       angle.current = j.yaw;
       pitch.current = 0;
       turnVelocity.current = 0;
@@ -404,7 +461,7 @@ export default function Spaceship() {
     // the first input, then hand over and never touch the controls again.
     if (!hasFlown.current) {
       const touched = input.forward || input.backward || input.left || input.right
-        || input.ascend || input.descend || input.boost || input.steer !== 0 || input.thrust !== 0;
+        || input.ascend || input.descend || input.boost || input.beam || input.steer !== 0 || input.thrust !== 0;
       // Leaving the spawn pad by any other route (a dev/e2e teleport, a
       // collision push) also ends the auto-aim: it only exists to point a
       // parked, untouched ship at a planet.
@@ -460,6 +517,12 @@ export default function Spaceship() {
 
     const nose = noseDirection(angle.current, pitch.current);
 
+    // Tractor beam (spec §6): off in warp; the nose is its origin and axis.
+    beamState.active = input.beam && !warpActive;
+    beamState.ox = pos.current.x + nose.x * 1.3; beamState.oy = pos.current.y + nose.y * 1.3; beamState.oz = pos.current.z + nose.z * 1.3;
+    beamState.dx = nose.x; beamState.dy = nose.y; beamState.dz = nose.z;
+    if (!beamState.active) beamState.oreStreak = 0;
+
     if (warpActive) {
       vel.current.set(nose.x * WARP_SPEED, nose.y * WARP_SPEED, nose.z * WARP_SPEED);
     } else if (thrustInput > 0) {
@@ -470,9 +533,35 @@ export default function Spaceship() {
     } else if (braking) {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
+    // Reeling toward a shard counts as thrust for station-keeping.
+    const reeling = beamState.active && beamState.reel.active;
+    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, MAX_SPEED);
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
-    pos.current.addScaledVector(vel.current, dt);
+    // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
+    idleFor.current = thrustInput > 0 || reeling ? 0 : idleFor.current + dt;
+    const grace = escapeGrace.current;
+    if (grace.skip) {
+      const gb = bodies[grace.skip];
+      const gp = planets.find((q) => q.name === grace.skip);
+      if (gb && gp) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gp.size * PLANET_WELL_RADIUS_FACTOR);
+      else grace.clear();
+    }
+    let wellCount = 0;
+    for (let i = 0; i < planets.length; i++) {
+      if (planets[i].name === grace.skip) continue;
+      const b = bodies[planets[i].name], src = PLANET_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
+      dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
+    }
+    const sunDst = ACTIVE_WELLS[wellCount++];
+    sunDst.x = SUN_WELL.x; sunDst.y = SUN_WELL.y; sunDst.z = SUN_WELL.z;
+    sunDst.g = SUN_WELL.g; sunDst.radius = SUN_WELL.radius; sunDst.rMin = SUN_WELL.rMin;
+    const g = gravity.current;
+    stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
+
+    pos.current.x += (vel.current.x + g.x) * dt;
+    pos.current.y += (vel.current.y + g.y) * dt;
+    pos.current.z += (vel.current.z + g.z) * dt;
 
     // Ecliptic-departure advisory (flavor only — nothing pulls the ship back)
     store.setAltitudeWarn(Math.abs(pos.current.y) > 180);
@@ -487,6 +576,7 @@ export default function Spaceship() {
       if (hit) {
         pos.current.set(hit.px, hit.py, hit.pz);
         vel.current.set(hit.vx, hit.vy, hit.vz);
+        zeroGravity(); // momentum into the sun would just hit it again
         warpSuppressUntil.current = time + 0.45; // let the reflection push us away
         if (time - lastImpactAt.current > 0.5) {
           lastImpactAt.current = time;
@@ -498,20 +588,32 @@ export default function Spaceship() {
       }
     }
 
-    // Toroidal boundary wrap — all three axes (spec §2)
-    const bounds = COSMIC_BOUNDS;
-    let wrapOffsetX = 0, wrapOffsetY = 0, wrapOffsetZ = 0, didWrap = false;
-    if (pos.current.x > bounds) { pos.current.x = -bounds + 3; wrapOffsetX = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.x < -bounds) { pos.current.x = bounds - 3; wrapOffsetX = bounds * 2 - 3; didWrap = true; }
-    if (pos.current.y > bounds) { pos.current.y = -bounds + 3; wrapOffsetY = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.y < -bounds) { pos.current.y = bounds - 3; wrapOffsetY = bounds * 2 - 3; didWrap = true; }
-    if (pos.current.z > bounds) { pos.current.z = -bounds + 3; wrapOffsetZ = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.z < -bounds) { pos.current.z = bounds - 3; wrapOffsetZ = bounds * 2 - 3; didWrap = true; }
-    if (didWrap) {
-      state.camera.position.x += wrapOffsetX;
-      state.camera.position.y += wrapOffsetY;
-      state.camera.position.z += wrapOffsetZ;
-      store.triggerTeleportFlash();
+    _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);
+    const totalSpeed = _total.length();
+    beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
+
+    // Which planet well the ship is in now; leaving one fast is a slingshot.
+    let wellNow: string | null = null;
+    for (let i = 0; i < planets.length; i++) {
+      const b = bodies[planets[i].name];
+      if (toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, b.x, b.z, b.y, COSMIC_BOUNDS) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
+    }
+    const sling = slingshotWatch.current.update(
+      time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
+      Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,
+      store.race.phase === "running", slingshotOut);
+    if (sling.whoosh) soundManager.whoosh();
+    if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
+
+    // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so
+    // it agrees with utils/toroidal.ts, and silent: it happens inside the edge
+    // haze (EdgeHaze.tsx), so there is no flash, zap or radio line any more.
+    const wx = wrapCoord(pos.current.x), wy = wrapCoord(pos.current.y), wz = wrapCoord(pos.current.z);
+    if (wx !== pos.current.x || wy !== pos.current.y || wz !== pos.current.z) {
+      state.camera.position.x += wx - pos.current.x;
+      state.camera.position.y += wy - pos.current.y;
+      state.camera.position.z += wz - pos.current.z;
+      pos.current.set(wx, wy, wz);
     }
 
     shipRef.current.position.copy(pos.current);
@@ -534,9 +636,10 @@ export default function Spaceship() {
     );
 
     // 3. Thruster scale + engine light breathing with throttle
+    const assist = Math.min(1, Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z) / G_MAX);
     drivePlumes(
-      warpActive ? 2.8 : thrustInput > 0 ? 0.8 + 0.9 * thrustInput : 0.35,
-      warpActive ? 2.0 : thrustInput > 0 ? 0.55 + 0.45 * thrustInput : 0.25,
+      (warpActive ? 2.8 : thrustInput > 0 ? 0.8 + 0.9 * thrustInput : 0.35) + assist * 0.9,
+      (warpActive ? 2.0 : thrustInput > 0 ? 0.55 + 0.45 * thrustInput : 0.25) + assist * 0.8,
       time, dt);
     if (engineLightRef.current) {
       const targetGlow = (warpActive ? 2.2 : 0.25 + thrustInput * 0.15) * (0.92 + Math.sin(time * 21) * 0.08);
@@ -582,7 +685,7 @@ export default function Spaceship() {
     if (streaksRef.current) {
       const attr = streaksRef.current.geometry.attributes.position;
       const data = attr.array as Float32Array;
-      const speed = vel.current.length();
+      const speed = totalSpeed;
       const zSpeed = (warpActive ? 0.38 : 0.02 + (speed / 60) * 1.5) * dt * 60;
       const stretch = warpActive ? 2.2 : Math.min(0.6, 0.05 + speed * 0.04);
       for (let i = 0; i < streakCount; i++) {
@@ -619,7 +722,7 @@ export default function Spaceship() {
     flight.x = pos.current.x;
     flight.z = pos.current.z;
     flight.y = pos.current.y;
-    flight.speed = vel.current.length();
+    flight.speed = totalSpeed;
     flight.heading = angle.current;
     flight.pitch = pitch.current;
     store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6 && Math.abs(pos.current.y) < 3);

@@ -2,7 +2,12 @@ export interface ChatterPools {
   deepSpace: string[];
   zones: Record<string, string[]>;
   warp: string[];
-  wrap: string[];
+  /** Entering the edge haze (EdgeHaze). */
+  haze: string[];
+  /** Leaving a planet's well fast (Spaceship). */
+  slingshot: string[];
+  /** First ore of a session (AsteroidBelt). */
+  ore: string[];
   comet: string[];
   altitude: string[];
   impact: string[];
@@ -10,7 +15,7 @@ export interface ChatterPools {
   hail: string[];
 }
 
-export type ChatterKind = "ambient" | "zone" | "warp" | "wrap" | "comet" | "altitude" | "impact" | "hail";
+export type ChatterKind = "ambient" | "zone" | "warp" | "haze" | "slingshot" | "ore" | "comet" | "altitude" | "impact" | "hail";
 
 /** Pure line-selection + pacing logic. Injectable RNG for tests. */
 export class ChatterScheduler {
@@ -27,7 +32,9 @@ export class ChatterScheduler {
     let pool: string[];
     if (kind === "zone" && zone && this.pools.zones[zone]) pool = this.pools.zones[zone];
     else if (kind === "warp") pool = this.pools.warp;
-    else if (kind === "wrap") pool = this.pools.wrap;
+    else if (kind === "haze") pool = this.pools.haze;
+    else if (kind === "slingshot") pool = this.pools.slingshot;
+    else if (kind === "ore") pool = this.pools.ore;
     else if (kind === "comet") pool = this.pools.comet;
     else if (kind === "altitude") pool = this.pools.altitude;
     else if (kind === "impact") pool = this.pools.impact;

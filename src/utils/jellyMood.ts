@@ -19,6 +19,12 @@ export interface JellyKeepOut { x: number; y: number; z: number; r: number; body
 export interface JellyInput {
   /** Where the path (plus swim surge and bob) puts the jellyfish this frame. */
   pathPos: Vec3;
+  /**
+   * The path point BEFORE swim surge and bob. Drift cancellation and the
+   * curious rest offset are measured from this, so the creature keeps
+   * swimming while it holds still against its path. Defaults to `pathPos`.
+   */
+  basePos?: Vec3;
   player: Vec3;
   playerSpeed: number;
   boosting: boolean;
@@ -67,17 +73,20 @@ function setTarget(s: JellyState, x: number, y: number, z: number) {
  */
 export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   const { pathPos, player, dt } = inp;
+  const base = inp.basePos ?? pathPos;
   // While curious, hold the creature still in the world against its path's
   // own drift (~4.6u/s): eased against a moving point, the offset lagged ~5u
   // and it parked at ~23u instead of the rest distance. A jump is not drift.
+  // Measured on the BASE path: the swim surge and bob ride on top and must
+  // survive, or a curious jellyfish freezes mid-stroke.
   if (s.lastPath) {
-    const mx = pathPos.x - s.lastPath.x, my = pathPos.y - s.lastPath.y, mz = pathPos.z - s.lastPath.z;
+    const mx = base.x - s.lastPath.x, my = base.y - s.lastPath.y, mz = base.z - s.lastPath.z;
     if (s.mood === "curious" && Math.hypot(mx, my, mz) < PATH_JUMP) {
       s.offset.x -= mx; s.offset.y -= my; s.offset.z -= mz;
     }
-    s.lastPath.x = pathPos.x; s.lastPath.y = pathPos.y; s.lastPath.z = pathPos.z;
+    s.lastPath.x = base.x; s.lastPath.y = base.y; s.lastPath.z = base.z;
   } else {
-    s.lastPath = { x: pathPos.x, y: pathPos.y, z: pathPos.z };
+    s.lastPath = { x: base.x, y: base.y, z: base.z };
   }
   jelly.x = pathPos.x + s.offset.x; jelly.y = pathPos.y + s.offset.y; jelly.z = pathPos.z + s.offset.z;
   const dist = Math.hypot(jelly.x - player.x, jelly.y - player.y, jelly.z - player.z);
@@ -93,7 +102,7 @@ export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   } else if (dist < JELLY_CURIOUS_RADIUS && inp.playerSpeed < JELLY_CURIOUS_MAX_SPEED && !inp.boosting) {
     awayFrom(dir, player, jelly);
     const rx = player.x + dir.x * JELLY_REST_DIST, ry = player.y + dir.y * JELLY_REST_DIST, rz = player.z + dir.z * JELLY_REST_DIST;
-    const ox = rx - pathPos.x, oy = ry - pathPos.y, oz = rz - pathPos.z;
+    const ox = rx - base.x, oy = ry - base.y, oz = rz - base.z;
     let blocked = Math.hypot(ox, oy, oz) > JELLY_LEASH;
     for (const k of inp.keepOut) {
       if (Math.hypot(rx - k.x, ry - k.y, rz - k.z) < k.r) { blocked = true; break; }

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { flight, useSpaceStore, type FlightInput } from "../store/spaceStore";
 
-type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend" | "scan";
+type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend" | "scan" | "beam";
 
 const KEYMAP: Record<string, BoolKey> = {
   KeyW: "forward", ArrowUp: "forward",
@@ -12,6 +12,7 @@ const KEYMAP: Record<string, BoolKey> = {
   KeyC: "descend", KeyX: "descend",
   ShiftLeft: "boost", ShiftRight: "boost",
   KeyE: "scan",
+  KeyF: "beam",
 };
 
 /** True when the event target is a text-entry element — flight keys must not fire there. */
@@ -31,7 +32,7 @@ export function isModifiedChord(e: { metaKey: boolean; ctrlKey: boolean; altKey:
 /** Releases every input channel, digital and analog. */
 export function resetFlightInput(input: FlightInput): void {
   input.forward = false; input.backward = false; input.left = false; input.right = false;
-  input.boost = false; input.ascend = false; input.descend = false; input.scan = false;
+  input.boost = false; input.ascend = false; input.descend = false; input.scan = false; input.beam = false;
   input.steer = 0; input.thrust = 0;
 }
 

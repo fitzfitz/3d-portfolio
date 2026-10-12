@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
+import * as THREE from "three";
 import {
-  cargoSwerveTarget, HailGate,
+  cargoSwerveTarget, HailGate, curvatureRoll,
   CARGO_REACT_RADIUS, CARGO_SWERVE_MAX, CARGO_HAIL_RADIUS, HAIL_COOLDOWN_S,
 } from "../src/utils/cargoReaction";
 
@@ -69,5 +70,37 @@ describe("HailGate", () => {
   it("does not hail between the hail radius and the react radius", () => {
     const g = new HailGate(1);
     expect(g.update(0, (CARGO_HAIL_RADIUS + CARGO_REACT_RADIUS) / 2, 0, false)).toBe(false);
+  });
+});
+
+describe("curvatureRoll", () => {
+  // A ship flying +Z whose route bends toward +X is turning left (its left wing is +X).
+  const straight = { x: 0, y: 0, z: 1 };
+  const leftward = new THREE.Vector3(0.1, 0, 1).normalize();
+  const rightward = new THREE.Vector3(-0.1, 0, 1).normalize();
+
+  /** World-space height of the left wing tip after applying the roll, as CargoTraffic does. */
+  function leftWingY(roll: number): number {
+    const ship = new THREE.Object3D();
+    ship.lookAt(0, 0, 1);
+    ship.rotateZ(roll);
+    ship.updateMatrixWorld();
+    return new THREE.Vector3(1, 0, 0).applyMatrix4(ship.matrixWorld).y;
+  }
+
+  it("lowers the inside wing in a left turn", () => {
+    expect(leftWingY(curvatureRoll(straight, leftward))).toBeLessThan(0);
+  });
+  it("raises the left (outside) wing in a right turn", () => {
+    expect(leftWingY(curvatureRoll(straight, rightward))).toBeGreaterThan(0);
+  });
+  it("is zero on a straight route and clamped to ±0.5", () => {
+    expect(curvatureRoll(straight, straight)).toBeCloseTo(0, 12);
+    expect(Math.abs(curvatureRoll(straight, { x: 1, y: 0, z: 0 }))).toBe(0.5);
+  });
+  it("does not mutate its inputs", () => {
+    const a = { x: 0, y: 0, z: 1 };
+    curvatureRoll(a, leftward);
+    expect(a).toEqual({ x: 0, y: 0, z: 1 });
   });
 });

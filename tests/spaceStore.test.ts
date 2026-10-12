@@ -15,6 +15,14 @@ beforeEach(() => {
 });
 
 describe("spaceStore", () => {
+  it("sendBroadcast marks lines silent only when asked", () => {
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("SCAN REPORT");
+    expect(useSpaceStore.getState().broadcast).toMatchObject({ text: "SCAN REPORT", silent: false });
+    s.sendBroadcast("HAIL", { silent: true });
+    expect(useSpaceStore.getState().broadcast).toMatchObject({ text: "HAIL", silent: true });
+  });
+
   it("breakOrbit clears lock+zone and runs an 1800ms cooldown", () => {
     vi.useFakeTimers();
     useSpaceStore.setState({ isOrbitLocked: true, activeZone: "ruangrapi" });

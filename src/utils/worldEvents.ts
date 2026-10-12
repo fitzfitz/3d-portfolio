@@ -87,7 +87,13 @@ export function cometPassAt(out: Vec3, p: CometPass, t: number): Vec3 {
 /** Convoy frame: u away from the sun through the planet, v the orbit-entry side, w = u × v. */
 export interface ConvoyPlan { ux: number; uy: number; uz: number; vx: number; vy: number; vz: number; wx: number; wy: number; wz: number; R: number }
 
-export const CONVOY_ORBIT_FACTOR = 2.2;
+/**
+ * Lead orbit radius, × planet size. 2.5, not 2.2: wingmen fly 6u back and 6u
+ * to the side, so during the orbit the inner one sits ~6u inside the lead. At
+ * 2.2 that was 29.2u, inside lock-retain (1.9 × 16 = 30.4u); at 2.5 every slot
+ * clears it by 3.6u (tests/worldEvents.test.ts).
+ */
+export const CONVOY_ORBIT_FACTOR = 2.5;
 export const CONVOY_APPROACH_S = 20;
 export const CONVOY_ORBIT_S = 15;
 export const CONVOY_HIDE_DIST = 250;

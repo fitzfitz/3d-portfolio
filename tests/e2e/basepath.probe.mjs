@@ -15,7 +15,7 @@
 import puppeteer from "puppeteer-core";
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
-import { Checks, isFontHost, respondInertFont, settle, CANVAS_READY_TIMEOUT_MS } from "./harness.mjs";
+import { Checks, isFontHost, respondInertFont, settle, pollUntil, CANVAS_READY_TIMEOUT_MS } from "./harness.mjs";
 
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -116,6 +116,15 @@ export default async function basepathProbe() {
       else if (/\.(glb|webp|svg|js|css)(\?|$)/.test(url)) okAssets.push(url);
     });
 
+    // Track in-flight requests so the probe waits for the page to go quiet,
+    // not a fixed 6s that flaked under full-suite load (moon.glb missing once).
+    let inflight = 0;
+    let lastActivity = Date.now();
+    page.on("request", () => { inflight++; lastActivity = Date.now(); });
+    const done = () => { inflight = Math.max(0, inflight - 1); lastActivity = Date.now(); };
+    page.on("requestfinished", done);
+    page.on("requestfailed", done);
+
     await page.setRequestInterception(true);
     page.on("request", (req) => {
       const url = req.url();
@@ -135,7 +144,17 @@ export default async function basepathProbe() {
     // puppeteer session (a production build, not withPage's dev server) but
     // pays the same eager Preload compile cost as every other probe.
     await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });
-    await settle(null, 6000); // let every GLB/texture fetch resolve
+    // Wait for every landing-view asset to resolve, then for the network to go
+    // quiet. Idle alone is not enough: the scene loads in Suspense stages, and
+    // under load the gap before a later stage (moon.glb, ~1.2s after the
+    // previous model) outlasts any idle window, so "idle" fired before the
+    // moon was even requested. On timeout the asset check below names what is
+    // missing.
+    const resolved = () => REQUIRED_ASSETS.every((a) => [a].flat().some((alt) => okAssets.some((u) => u.endsWith(alt))));
+    const idle = await pollUntil(async () => resolved() && inflight === 0 && Date.now() - lastActivity > 1000,
+      { timeoutMs: 45_000, intervalMs: 250 });
+    checks.check("every landing-view asset resolved and the network went idle", idle.ok,
+      idle.ok ? "" : `inflight=${inflight} resolved=${resolved()}`);
 
     // --- the checks that matter ---
 

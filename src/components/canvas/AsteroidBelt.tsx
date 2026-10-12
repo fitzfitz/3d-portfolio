@@ -7,7 +7,13 @@ import { decay } from "../../utils/reactions";
 import {
   toRingLocal, nearRing, stepRock, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../../utils/beltPush";
-import { ambientTime } from "../../utils/ambientTime";
+import { ambientTime, gameTime } from "../../utils/ambientTime";
+import { registerRing, pebbleWorld, isTethered, regrowScale, stepMining, miningState, tetherPos, addOre } from "../../utils/mining";
+import { beamState } from "../../store/beamState";
+import { soundManager } from "../../audio/soundManager";
+import { ChatterScheduler } from "../../utils/chatterScheduler";
+import { chatterPools } from "../../data/chatterLines";
+import { fitzDebug } from "../../debug/bridge";
 import { assetUrl } from "../../utils/assetUrl";
 import { lowPolyRock } from "../../utils/lowPolyRock";
 
@@ -16,6 +22,11 @@ const COUNT_LOW = 200;
 const dummy = new THREE.Object3D();
 /** Scratch for the ship's ring-local position (one per frame per ring). */
 const shipLocal = { x: 0, y: 0, z: 0 };
+/** Tether position scratch (mining). */
+const _tp = { x: 0, y: 0, z: 0 };
+/** Module-level so it survives the classic-résumé remount (like FuelCrystals' ventedAnnounced). */
+let firstOreAnnounced = false;
+const oreLines = new ChatterScheduler(chatterPools);
 
 /** Deterministic PRNG so the belt is identical every load. */
 function mulberry32(seed: number) {
@@ -40,9 +51,11 @@ interface BeltRingProps {
   tilt: number;
   /** scene name so e2e probes can assert instance counts */
   name: string;
+  /** Mining ring id (0 main belt, 1 halo): indexes pebble state in mining.ts. */
+  ring: number;
 }
 
-function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter, tilt, name }: BeltRingProps) {
+function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter, tilt, name, ring }: BeltRingProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const rocks = useMemo<BeltRock[]>(() => {
     const rand = mulberry32(seed);
@@ -72,6 +85,10 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
   // Per-rock push displacement (spec: belt parts around the ship). Sized to
   // `total` so a low-perf count change never reallocates.
   const disp = useMemo(() => new Float32Array(total * 3), [total]);
+  // Pebble world positions for mining; cleared when the ring unmounts (the
+  // halo in low-perf mode) so the beam can never mine an invisible rock.
+  const world = useMemo(() => { registerRing(ring, total); return pebbleWorld(ring); }, [ring, total]);
+  useEffect(() => () => { world.fill(NaN); }, [world]);
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
@@ -81,19 +98,62 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
     const ship = react && nearRing(flight, rMin, rMax) ? toRingLocal(shipLocal, flight, tilt) : null;
     const kPush = decay(BELT_PUSH_HALFLIFE, dt);
     const kReturn = decay(BELT_RETURN_HALFLIFE, dt);
+    const now = gameTime(state.clock.getElapsedTime());
+    const c = Math.cos(tilt), s = Math.sin(tilt);
     for (let i = 0; i < count; i++) {
       const r = rocks[i];
       const angle = r.phase + t * r.speed;
       const x = Math.cos(angle) * r.radius, y = r.y, z = Math.sin(angle) * r.radius;
-      if (react) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
       const j = i * 3;
-      dummy.position.set(x + disp[j], y + disp[j + 1], z + disp[j + 2]);
+      // A tethered pebble is pulled by mining.ts in world space; it stops
+      // following its orbit and the belt's push until absorbed or released.
+      if (react && !isTethered(ring, i)) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
+      const lx = x + disp[j], ly = y + disp[j + 1], lz = z + disp[j + 2];
+      // Ring-local -> world (the group rotates by `tilt` about X).
+      world[j] = lx; world[j + 1] = c * ly - s * lz; world[j + 2] = s * ly + c * lz;
+      dummy.position.set(lx, ly, lz);
       dummy.rotation.set(r.phase + t * r.spinX, t * r.spinY, t * r.spinZ);
-      dummy.scale.setScalar(r.scale);
+      // 1 for a pebble never mined; 0 while absorbed, easing back once regrown.
+      dummy.scale.setScalar(r.scale * regrowScale(ring, i, now));
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
     }
+    // Pebbles past the drawn count (low-perf) are not in the scene: unmineable.
+    if (count < total) world.fill(NaN, count * 3);
+
+    // Tethered pebbles draw where the beam has pulled them (world -> ring-local).
+    for (let k = 0; k < miningState.tetherCount; k++) {
+      const tt = miningState.tethers[k];
+      if (tt.ring !== ring || tt.index >= count) continue;
+      tetherPos(k, _tp);
+      const rk = rocks[tt.index];
+      dummy.position.set(_tp.x, c * _tp.y + s * _tp.z, -s * _tp.y + c * _tp.z);
+      dummy.rotation.set(rk.phase + t * rk.spinX, t * rk.spinY, t * rk.spinZ);
+      dummy.scale.setScalar(rk.scale);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(tt.index, dummy.matrix);
+    }
     meshRef.current.instanceMatrix.needsUpdate = true;
+
+    // Mining runs once per frame, from the main ring.
+    if (ring === 0) {
+      const absorbed = stepMining(now, dt, flight);
+      if (absorbed > 0) {
+        const next = addOre(flight.fuel, beamState.ore, absorbed);
+        flight.fuel = next.fuel;
+        beamState.ore = next.ore;
+        beamState.oreAt = performance.now();
+        beamState.oreStreak += absorbed;
+        const store = useSpaceStore.getState();
+        store.setFuelEmpty(flight.fuel <= 0);
+        soundManager.oreTick();
+        // Once per session, the moment the visitor acted: no busy-radio check.
+        if (!firstOreAnnounced) {
+          firstOreAnnounced = true;
+          store.sendBroadcast(oreLines.pick("ore"), { silent: true });
+        }
+      }
+    }
   });
 
   return (
@@ -110,6 +170,11 @@ const BELT_ROCK_RADIUS = 1.1;
 export default function AsteroidBelt() {
   const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.mining = miningState;
+    return () => { fitzDebug.mining = null; };
+  }, []);
   const count = isLowPerf ? COUNT_LOW : COUNT_FULL;
 
   const { geometry, material } = useMemo(() => {
@@ -133,12 +198,12 @@ export default function AsteroidBelt() {
     <>
       {/* Main belt: 25° inclined plane (spec §5) */}
       <BeltRing geometry={geometry} material={material} count={count} total={COUNT_FULL}
-        seed={42} rMin={40} rMax={70} yJitter={5} tilt={0.436} name="BeltMain" />
+        seed={42} rMin={40} rMax={70} yJitter={5} tilt={0.436} name="BeltMain" ring={0} />
       {/* Polar halo: sparse steep band crossing the main belt — climbing threads
           asteroid country. Skipped in low-perf mode. */}
       {!isLowPerf && (
         <BeltRing geometry={geometry} material={material} count={HALO_FULL} total={HALO_FULL}
-          seed={1337} rMin={80} rMax={95} yJitter={9} tilt={1.31} name="BeltHalo" />
+          seed={1337} rMin={80} rMax={95} yJitter={9} tilt={1.31} name="BeltHalo" ring={1} />
       )}
     </>
   );

@@ -99,3 +99,10 @@ describe("padActions", () => {
     expect(padActions(press(), press(14))).toEqual([{ kind: "jump", index: 3 }]);
   });
 });
+
+describe("tractor beam on the pad", () => {
+  it("maps LB to the tractor beam", () => {
+    const buttons = Array.from({ length: 16 }, (_, i) => ({ pressed: i === 4, value: i === 4 ? 1 : 0 }));
+    expect(readPadFlight({ axes: [0, 0, 0, 0], buttons }).beam).toBe(true);
+  });
+});

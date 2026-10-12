@@ -7,10 +7,11 @@ import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import {
   COSMIC_BOUNDS, PORTAL_POS, planets,
-  ZONE_FACTOR, LOCK_ENGAGE_FACTOR, LOCK_RETAIN_FACTOR,
+  ZONE_FACTOR, LOCK_RETAIN_FACTOR,
   PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
 } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
 import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
@@ -298,6 +299,9 @@ const planetMap = (file: string, hiRes: boolean) => {
  */
 const prefersHiResMaps = () =>
   !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
+/** Orbit-drive scratch: the frame loop reuses it instead of allocating. */
+const orbitScratch = { x: 0, y: 0, z: 0 };
+
 export default function SpacePlanets() {
   const saasPlanetRef = useRef<THREE.Mesh>(null);
   const videoPlanetRef = useRef<THREE.Mesh>(null);
@@ -378,14 +382,15 @@ export default function SpacePlanets() {
     const time = ambientTime(state.clock.getElapsedTime());
 
     // 0. Orbit drive: single writer of `bodies` (spec §3)
-    planets.forEach((p, i) => {
-      const pos = orbitPosition(p.orbit, time);
+    for (let i = 0; i < planets.length; i++) {
+      const p = planets[i];
+      const pos = orbitPosition(p.orbit, time, orbitScratch);
       const b = bodies[p.name];
       b.x = pos.x; b.y = pos.y; b.z = pos.z;
       const g = planetGroupRefs.current[i];
       if (g) g.position.set(pos.x, pos.y, pos.z);
       setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase(), p.size);
-    });
+    }
 
     // 1. Slowly rotate planets
     if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = time * 0.1;
@@ -472,7 +477,8 @@ export default function SpacePlanets() {
         }
       } else if (dist < p.size * ZONE_FACTOR) {
         activeZone = p.name;
-        if (dist < p.size * LOCK_ENGAGE_FACTOR && !isOrbitCooldown) lockActive = true;
+        // A fast pass skims; a slow one (or one about to touch the surface) docks.
+        if (canCapture(dist, p.size, flight.speed) && !isOrbitCooldown) lockActive = true;
       }
     });
 

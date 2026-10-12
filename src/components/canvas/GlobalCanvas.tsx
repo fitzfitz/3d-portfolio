@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
+import TractorBeam from "./TractorBeam";
 import SpacePlanets from "./SpacePlanets";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
@@ -543,6 +544,7 @@ function GlobalCanvas() {
 
           {/* Spaceship craft */}
           <Spaceship />
+          <TractorBeam />
 
           {/* Orbiting planets */}
           <SpacePlanets />

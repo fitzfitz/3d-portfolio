@@ -96,6 +96,9 @@ export default function DataShards() {
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
 
+      // Shards are anchored: the tractor beam reels the SHIP toward them
+      // (TractorBeam.tsx sets beamState.reel; Spaceship applies it), so their
+      // positions never move and the pickup below is unchanged.
       const dist = toroidalDistance3(flight.x, flight.z, flight.y, px, pz, py, COSMIC_BOUNDS);
       if (dist < 3) {
         store.collectShard(i);

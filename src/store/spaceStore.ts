@@ -138,6 +138,8 @@ export interface FlightInput {
   /** Analog thrust from touch joystick, -1 (brake) .. 1 (full). 0 = keyboard only. */
   thrust: number;
   scan: boolean;
+  /** Tractor beam held (F, gamepad LB, touch BEAM). */
+  beam: boolean;
 }
 
 /**
@@ -153,7 +155,7 @@ export const flight = {
   pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
-    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
+    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
   } as FlightInput,
   /**
    * Warp fuel, 0..FUEL_MAX. Written by Spaceship's frame loop (continuous
@@ -222,7 +224,7 @@ interface SpaceState {
   cometNear: boolean;
   altitudeWarn: boolean;
   shardsCollected: number[];
-  broadcast: { id: number; text: string } | null;
+  broadcast: { id: number; text: string; silent: boolean } | null;
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
@@ -267,7 +269,12 @@ interface SpaceState {
   setCometNear: (v: boolean) => void;
   setAltitudeWarn: (v: boolean) => void;
   collectShard: (i: number) => void;
-  sendBroadcast: (text: string) => void;
+  /**
+   * Shows a line on the radio. `silent` lines (cargo hails, flavour such as
+   * the haze and slingshot callouts) are not announced to screen readers:
+   * the aria-live region is for content a visitor acted to get.
+   */
+  sendBroadcast: (text: string, opts?: { silent?: boolean }) => void;
   bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
@@ -417,7 +424,7 @@ export const useSpaceStore = create<SpaceState>()(
       set({ shardsCollected: next });
       safeSetJSON("fitz-shards", next);
     },
-    sendBroadcast: (text) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text } }),
+    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
       get().sendBroadcast(line);

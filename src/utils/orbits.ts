@@ -1,3 +1,5 @@
+import type { Vec3 } from "./reactions";
+
 /**
  * Circular inclined orbits around the origin (the sun).
  * Convention (matches three.js R_x / R_y and the ring-group nesting in
@@ -15,7 +17,8 @@ export interface OrbitalElements {
   phase: number;
 }
 
-export function orbitPosition(el: OrbitalElements, t: number): { x: number; y: number; z: number } {
+/** Writes into `out` when given (frame loops), otherwise allocates. */
+export function orbitPosition(el: OrbitalElements, t: number, out: Vec3 = { x: 0, y: 0, z: 0 }): Vec3 {
   const th = el.phase + t * el.angularSpeed;
   const x0 = el.radius * Math.cos(th);
   const z0 = el.radius * Math.sin(th);
@@ -23,5 +26,6 @@ export function orbitPosition(el: OrbitalElements, t: number): { x: number; y: n
   const y1 = -z0 * si;
   const z1 = z0 * ci;
   const cn = Math.cos(el.node), sn = Math.sin(el.node);
-  return { x: x0 * cn + z1 * sn, y: y1, z: -x0 * sn + z1 * cn };
+  out.x = x0 * cn + z1 * sn; out.y = y1; out.z = -x0 * sn + z1 * cn;
+  return out;
 }

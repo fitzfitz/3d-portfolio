@@ -33,12 +33,12 @@ describe("resetFlightInput", () => {
   it("releases every digital and analog channel", () => {
     const input: FlightInput = {
       forward: true, backward: true, left: true, right: true, boost: true,
-      ascend: true, descend: true, steer: 0.7, thrust: -0.4, scan: true,
+      ascend: true, descend: true, steer: 0.7, thrust: -0.4, scan: true, beam: true,
     };
     resetFlightInput(input);
     expect(input).toEqual({
       forward: false, backward: false, left: false, right: false, boost: false,
-      ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
+      ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
     });
   });
 });

@@ -58,8 +58,8 @@ export function endEvent(s: DirectorState): ActiveEvent | null {
  * event ends on time, and a due start fires unless reduced motion is on or a
  * race / busy radio holds it (held, not skipped: it fires once clear).
  */
-export function stepDirector(s: DirectorState, inp: DirectorInput): DirectorStep {
-  const out: DirectorStep = { started: null, ended: null };
+export function stepDirector(s: DirectorState, inp: DirectorInput, out: DirectorStep = { started: null, ended: null }): DirectorStep {
+  out.started = null; out.ended = null;
   if (inp.paused) return out;
   s.clock += inp.dt;
   if (s.active) {

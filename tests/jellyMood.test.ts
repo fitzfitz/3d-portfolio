@@ -116,4 +116,19 @@ describe("stepJelly", () => {
     const s = stepJelly(createJellyState(), input({ player: v() }));
     expect([s.offset.x, s.offset.y, s.offset.z].every(Number.isFinite)).toBe(true);
   });
+
+  it("keeps its swim surge and bob while curious", () => {
+    // Base path fixed; the swim adds a 2u vertical bob on top, period ~2.1s.
+    const s = createJellyState();
+    const base = v(0, 0, 0);
+    const ys: number[] = [];
+    for (let t = 0; t < 10; t += 0.05) {
+      const inp = input({ pathPos: v(0, Math.sin(t * 3) * 2, 0), basePos: base, dt: 0.05 });
+      stepJelly(s, inp);
+      if (t > 8) ys.push(jellyAt(s, inp).y);
+    }
+    expect(s.mood).toBe("curious");
+    // Frozen (old behaviour) gives a range near 0; a living bob gives ~4.
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(3);
+  });
 });

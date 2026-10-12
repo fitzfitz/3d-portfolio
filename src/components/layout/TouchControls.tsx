@@ -17,6 +17,7 @@ export default function TouchControls() {
   const risepointer = useRef<number | null>(null);
   const divepointer = useRef<number | null>(null);
   const scanPointerRef = useRef<number | null>(null);
+  const beamPointerRef = useRef<number | null>(null);
 
   // Reset flight.input and clear pointer tracking when orbit lock engages mid-interaction
   useEffect(() => {
@@ -27,11 +28,13 @@ export default function TouchControls() {
       flight.input.ascend = false;
       flight.input.descend = false;
       flight.input.scan = false;
+      flight.input.beam = false;
       activePointerId.current = null;
       boostPointerRef.current = null;
       risepointer.current = null;
       divepointer.current = null;
       scanPointerRef.current = null;
+      beamPointerRef.current = null;
     }
   }, [isOrbitLocked]);
 
@@ -51,9 +54,11 @@ export default function TouchControls() {
     flight.input.ascend = false;
     flight.input.descend = false;
     flight.input.scan = false;
+    flight.input.beam = false;
     risepointer.current = null;
     divepointer.current = null;
     scanPointerRef.current = null;
+    beamPointerRef.current = null;
   }, []);
 
   if (!isCoarse || isOrbitLocked) return null;
@@ -162,6 +167,31 @@ export default function TouchControls() {
         }}
       >
         ▼ PITCH
+      </button>
+
+      {/* Tractor beam: hold to pull crystals and pebbles, or reel toward a shard.
+          Beside ▼ PITCH, clear of BOOST, so a thumb reaching for boost never beams. */}
+      <button
+        className="fixed bottom-48 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        data-testid="touch-beam"
+        onPointerDown={(e) => {
+          if (beamPointerRef.current !== null) return;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          beamPointerRef.current = e.pointerId;
+          flight.input.beam = true;
+        }}
+        onPointerUp={(e) => {
+          if (e.pointerId !== beamPointerRef.current) return;
+          beamPointerRef.current = null;
+          flight.input.beam = false;
+        }}
+        onPointerCancel={(e) => {
+          if (e.pointerId !== beamPointerRef.current) return;
+          beamPointerRef.current = null;
+          flight.input.beam = false;
+        }}
+      >
+        BEAM
       </button>
 
       {/* Scan button — only shown while a scannable target is in range */}

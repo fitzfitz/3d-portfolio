@@ -7,7 +7,7 @@ import { convoyShipOffsetAt, CONVOY_HIDE_DIST } from "../../utils/worldEvents";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { dampVec } from "../../utils/reactions";
-import { cargoSwerveTarget, HailGate, CARGO_REACT_RADIUS, RADIO_BUSY_S } from "../../utils/cargoReaction";
+import { cargoSwerveTarget, curvatureRoll, HailGate, CARGO_REACT_RADIUS, RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
@@ -148,7 +148,7 @@ export default function CargoTraffic() {
         dampVec(off, swerveTarget, swerving ? SWERVE_IN_HALFLIFE : SWERVE_OUT_HALFLIFE, dt);
       }
       // Hails are text, not motion: they run under reduced motion too.
-      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"));
+      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"), { silent: true });
 
       pos.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
       pos.add(off);
@@ -156,13 +156,13 @@ export default function CargoTraffic() {
       lookTarget.add(off);
       ship.group.lookAt(lookTarget);
 
-      // Banking: roll into the route's curvature, plus into the swerve's slide.
+      // Banking: bank into the route's curvature (curvatureRoll explains the sign), plus into the swerve's slide.
       right.crossVectors(tanA, UP).normalize();
       const lateral = dt > 0
         ? ((off.x - prevX) * right.x + (off.y - prevY) * right.y + (off.z - prevZ) * right.z) / dt
         : 0;
       curve.getTangentAt((t + 0.01) % 1, tanB);
-      let targetRoll = THREE.MathUtils.clamp(tanA.cross(tanB).y * 60, -0.5, 0.5);
+      let targetRoll = curvatureRoll(tanA, tanB);
       targetRoll += THREE.MathUtils.clamp(lateral * SWERVE_ROLL, -0.6, 0.6);
       rolls.current[i] += (targetRoll - rolls.current[i]) * (1 - Math.pow(0.01, dt));
       ship.group.rotateZ(rolls.current[i]);

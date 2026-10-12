@@ -46,3 +46,12 @@ describe("keplerPosition", () => {
     expect(b.z).toBeCloseTo(-a.x, 6);
   });
 });
+
+describe("keplerPosition out parameter", () => {
+  it("writes into and returns `out`, matching the allocating form", () => {
+    const o = { a: 140, e: 0.62, periodSeconds: 170, phase: 0, inclination: 0.9, node: 0.6 };
+    const out = { x: 0, y: 0, z: 0 };
+    expect(keplerPosition(33, o, out)).toBe(out);
+    expect(out).toEqual(keplerPosition(33, o));
+  });
+});

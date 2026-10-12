@@ -67,3 +67,23 @@ export class HailGate {
     return true;
   }
 }
+
+/** Largest bank from route curvature alone (rad). */
+const CURVE_ROLL_MAX = 0.5;
+/** Curvature-to-roll gain, unchanged from the original inline term. */
+const CURVE_ROLL_GAIN = 60;
+
+/**
+ * Bank angle for a ship following its route's curve: the roll to pass to
+ * `rotateZ` on a ship whose `lookAt` points its +Z along the route. Its left
+ * wing is local +X, and `rotateZ(+)` raises +X, so a left turn (the tangent
+ * swinging toward +X, cross(a, b).y > 0) needs a NEGATIVE roll to dip the
+ * inside wing. The inline term this replaces had the sign flipped and banked
+ * ships out of every curve. `a` and `b` are unit tangents now and a little
+ * further along; neither is modified.
+ */
+export function curvatureRoll(a: Vec3, b: Vec3): number {
+  const crossY = a.z * b.x - a.x * b.z;
+  const roll = -crossY * CURVE_ROLL_GAIN;
+  return Math.max(-CURVE_ROLL_MAX, Math.min(CURVE_ROLL_MAX, roll));
+}

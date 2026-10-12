@@ -4,8 +4,9 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
 import { setScannable, removeScannable } from "../../utils/scannables";
-import { cometPassAt } from "../../utils/worldEvents";
+import { cometPassAt, type CometPass } from "../../utils/worldEvents";
 import { keplerPosition } from "../../utils/kepler";
+import { dustEmitBack } from "../../utils/cometDust";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -22,8 +23,6 @@ const COMETS = [
 /** Slot COMETS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
 const VISITOR = COMETS.length;
 const SLOTS = COMETS.length + 1;
-/** Visitor speed (22u/s) vs an orbiting comet (~5u/s): scales its dust-tail history. */
-const VISITOR_DUST_AGE = 0.25;
 const ION_POINTS = 72;
 const DUST_POINTS = 70;
 const DUST_MAX_AGE = 10; // seconds of emission history sampled along the orbit
@@ -71,6 +70,13 @@ const comaFragment = /* glsl */ `
     gl_FragColor = vec4(col, a);
   }
 `;
+
+/** Slot `i`'s position at its own time `t` (orbit time, or seconds into the visitor's pass). */
+function cometPos(i: number, t: number, pass: CometPass | undefined, out: THREE.Vector3): THREE.Vector3 {
+  if (i < VISITOR) { keplerPosition(t, COMETS[i], out); return out; }
+  if (pass) cometPassAt(out, pass, t);
+  return out;
+}
 
 export default function Comets() {
   const headRefs = useRef<(THREE.Mesh | null)[]>(Array(SLOTS).fill(null));
@@ -161,12 +167,6 @@ export default function Comets() {
     let anyNear = false;
     const visitorElapsed = worldEventElapsed("comet");
     const pass = store.worldEvent?.comet;
-    /** Slot `i`'s position at its own time `t` (orbit time, or seconds into the visitor's pass). */
-    const posAt = (i: number, t: number, out: THREE.Vector3) => {
-      if (i < VISITOR) { const k = keplerPosition(t, COMETS[i]); return out.set(k.x, k.y, k.z); }
-      cometPassAt(out, pass!, t);
-      return out;
-    };
 
     for (let i = 0; i < SLOTS; i++) {
       const isVisitor = i === VISITOR;
@@ -178,7 +178,7 @@ export default function Comets() {
       }
       if (group) group.visible = true;
       const t = isVisitor ? visitorElapsed! : time;
-      posAt(i, t, head);
+      cometPos(i, t, pass, head);
       if (isVisitor) setScannable("comet_visitor", head.x, head.y, head.z, "COMET_VISITOR");
       else setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
 
@@ -242,13 +242,12 @@ export default function Comets() {
         const parts = dusts[i].particles;
         for (let p = 0; p < DUST_POINTS; p++) {
           const pt = parts[p];
-          // The visitor flies ~4x faster than an orbiting comet, so the same
-          // emission history would string 70 grains over ~220u as a dotted
-          // line; compress its history to keep the tail as dense as theirs.
-          const tau = pt.lag * DUST_MAX_AGE * (isVisitor ? VISITOR_DUST_AGE : 1);
-          posAt(i, t - tau, emitted);
-          const drift = 0.5 * pt.beta * tau * tau; // anti-sunward push ∝ age²
-          const spread = 0.3 + tau * 0.22; // tail broadens with age (D1 "broad")
+          // Real age drives drift and spread; only the visitor's emission
+          // point is compressed (utils/cometDust.ts explains why).
+          const age = pt.lag * DUST_MAX_AGE;
+          cometPos(i, t - dustEmitBack(age, isVisitor), pass, emitted);
+          const drift = 0.5 * pt.beta * age * age; // anti-sunward push ∝ age²
+          const spread = 0.3 + age * 0.22; // tail broadens with age (D1 "broad")
           const dirLen = emitted.length() || 1;
           data[p * 3] = emitted.x + (emitted.x / dirLen) * drift + pt.sx * spread;
           data[p * 3 + 1] = emitted.y + (emitted.y / dirLen) * drift + pt.sy * spread;

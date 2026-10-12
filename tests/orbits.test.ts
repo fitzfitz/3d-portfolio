@@ -48,3 +48,13 @@ describe("orbitPosition", () => {
     expect(p.z).toBeCloseTo(100 * Math.cos(Math.PI / 6), 6);
   });
 });
+
+describe("orbitPosition out parameter", () => {
+  it("writes into and returns `out`, matching the allocating form", () => {
+    const el = { radius: 115, angularSpeed: 0.015, inclination: 0.1, node: 0.4, phase: 1 };
+    const out = { x: 0, y: 0, z: 0 };
+    const r = orbitPosition(el, 12.5, out);
+    expect(r).toBe(out);
+    expect(out).toEqual(orbitPosition(el, 12.5));
+  });
+});
