@@ -2,8 +2,9 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { flight, useSpaceStore } from "../../store/spaceStore";
-import { setScannable } from "../../utils/scannables";
+import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
+import { setScannable, removeScannable } from "../../utils/scannables";
+import { cometPassAt } from "../../utils/worldEvents";
 import { keplerPosition } from "../../utils/kepler";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
@@ -18,6 +19,11 @@ const COMETS = [
   { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, inclination: -1.15, node: 2.4 }, // ~66° retrograde-feel
 ];
 
+/** Slot COMETS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
+const VISITOR = COMETS.length;
+const SLOTS = COMETS.length + 1;
+/** Visitor speed (22u/s) vs an orbiting comet (~5u/s): scales its dust-tail history. */
+const VISITOR_DUST_AGE = 0.25;
 const ION_POINTS = 72;
 const DUST_POINTS = 70;
 const DUST_MAX_AGE = 10; // seconds of emission history sampled along the orbit
@@ -67,15 +73,17 @@ const comaFragment = /* glsl */ `
 `;
 
 export default function Comets() {
-  const headRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
-  const comaRefs = useRef<(THREE.Mesh | null)[]>([null, null]);
-  const ionRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
-  const dustRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>([null, null]);
+  const headRefs = useRef<(THREE.Mesh | null)[]>(Array(SLOTS).fill(null));
+  const comaRefs = useRef<(THREE.Mesh | null)[]>(Array(SLOTS).fill(null));
+  const ionRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>(Array(SLOTS).fill(null));
+  const dustRefs = useRef<(THREE.Points<THREE.BufferGeometry<THREE.NormalBufferAttributes>> | null)[]>(Array(SLOTS).fill(null));
+  const groupRefs = useRef<(THREE.Group | null)[]>(Array(SLOTS).fill(null));
 
   // One coma material per comet — each drives uAct from its own solar distance.
   const comaMaterials = useMemo(
     () =>
-      COMETS.map(
+      Array.from(
+        { length: SLOTS },
         () =>
           new THREE.ShaderMaterial({
             uniforms: { uTime: { value: 0 }, uAct: { value: 0 } },
@@ -111,7 +119,7 @@ export default function Comets() {
   // Ion tail (I1-I4): straight, narrow, blue — particles race anti-sunward.
   const ions = useMemo(
     () =>
-      COMETS.map(() => {
+      Array.from({ length: SLOTS }, () => {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(ION_POINTS * 3), 3));
         geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(ION_POINTS * 3), 3));
@@ -132,7 +140,7 @@ export default function Comets() {
   // (drift ∝ τ²) — producing the classic broad curved tail from real physics.
   const dusts = useMemo(
     () =>
-      COMETS.map(() => {
+      Array.from({ length: SLOTS }, () => {
         const geom = new THREE.BufferGeometry();
         geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(DUST_POINTS * 3), 3));
         geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(DUST_POINTS * 3), 3));
@@ -151,14 +159,31 @@ export default function Comets() {
     const time = ambientTime(state.clock.getElapsedTime());
     const store = useSpaceStore.getState();
     let anyNear = false;
+    const visitorElapsed = worldEventElapsed("comet");
+    const pass = store.worldEvent?.comet;
+    /** Slot `i`'s position at its own time `t` (orbit time, or seconds into the visitor's pass). */
+    const posAt = (i: number, t: number, out: THREE.Vector3) => {
+      if (i < VISITOR) { const k = keplerPosition(t, COMETS[i]); return out.set(k.x, k.y, k.z); }
+      cometPassAt(out, pass!, t);
+      return out;
+    };
 
-    COMETS.forEach((c, i) => {
-      const kp = keplerPosition(time, c);
-      head.set(kp.x, kp.y, kp.z);
-      setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
+    for (let i = 0; i < SLOTS; i++) {
+      const isVisitor = i === VISITOR;
+      const group = groupRefs.current[i];
+      if (isVisitor && (visitorElapsed === null || !pass)) {
+        if (group) group.visible = false;
+        removeScannable("comet_visitor");
+        continue;
+      }
+      if (group) group.visible = true;
+      const t = isVisitor ? visitorElapsed! : time;
+      posAt(i, t, head);
+      if (isVisitor) setScannable("comet_visitor", head.x, head.y, head.z, "COMET_VISITOR");
+      else setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
 
       const distSun = head.length();
-      const act = activityAt(distSun);
+      const act = isVisitor ? 1 : activityAt(distSun); // the visitor stays bright far from the sun
       away.copy(head).normalize(); // anti-sunward (sun at origin)
       perp1.crossVectors(away, Y_UP);
       if (perp1.lengthSq() < 1e-6) perp1.set(1, 0, 0);
@@ -217,9 +242,11 @@ export default function Comets() {
         const parts = dusts[i].particles;
         for (let p = 0; p < DUST_POINTS; p++) {
           const pt = parts[p];
-          const tau = pt.lag * DUST_MAX_AGE;
-          const ke = keplerPosition(time - tau, c);
-          emitted.set(ke.x, ke.y, ke.z);
+          // The visitor flies ~4x faster than an orbiting comet, so the same
+          // emission history would string 70 grains over ~220u as a dotted
+          // line; compress its history to keep the tail as dense as theirs.
+          const tau = pt.lag * DUST_MAX_AGE * (isVisitor ? VISITOR_DUST_AGE : 1);
+          posAt(i, t - tau, emitted);
           const drift = 0.5 * pt.beta * tau * tau; // anti-sunward push ∝ age²
           const spread = 0.3 + tau * 0.22; // tail broadens with age (D1 "broad")
           const dirLen = emitted.length() || 1;
@@ -235,20 +262,23 @@ export default function Comets() {
         colAttr.needsUpdate = true;
       }
 
-      // Full 3D proximity — comets dive through the ecliptic now (spec §5)
-      const dx = head.x - flight.x;
-      const dy = head.y - flight.y;
-      const dz = head.z - flight.z;
-      if (dx * dx + dy * dy + dz * dz < 3600) anyNear = true;
-    });
+      // Full 3D proximity — comets dive through the ecliptic now (spec §5).
+      // The visitor is announced by its own event, so it doesn't also fire the comet chatter.
+      if (!isVisitor) {
+        const dx = head.x - flight.x;
+        const dy = head.y - flight.y;
+        const dz = head.z - flight.z;
+        if (dx * dx + dy * dy + dz * dz < 3600) anyNear = true;
+      }
+    }
 
     store.setCometNear(anyNear);
   });
 
   return (
     <>
-      {COMETS.map((_, i) => (
-        <group key={i}>
+      {Array.from({ length: SLOTS }, (_, i) => (
+        <group key={i} ref={(g) => { groupRefs.current[i] = g; }} name={i === VISITOR ? "CometVisitor" : undefined} visible={i !== VISITOR}>
           {/* Coal-dark bilobed nucleus (N1-N4 baked in the GLB) */}
           <mesh ref={(m) => { headRefs.current[i] = m; }} geometry={headGeometry} material={headMaterial} scale={0.9} />
           {/* Green C2 coma */}
