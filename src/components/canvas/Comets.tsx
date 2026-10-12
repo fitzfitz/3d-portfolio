@@ -6,6 +6,7 @@ import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt } from "../../utils/worldEvents";
 import { keplerPosition } from "../../utils/kepler";
+import { dustEmitBack } from "../../utils/cometDust";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -22,8 +23,6 @@ const COMETS = [
 /** Slot COMETS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
 const VISITOR = COMETS.length;
 const SLOTS = COMETS.length + 1;
-/** Visitor speed (22u/s) vs an orbiting comet (~5u/s): scales its dust-tail history. */
-const VISITOR_DUST_AGE = 0.25;
 const ION_POINTS = 72;
 const DUST_POINTS = 70;
 const DUST_MAX_AGE = 10; // seconds of emission history sampled along the orbit
@@ -242,13 +241,12 @@ export default function Comets() {
         const parts = dusts[i].particles;
         for (let p = 0; p < DUST_POINTS; p++) {
           const pt = parts[p];
-          // The visitor flies ~4x faster than an orbiting comet, so the same
-          // emission history would string 70 grains over ~220u as a dotted
-          // line; compress its history to keep the tail as dense as theirs.
-          const tau = pt.lag * DUST_MAX_AGE * (isVisitor ? VISITOR_DUST_AGE : 1);
-          posAt(i, t - tau, emitted);
-          const drift = 0.5 * pt.beta * tau * tau; // anti-sunward push ∝ age²
-          const spread = 0.3 + tau * 0.22; // tail broadens with age (D1 "broad")
+          // Real age drives drift and spread; only the visitor's emission
+          // point is compressed (utils/cometDust.ts explains why).
+          const age = pt.lag * DUST_MAX_AGE;
+          posAt(i, t - dustEmitBack(age, isVisitor), emitted);
+          const drift = 0.5 * pt.beta * age * age; // anti-sunward push ∝ age²
+          const spread = 0.3 + age * 0.22; // tail broadens with age (D1 "broad")
           const dirLen = emitted.length() || 1;
           data[p * 3] = emitted.x + (emitted.x / dirLen) * drift + pt.sx * spread;
           data[p * 3 + 1] = emitted.y + (emitted.y / dirLen) * drift + pt.sy * spread;
