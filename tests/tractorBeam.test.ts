@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   inCone, consider, createSelection, clearSelection, pullStep, reelStep,
-  BEAM_RANGE, BEAM_MAX_TARGETS, REEL_ACCEL,
+  BEAM_RANGE, BEAM_MAX_TARGETS, REEL_ACCEL, nearestShardInCone,
 } from "../src/utils/tractorBeam";
 
 describe("inCone", () => {
@@ -74,5 +74,13 @@ describe("reeling to a shard", () => {
       t += dt;
     }
     expect(t).toBeLessThan(5);
+  });
+});
+
+describe("nearestShardInCone", () => {
+  const shards = [{ pos: [0, 0, 40] as [number, number, number] }, { pos: [0, 0, 22] as [number, number, number] }, { pos: [30, 0, 5] as [number, number, number] }];
+  it("picks the nearest uncollected shard inside the cone", () => {
+    expect(nearestShardInCone(0, 0, 0, 0, 0, 1, shards, [])).toBe(1);
+    expect(nearestShardInCone(0, 0, 0, 0, 0, 1, shards, [1])).toBe(-1); // shard 0 is out of range (40u)
   });
 });

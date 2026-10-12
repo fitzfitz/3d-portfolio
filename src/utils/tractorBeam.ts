@@ -91,3 +91,23 @@ export function reelStep(v: Vec3, dirX: number, dirY: number, dirZ: number, dt: 
   const l = Math.hypot(v.x, v.y, v.z);
   if (l > maxSpeed) { const s = maxSpeed / l; v.x *= s; v.y *= s; v.z *= s; }
 }
+
+/**
+ * The shard the beam reels toward: the nearest uncollected one inside the cone
+ * and range, or -1. Deliberately takes no target budget: reeling moves the
+ * SHIP, it is not a pull, so tethered belt pebbles must never starve it (a
+ * shard inside the belt otherwise lost its reel once 3 pebbles were tethered).
+ */
+export function nearestShardInCone(
+  ox: number, oy: number, oz: number, dx: number, dy: number, dz: number,
+  shards: readonly { pos: readonly [number, number, number] }[], collected: readonly number[],
+): number {
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < shards.length; i++) {
+    if (collected.includes(i)) continue;
+    const [x, y, z] = shards[i].pos;
+    const d = inCone(ox, oy, oz, dx, dy, dz, x, y, z, BEAM_RANGE);
+    if (d >= 0 && d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}

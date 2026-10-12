@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { beamState } from "../../store/beamState";
 import { crystalSlots, flight, useSpaceStore } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
-import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone } from "../../utils/tractorBeam";
+import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone, nearestShardInCone } from "../../utils/tractorBeam";
 import { tetherCount, tetherPos } from "../../utils/mining";
 import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
 import { ambientTime } from "../../utils/ambientTime";
@@ -73,14 +73,15 @@ export default function TractorBeam() {
       const d = inCone(ox, oy, oz, dx, dy, dz, x, y, z, BEAM_RANGE);
       if (d >= 0) consider(sel, budget, "shard", i, -1, d, x, y, z);
     }
-    // Shards are anchored: reel the ship toward the nearest selected one.
-    for (let k = 0; k < sel.count; k++) {
-      if (sel.kind[k] !== "shard") continue;
-      const rx = sel.x[k] - flight.x, ry = sel.y[k] - flight.y, rz = sel.z[k] - flight.z;
+    // Shards are anchored: reel the ship toward the nearest one in the cone.
+    // Independent of the target budget, so tethered pebbles cannot starve it.
+    const reelTo = nearestShardInCone(ox, oy, oz, dx, dy, dz, SHARDS, collected);
+    if (reelTo >= 0) {
+      const [sx, sy, sz] = SHARDS[reelTo].pos;
+      const rx = sx - flight.x, ry = sy - flight.y, rz = sz - flight.z;
       const rl = Math.hypot(rx, ry, rz) || 1;
       beamState.reel.active = true;
       beamState.reel.x = rx / rl; beamState.reel.y = ry / rl; beamState.reel.z = rz / rl;
-      break;
     }
 
     // Cone: from the nose along the beam. The tube's body spans -Y, so rotate
