@@ -59,3 +59,20 @@ describe("reelStep", () => {
     expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(10.8);
   });
 });
+
+describe("reeling to a shard", () => {
+  it("brings a parked ship within pickup range of a shard 25u ahead", () => {
+    // Spaceship's loop: reel (counts as thrust), drag, integrate.
+    const v = { x: 0, y: 0, z: 0 }, p = { x: 0, y: 0, z: 0 }, shard = { x: 0, y: 0, z: 25 };
+    let t = 0;
+    while (Math.hypot(shard.x - p.x, shard.y - p.y, shard.z - p.z) >= 3 && t < 10) {
+      const dt = 1 / 60;
+      const dx = shard.x - p.x, dy = shard.y - p.y, dz = shard.z - p.z, d = Math.hypot(dx, dy, dz);
+      reelStep(v, dx / d, dy / d, dz / d, dt, 10.8);
+      const k = Math.pow(0.982, dt * 60); v.x *= k; v.y *= k; v.z *= k;
+      p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
+      t += dt;
+    }
+    expect(t).toBeLessThan(5);
+  });
+});
