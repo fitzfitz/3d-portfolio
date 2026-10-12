@@ -199,3 +199,26 @@ describe("SlingshotGate", () => {
     expect(g.update(true, 2, false, false)).toBe(true);
   });
 });
+
+describe("speed ceiling never fights the pilot (review #1)", () => {
+  it("leaves warp at full speed", () => {
+    const G = stepGravity(v3(3, 0, 0), v3(), v3(38.3, 0, 0), [], 0, "warp", 1 / 60);
+    expect(38.3 + G.x).toBeGreaterThanOrEqual(38);
+    expect(G.x).toBeGreaterThanOrEqual(0);
+  });
+  it("never turns gravity momentum backwards when the pilot alone exceeds the ceiling", () => {
+    const G = stepGravity(v3(5, 0, 0), v3(), v3(30, 0, 0), [], 0, "free", 1 / 60);
+    expect(G.x).toBeGreaterThanOrEqual(0);
+    expect(30 + G.x).toBeGreaterThanOrEqual(30);
+  });
+  it("a warp then W-held sequence never moves the ship backwards", () => {
+    const v = v3(38.3, 0, 0), G = v3(), p = v3(-60, 0, 0);
+    const w = [planet()];
+    for (let i = 0; i < 120; i++) stepGravity(G, p, v, w, 1, "warp", 1 / 60); // warp past a well
+    v.x = 10.8; // Shift released with W held: the thrust branch clamps to cruise
+    for (let i = 0; i < 120; i++) {
+      stepGravity(G, p, v, w, 1, "free", 1 / 60);
+      expect(v.x + G.x).toBeGreaterThan(0);
+    }
+  });
+});

@@ -101,11 +101,25 @@ export function stepGravity(G: Vec3, pos: Vec3, v: Vec3, wells: readonly Well[],
 
   const gl = Math.hypot(G.x, G.y, G.z);
   if (gl > G_MAX) { const s = G_MAX / gl; G.x *= s; G.y *= s; G.z *= s; }
-  const sx = v.x + G.x, sy = v.y + G.y, sz = v.z + G.z;
-  const sl = Math.hypot(sx, sy, sz);
-  if (sl > SPEED_CEILING) {
-    const s = SPEED_CEILING / sl;
-    G.x = sx * s - v.x; G.y = sy * s - v.y; G.z = sz * s - v.z;
+  // The ceiling limits what gravity ADDS; it never touches the pilot's own
+  // speed (warp is 39). Shorten G by the largest λ in [0, 1] with
+  // |v + λG| ≤ SPEED_CEILING; λ = 0 once the pilot alone is at the ceiling.
+  // Rescaling the total instead turned G into a ~14 u/s backwards vector in
+  // warp, so releasing Shift flew the ship backwards.
+  if (mode !== "warp") {
+    const sx = v.x + G.x, sy = v.y + G.y, sz = v.z + G.z;
+    if (Math.hypot(sx, sy, sz) > SPEED_CEILING) {
+      const vv = v.x * v.x + v.y * v.y + v.z * v.z;
+      const vg = v.x * G.x + v.y * G.y + v.z * G.z;
+      const gg = G.x * G.x + G.y * G.y + G.z * G.z;
+      const c2 = SPEED_CEILING * SPEED_CEILING;
+      let lambda = 0;
+      if (vv < c2 && gg > 1e-12) {
+        lambda = (-vg + Math.sqrt(Math.max(0, vg * vg - gg * (vv - c2)))) / gg;
+        lambda = Math.min(1, Math.max(0, lambda));
+      }
+      G.x *= lambda; G.y *= lambda; G.z *= lambda;
+    }
   }
   return G;
 }
