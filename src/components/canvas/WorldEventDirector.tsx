@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, type WorldEventState } from "../../store/spaceStore";
 import { planets, SUN_RADIUS } from "../../constants";
-import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent } from "../../utils/eventDirector";
+import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent, type DirectorStep, type DirectorInput } from "../../utils/eventDirector";
 import { planCometPass, planConvoy, convoyShipOffsetAt, type Sphere } from "../../utils/worldEvents";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
@@ -76,6 +76,10 @@ export default function WorldEventDirector() {
   const lastBroadcast = useRef({ id: 0, at: -Infinity });
   const forced = useRef<WorldEventKind | null>(null);
   const lastAmbient = useRef<number | null>(null);
+  // Reused every frame so the director step allocates nothing.
+  const stepOut = useMemo<DirectorStep>(() => ({ started: null, ended: null }), []);
+  const dirInput = useMemo<DirectorInput>(
+    () => ({ dt: 0, paused: false, raceRunning: false, radioBusy: false, reducedMotion: false }), []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -97,21 +101,20 @@ export default function WorldEventDirector() {
     const now = gameTime(elapsed);
     const s = useSpaceStore.getState();
     const bid = s.broadcast?.id ?? 0;
-    if (bid !== lastBroadcast.current.id) lastBroadcast.current = { id: bid, at: now };
+    if (bid !== lastBroadcast.current.id) { lastBroadcast.current.id = bid; lastBroadcast.current.at = now; }
 
-    let step;
+    let step: DirectorStep;
     if (forced.current) {
       step = forceStart(director, forced.current);
       forced.current = null;
     } else {
-      step = stepDirector(director, {
-        dt,
-        // Not photo mode: the planets keep orbiting there, so the event must too.
-        paused: selectSceneFrozen(s) || s.showClassicCV,
-        raceRunning: s.race.phase === "running",
-        radioBusy: now - lastBroadcast.current.at < RADIO_BUSY_S,
-        reducedMotion: s.reducedMotion,
-      });
+      dirInput.dt = dt;
+      // Not photo mode: the planets keep orbiting there, so the event must too.
+      dirInput.paused = selectSceneFrozen(s) || s.showClassicCV;
+      dirInput.raceRunning = s.race.phase === "running";
+      dirInput.radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
+      dirInput.reducedMotion = s.reducedMotion;
+      step = stepDirector(director, dirInput, stepOut);
     }
     worldClock.now = director.clock;
 

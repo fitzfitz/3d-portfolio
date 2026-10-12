@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createDirector, stepDirector, endEvent, forceStart, skipEvent, ambientStep, SKIP_RETRY_S,
-  FIRST_EVENT_AT, GAP_MIN, GAP_SPAN, EVENT_DURATION, type DirectorInput, type WorldEventKind,
+  FIRST_EVENT_AT, GAP_MIN, GAP_SPAN, EVENT_DURATION, type DirectorInput, type DirectorStep, type WorldEventKind,
 } from "../src/utils/eventDirector";
 
 const calm: DirectorInput = { dt: 1, paused: false, raceRunning: false, radioBusy: false, reducedMotion: false };
@@ -113,5 +113,18 @@ describe("eventDirector", () => {
     endEvent(d);
     expect(d.active).toBeNull();
     expect(d.nextAt).toBe(d.clock + GAP_MIN + 0.5 * GAP_SPAN);
+  });
+});
+
+describe("stepDirector out parameter", () => {
+  it("reuses and resets the given step object", () => {
+    const s = createDirector(() => 0.5);
+    const out: DirectorStep = { started: null, ended: null };
+    const inp = { dt: 50, paused: false, raceRunning: false, radioBusy: false, reducedMotion: false };
+    const first = stepDirector(s, inp, out);
+    expect(first).toBe(out);
+    expect(out.started).not.toBeNull();
+    stepDirector(s, { ...inp, dt: 0.01 }, out);
+    expect(out.started).toBeNull();
   });
 });

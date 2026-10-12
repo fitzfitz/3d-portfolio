@@ -1,3 +1,5 @@
+import type { Vec3 } from "./reactions";
+
 export interface CometOrbit {
   /** semi-major axis (world units) */
   a: number;
@@ -20,8 +22,9 @@ export interface CometOrbit {
  */
 export function keplerPosition(
   tSeconds: number,
-  o: CometOrbit
-): { x: number; y: number; z: number } {
+  o: CometOrbit,
+  out: Vec3 = { x: 0, y: 0, z: 0 },
+): Vec3 {
   const M = ((tSeconds / o.periodSeconds) * Math.PI * 2 + o.phase) % (Math.PI * 2);
   let E = M;
   for (let i = 0; i < 5; i++) {
@@ -33,5 +36,6 @@ export function keplerPosition(
   const y1 = -z0 * si;
   const z1 = z0 * ci;
   const cn = Math.cos(o.node), sn = Math.sin(o.node);
-  return { x: x0 * cn + z1 * sn, y: y1, z: -x0 * sn + z1 * cn };
+  out.x = x0 * cn + z1 * sn; out.y = y1; out.z = -x0 * sn + z1 * cn;
+  return out;
 }
