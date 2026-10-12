@@ -9,6 +9,7 @@ import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
+import EdgeHaze from "./components/layout/EdgeHaze";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
 // `?cv` or no-WebGL visitor never downloads it at all.
@@ -151,6 +152,10 @@ export default function App() {
           ))}
         </div>
       )}
+
+      {/* Edge-of-universe nebula haze: above the canvas, under the scanlines
+          and HUD. Kept in photo mode, where the ship can sit in it. */}
+      {!showClassicCV && <EdgeHaze />}
 
       {/* Dynamic scanline overlay visual */}
       <div className="pointer-events-none fixed inset-0 z-40 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,3px_100%] opacity-[0.12]" />
