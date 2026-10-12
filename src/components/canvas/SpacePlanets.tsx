@@ -7,10 +7,11 @@ import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import {
   COSMIC_BOUNDS, PORTAL_POS, planets,
-  ZONE_FACTOR, LOCK_ENGAGE_FACTOR, LOCK_RETAIN_FACTOR,
+  ZONE_FACTOR, LOCK_RETAIN_FACTOR,
   PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
 } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
 import { ambientTime } from "../../utils/ambientTime";
 import { toroidalDistance3 } from "../../utils/toroidal";
@@ -476,7 +477,8 @@ export default function SpacePlanets() {
         }
       } else if (dist < p.size * ZONE_FACTOR) {
         activeZone = p.name;
-        if (dist < p.size * LOCK_ENGAGE_FACTOR && !isOrbitCooldown) lockActive = true;
+        // A fast pass skims; a slow one (or one about to touch the surface) docks.
+        if (canCapture(dist, p.size, flight.speed) && !isOrbitCooldown) lockActive = true;
       }
     });
 
