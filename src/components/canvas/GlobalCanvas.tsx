@@ -20,6 +20,7 @@ import WarpTunnel from "./WarpTunnel";
 import SpaceJellyfish from "./SpaceJellyfish";
 import Comets from "./Comets";
 import DataShards from "./DataShards";
+import RingCourse from "./RingCourse";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
@@ -555,6 +556,9 @@ function GlobalCanvas() {
 
           {/* Collectible data shards scattered across the system */}
           <DataShards />
+
+          {/* Time-trial ring course from the spawn pad, with a ghost of the best lap */}
+          <RingCourse />
 
           {/* Floating warp-fuel crystals */}
           <FuelCrystals />

@@ -7,6 +7,7 @@ import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
+import RaceHUD from "./RaceHUD";
 import ScanRing from "./ScanRing";
 import WaypointMarker from "./WaypointMarker";
 
@@ -145,6 +146,7 @@ export default function HUDOverlay() {
         <RadarMap />
       </div>
       <RadioChatter />
+      <RaceHUD />
       {/* The Scanner stops with the frozen scene, so its last label would
           otherwise hang over the dossier. */}
       {!isOrbitLocked && <ScanRing />}

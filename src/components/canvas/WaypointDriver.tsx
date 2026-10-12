@@ -4,6 +4,7 @@ import { PORTAL_POS, planets, projectById } from "../../constants";
 import { bodies, flight, useSpaceStore } from "../../store/spaceStore";
 import { nextWaypoint } from "../../utils/navigation";
 import { waypointState } from "../../utils/waypointState";
+import { RACE_GATES } from "../../data/ringCourse";
 
 
 const PLANET_NAMES = planets.map((p) => p.name);
@@ -19,14 +20,16 @@ const RING_X = 0.6;
 const RING_Y = 0.5;
 const v = new THREE.Vector3();
 
-/** Headless: projects the next unread dossier (then the portal) to the screen. */
+/** Headless: projects the next unread dossier (then the portal) to the screen — or, mid-lap, the next time-trial ring. */
 export default function WaypointDriver() {
   useFrame(({ camera, size }) => {
     const s = useSpaceStore.getState();
-    const id = nextWaypoint(flight, PLANET_NAMES, bodies, s.visitedDossiers);
+    // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
+    const race = s.race.phase === "running" ? s.race : null;
+    const id = race ? "" : nextWaypoint(flight, PLANET_NAMES, bodies, s.visitedDossiers);
     // Nothing to point at while docked there or already inside its pull.
-    if (s.isOrbitLocked || s.activeZone === id) { waypointState.active = false; return; }
-    const t = id === "contact" ? PORTAL : bodies[id];
+    if (s.isOrbitLocked || (!race && s.activeZone === id)) { waypointState.active = false; return; }
+    const t = race ? RACE_GATES[race.next].c : id === "contact" ? PORTAL : bodies[id];
     if (!t) { waypointState.active = false; return; }
 
     v.set(t.x, t.y, t.z).project(camera);
@@ -49,6 +52,11 @@ export default function WaypointDriver() {
     waypointState.y = (-ny * 0.5 + 0.5) * size.height;
     waypointState.angle = Math.atan2(-ny, nx);
     waypointState.distance = Math.hypot(t.x - flight.x, t.y - flight.y, t.z - flight.z);
+    if (race) {
+      waypointState.label = race.next === 0 ? "FINISH" : `RING ${race.next}/${RACE_GATES.length - 1}`;
+      waypointState.color = "#ffb020";
+      return;
+    }
     waypointState.label = id === "contact" ? "CONTACT PORTAL" : (projectById(id)?.title ?? id).toUpperCase();
     waypointState.color = id === "contact" ? "#ec4899" : (planets.find((p) => p.name === id)?.color ?? "#00ff87");
   });
