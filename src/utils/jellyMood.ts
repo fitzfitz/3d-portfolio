@@ -9,8 +9,12 @@ export type JellyMood = "calm" | "curious" | "startled";
  */
 export interface JellyState { mood: JellyMood; offset: Vec3; target: Vec3; startledFor: number; lastPath: Vec3 | null }
 
-/** A sphere the curious resting point must stay out of (a planet's zone plus the body). */
-export interface JellyKeepOut { x: number; y: number; z: number; r: number }
+/**
+ * A planet, as the jellyfish sees it. `r` (its proximity zone plus the
+ * creature's body) bounds where it will rest while curious; `body` (planet
+ * plus creature radius) is never crossed in any mood.
+ */
+export interface JellyKeepOut { x: number; y: number; z: number; r: number; body: number }
 
 export interface JellyInput {
   /** Where the path (plus swim surge and bob) puts the jellyfish this frame. */
@@ -102,6 +106,19 @@ export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   }
 
   dampVec(s.offset, s.target, HALF_LIFE[s.mood], dt);
+  // Backstop for every mood: a startle can flee toward a planet on the far
+  // side, and the eased transit to a rest point can cut a chord through one.
+  // Hold the creature's centre on the planet's surface instead. The path
+  // itself always clears `body` (tests/planetClearance.test.ts), so a calm
+  // jellyfish on its path is never touched.
+  for (const k of inp.keepOut) {
+    const px = pathPos.x + s.offset.x - k.x, py = pathPos.y + s.offset.y - k.y, pz = pathPos.z + s.offset.z - k.z;
+    const d = Math.hypot(px, py, pz);
+    if (d >= k.body) continue;
+    const push = k.body - d;
+    if (d < 1e-6) { s.offset.y += push; continue; }
+    s.offset.x += (px / d) * push; s.offset.y += (py / d) * push; s.offset.z += (pz / d) * push;
+  }
   const l = Math.hypot(s.offset.x, s.offset.y, s.offset.z);
   if (l > JELLY_LEASH) {
     const k = JELLY_LEASH / l;

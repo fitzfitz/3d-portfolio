@@ -6,7 +6,7 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { dampVec } from "../../utils/reactions";
-import { cargoSwerveTarget, HailGate, CARGO_REACT_RADIUS } from "../../utils/cargoReaction";
+import { cargoSwerveTarget, HailGate, CARGO_REACT_RADIUS, RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
@@ -51,6 +51,8 @@ export default function CargoTraffic() {
 
   const offsets = useMemo(() => SHIPS.map(() => new THREE.Vector3()), []);
   const hailGate = useMemo(() => new HailGate(SHIPS.length), []);
+  // When the last broadcast landed, so a hail never talks over it.
+  const lastBroadcast = useRef({ id: 0, at: -Infinity });
 
   // Mirrored onto the bridge purely so the e2e probe can read it.
   useEffect(() => {
@@ -101,6 +103,9 @@ export default function CargoTraffic() {
     const store = useSpaceStore.getState();
     const react = !store.reducedMotion;
     const raceRunning = store.race.phase === "running";
+    const broadcastId = store.broadcast?.id ?? 0;
+    if (broadcastId !== lastBroadcast.current.id) lastBroadcast.current = { id: broadcastId, at: now };
+    const radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
     for (let i = 0; i < count; i++) {
       const def = SHIPS[i];
       const ship = ships[i];
@@ -135,7 +140,7 @@ export default function CargoTraffic() {
         dampVec(off, swerveTarget, swerving ? SWERVE_IN_HALFLIFE : SWERVE_OUT_HALFLIFE, dt);
       }
       // Hails are text, not motion: they run under reduced motion too.
-      if (hailGate.update(i, dist, now, raceRunning)) store.sendBroadcast(hailLines.pick("hail"));
+      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"));
 
       pos.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
       pos.add(off);

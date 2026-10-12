@@ -90,8 +90,20 @@ describe("stepJelly", () => {
 
   it("won't follow the player into a planet's keep-out", () => {
     // Player at +30, jelly at the origin: the resting point would be (12,0,0).
-    const s = stepJelly(createJellyState(), input({ keepOut: [{ x: 12, y: 0, z: 0, r: 10 }] }));
+    const s = stepJelly(createJellyState(), input({ keepOut: [{ x: 12, y: 0, z: 0, r: 10, body: 5 }] }));
     expect(s.mood).toBe("calm");
+  });
+
+  it("never flees into a planet, even when the pilot boosts from the far side", () => {
+    // Review finding: only the curious resting point was guarded; a startle
+    // fled straight through a planet whose body sat on the far side.
+    const planet = { x: 25, y: 0, z: 0, r: 30, body: 20 };
+    const inp = input({ player: v(-20, 0, 0), boosting: true, keepOut: [planet] });
+    const s = createJellyState();
+    for (let t = 0; t < 1.5; t += inp.dt) {
+      stepJelly(s, inp);
+      expect(dist(jellyAt(s, inp), planet)).toBeGreaterThanOrEqual(planet.body - 1e-6);
+    }
   });
 
   it("survives a huge dt after a frozen frame", () => {

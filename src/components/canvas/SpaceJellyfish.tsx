@@ -105,7 +105,7 @@ export default function SpaceJellyfish() {
   const jelly = useMemo(createJellyState, []);
   const pathPos = useMemo(() => new THREE.Vector3(), []);
   const keepOut = useMemo<JellyKeepOut[]>(
-    () => planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size * ZONE_FACTOR + JELLY_RADIUS })), []);
+    () => planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size * ZONE_FACTOR + JELLY_RADIUS, body: p.size + JELLY_RADIUS })), []);
   // The pulse runs on its own accumulated clock so its rate can follow the
   // mood without jumping the phase. It advances on ambient time, so it still
   // freezes under reduced motion.

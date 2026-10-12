@@ -60,6 +60,12 @@ describe("HailGate", () => {
     expect(g.update(0, 5, 0, true)).toBe(false);
     expect(g.update(0, 5, 100, false)).toBe(false);
   });
+  it("does not talk over a broadcast that just arrived, and that approach is spent", () => {
+    // Review finding: a hail replaced a shard fact or scan report mid-type.
+    const g = new HailGate(1);
+    expect(g.update(0, 5, 0, false, true)).toBe(false);
+    expect(g.update(0, 5, 100, false, false)).toBe(false);
+  });
   it("does not hail between the hail radius and the react radius", () => {
     const g = new HailGate(1);
     expect(g.update(0, (CARGO_HAIL_RADIUS + CARGO_REACT_RADIUS) / 2, 0, false)).toBe(false);

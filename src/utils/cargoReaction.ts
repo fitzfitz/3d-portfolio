@@ -8,6 +8,11 @@ export const CARGO_SWERVE_MAX = 10;
 export const CARGO_HAIL_RADIUS = 20;
 /** At most one hail across all ships per this many seconds. */
 export const HAIL_COOLDOWN_S = 45;
+/**
+ * A broadcast this recent is still typing out or being read: a shard fact or
+ * scan report is the payoff for an action, and a hail must not replace it.
+ */
+export const RADIO_BUSY_S = 6;
 
 /** Full swerve inside this share of the react radius; it ramps off beyond. */
 const FULL_SWERVE_AT = 0.4;
@@ -39,7 +44,8 @@ export function cargoSwerveTarget(out: Vec3, routePos: Vec3, tangent: Vec3, play
 /**
  * Decides when a cargo ship hails: once per approach (re-armed only after the
  * player has left the react radius), at most once per HAIL_COOLDOWN_S across
- * every ship, and never during a running time-trial lap. An approach that
+ * every ship, never during a running time-trial lap, and never over a
+ * broadcast that is still on the radio (`radioBusy`). An approach that
  * reaches the hail radius while suppressed is spent, not deferred, so a hail
  * never fires late, after the moment has passed.
  */
@@ -52,11 +58,11 @@ export class HailGate {
   }
 
   /** `now` is game time in seconds. Returns true when ship `i` should hail. */
-  update(i: number, dist: number, now: number, raceRunning: boolean): boolean {
+  update(i: number, dist: number, now: number, raceRunning: boolean, radioBusy = false): boolean {
     if (dist > CARGO_REACT_RADIUS) { this.armed[i] = true; return false; }
     if (dist > CARGO_HAIL_RADIUS || !this.armed[i]) return false;
     this.armed[i] = false;
-    if (raceRunning || now - this.lastHailAt < HAIL_COOLDOWN_S) return false;
+    if (raceRunning || radioBusy || now - this.lastHailAt < HAIL_COOLDOWN_S) return false;
     this.lastHailAt = now;
     return true;
   }
