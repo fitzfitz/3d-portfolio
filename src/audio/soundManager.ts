@@ -1,5 +1,6 @@
 import { flight, useSpaceStore, selectSceneFrozen } from "../store/spaceStore";
 import { SHIP_MAX_SPEED } from "../constants";
+import { beamState } from "../store/beamState";
 
 /**
  * Fully synthesized Web Audio soundscape. No assets, no React.
@@ -12,6 +13,8 @@ class SoundManager {
   private engineGain: GainNode | null = null;
   private engineFilter: BiquadFilterNode | null = null;
   private warpGain: GainNode | null = null;
+  private beamGain: GainNode | null = null;
+  private beamOsc: OscillatorNode | null = null;
   private muted = false;
   private rafId: number | null = null;
 
@@ -60,6 +63,15 @@ class SoundManager {
       warpFilter.type = "lowpass";
       warpFilter.frequency.value = 400;
       this.warpGain.connect(warpFilter).connect(this.master);
+
+      // Tractor-beam hum: a soft sine, silent until the beam is held.
+      this.beamGain = this.ctx.createGain();
+      this.beamGain.gain.value = 0;
+      this.beamOsc = this.ctx.createOscillator();
+      this.beamOsc.type = "sine";
+      this.beamOsc.frequency.value = 330;
+      this.beamOsc.connect(this.beamGain).connect(this.master);
+      this.beamOsc.start();
 
       // Ambient pad: two slow detuned oscillators, barely audible
       const padGain = this.ctx.createGain();
@@ -122,6 +134,12 @@ class SoundManager {
         this.engineGain.gain.setTargetAtTime(speedNorm * 0.08, t, 0.15);
         const warping = flying && s.isWarping;
         this.warpGain.gain.setTargetAtTime(warping ? 0.06 : 0, t, warping ? 0.08 : 0.25);
+        if (this.beamGain && this.beamOsc) {
+          const humming = flying && beamState.active;
+          this.beamGain.gain.setTargetAtTime(humming ? 0.025 : 0, t, humming ? 0.05 : 0.15);
+          // Pitch climbs a little with each pebble absorbed, resets on release.
+          this.beamOsc.frequency.setTargetAtTime(330 * (1 + 0.04 * Math.min(beamState.oreStreak, 12)), t, 0.1);
+        }
       }
       this.rafId = requestAnimationFrame(tick);
     };
@@ -187,6 +205,14 @@ class SoundManager {
   /** Leaving a gravity well fast: rising sweep */
   whoosh() {
     this.blip("sawtooth", 180, 0.55, 0.045, 760);
+  }
+  /** Tractor beam engaged */
+  beamOn() {
+    this.blip("sine", 520, 0.12, 0.05, 780);
+  }
+  /** A pebble absorbed as ore */
+  oreTick() {
+    this.blip("triangle", 1500, 0.035, 0.03);
   }
 }
 

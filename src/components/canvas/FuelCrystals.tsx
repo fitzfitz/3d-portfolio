@@ -11,6 +11,8 @@ import {
   CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, crystalAvoidPoints, randomCrystalPos, respawnTick,
 } from "../../utils/crystalField";
 import { soundManager } from "../../audio/soundManager";
+import { beamState } from "../../store/beamState";
+import { pullStep, CRYSTAL_PULL_SPEED } from "../../utils/tractorBeam";
 import { fitzDebug } from "../../debug/bridge";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
@@ -99,6 +101,15 @@ export default function FuelCrystals() {
     const dt = Math.min(delta, 0.05);
     const t = ambientTime(state.clock.getElapsedTime());
     const store = useSpaceStore.getState();
+
+    // Tractor beam: selected crystals drift to the ship; the pickup check
+    // below collects them on arrival. Released ones stay where they are.
+    const sel = beamState.sel;
+    for (let k = 0; k < sel.count; k++) {
+      if (sel.kind[k] !== "crystal") continue;
+      const s = slots[sel.index[k]];
+      if (s?.active) pullStep(s, flight, beamState.vel, CRYSTAL_PULL_SPEED, dt);
+    }
 
     // Refill empty slots on a timer while below the cap.
     const tick = respawnTick(respawnAccum.current, dt);

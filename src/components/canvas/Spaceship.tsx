@@ -15,6 +15,8 @@ import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
 import { wrapCoord } from "../../utils/edgeHaze";
+import { beamState } from "../../store/beamState";
+import { reelStep } from "../../utils/tractorBeam";
 import {
   stepGravity, gravityMode, EscapeGrace, SlingshotGate, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, SLINGSHOT_SPEED, G_MAX,
@@ -146,7 +148,8 @@ export default function Spaceship() {
       hasFlown.current = true;
     };
     fitzDebug.gravity = gravity.current;
-    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; };
+    fitzDebug.beam = beamState;
+    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; };
   }, []);
 
   // Spawn nose-on to the first planet, so the first W press flies toward a
@@ -337,6 +340,7 @@ export default function Spaceship() {
       shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
       drivePlumes(0.35, 0.25, time, dt);
       store.setWarping(false);
+      beamState.active = false; beamState.reel.active = false;
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.pitch = pitch.current;
       return;
@@ -416,6 +420,7 @@ export default function Spaceship() {
 
       zeroGravity();
       _total.set(0, 0, 0);
+      beamState.active = false; beamState.reel.active = false;
       applyChaseCam(false, true);
       return;
     }
@@ -505,6 +510,12 @@ export default function Spaceship() {
 
     const nose = noseDirection(angle.current, pitch.current);
 
+    // Tractor beam (spec §6): off in warp; the nose is its origin and axis.
+    beamState.active = input.beam && !warpActive;
+    beamState.ox = pos.current.x + nose.x * 1.3; beamState.oy = pos.current.y + nose.y * 1.3; beamState.oz = pos.current.z + nose.z * 1.3;
+    beamState.dx = nose.x; beamState.dy = nose.y; beamState.dz = nose.z;
+    if (!beamState.active) beamState.oreStreak = 0;
+
     if (warpActive) {
       vel.current.set(nose.x * WARP_SPEED, nose.y * WARP_SPEED, nose.z * WARP_SPEED);
     } else if (thrustInput > 0) {
@@ -515,10 +526,13 @@ export default function Spaceship() {
     } else if (braking) {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
+    // Reeling toward a shard counts as thrust for station-keeping.
+    const reeling = beamState.active && beamState.reel.active;
+    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, MAX_SPEED);
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
-    idleFor.current = thrustInput > 0 ? 0 : idleFor.current + dt;
+    idleFor.current = thrustInput > 0 || reeling ? 0 : idleFor.current + dt;
     const grace = escapeGrace.current;
     if (grace.skip) {
       const gb = bodies[grace.skip];
@@ -569,6 +583,7 @@ export default function Spaceship() {
 
     _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);
     const totalSpeed = _total.length();
+    beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
     // Which planet well the ship is in now; leaving one fast is a slingshot.
     let wellNow: string | null = null;

@@ -27,6 +27,7 @@ const FRAG = /* glsl */ `
   uniform float uTime;
   uniform float uPower;   // 0 idle .. 1 cruise .. ~2 warp
   uniform float uSeed;
+  uniform vec3 uColor;   // the plume's cool end (engine cyan by default)
   varying float vAlong;
   varying vec3 vNormal;
   varying vec3 vView;
@@ -40,7 +41,7 @@ const FRAG = /* glsl */ `
     float flicker = 0.85 + 0.15 * sin(uTime * 37.0 + uSeed * 3.0) * sin(uTime * 23.0 + uSeed);
     float fall = pow(1.0 - t, 1.7);
     vec3 hot = vec3(0.92, 1.0, 1.0);
-    vec3 cool = vec3(0.0, 0.85, 1.0);
+    vec3 cool = uColor;
     vec3 col = mix(hot, cool, smoothstep(0.0, 0.45, t));
     float a = core * fall * mix(1.0, diamonds, smoothstep(0.05, 0.3, t)) * flicker
             * (0.25 + 0.55 * min(uPower, 1.6));
@@ -48,7 +49,10 @@ const FRAG = /* glsl */ `
   }
 `;
 
-export function makePlumeMaterial(seed: number): THREE.ShaderMaterial {
+/** Default "cool" end of the plume: the engine's cyan (0, 0.85, 1). */
+const ENGINE_COOL = new THREE.Color(0, 0.85, 1);
+
+export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -60,6 +64,7 @@ export function makePlumeMaterial(seed: number): THREE.ShaderMaterial {
       uTime: { value: 0 },
       uPower: { value: 0.3 },
       uSeed: { value: seed },
+      uColor: { value: color.clone() },
     },
   });
 }
