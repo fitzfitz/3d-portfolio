@@ -19,6 +19,7 @@ Tailwind, on Vite.
 | `C` / `X` | Pitch down |
 | `E` (hold) | Scan a nearby object |
 | `P` | Photo mode |
+| `B` | Drop a beacon (only when a beacon API is configured) |
 | `J` | Summon the space jellyfish |
 | `1`–`3` | Jump straight into a project's orbit (opens its dossier) |
 | `4` | Jump to the contact portal |
@@ -34,6 +35,11 @@ out through the asteroid belt and back. Fly them in order and finish through
 the start ring. Par is 0:35, and one tank of warp won't quite cover the loop.
 Your best time is saved in this browser, and later laps race a ghost of that
 best lap. A jump or an orbit lock aborts the lap.
+
+**Beacons.** If a beacon API is configured, `B` (or the BEACON button) drops a
+beacon where your ship is. It carries a phrase from a fixed list, never free
+text, and later visitors can scan it. Without the API the feature is absent. See
+[`beacon-api/README.md`](beacon-api/README.md).
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is

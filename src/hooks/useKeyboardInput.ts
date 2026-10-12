@@ -51,6 +51,8 @@ export function useKeyboardInput() {
       const s = useSpaceStore.getState();
       // The classic résumé is a normal page: Space and the arrows scroll it.
       if (s.showClassicCV) return;
+      // The beacon picker owns the keyboard: its number keys pick a phrase.
+      if (s.beaconPickerOpen) return;
       // In flight, Space would otherwise also "click" whichever button kept
       // focus after a mouse click (e.g. VIEW_CLASSIC_RESUME). With a dossier
       // open the scene is frozen, so leave keys to the dialog's buttons.

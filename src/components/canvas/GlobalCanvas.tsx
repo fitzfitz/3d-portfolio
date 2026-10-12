@@ -21,6 +21,8 @@ import SpaceJellyfish from "./SpaceJellyfish";
 import Comets from "./Comets";
 import DataShards from "./DataShards";
 import RingCourse from "./RingCourse";
+import Beacons from "./Beacons";
+import { beaconApiUrl } from "../../utils/beaconApi";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
@@ -418,6 +420,8 @@ function ShaderWarmup() {
   return null;
 }
 
+const BEACONS_ENABLED = !!beaconApiUrl();
+
 function GlobalCanvas() {
   if (import.meta.env.DEV) fitzDebug.canvasRenderCount++;
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
@@ -559,6 +563,9 @@ function GlobalCanvas() {
 
           {/* Time-trial ring course from the spawn pad, with a ghost of the best lap */}
           <RingCourse />
+
+          {/* Visitors' beacons — only when the beacon API is configured */}
+          {BEACONS_ENABLED && <Beacons />}
 
           {/* Floating warp-fuel crystals */}
           <FuelCrystals />

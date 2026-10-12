@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff } from "lucide-react";
+import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -8,6 +8,7 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
 import RaceHUD from "./RaceHUD";
+import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import WaypointMarker from "./WaypointMarker";
 
@@ -33,7 +34,7 @@ let completionAnnounced = false;
 /** How long after leaving the spawn pad the HUD quiets down. */
 const QUIET_AFTER_MS = 6000;
 
-export default function HUDOverlay() {
+export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?: boolean }) {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
@@ -226,12 +227,29 @@ export default function HUDOverlay() {
               <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">{pad ? "Y" : "P"}</span>
             </div>
+            {beaconsEnabled && (
+              <>
+                <div className="w-[1px] bg-white/5" />
+                <div className="flex flex-col">
+                  <span className="text-white/45">BEACON</span>
+                  <span className="text-white">B</span>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
 
       {/* Icon-only on phones: four labelled buttons ran off the screen edge. */}
       <div className="absolute bottom-5 left-4 sm:bottom-10 sm:left-6 flex gap-2 pointer-events-auto">
+        {beaconsEnabled && !isOrbitLocked && (
+          <button data-testid="beacon-button" onClick={openBeaconPicker}
+            aria-label="Drop a beacon"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-[#00ff87] hover:border-[#00ff87]/20 transition-all duration-300">
+            <RadioTower className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">BEACON</span>
+          </button>
+        )}
         <button onClick={() => setLowPerf(!isLowPerf, true)}
           aria-label={isLowPerf ? "Enable bloom" : "Low performance mode"} aria-pressed={isLowPerf}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all duration-300 ${

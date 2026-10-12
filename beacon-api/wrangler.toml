@@ -1,0 +1,13 @@
+# Visitor-beacon API for the portfolio. See beacon-api/README.md.
+name = "fitz-beacons"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://fitzfitz.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fitz-beacons"
+# Paste the id printed by `npx wrangler d1 create fitz-beacons`.
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

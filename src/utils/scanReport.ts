@@ -1,3 +1,5 @@
+import { beaconRegistry, beaconReport } from "./beacons";
+
 const PLANET_REPORTS: Record<string, string> = {
   ruangrapi: "SCAN[PLANET_RUANGRAPI] // CORE: SUPABASE+POSTGRES · CRUST: REACT+TYPESCRIPT · SHIELD: ROW-LEVEL SECURITY // INHABITANTS: KOS LANDLORDS",
   portfolio: "SCAN[PLANET_PORTFOLIO] // CORE: THREE.JS · ATMOSPHERE: REACT THREE FIBER · MOONS: BLENDER-SCRIPTED GLBS // ORBITING IT: YOU",
@@ -21,6 +23,8 @@ function hash(id: string): number {
 }
 
 export function generateScanReport(id: string): string {
+  const beacon = beaconRegistry.get(id);
+  if (beacon) return beaconReport(beacon, Date.now());
   const table = PLANET_REPORTS[id];
   if (table) return table;
   const h = hash(id);
