@@ -199,3 +199,51 @@ describe("withListCache", () => {
     expect((await cached.list(40))).toHaveLength(1);
   });
 });
+
+describe("request rate limiter (Workers Rate Limiting binding)", () => {
+  /** Stand-in for env.LIMITER: allows `n` calls per key. */
+  function limiter(n: number) {
+    const seen = new Map<string, number>();
+    return {
+      keys: [] as string[],
+      async limit({ key }: { key: string }) {
+        this.keys.push(key);
+        const c = (seen.get(key) ?? 0) + 1;
+        seen.set(key, c);
+        return { success: c <= n };
+      },
+    };
+  }
+  const getFrom = (ip: string, d: object) => handleRequest(new Request("https://api.example/beacons", {
+    headers: { Origin: ORIGIN, "CF-Connecting-IP": ip },
+  }), { ...deps(), ...d });
+
+  // Protects the request and D1 quotas, which the per-pilot drop limit can't:
+  // a GET loop never drops anything.
+  it("429s reads past the per-pilot request budget, before touching D1", async () => {
+    const l = limiter(2);
+    expect((await getFrom("203.0.113.9", { limiter: l })).status).toBe(200);
+    expect((await getFrom("203.0.113.9", { limiter: l })).status).toBe(200);
+    const res = await getFrom("203.0.113.9", { limiter: l });
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(ORIGIN);
+    expect(store.listCalls).toBe(2);
+  });
+  it("keys the budget per pilot (/64 for IPv6), so one pilot can't starve another", async () => {
+    const l = limiter(1);
+    expect((await getFrom("2001:db8:1:2::1", { limiter: l })).status).toBe(200);
+    expect((await getFrom("2001:db8:1:2::99", { limiter: l })).status).toBe(429);
+    expect((await getFrom("198.51.100.4", { limiter: l })).status).toBe(200);
+    expect(l.keys[0]).toBe("2001:0db8:0001:0002");
+  });
+  it("does not spend budget on CORS preflights", async () => {
+    const l = limiter(0);
+    const res = await handleRequest(new Request("https://api.example/beacons", {
+      method: "OPTIONS", headers: { Origin: ORIGIN, "CF-Connecting-IP": "1.2.3.4" },
+    }), { ...deps(), limiter: l });
+    expect(res.status).toBe(204);
+  });
+  it("runs without a limiter (local dev, tests)", async () => {
+    expect((await getFrom("1.2.3.4", {})).status).toBe(200);
+  });
+});

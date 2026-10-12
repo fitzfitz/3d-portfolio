@@ -34,6 +34,8 @@ feature does not render at all.
   Rotating `IP_SALT` makes the stored hashes useless. If `IP_SALT` is shorter
   than 16 characters, every `POST` fails with 500 rather than storing hashes
   that could be reversed.
+- **Per-pilot request budget.** 30 requests a minute (see "Request quota"
+  below).
 - **Reads are cheap.** `GET` serves the newest 40 rows from a 30-second cache
   in each isolate, so repeat reads skip D1. The table keeps the newest 500
   rows.
@@ -71,9 +73,13 @@ openssl rand -hex 32 | npx wrangler secret put IP_SALT --config beacon-api/wrang
 npx wrangler secret list --config beacon-api/wrangler.toml
 ```
 
-**Recommended:** add a Cloudflare WAF rate-limiting rule on the Worker's route,
-for example 30 requests per minute per IP on `/beacons`. The Worker's own
-limits protect the data, and the WAF rule protects your request quota.
+**Request quota.** `wrangler.toml` binds the Workers Rate Limiting API as
+`LIMITER`: 30 requests a minute per pilot, counted per Cloudflare location,
+across GET and POST, with preflights free. It does the job of a WAF rule; a WAF
+rule would need a zone, and this Worker runs on `workers.dev`. The drop limits
+protect the data, and this budget protects your Worker and D1 quotas from a
+GET loop. The counters are approximate by design, so a burst can slip a few
+requests past before the 429s start.
 
 Then give the site the Worker's URL, for example
 `https://fitz-beacons.<you>.workers.dev`:

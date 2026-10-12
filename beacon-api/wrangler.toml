@@ -11,3 +11,14 @@ ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedi
 binding = "DB"
 database_name = "fitz-beacons"
 database_id = "57ee4c74-f2c0-4b24-ba5a-b504dfb990dc"
+
+# Per-pilot request budget (GET and POST): 30 a minute per Cloudflare
+# location. Stands in for a WAF rule, which needs a zone and this Worker lives
+# on workers.dev. namespace_id is any integer unique to the account.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "7301"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60

@@ -26,8 +26,19 @@ export interface BeaconStore {
   prune(keep: number): Promise<void>;
 }
 
+/** The Workers Rate Limiting binding's interface (env.LIMITER). */
+export interface RequestLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Deps {
   store: BeaconStore;
+  /**
+   * Per-pilot request budget across GET and POST. Guards the Worker and D1
+   * quotas, which the drop limits can't: a GET loop never drops anything.
+   * Optional so local runs and tests need no binding.
+   */
+  limiter?: RequestLimiter;
   allowedOrigins: readonly string[];
   salt: string;
   now: () => number;
@@ -118,6 +129,11 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h });
 
+  const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
+  if (deps.limiter && !(await deps.limiter.limit({ key: rateKey(ip) })).success) {
+    return json(429, { error: "slow down" }, { ...h, "Retry-After": "60" });
+  }
+
   if (req.method === "GET") {
     const rows = await deps.store.list(BEACON_LIMIT);
     return json(200, { beacons: rows.map(publicView) }, { ...h, "Cache-Control": "public, max-age=30" });
@@ -145,7 +161,6 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!v.ok) return json(400, { error: "invalid beacon" }, h);
 
   const now = deps.now();
-  const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
   const ipHash = await hmacHex(deps.salt, rateKey(ip));
   // CF-IPCountry is "XX" when unknown and "T1" for Tor; keep real codes only.
   const cc = req.headers.get("CF-IPCountry");

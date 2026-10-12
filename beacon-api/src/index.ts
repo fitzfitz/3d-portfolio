@@ -1,4 +1,4 @@
-import { handleRequest, withListCache, type BeaconStore, type StoredBeacon } from "./handler";
+import { handleRequest, withListCache, type BeaconStore, type RequestLimiter, type StoredBeacon } from "./handler";
 
 /**
  * Cloudflare Worker entry: binds the handler to D1. Deploy steps are in
@@ -18,6 +18,8 @@ interface D1Database { prepare(sql: string): D1Stmt }
 
 interface Env {
   DB: D1Database;
+  /** Workers Rate Limiting binding ([[ratelimits]] in wrangler.toml). */
+  LIMITER?: RequestLimiter;
   /** Comma-separated origins allowed to read and drop, e.g. the Pages and Cloudflare hosts. */
   ALLOWED_ORIGINS: string;
   /** Secret (wrangler secret put IP_SALT), 16+ chars or POSTs fail closed. HMAC key for IP hashes; rotate to forget them. */
@@ -62,6 +64,7 @@ export default {
     store ??= withListCache(d1Store(env.DB), 30_000, Date.now);
     return handleRequest(req, {
       store,
+      limiter: env.LIMITER,
       allowedOrigins: env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
       salt: env.IP_SALT,
       now: () => Date.now(),
