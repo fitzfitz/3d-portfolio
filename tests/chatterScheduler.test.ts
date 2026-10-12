@@ -5,7 +5,7 @@ const pools: ChatterPools = {
   deepSpace: ["ds-1", "ds-2", "ds-3"],
   zones: { saas: ["saas-1", "saas-2"], video: ["video-1"] },
   warp: ["warp-1", "warp-2"],
-  wrap: ["wrap-1"],
+  haze: ["haze-1"], slingshot: ["sling-1"], ore: ["ore-1"],
   comet: ["comet-1", "comet-2"],
   altitude: ["alt-1", "alt-2"],
   impact: ["imp-1"],
@@ -33,8 +33,14 @@ describe("ChatterScheduler", () => {
   });
   it("allows repeats for single-line pools", () => {
     const s = new ChatterScheduler(pools, () => 0);
-    expect(s.pick("wrap")).toBe("wrap-1");
-    expect(s.pick("wrap")).toBe("wrap-1");
+    expect(s.pick("haze")).toBe("haze-1");
+    expect(s.pick("haze")).toBe("haze-1");
+  });
+  it("picks the haze, slingshot and ore pools", () => {
+    const s = new ChatterScheduler(pools, () => 0);
+    expect(s.pick("haze")).toBe("haze-1");
+    expect(s.pick("slingshot")).toBe("sling-1");
+    expect(s.pick("ore")).toBe("ore-1");
   });
   it("nextDelayMs stays within [18000, 35000]", () => {
     const lo = new ChatterScheduler(pools, () => 0);

@@ -124,16 +124,11 @@ export default async function run() {
     checks.check("camera is not shaken while reduced motion is on", maxJump < 0.1,
       `max consecutive-frame camera jump ${maxJump.toFixed(4)}`);
 
-    // The teleport flash element must never appear on a wrap. ADAPTED
-    // MECHANISM: rather than polling and hoping a wrap happens to occur
-    // (COSMIC_BOUNDS is 250 and the ship was left sitting next to an
-    // asteroid well inside it — a vacuous wait that would pass even if the
-    // suppression were broken, since isTeleporting would just never fire),
-    // teleport straight past the boundary so Spaceship's per-frame wrap
-    // check fires `triggerTeleportFlash()` deterministically on the very
-    // next frame. This is verified separately below (the store flag really
-    // did fire) so the "never rendered" result is evidence, not a no-op.
-    await page.evaluate(() => window.__fitz.teleport(0, 260, 0));
+    // The teleport flash must never render under reduced motion. Number-key
+    // and d-pad jumps fire it; the wrap no longer does (it is hidden in the
+    // edge haze). Fire the store flag directly so the check is deterministic,
+    // and confirm below that it really fired, so "never rendered" is evidence.
+    await page.evaluate(() => window.__fitz.store.getState().triggerTeleportFlash());
     const flashResult = await page.evaluate(async () => {
       let seen = false;
       let wrapped = false;
@@ -142,13 +137,13 @@ export default async function run() {
         if (window.__fitz.store.getState().isTeleporting) {
           wrapped = true;
           // The store flag may fire; the overlay must not render.
-          if (document.querySelector(".backdrop-blur-\\[3px\\]")) seen = true;
+          if (document.querySelector('[data-testid="teleport-flash"]')) seen = true;
         }
         await new Promise((r) => setTimeout(r, 50));
       }
       return { seen, wrapped };
     });
-    checks.check("wrap actually fired the store flag (flash check is not vacuous)",
+    checks.check("jump flash actually fired the store flag (flash check is not vacuous)",
       flashResult.wrapped, `isTeleporting observed=${flashResult.wrapped}`);
     checks.check("no teleport flash overlay rendered", flashResult.seen === false);
   });

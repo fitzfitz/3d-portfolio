@@ -134,6 +134,7 @@ export default function App() {
             animate={{ opacity: 0.85 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
+            data-testid="teleport-flash"
             className="pointer-events-none fixed inset-0 z-50 bg-[#00f0ff]/15 border-[12px] border-[#00f0ff]/30"
           />
         )}

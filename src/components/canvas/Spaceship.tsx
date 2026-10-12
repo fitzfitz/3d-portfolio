@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R, PORTAL_LOCK_R } from "../../constants";
+import { PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R, PORTAL_LOCK_R } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
@@ -14,6 +14,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
+import { wrapCoord } from "../../utils/edgeHaze";
 import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
@@ -498,20 +499,15 @@ export default function Spaceship() {
       }
     }
 
-    // Toroidal boundary wrap — all three axes (spec §2)
-    const bounds = COSMIC_BOUNDS;
-    let wrapOffsetX = 0, wrapOffsetY = 0, wrapOffsetZ = 0, didWrap = false;
-    if (pos.current.x > bounds) { pos.current.x = -bounds + 3; wrapOffsetX = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.x < -bounds) { pos.current.x = bounds - 3; wrapOffsetX = bounds * 2 - 3; didWrap = true; }
-    if (pos.current.y > bounds) { pos.current.y = -bounds + 3; wrapOffsetY = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.y < -bounds) { pos.current.y = bounds - 3; wrapOffsetY = bounds * 2 - 3; didWrap = true; }
-    if (pos.current.z > bounds) { pos.current.z = -bounds + 3; wrapOffsetZ = -bounds * 2 + 3; didWrap = true; }
-    else if (pos.current.z < -bounds) { pos.current.z = bounds - 3; wrapOffsetZ = bounds * 2 - 3; didWrap = true; }
-    if (didWrap) {
-      state.camera.position.x += wrapOffsetX;
-      state.camera.position.y += wrapOffsetY;
-      state.camera.position.z += wrapOffsetZ;
-      store.triggerTeleportFlash();
+    // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so
+    // it agrees with utils/toroidal.ts, and silent: it happens inside the edge
+    // haze (EdgeHaze.tsx), so there is no flash, zap or radio line any more.
+    const wx = wrapCoord(pos.current.x), wy = wrapCoord(pos.current.y), wz = wrapCoord(pos.current.z);
+    if (wx !== pos.current.x || wy !== pos.current.y || wz !== pos.current.z) {
+      state.camera.position.x += wx - pos.current.x;
+      state.camera.position.y += wy - pos.current.y;
+      state.camera.position.z += wz - pos.current.z;
+      pos.current.set(wx, wy, wz);
     }
 
     shipRef.current.position.copy(pos.current);
