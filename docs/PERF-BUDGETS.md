@@ -67,10 +67,18 @@ variance.
 
 | State | calls | triangles | programs | lights |
 |---|---|---|---|---|
-| Deep space | 32 | 217892 | 76 | 4 |
-| Close approach | 93 | 365726 | 82 | 4 |
-| Modal open | 94 | 365738 | 82 | 4 |
-| 40 anomalies | 32 | 217892 | 75 | 4 |
+| Deep space | 32 | 217892 | 78 | 4 |
+| Close approach | 93 | 365726 | 83 | 4 |
+| Modal open | 94 | 365738 | 83 | 4 |
+| 40 anomalies | 32 | 217892 | 78 | 4 |
+
+**Programs re-baselined 2026-10-12 (time-trial ring course).** `RingCourse.tsx`
+adds two material variants, both compiled by `ShaderWarmup` at load rather than
+during play: the instanced, instance-coloured additive ring material, and the
+ghost ship's additive wash. Deep space and 40-anomalies read 78 (+2, +3 —
+40-anomalies had sat one below deep space), the planet states 83 (+1). Calls
+and triangles stayed inside their ceilings (the ten rings are one 5.8k-triangle
+draw; the ghost draws only during a lap), so they keep the earlier baselines.
 
 **Re-baselined 2026-10-10 (cinematic asteroids, moons, comets).** The 20 hero
 asteroids went from ~3k to ~6.9k triangles each, moons from 1.3k to 4.5k

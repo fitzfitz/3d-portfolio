@@ -29,6 +29,12 @@ sector list (bottom right) jumps on click, and a waypoint marks the next unread
 dossier. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
+**Time trial.** The amber ring beside the spawn pad starts a lap of nine rings
+out through the asteroid belt and back. Fly them in order and finish through
+the start ring. Par is 0:35, and one tank of warp won't quite cover the loop.
+Your best time is saved in this browser, and later laps race a ghost of that
+best lap. A jump or an orbit lock aborts the lap.
+
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
 photo mode, `B` closes a dossier, and the d-pad (clockwise from up) jumps like

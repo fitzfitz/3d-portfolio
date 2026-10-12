@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
+import { parseRaceBest, type RaceState } from "../utils/race";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
@@ -206,6 +207,10 @@ interface SpaceState {
   photoMode: boolean;
   /** A gamepad has reported in (it does only after its first button press). */
   padConnected: boolean;
+  /** Time-trial progress (RingCourse.tsx). Changes only at gates, never per frame. */
+  race: RaceState;
+  /** Best lap in seconds, persisted; null until the first finish. */
+  raceBest: number | null;
   reducedMotion: boolean;
   reducedMotionManual: boolean;
   fuelEmpty: boolean;
@@ -241,6 +246,8 @@ interface SpaceState {
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
   setPadConnected: (v: boolean) => void;
+  setRace: (r: RaceState) => void;
+  setRaceBest: (t: number) => void;
   setReducedMotion: (v: boolean, manual?: boolean) => void;
 }
 
@@ -279,6 +286,8 @@ export const useSpaceStore = create<SpaceState>()(
     scanTarget: null,
     photoMode: false,
     padConnected: false,
+    race: { phase: "idle" },
+    raceBest: parseRaceBest(safeGetJSON<unknown>("fitz-race-best", null)),
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
@@ -364,6 +373,11 @@ export const useSpaceStore = create<SpaceState>()(
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
     setPadConnected: (v) => set({ padConnected: v }),
+    setRace: (race) => set({ race }),
+    setRaceBest: (t) => {
+      safeSetJSON("fitz-race-best", t);
+      set({ raceBest: t });
+    },
     setReducedMotion: (v, manual = false) => {
       if (manual) safeSetReducedMotion(v);
       // Ambient motion is the inverse of reduced motion.
