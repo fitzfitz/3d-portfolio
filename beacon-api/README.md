@@ -4,7 +4,7 @@ The small Cloudflare Worker behind visitor beacons. A visitor can drop a beacon
 where their ship is. Each beacon carries one phrase from a fixed list, and later
 visitors see it in space and can scan it.
 
-The site works without this API. With `VITE_BEACON_API` unset, the beacon
+The site works without this API. With `VITE_BEACON_API` empty, the beacon
 feature does not render at all.
 
 ## Design
@@ -81,15 +81,11 @@ protect the data, and this budget protects your Worker and D1 quotas from a
 GET loop. The counters are approximate by design, so a burst can slip a few
 requests past before the 429s start.
 
-Then give the site the Worker's URL, for example
-`https://fitz-beacons.<you>.workers.dev`:
-
-- **GitHub Pages:** add a repository *variable* (not a secret, since the URL is
-  public) named `VITE_BEACON_API`. `.github/workflows/deploy.yml` passes it to
-  the build.
-- **Cloudflare:** set `VITE_BEACON_API` in the Workers Builds environment for
-  `3d-portfolio`.
-- **Local dev:** set it in `.env`.
+Then give the site the Worker's URL by setting `VITE_BEACON_API` in the
+committed [`.env.production`](../.env.production). Every production build
+reads that file, so both hosts (GitHub Pages and the Cloudflare copy) pick it
+up on the next deploy, with no per-host settings. For `npm run dev`, set it in
+`.env`.
 
 ## Moderating
 
@@ -107,5 +103,5 @@ npx wrangler d1 execute fitz-beacons --remote \
   --command "DELETE FROM beacons WHERE at > <epoch-ms>"
 ```
 
-**Kill switch:** unset the `VITE_BEACON_API` variable and redeploy the site.
-The feature disappears from the page, and the data stays in D1.
+**Kill switch:** empty `VITE_BEACON_API` in `.env.production` and merge. Both
+hosts redeploy without the feature, and the data stays in D1.

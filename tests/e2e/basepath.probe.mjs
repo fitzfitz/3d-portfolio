@@ -62,7 +62,9 @@ export default async function basepathProbe() {
   // Build into a throwaway outDir so a normal `dist/` (base "/") is not
   // clobbered by a subpath build a developer would then preview by mistake.
   rmSync(OUT_DIR, { recursive: true, force: true });
-  await run("npx", ["vite", "build", "--outDir", OUT_DIR], { BASE_PATH: BASE });
+  // Blank the beacon API: a production build reads .env.production, and a
+  // test page must never call the live Worker (its CORS refuses localhost).
+  await run("npx", ["vite", "build", "--outDir", OUT_DIR], { BASE_PATH: BASE, VITE_BEACON_API: "" });
 
   const server = spawn(
     "npx",
