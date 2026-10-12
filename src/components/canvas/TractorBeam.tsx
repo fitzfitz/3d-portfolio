@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { beamState } from "../../store/beamState";
 import { crystalSlots, flight, useSpaceStore } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
-import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone, nearestShardInCone } from "../../utils/tractorBeam";
+import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone, nearestShardInCone, nearImage } from "../../utils/tractorBeam";
 import { tetherCount, tetherPos } from "../../utils/mining";
 import { makeBeamGeometry, makePlumeMaterial } from "./enginePlume";
 import { ambientTime } from "../../utils/ambientTime";
@@ -73,7 +73,8 @@ export default function TractorBeam() {
     const reelTo = nearestShardInCone(ox, oy, oz, dx, dy, dz, SHARDS, collected);
     if (reelTo >= 0) {
       const [sx, sy, sz] = SHARDS[reelTo].pos;
-      const rx = sx - flight.x, ry = sy - flight.y, rz = sz - flight.z;
+      // Wrap-aware: the shortest way to the shard, even across the seam.
+      const rx = nearImage(flight.x, sx) - flight.x, ry = nearImage(flight.y, sy) - flight.y, rz = nearImage(flight.z, sz) - flight.z;
       const rl = Math.hypot(rx, ry, rz) || 1;
       beamState.reel.active = true;
       beamState.reel.x = rx / rl; beamState.reel.y = ry / rl; beamState.reel.z = rz / rl;
@@ -97,7 +98,9 @@ export default function TractorBeam() {
       let n = 0;
       const put = (x: number, y: number, z: number) => {
         const j = n * 6;
-        arr[j] = ox; arr[j + 1] = oy; arr[j + 2] = oz; arr[j + 3] = x; arr[j + 4] = y; arr[j + 5] = z;
+        // To the target's nearest image, so a tether never spans the universe at the seam.
+        arr[j] = ox; arr[j + 1] = oy; arr[j + 2] = oz;
+        arr[j + 3] = nearImage(ox, x); arr[j + 4] = nearImage(oy, y); arr[j + 5] = nearImage(oz, z);
         n++;
       };
       for (let k = 0; k < sel.count && n < BEAM_MAX_TARGETS; k++) put(sel.x[k], sel.y[k], sel.z[k]);
