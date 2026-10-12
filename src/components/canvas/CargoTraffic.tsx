@@ -148,7 +148,7 @@ export default function CargoTraffic() {
         dampVec(off, swerveTarget, swerving ? SWERVE_IN_HALFLIFE : SWERVE_OUT_HALFLIFE, dt);
       }
       // Hails are text, not motion: they run under reduced motion too.
-      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"));
+      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"), { silent: true });
 
       pos.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
       pos.add(off);

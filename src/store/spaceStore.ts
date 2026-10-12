@@ -222,7 +222,7 @@ interface SpaceState {
   cometNear: boolean;
   altitudeWarn: boolean;
   shardsCollected: number[];
-  broadcast: { id: number; text: string } | null;
+  broadcast: { id: number; text: string; silent: boolean } | null;
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
@@ -267,7 +267,12 @@ interface SpaceState {
   setCometNear: (v: boolean) => void;
   setAltitudeWarn: (v: boolean) => void;
   collectShard: (i: number) => void;
-  sendBroadcast: (text: string) => void;
+  /**
+   * Shows a line on the radio. `silent` lines (cargo hails, flavour such as
+   * the haze and slingshot callouts) are not announced to screen readers:
+   * the aria-live region is for content a visitor acted to get.
+   */
+  sendBroadcast: (text: string, opts?: { silent?: boolean }) => void;
   bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
@@ -417,7 +422,7 @@ export const useSpaceStore = create<SpaceState>()(
       set({ shardsCollected: next });
       safeSetJSON("fitz-shards", next);
     },
-    sendBroadcast: (text) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text } }),
+    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
       get().sendBroadcast(line);

@@ -69,8 +69,9 @@ export default function RadioChatter() {
           typeLine(b.text);
           // Broadcasts carry real content (shard facts, scan reports, the
           // completion pointer). Announce them whole: the typewriter line
-          // changes every 22ms and would be noise to a screen reader.
-          if (liveRef.current) liveRef.current.textContent = b.text;
+          // changes every 22ms and would be noise to a screen reader. Silent
+          // lines (hails, flavour callouts) are shown but not announced.
+          if (liveRef.current && !b.silent) liveRef.current.textContent = b.text;
         }
       ),
       useSpaceStore.subscribe(
