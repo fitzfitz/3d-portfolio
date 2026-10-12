@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canCapture, CAPTURE_SPEED, CAPTURE_SURFACE_MARGIN } from "../src/utils/capture";
+import { canCapture, keepOutside, CAPTURE_SPEED, CAPTURE_SURFACE_MARGIN } from "../src/utils/capture";
 import { LOCK_ENGAGE_FACTOR } from "../src/constants";
 
 const size = 16;
@@ -24,5 +24,24 @@ describe("canCapture", () => {
     let r = 25;
     while (!canCapture(r, size, 39)) r -= 39 * 0.05;
     expect(r).toBeGreaterThan(size);
+  });
+});
+
+describe("keepOutside (docking never dips toward the surface)", () => {
+  it("pushes a point inside the radius out to it, along the same direction", () => {
+    const p = { x: 3, y: 4, z: 0 }; // 5u from the centre
+    keepOutside(p, { x: 0, y: 0, z: 0 }, 18);
+    expect(Math.hypot(p.x, p.y, p.z)).toBeCloseTo(18);
+    expect(p.y / p.x).toBeCloseTo(4 / 3);
+  });
+  it("leaves a point already outside alone", () => {
+    const p = { x: 30, y: 0, z: 0 };
+    keepOutside(p, { x: 0, y: 0, z: 0 }, 18);
+    expect(p).toEqual({ x: 30, y: 0, z: 0 });
+  });
+  it("handles a point exactly at the centre", () => {
+    const p = { x: 5, y: 5, z: 5 };
+    keepOutside(p, { x: 5, y: 5, z: 5 }, 18);
+    expect(Math.hypot(p.x - 5, p.y - 5, p.z - 5)).toBeCloseTo(18);
   });
 });

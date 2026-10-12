@@ -15,6 +15,7 @@ import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
 import { wrapCoord } from "../../utils/edgeHaze";
+import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import {
@@ -185,6 +186,8 @@ export default function Spaceship() {
 
   const lockedCenter = useRef(new THREE.Vector3());
   const targetLockRadius = useRef(6);
+  /** Closest a docked ship may sit to the body's centre (0 = no limit, e.g. the portal). */
+  const dockMinRadius = useRef(0);
   const escapeRadius = useRef(10);
   const orbitRadius = useRef(6); // eased ring radius — starts at arrival distance, eases toward targetLockRadius
   const orbitAngle = useRef(0);
@@ -207,14 +210,17 @@ export default function Spaceship() {
         const b = bodies[planet.name];
         lockedCenter.current.set(b.x, b.y, b.z);
         targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
+        dockMinRadius.current = planet.size + CAPTURE_SURFACE_MARGIN;
         escapeRadius.current = planet.size * ZONE_FACTOR * ESCAPE_MARGIN;
       } else if (activeZone === "contact") {
         lockedCenter.current.set(...PORTAL_POS);
+        dockMinRadius.current = 0;
         targetLockRadius.current = PORTAL_ORBIT_R;
         escapeRadius.current = PORTAL_ZONE_R * ESCAPE_MARGIN * 1.5;
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
+        dockMinRadius.current = 0;
         targetLockRadius.current = 6;
         escapeRadius.current = 10;
       }
@@ -400,6 +406,8 @@ export default function Spaceship() {
       pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;
       pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * orbitRadius.current;
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
+      // Settling into orbit must not dip the ship toward the surface (utils/capture.ts).
+      if (dockMinRadius.current > 0) keepOutside(pos.current, lockedCenter.current, dockMinRadius.current);
       angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
       roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
       pitch.current = THREE.MathUtils.lerp(pitch.current, 0, frameLerp(0.05, dt)); // level out in orbit
