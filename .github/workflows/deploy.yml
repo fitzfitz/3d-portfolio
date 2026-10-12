@@ -76,10 +76,10 @@ jobs:
           # quietly not existing. The tell is the bundle hash not changing
           # between deploys, since an embedded key changes the output.
           VITE_FORM_KEY: ${{ secrets.VITE_FORM_KEY }}
-          # Visitor beacons (beacon-api/). A repository *variable*, not a
-          # secret: the URL is public. Unset, the feature is absent from the
-          # page, which is the correct state until the Worker is deployed.
-          VITE_BEACON_API: ${{ vars.VITE_BEACON_API }}
+          # VITE_BEACON_API is deliberately NOT passed here: it comes from the
+          # committed .env.production, the one switch for both hosts. Setting
+          # it in this env block — even to an empty repo variable — would
+          # override that file for the Pages build only.
         run: npm run build
 
       - uses: actions/configure-pages@v6
