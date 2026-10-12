@@ -1,9 +1,12 @@
 import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays, ToneMapping, SMAA } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import * as THREE from "three";
-import { useSpaceStore } from "../../store/spaceStore";
+import type { GodRaysEffect } from "postprocessing";
+import { useSpaceStore, bodies } from "../../store/spaceStore";
+import { planets, SUN_RADIUS } from "../../constants";
+import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
 /**
  * Stable offset instance, mutated in place rather than replaced. Passing a
@@ -32,6 +35,27 @@ function WarpAberration() {
   return null;
 }
 
+const GODRAYS_EXPOSURE = 0.18;
+/** Reused every frame: planet occluders, positions refreshed from `bodies`. */
+const OCCLUDERS: Occluder[] = planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size }));
+
+/**
+ * Fades the god rays by how much of the sun the planets cover. GodRays' own
+ * depth test let the sun's disc show through a planet in front of it, so the
+ * occlusion is computed here instead (utils/sunOcclusion.ts).
+ */
+function useGodRaysOcclusion(effect: RefObject<GodRaysEffect | null>) {
+  useFrame(({ camera }) => {
+    const e = effect.current;
+    if (!e) return;
+    planets.forEach((p, i) => {
+      const b = bodies[p.name];
+      OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
+    });
+    e.godRaysMaterial.exposure = GODRAYS_EXPOSURE * sunVisibility(camera.position, OCCLUDERS, SUN_RADIUS);
+  });
+}
+
 interface PostFXProps {
   sunMesh: THREE.Mesh | null;
   /** False in the low-perf tier: the chain stays mounted but stops rendering. */
@@ -45,6 +69,8 @@ interface PostFXProps {
  */
 export default function PostFX({ sunMesh, enabled }: PostFXProps) {
   const gl = useThree((s) => s.gl);
+  const godRays = useRef<GodRaysEffect>(null);
+  useGodRaysOcclusion(godRays);
   // Low-perf disables the composer instead of unmounting it. Unmounting threw
   // away Bloom's and SMAA's programs, and postprocessing bakes a fresh id into
   // each pass's cache key, so every remount recompiled them from scratch
@@ -67,8 +93,8 @@ export default function PostFX({ sunMesh, enabled }: PostFXProps) {
             x exposure must stay well under 1.0 or the clamp saturates to a white
             wash. 3.2 x 0.08 x 10 x 0.18 = 0.46 peak. */}
         {sunMesh ? (
-          <GodRays sun={sunMesh} samples={60} density={0.8} decay={0.9}
-            weight={0.08} exposure={0.18} clampMax={0.8} blur={true} />
+          <GodRays ref={godRays} sun={sunMesh} samples={60} density={0.8} decay={0.9}
+            weight={0.08} exposure={GODRAYS_EXPOSURE} clampMax={0.8} blur={true} />
         ) : <></>}
         {/* EffectComposer forces the renderer's own tone mapping off while it
             is mounted, so without this pass HDR emissives (sun 7.6, engine
