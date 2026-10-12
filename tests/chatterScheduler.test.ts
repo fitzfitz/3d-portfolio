@@ -9,9 +9,14 @@ const pools: ChatterPools = {
   comet: ["comet-1", "comet-2"],
   altitude: ["alt-1", "alt-2"],
   impact: ["imp-1"],
+  hail: ["hail-1"],
 };
 
 describe("ChatterScheduler", () => {
+  it("picks from the hail pool for cargo hails", () => {
+    const s = new ChatterScheduler(pools, () => 0);
+    expect(s.pick("hail")).toBe("hail-1");
+  });
   it("picks from the zone pool when a known zone is given", () => {
     const s = new ChatterScheduler(pools, () => 0);
     expect(s.pick("zone", "saas")).toBe("saas-1");
