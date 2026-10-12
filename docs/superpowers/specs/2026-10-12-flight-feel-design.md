@@ -11,7 +11,7 @@ One branch that makes flying itself richer, and clears the parked polish list.
 - **Gravity wells:** the HUD already says `GRAVITY FIELD DETECTED` and `[GRAVITY LOCK]`; now gravity is real. Planets and the sun pull, and a well-flown pass slingshots you above the cruise cap.
 - **Tractor beam and mining:** hold a key to pull light things in (crystals, belt pebbles) and to reel yourself toward heavy things (data shards).
 
-**What "real" means here.** This is a stylised arcade universe, not a simulator. Every rule must be consistent and believable everywhere it applies; physical accuracy is bent on purpose in two named places (the lenient climb-out and the slow overspeed decay, §5.1 and §5.3).
+**What "real" means here.** This is a stylised arcade universe, not a simulator. Every rule must be consistent and believable everywhere it applies; physical accuracy is bent on purpose in three named places, all in §5.1: the separate gravity momentum layer, the lenient climb-out and the fling.
 
 **Success criteria**
 
@@ -74,72 +74,80 @@ Each fix lands with a regression test that fails on the old code. When proving t
 
 ## 5. Gravity wells
 
+### 5.0 Why a separate momentum layer
+
+The ship's flight model is heavily damped: thrust 25.2 u/s², drag about 1.09/s (`SPACE_DRAG` 0.982 per 60 fps frame), cruise clamp 10.8. A tuning simulation (2026-10-12) showed that real gravity added straight to that velocity is almost invisible (0.3° of bend on a pass with W held). Letting the nose follow the path spirals the ship into the planet, because drag drains the tangential speed an orbit needs, and no configuration produced an exit boost. Damping removes exactly the momentum a slingshot is made of.
+
+So gravity acts on its own vector, **gravity momentum `G`**. The pilot's velocity `v` is integrated exactly as today and is untouched by this feature. The ship moves by `v + G`.
+
 ### 5.1 Wells
 
-`gravityWell.ts` exports a well type `{ x, y, z, g, radius }` and `wellAccel(ship, vel, wells, out)`.
+`gravityWell.ts` exports a well type `{ x, y, z, g, radius, rMin }`.
 
-| Body | Radius | `g` | Pull at reference distance |
-|---|---|---|---|
-| Planet (×3) | `3.5 × PLANET_SIZE` = 56u | about 5300 (tuned by test) | about 12 u/s² at 21u (thrust is 25.2) |
-| Sun | 110u (stops short of the inner orbit at 115) | about 970 (tuned by test) | about 3 u/s² at 18u (the spawn distance) |
-| Portal | none | | |
+| Body | `radius` | `rMin` | `g` | Pull at reference distance |
+|---|---|---|---|---|
+| Planet (×3) | `3.5 × PLANET_SIZE` = 56 | `PLANET_SIZE` = 16 | `PLANET_WELL_G = 3000` | 6.9 u/s² at 21u |
+| Sun | 110 (stops short of the inner orbit at 115) | `SUN_COLLIDER.r` = 9.5 | `SUN_WELL_G = 1000` | 3.1 u/s² at 18u (spawn) |
+| Portal | none | | | |
 
-- Acceleration = `g / max(r, rMin)²` toward the centre, times an edge fade (smoothstep from 1 at 0.8 × radius to 0 at radius). `rMin` = body size, which softens the singularity.
-- **Lenient climb-out:** when the ship's velocity points away from the centre (`v · r̂ > 0`), that well's pull is scaled by `CLIMB_OUT = 0.4`.
-- Overlapping wells add up. Deltas use `wrapDelta`, for consistency with every other distance in the game.
+Each frame (`stepGravity`), in order:
+
+1. **Decay:** `G *= 0.5^(dt / G_HALF_LIFE)`, with `G_HALF_LIFE = 3` s.
+2. **Per well** within `radius` (deltas via `wrapDelta`):
+   - Acceleration `a = g / max(r, rMin)²`, times an edge fade: 1 inside 0.8 × radius, smoothstep down to 0 at radius.
+   - **Lenient climb-out:** if the ship's total velocity `v + G` points away from the centre, `a *= CLIMB_OUT = 0.4`.
+   - **Fling (outbound alignment):** while moving away from the centre, `G`'s direction eases toward the direction of `v + G` with a half-life of `FLING_HALF_LIFE = 0.25` s, keeping its length. This stands in for real gravity turning the velocity, and it is what produces the exit boost.
+   - `G += toward-centre × a × dt`.
+3. **Cap:** `|G| ≤ G_MAX = 14`, and `|v + G| ≤ SPEED_CEILING = 24`; when over, `G` is shortened. 24 × 0.05 = 1.2u per step, far below race `MAX_STEP` (10).
+
+Overlapping wells add up.
 
 ### 5.2 Safeguards
 
-Applied when Spaceship.tsx builds the active well list each frame:
+| Rule | Effect | Prevents |
+|---|---|---|
+| Before the first input (the existing `hasFlown` flag) | no pull, `G = 0` | A new visitor at spawn drifting into the sun |
+| **Station-keeping:** no thrust input (W, analog thrust, reel) for `STATION_KEEP_AFTER = 0.6` s | no pull; `G` decays with a 0.4 s half-life instead of 3 s | An idle visitor drifting into lock or the sun (simulated: 1.6u drift from 30u) |
+| Warp active | no pull; `G` decays with a 0.2 s half-life | Unpredictable warp lines |
+| Collision (asteroid or sun) | `G = 0` | Repeated impacts against the sun |
+| Orbit lock | `G = 0`, no wells | Fighting the orbit ride |
+| **Escape grace:** after a break-orbit from planet P | P's well is skipped until the ship is outside P's well radius | The lock → escape → re-lock loop |
+| Photo mode | unchanged; the ship is frozen | |
+| Reduced motion | wells still apply (player-driven); planets are frozen there, which is fine | |
 
-| Rule | Prevents |
-|---|---|
-| No gravity before the first input (the existing auto-aim flag) | A new visitor at spawn drifting into the sun |
-| **Station-keeping:** when there is no thrust input, gravity × smoothstep(1, 3, speed) | An idle visitor reading the HUD or a dossier drifting into lock or the sun |
-| While locked: no wells (the lock rides the planet) | Fighting the orbit ride |
-| **Escape grace:** after a break-orbit from planet P, P's well is skipped until the ship is outside P's well radius | The lock → escape → re-lock loop |
-| No gravity while warp is active (the warp drive overrides it) | Unpredictable warp lines |
-| Photo mode: unchanged (the ship is frozen) | |
-| Reduced motion: wells still apply (player-driven); planets are frozen there, which is fine | |
+### 5.3 Integration order in Spaceship.tsx
 
-### 5.3 Speed above the cap
-
-The current integrator clamps to `MAX_SPEED` (10.8) in the thrust branch and applies `SPACE_DRAG` (about 1.09/s) to all speed, so any boost would be gone in under 0.5s. New rule, in a pure `stepSpeed(vel, speedBefore, dt)` in `gravityWell.ts`:
-
-- **Thrust over the cap steers but cannot add speed:** after thrust, if `speedBefore > MAX_SPEED`, clamp to `speedBefore`; otherwise clamp to `MAX_SPEED`, as today.
-- **Overspeed decay:** normal drag applies up to `MAX_SPEED`. The excess above it decays with a half-life of `OVERSPEED_HALF_LIFE = 1.2s`.
-- **Hard ceiling** `OVERSPEED_MAX = 24` u/s outside warp. Warp stays assigned at 39. 24 × 0.05 = 1.2u per step, far below race `MAX_STEP` (10).
-
-Order in Spaceship.tsx: thrust → gravity → speed step → integrate → collisions → wrap.
+Thrust and drag on `v` (unchanged) → `stepGravity` (updates `G`) → integrate `pos += (v + G) × dt` → collisions (zero `G` on a hit) → wrap. `flight.speed = |v + G|`. The chase-cam speed framing and the streaks read the same total.
 
 ### 5.4 Capture rule (orbit lock)
 
 Lock currently engages at any speed inside `LOCK_ENGAGE` (20.8u), and lock opens the dossier modal. New rule in `SpacePlanets.tsx:473-476`:
 
-- Engage only when `dist < size × LOCK_ENGAGE_FACTOR` **and** (`flight.speed < CAPTURE_SPEED = 14` **or** `dist < size + 1.5`).
-- The surface safety net means warping straight at a planet still docks, and the ship can never pass through a planet.
-- A fast slingshot can skim down to about 17.5u without opening anything.
+- Engage only when `dist < size × LOCK_ENGAGE_FACTOR` **and** (`flight.speed < CAPTURE_SPEED = 14` **or** `dist < size + CAPTURE_SURFACE_MARGIN`, where `CAPTURE_SURFACE_MARGIN = 2`).
+- The surface safety net means warping or diving straight at a planet still docks (simulated at about 17.9u), and the ship can never pass through a planet.
 - Retain behaviour is unchanged.
 
 ### 5.5 Feedback
 
-- **Plume:** `drivePlumes` power target rises with overspeed, through the existing `uPower` uniform.
-- **Sound:** `soundManager.whoosh()`, a new `blip()` cue, when the ship leaves a well above 14 u/s.
-- **HUD:** the speed readout takes the accent colour while speed > `MAX_SPEED`.
-- **Radio:** a new `slingshot` pool, for example "GRAVITY ASSIST LOGGED. PHYSICS SENDS ITS REGARDS." It fires on a well exit above 14 u/s, at most once every 30s, only when the radio is not busy, not during a race.
+- **Plume:** `drivePlumes` power target rises with `|G|`, through the existing `uPower` uniform.
+- **Sound:** `soundManager.whoosh()`, a new `blip()` cue, when the ship leaves a planet well above 14 u/s.
+- **HUD:** the speed readout takes the accent colour while `flight.speed > SHIP_MAX_SPEED`.
+- **Radio:** a new `slingshot` pool, for example "GRAVITY ASSIST LOGGED. PHYSICS SENDS ITS REGARDS." It fires on a planet-well exit above 14 u/s, at most once every 30 s, only when the radio is not busy, not during a race.
 
-### 5.6 Tuning targets (unit-test simulations at 60 fps)
+### 5.6 Tuning targets (unit-test simulations at 60 fps, from the 2026-10-12 tuning run)
 
-| Scenario | Target |
-|---|---|
-| Cruise (10.8) coast past a planet, closest point 25u | exit speed ≥ 15 u/s; no capture |
-| Cruise coast past a planet, closest point 35u | heading bends ≥ 15°; never inside 20.8u |
-| Idle at spawn (0, 0, 18), first input already given, no thrust | moves < 1u in 30s |
-| Cruise coast straight through the sun's well, closest point 20u | never inside the sun collider (9.5) |
-| Slow approach (6 u/s) at a planet | captures |
-| Warp (39) straight at a planet | captures through the surface safety net |
+All scenarios: planet well at the origin, ship starting at x = -90 moving +x at 10.8 with W held and the nose fixed at +x, offset `b` on y.
 
-`g` values, `CLIMB_OUT` and `OVERSPEED_HALF_LIFE` are tuned until all of these pass. The final numbers are recorded in the module's doc comment.
+| Scenario | Simulated | Test asserts |
+|---|---|---|
+| `b = 40` | closest 33.6, peak 14.8 | no capture; closest ≤ 36; peak ≥ 14 |
+| `b = 34` | closest 24.6, peak 17.0, speed at well exit 14.7 | no capture; closest ≤ 28; exit speed ≥ 13.5 |
+| `b = 30` | closest 18.8, peak 19.1, not captured | no capture (speed ≥ 14 inside 20.8; never inside 18) |
+| `b = 22` or straight in | captured at about 17.9 | captured; never closer than 17 before capture |
+| Idle at 30u: no thrust from t = 0, starting at rest (after first input) | drift 1.6u in 30 s | drift < 3u |
+| Sun well, `b = 20` | closest 14.7 | closest > 9.5 |
+
+The final constants are recorded in the module's doc comment, with a pointer to this table.
 
 ## 6. Tractor beam and mining
 
@@ -155,7 +163,7 @@ Lock currently engages at any speed inside `LOCK_ENGAGE` (20.8u), and lock opens
 |---|---|---|
 | Fuel crystal (light) | 30u, cone half-angle 20° | Pulled toward the ship at 20 u/s *relative to the ship*; collected by the existing pickup code. If released, it stays where it is |
 | Belt pebble (light) | 15u, same cone | Leaves its orbit and flies in at 8 u/s relative; absorbed at the nose as ore |
-| Data shard (anchored) | 30u, same cone | **Does not move.** The beam reels the *ship* toward it: `REEL_ACCEL = 15` u/s² toward the shard, capped at `MAX_SPEED`, and collected by the existing pickup at 3u. Reeling counts as thrust for station-keeping |
+| Data shard (anchored) | 30u, same cone | **Does not move.** The beam reels the *ship* toward it: `REEL_ACCEL = 15` u/s² toward the shard, capped at `MAX_SPEED`, and collected by the existing pickup at 3u. Reeling counts as thrust input for station-keeping (`STATION_KEEP_AFTER`, §5.2) |
 
 - Targets are picked nearest first. Cone and distance use `wrapDelta`, so they work across the seam.
 - Pulled items ignore gravity.
@@ -186,8 +194,8 @@ Lock currently engages at any speed inside `LOCK_ENGAGE` (20.8u), and lock opens
 | File | Covers |
 |---|---|
 | `edgeHaze.test.ts` | depth 0 inside 215 and 1 at 250, largest-axis rule, symmetry across the seam; `wrapCoord` exact 500 period |
-| `gravityWell.test.ts` | inverse-square, edge fade to 0, climb-out factor, overlapping sum, each safeguard; `stepSpeed` (no thrust gain over the cap, half-life, ceiling); all §5.6 simulations |
-| `capture.test.ts` | the §5.4 capture rule, including the surface safety net |
+| `gravityWell.test.ts` | inverse-square, edge fade to 0, climb-out factor, fling alignment, overlapping sum, `G` decay and caps, each safeguard; all §5.6 simulations |
+| `capture.test.ts` | the §5.4 capture rule, including the 2u surface safety net |
 | `tractorBeam.test.ts` | cone (including across the seam), nearest-first budget of 3, relative pull, reel accel capped at cruise |
 | `mining.test.ts` | ore value, regrow timing, the ≥ 40s full-tank simulation |
 | Polish | one regression test per P1–P7, in the existing test file for each area |
@@ -199,7 +207,7 @@ Existing suites must stay green: `planetClearance`, `orbitInvariant`, `fuel`, `r
 New `tests/e2e/mechanics.probe.mjs`, registered in `run.mjs` before `basepath`:
 
 1. **Edge:** teleport to x = 230; haze opacity > 0.5; fly through the seam; `isTeleporting` never set; the haze line appears in the radio.
-2. **Gravity:** set attitude and fly a fast pass past a planet; speed > 10.8 after exit, no lock. A slow approach locks and the dossier dialog opens. Idle at spawn after first input: displacement < 1u over 10s.
+2. **Gravity:** set attitude and fly a W-held pass 34u off a planet's centre; peak speed > 13, no lock. A straight-in approach locks and the dossier dialog opens. Idle after first input: displacement < 3u over 10s.
 3. **Beam:** place a crystal ahead and hold F; it is collected. Hold F at a belt pebble; the ORE readout increments. Hold F at a shard; the ship reels in and the shard is collected.
 4. **Budgets:** with the beam on and speed over the cap, the program count is ≤ 79 and the frame-time budget holds.
 5. **Reduced motion:** the haze shows and the beam works.
@@ -220,13 +228,12 @@ Each step is committed separately, and each leaves the app shippable.
 
 1. P1–P8 polish
 2. Edge haze and wrap
-3. Speed step and capture rule
-4. Gravity wells, safeguards and feedback
-5. Beam core: input, `beamState`, crystal pull, cone and tethers
-6. Shard reeling
-7. Mining
-8. HUD readouts, touch button, sound, radio pools, controls hint
-9. `mechanics.probe.mjs`, the full verification bar, then review
+3. Gravity momentum, wells, safeguards, capture rule and feedback
+4. Beam core: input, `beamState`, crystal pull, cone and tethers
+5. Shard reeling
+6. Mining
+7. HUD readouts, touch button, sound, radio pools, controls hint
+8. `mechanics.probe.mjs`, the full verification bar, then review
 
 ## 9. Shipping
 
@@ -236,7 +243,7 @@ One PR from `feat/flight-feel`, pushed and merged as **fitzfitz**. A merge to `m
 
 | Risk | Mitigation |
 |---|---|
-| Gravity tuning feels wrong in the hand despite passing simulations | Constants live in one module; e2e probe plus a manual fly-through before the PR |
+| Gravity tuning feels wrong in the hand despite passing simulations | Constants live in one module and match the §5.6 tuning run; e2e probe plus a manual fly-through before the PR |
 | Beam cone material does not share the plume's program | The probe catches it; fallback is tether lines only |
 | Mining pebble state complicates `BeltRing` | Pure `mining.ts` owns the state; `BeltRing` only reads arrays |
 | The new probe flakes under full-suite load | Use `pollUntil`, never fixed sleeps |
