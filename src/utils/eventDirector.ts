@@ -13,6 +13,8 @@ export const FIRST_EVENT_AT = 45;
 export const GAP_MIN = 60;
 export const GAP_SPAN = 60;
 export const EVENT_DURATION: Record<WorldEventKind, number> = { comet: 25, flare: 12, convoy: 40 };
+/** A skipped event (no clear route) retries this soon, as another kind, instead of a full gap. */
+export const SKIP_RETRY_S = 5;
 
 export interface ActiveEvent { kind: WorldEventKind; id: number; startedAt: number; endsAt: number }
 export interface DirectorState {
@@ -67,6 +69,27 @@ export function stepDirector(s: DirectorState, inp: DirectorInput): DirectorStep
   if (inp.reducedMotion || inp.raceRunning || inp.radioBusy) return out;
   if (s.clock >= s.nextAt) out.started = begin(s, pickKind(s));
   return out;
+}
+
+/**
+ * Abandons the active event without it having played (no clear route for it):
+ * the next start comes after SKIP_RETRY_S rather than a full 60–120s gap, and,
+ * since `lastKind` is kept, as a different kind. A pilot parked near a planet,
+ * where comet lines are often blocked, still gets a heartbeat.
+ */
+export function skipEvent(s: DirectorState): void {
+  s.active = null;
+  s.nextAt = s.clock + SKIP_RETRY_S;
+}
+
+/**
+ * The director's step from the planets' clock: the full ambient-time gap since
+ * the last frame, never negative. Event lines and convoy routes are cleared
+ * against planet positions on ambient time, so the event must play on that
+ * same clock, not a frame-capped dt that drifts on slow frames or a resumed tab.
+ */
+export function ambientStep(prev: number | null, now: number): number {
+  return prev === null ? 0 : Math.max(0, now - prev);
 }
 
 /** Dev trigger: ends whatever is running, then starts `kind` now. */

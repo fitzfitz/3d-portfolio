@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  createDirector, stepDirector, endEvent, forceStart,
+  createDirector, stepDirector, endEvent, forceStart, skipEvent, ambientStep, SKIP_RETRY_S,
   FIRST_EVENT_AT, GAP_MIN, GAP_SPAN, EVENT_DURATION, type DirectorInput, type WorldEventKind,
 } from "../src/utils/eventDirector";
 
@@ -83,6 +83,28 @@ describe("eventDirector", () => {
     expect(st.ended?.kind).toBe("comet");
     expect(st.started?.kind).toBe("convoy");
     expect(d.active?.kind).toBe("convoy");
+  });
+
+  it("retries a skipped event within a few seconds, as a different kind", () => {
+    // Review M3: a comet with no clear line fell through to endEvent and a full
+    // 60-120s gap, so a pilot parked near a planet could see nothing for minutes.
+    const d = createDirector(() => 0);
+    forceStart(d, "comet");
+    skipEvent(d);
+    expect(d.active).toBeNull();
+    expect(d.nextAt - d.clock).toBeLessThanOrEqual(SKIP_RETRY_S);
+    let started = null;
+    for (let n = 0; n < 20 && !started; n++) started = stepDirector(d, calm).started;
+    expect(started?.kind).not.toBe("comet");
+  });
+
+  it("ambientStep advances by the full ambient gap, never backwards", () => {
+    // Review I1: the director must run on the planets' clock (ambient time), not a
+    // frame-capped dt, or a pre-cleared comet line drifts out of sync with them.
+    expect(ambientStep(null, 12)).toBe(0);
+    expect(ambientStep(10, 25)).toBe(15);
+    expect(ambientStep(10, 10)).toBe(0);
+    expect(ambientStep(10, 4)).toBe(0); // a clock reset never runs the director backwards
   });
 
   it("endEvent schedules the next start from the end time", () => {

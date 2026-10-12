@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, type WorldEventState } from "../../store/spaceStore";
 import { planets, SUN_RADIUS } from "../../constants";
-import { createDirector, stepDirector, endEvent, forceStart, type WorldEventKind, type ActiveEvent } from "../../utils/eventDirector";
+import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent } from "../../utils/eventDirector";
 import { planCometPass, planConvoy, convoyShipOffsetAt, type Sphere } from "../../utils/worldEvents";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
@@ -10,8 +10,13 @@ import { orbitPosition } from "../../utils/orbits";
 import { eventLines } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 
-/** Planets drift ≤ ~1.8u/s, so a 25s comet pass pads each planet by this much. */
-const COMET_PLANET_PAD = 4 + 1.8 * 25;
+/**
+ * Pad on each planet for a comet line cleared against where the planets are at
+ * the start: the fastest planet's drift over the whole pass (fuxx ~1.94u/s),
+ * plus the visitor's coma (~4.2u) and a margin.
+ */
+const COMET_PLANET_PAD =
+  Math.max(...planets.map((p) => p.orbit.radius * Math.abs(p.orbit.angularSpeed))) * EVENT_DURATION.comet + 6;
 const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
 
 /**
@@ -70,6 +75,7 @@ export default function WorldEventDirector() {
   const director = useMemo(() => createDirector(Math.random), []);
   const lastBroadcast = useRef({ id: 0, at: -Infinity });
   const forced = useRef<WorldEventKind | null>(null);
+  const lastAmbient = useRef<number | null>(null);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -79,11 +85,15 @@ export default function WorldEventDirector() {
   // Unmounting (the classic-résumé round trip) must not leave an event behind.
   useEffect(() => () => useSpaceStore.getState().endWorldEvent(), []);
 
-  useFrame((state, delta) => {
-    // Scheduling clock, not motion: capped at 0.25s rather than 0.05 so slow
-    // devices don't run it at a fraction of real time (see plan constraints).
-    const dt = Math.min(delta, 0.25);
+  useFrame((state) => {
+    // The director runs on the planets' clock (ambient time): comet lines and
+    // convoy routes are cleared against planet positions on that clock, so the
+    // event must play on it too. It also freezes under reduced motion, as the
+    // planets do, so an event caught by that setting freezes with the scene.
     const elapsed = state.clock.getElapsedTime();
+    const ambientNow = ambientTime(elapsed);
+    const dt = ambientStep(lastAmbient.current, ambientNow);
+    lastAmbient.current = ambientNow;
     const now = gameTime(elapsed);
     const s = useSpaceStore.getState();
     const bid = s.broadcast?.id ?? 0;
@@ -96,7 +106,8 @@ export default function WorldEventDirector() {
     } else {
       step = stepDirector(director, {
         dt,
-        paused: selectSceneFrozen(s) || s.photoMode || s.showClassicCV,
+        // Not photo mode: the planets keep orbiting there, so the event must too.
+        paused: selectSceneFrozen(s) || s.showClassicCV,
         raceRunning: s.race.phase === "running",
         radioBusy: now - lastBroadcast.current.at < RADIO_BUSY_S,
         reducedMotion: s.reducedMotion,
@@ -106,9 +117,9 @@ export default function WorldEventDirector() {
 
     if (step.ended) s.endWorldEvent();
     if (step.started) {
-      const planned = planEvent(step.started, ambientTime(elapsed));
+      const planned = planEvent(step.started, ambientNow);
       if (planned) s.startWorldEvent(planned.state, planned.line);
-      else endEvent(director); // no clear route this time: skip it, schedule the next
+      else skipEvent(director); // no clear route: retry shortly, as another kind
     }
   });
 

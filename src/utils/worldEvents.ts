@@ -1,4 +1,5 @@
 import type { Vec3 } from "./reactions";
+import { EVENT_DURATION } from "./eventDirector";
 
 /**
  * Pure geometry for the world events (docs/superpowers/specs/2026-10-12-world-events-design.md).
@@ -70,7 +71,8 @@ export function planCometPass(target: Vec3, avoid: readonly Sphere[], random: ()
     randomPerpendicular(d, random, n);
     const cx = target.x + n.x * COMET_PASS_DIST, cy = target.y + n.y * COMET_PASS_DIST, cz = target.z + n.z * COMET_PASS_DIST;
     const sx = cx - d.x * COMET_ENTRY_DIST, sy = cy - d.y * COMET_ENTRY_DIST, sz = cz - d.z * COMET_ENTRY_DIST;
-    if (segmentClear(sx, sy, sz, d, 2 * COMET_ENTRY_DIST, avoid)) {
+    // The whole flight (speed x event duration), not just 2x the entry distance.
+    if (segmentClear(sx, sy, sz, d, COMET_SPEED * EVENT_DURATION.comet, avoid)) {
       return { sx, sy, sz, dx: d.x, dy: d.y, dz: d.z, speed: COMET_SPEED };
     }
   }
@@ -90,8 +92,12 @@ export const CONVOY_APPROACH_S = 20;
 export const CONVOY_ORBIT_S = 15;
 export const CONVOY_HIDE_DIST = 250;
 export const CONVOY_SPACING = 6;
-/** ~1.25 turns over the orbit phase. */
-const CONVOY_OMEGA = (2 * Math.PI * 1.25) / CONVOY_ORBIT_S;
+/**
+ * Orbit angular speed, matched to the approach: the Bezier arrives at speed
+ * 3|P3 - P2| / T = 6R / T, so ω = 6 / T keeps the speed continuous at orbit
+ * insertion (R·ω = 6R / T) instead of lurching ~75% faster (~0.7 turns in 15s).
+ */
+const CONVOY_OMEGA = 6 / CONVOY_APPROACH_S;
 
 /**
  * The lead ship's offset from the planet centre at `t` seconds. Approach

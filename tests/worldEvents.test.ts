@@ -71,6 +71,15 @@ describe("comet pass", () => {
       }
     }
   });
+  it("checks the whole 25s flight, not just the first 500u", () => {
+    // Review M2: segmentClear covered 2x the entry distance (500u) but the comet
+    // flies 22u/s x 25s = 550u, so an obstacle on the last 50u went unseen.
+    const free = planCometPass(v(), [], lcg(21))!;
+    const late = cometPassAt(v(), free, 24); // ~528u along the line
+    const blocker = { ...late, r: 5 };
+    const p = planCometPass(v(), [blocker], lcg(21));
+    if (p) for (let t = 0; t <= 25; t += 0.05) expect(len(sub(cometPassAt(v(), p, t), blocker))).toBeGreaterThan(blocker.r);
+  });
   it("gives up when no clear line exists", () => {
     expect(planCometPass(v(), [{ x: 0, y: 0, z: 0, r: 1000 }], lcg(9))).toBeNull();
   });
@@ -99,6 +108,17 @@ describe("convoy path", () => {
       const a = convoyOffsetAt(v(), plan, seam - 1e-4);
       const b = convoyOffsetAt(v(), plan, seam + 1e-4);
       expect(len(sub(a, b))).toBeLessThan(0.01);
+    }
+  });
+  it("keeps speed continuous at both seams (no lurch into or out of orbit)", () => {
+    // Review I2: the Bezier ended at 0.3R u/s but the orbit ran at R*omega (~0.52R),
+    // a ~75% jump at orbit insertion.
+    // Sample tightly around each seam: the departure accelerates (24u/s^2), so a
+    // wide window would measure that ramp rather than a jump at the seam itself.
+    const speed = (t: number) => len(sub(convoyOffsetAt(v(), plan, t + 1e-4), convoyOffsetAt(v(), plan, t - 1e-4))) / 2e-4;
+    for (const seam of [CONVOY_APPROACH_S, CONVOY_APPROACH_S + CONVOY_ORBIT_S]) {
+      const before = speed(seam - 1e-3), after = speed(seam + 1e-3);
+      expect(Math.abs(after - before) / before, `seam ${seam}`).toBeLessThan(0.02);
     }
   });
   it("leaves past the hide distance by the end", () => {

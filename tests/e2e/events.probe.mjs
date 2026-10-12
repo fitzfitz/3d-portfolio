@@ -58,6 +58,27 @@ async function events(page, checks) {
   }, { timeoutMs: 30_000 })).value;
   checks.check("the convoy settles into orbit at ~2.2x the planet's size", !!orbiting,
     orbiting ? `radius=${orbiting.toFixed(1)}` : "never reached orbit");
+
+  // ---- budgets while an event runs (spec: Testing) ----
+  // The busiest view an event creates: parked 60u sunward of the convoy's
+  // planet, facing it, with the convoy in orbit. Same ceilings and counters as
+  // transition.probe.mjs's close-approach view (its constants, mirrored here).
+  await page.evaluate((name) => {
+    const d = window.__fitz, b = d.bodies[name];
+    const r = Math.hypot(b.x, b.y, b.z), k = 1 - 60 / r;
+    d.teleport(b.x * k, b.y * k, b.z * k);
+    d.setAttitude(Math.atan2(b.x - b.x * k, b.z - b.z * k), 0);
+  }, ev.convoy.planet);
+  await settle(page, 1500);
+  const perf = await page.evaluate(() => ({
+    calls: window.__fitz.perfStats.calls,
+    programs: window.__fitz.gl.info.programs.length,
+    convoyShown: window.__fitz.scene.getObjectByName("ConvoyShip0")?.visible === true,
+  }));
+  checks.check("draw calls stay within the close-approach ceiling with the convoy in view",
+    perf.convoyShown && perf.calls <= 110, `calls=${perf.calls} ceiling=110 convoyShown=${perf.convoyShown}`);
+  checks.check("shader programs stay within the close-approach ceiling during an event",
+    perf.programs <= 84, `programs=${perf.programs} ceiling=84`);
 }
 
 async function quietUnderReducedMotion(page, checks) {
