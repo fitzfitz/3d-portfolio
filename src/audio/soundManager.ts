@@ -184,6 +184,10 @@ class SoundManager {
   scanBeep() {
     this.blip("square", 1320, 0.06, 0.05);
   }
+  /** Leaving a gravity well fast: rising sweep */
+  whoosh() {
+    this.blip("sawtooth", 180, 0.55, 0.045, 760);
+  }
 }
 
 export const soundManager = new SoundManager();

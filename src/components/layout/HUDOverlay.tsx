@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower } from "lucide-react";
-import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
@@ -84,6 +84,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
         velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+      // Accent while a gravity assist carries the ship past cruise speed.
+      if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
       if (fuelFillRef.current) {
         fuelFillRef.current.style.width = `${(pct * 100).toFixed(1)}%`;
