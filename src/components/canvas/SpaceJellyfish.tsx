@@ -8,6 +8,11 @@ import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { planets, ZONE_FACTOR } from "../../constants";
+import { damp } from "../../utils/reactions";
+import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut } from "../../utils/jellyMood";
+import { fitzDebug } from "../../debug/bridge";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
 // Mirrored in JS below for the swim surge — keep the two in sync.
@@ -97,6 +102,23 @@ export default function SpaceJellyfish() {
   const { scene } = useGLTF(assetUrl("/models/creature.glb"));
   const groupRef = useRef<THREE.Group>(null);
   const tOffset = useRef(0);
+  const jelly = useMemo(createJellyState, []);
+  const pathPos = useMemo(() => new THREE.Vector3(), []);
+  const keepOut = useMemo<JellyKeepOut[]>(
+    () => planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size * ZONE_FACTOR + JELLY_RADIUS, body: p.size + JELLY_RADIUS })), []);
+  // The pulse runs on its own accumulated clock so its rate can follow the
+  // mood without jumping the phase. It advances on ambient time, so it still
+  // freezes under reduced motion.
+  const pulseClock = useRef(0);
+  const pulseRate = useRef(1);
+  const lastAmbient = useRef<number | null>(null);
+
+  // Mirrored onto the bridge purely so the e2e probe can read it.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.jelly = jelly;
+    return () => { fitzDebug.jelly = null; };
+  }, [jelly]);
   const timeRef = useRef(0);
 
   const material = useMemo(
@@ -147,7 +169,7 @@ export default function SpaceJellyfish() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!groupRef.current) return;
     const time = ambientTime(state.clock.getElapsedTime());
     timeRef.current = time;
@@ -167,19 +189,39 @@ export default function SpaceJellyfish() {
      * Only the rhythm is warped. Path progress and the slow drift below stay on
      * raw `time`, so the creature still traverses its route at a steady average
      * pace — it is the heartbeat that varies, not the swimming.
+     *
+     * The base clock now accumulates at a mood-dependent rate (JELLY_PULSE_RATE).
      */
-    const pulseTime = time + 4 * Math.sin(time * 0.045);
+    const dt = Math.min(delta, 0.05);
+    const step = lastAmbient.current === null ? 0 : time - lastAmbient.current;
+    lastAmbient.current = time;
+    pulseRate.current = damp(pulseRate.current, JELLY_PULSE_RATE[jelly.mood], 0.5, dt);
+    pulseClock.current += step * pulseRate.current;
+    const pulseTime = pulseClock.current + 4 * Math.sin(time * 0.045);
     material.uniforms.uTime.value = pulseTime;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
-    JELLY_PATH.getPointAt(t, groupRef.current.position);
+    JELLY_PATH.getPointAt(t, pathPos);
     const tangent = JELLY_PATH.getTangentAt(t);
     // Jet propulsion: surge forward on each contraction stroke, plus a slow bob —
     // the drift is no longer a constant glide.
     // Surge reads the same warped clock as the shader, so the propulsion stroke
     // stays locked to the visible contraction rather than drifting out of sync.
     const surge = pulseCycle(pulseTime - 0.15);
-    groupRef.current.position.addScaledVector(tangent, surge * 2.2);
-    groupRef.current.position.y += Math.sin(time * 0.5) * 0.8;
+    pathPos.addScaledVector(tangent, surge * 2.2);
+    pathPos.y += Math.sin(time * 0.5) * 0.8;
+
+    // Mood: an eased offset off the path toward or away from the pilot.
+    const store = useSpaceStore.getState();
+    if (!store.reducedMotion) {
+      planets.forEach((p, i) => {
+        const b = bodies[p.name];
+        keepOut[i].x = b.x; keepOut[i].y = b.y; keepOut[i].z = b.z;
+      });
+      stepJelly(jelly, {
+        pathPos, player: flight, playerSpeed: flight.speed, boosting: store.isWarping, keepOut, dt,
+      });
+    }
+    groupRef.current.position.set(pathPos.x + jelly.offset.x, pathPos.y + jelly.offset.y, pathPos.z + jelly.offset.z);
     groupRef.current.rotation.set(
       tangent.z * 0.12 + Math.sin(time * 0.31) * 0.06,
       Math.sin(time * 0.23) * 0.25,
@@ -189,7 +231,7 @@ export default function SpaceJellyfish() {
   });
 
   return (
-    <group ref={groupRef} scale={6}>
+    <group ref={groupRef} name="SpaceJellyfish" scale={6}>
       <mesh geometry={geometry} material={material} />
     </group>
   );

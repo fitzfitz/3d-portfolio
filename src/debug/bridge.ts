@@ -3,6 +3,7 @@ import { useSpaceStore, flight, bodies } from "../store/spaceStore";
 import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
 import { raceClock } from "../utils/raceClock";
+import type { JellyState } from "../utils/jellyMood";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -53,6 +54,10 @@ export interface FitzDebug {
    * PlasmaAnomalies.tsx.
    */
   anomalies: { active: boolean }[] | null;
+  /** Live cargo swerve offsets, one per ship, registered by CargoTraffic in dev. */
+  cargoSwerve: { x: number; y: number; z: number }[] | null;
+  /** Live jellyfish mood and offset, registered by SpaceJellyfish in dev. */
+  jelly: JellyState | null;
   /**
    * Live renderer counters sampled in-frame by PerfSampler, before
    * EffectComposer resets `gl.info` — see PerfSampler's own comment. Exposed
@@ -79,5 +84,7 @@ export const fitzDebug: FitzDebug = {
   setAttitude: null,
   crystals: null,
   anomalies: null,
+  cargoSwerve: null,
+  jelly: null,
   perfStats,
 };

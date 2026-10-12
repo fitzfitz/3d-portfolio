@@ -2,7 +2,11 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { useSpaceStore } from "../../store/spaceStore";
+import { useSpaceStore, flight } from "../../store/spaceStore";
+import { decay } from "../../utils/reactions";
+import {
+  toRingLocal, nearRing, stepRock, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
+} from "../../utils/beltPush";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { lowPolyRock } from "../../utils/lowPolyRock";
@@ -10,6 +14,8 @@ import { lowPolyRock } from "../../utils/lowPolyRock";
 const COUNT_FULL = 400;
 const COUNT_LOW = 200;
 const dummy = new THREE.Object3D();
+/** Scratch for the ship's ring-local position (one per frame per ring). */
+const shipLocal = { x: 0, y: 0, z: 0 };
 
 /** Deterministic PRNG so the belt is identical every load. */
 function mulberry32(seed: number) {
@@ -63,13 +69,25 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
     });
   }, [total, seed, rMin, rMax, yJitter]);
 
-  useFrame((state) => {
+  // Per-rock push displacement (spec: belt parts around the ship). Sized to
+  // `total` so a low-perf count change never reallocates.
+  const disp = useMemo(() => new Float32Array(total * 3), [total]);
+
+  useFrame((state, delta) => {
     if (!meshRef.current) return;
     const t = ambientTime(state.clock.getElapsedTime());
+    const dt = Math.min(delta, 0.05);
+    const react = !useSpaceStore.getState().reducedMotion;
+    const ship = react && nearRing(flight, rMin, rMax) ? toRingLocal(shipLocal, flight, tilt) : null;
+    const kPush = decay(BELT_PUSH_HALFLIFE, dt);
+    const kReturn = decay(BELT_RETURN_HALFLIFE, dt);
     for (let i = 0; i < count; i++) {
       const r = rocks[i];
       const angle = r.phase + t * r.speed;
-      dummy.position.set(Math.cos(angle) * r.radius, r.y, Math.sin(angle) * r.radius);
+      const x = Math.cos(angle) * r.radius, y = r.y, z = Math.sin(angle) * r.radius;
+      if (react) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
+      const j = i * 3;
+      dummy.position.set(x + disp[j], y + disp[j + 1], z + disp[j + 2]);
       dummy.rotation.set(r.phase + t * r.spinX, t * r.spinY, t * r.spinZ);
       dummy.scale.setScalar(r.scale);
       dummy.updateMatrix();

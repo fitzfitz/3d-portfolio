@@ -1,10 +1,15 @@
-import { useRef, useMemo, type RefObject } from "react";
+import { useRef, useMemo, useEffect, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { ambientTime } from "../../utils/ambientTime";
+import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
+import { dampVec } from "../../utils/reactions";
+import { cargoSwerveTarget, HailGate, CARGO_REACT_RADIUS, RADIO_BUSY_S } from "../../utils/cargoReaction";
+import { ChatterScheduler } from "../../utils/chatterScheduler";
+import { chatterPools } from "../../data/chatterLines";
+import { fitzDebug } from "../../debug/bridge";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -28,12 +33,33 @@ const SHIPS: ShipDef[] = [
 const lookTarget = new THREE.Vector3();
 const tanA = new THREE.Vector3();
 const tanB = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
+const right = new THREE.Vector3();
+const swerveTarget = { x: 0, y: 0, z: 0 };
+/** Spec: swerve in over ~1s, settle back over ~3s (half-lives). */
+const SWERVE_IN_HALFLIFE = 0.25;
+const SWERVE_OUT_HALFLIFE = 0.75;
+/** Roll (rad) per unit/s of sideways swerve velocity, so the slide reads as piloted. */
+const SWERVE_ROLL = 0.08;
+const hailLines = new ChatterScheduler(chatterPools);
 
 export default function CargoTraffic() {
   const { scene } = useGLTF(assetUrl("/models/cargo_ship.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? 3 : 5;
   const rolls = useRef<number[]>(SHIPS.map(() => 0));
+
+  const offsets = useMemo(() => SHIPS.map(() => new THREE.Vector3()), []);
+  const hailGate = useMemo(() => new HailGate(SHIPS.length), []);
+  // When the last broadcast landed, so a hail never talks over it.
+  const lastBroadcast = useRef({ id: 0, at: -Infinity });
+
+  // Mirrored onto the bridge purely so the e2e probe can read it.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.cargoSwerve = offsets;
+    return () => { fitzDebug.cargoSwerve = null; };
+  }, [offsets]);
 
   // Clone the small ship per NPC; clone nav-light materials so each blinks with its own phase.
   const ships = useMemo(
@@ -71,7 +97,15 @@ export default function CargoTraffic() {
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
-    const time = ambientTime(state.clock.getElapsedTime());
+    const elapsed = state.clock.getElapsedTime();
+    const time = ambientTime(elapsed);
+    const now = gameTime(elapsed);
+    const store = useSpaceStore.getState();
+    const react = !store.reducedMotion;
+    const raceRunning = store.race.phase === "running";
+    const broadcastId = store.broadcast?.id ?? 0;
+    if (broadcastId !== lastBroadcast.current.id) lastBroadcast.current = { id: broadcastId, at: now };
+    const radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
     for (let i = 0; i < count; i++) {
       const def = SHIPS[i];
       const ship = ships[i];
@@ -92,24 +126,43 @@ export default function CargoTraffic() {
       const drift = (Math.sin(time * 0.12 + i * 1.7) * 0.010 + Math.sin(time * 0.27 + i * 0.9) * 0.005);
       const t = (time / def.loopSeconds + def.phase + drift) % 1;
 
-      curve.getPointAt(t, ship.group.position);
-      ship.group.position.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
+      const pos = ship.group.position;
+      curve.getPointAt(t, pos);
+      curve.getTangentAt(t, tanA);
+      const dist = Math.hypot(pos.x - flight.x, pos.y - flight.y, pos.z - flight.z);
+
+      // Swerve: an eased sideways offset on top of the route, never a route change.
+      const off = offsets[i];
+      const prevX = off.x, prevY = off.y, prevZ = off.z;
+      if (react) {
+        cargoSwerveTarget(swerveTarget, pos, tanA, flight);
+        const swerving = swerveTarget.x !== 0 || swerveTarget.y !== 0 || swerveTarget.z !== 0;
+        dampVec(off, swerveTarget, swerving ? SWERVE_IN_HALFLIFE : SWERVE_OUT_HALFLIFE, dt);
+      }
+      // Hails are text, not motion: they run under reduced motion too.
+      if (hailGate.update(i, dist, now, raceRunning, radioBusy)) store.sendBroadcast(hailLines.pick("hail"));
+
+      pos.y += Math.sin(time * 0.6 + i * 2.1) * 0.35;
+      pos.add(off);
       curve.getPointAt((t + 0.003) % 1, lookTarget);
+      lookTarget.add(off);
       ship.group.lookAt(lookTarget);
 
-      // Banking: roll into curvature; extra roll away from the player when close.
-      curve.getTangentAt(t, tanA);
+      // Banking: roll into the route's curvature, plus into the swerve's slide.
+      right.crossVectors(tanA, UP).normalize();
+      const lateral = dt > 0
+        ? ((off.x - prevX) * right.x + (off.y - prevY) * right.y + (off.z - prevZ) * right.z) / dt
+        : 0;
       curve.getTangentAt((t + 0.01) % 1, tanB);
       let targetRoll = THREE.MathUtils.clamp(tanA.cross(tanB).y * 60, -0.5, 0.5);
-      const dx = ship.group.position.x - flight.x;
-      const dy = ship.group.position.y - flight.y;
-      const dz = ship.group.position.z - flight.z;
-      if (dx * dx + dy * dy + dz * dz < 144) targetRoll += Math.sign(dx || 1) * 0.35;
+      targetRoll += THREE.MathUtils.clamp(lateral * SWERVE_ROLL, -0.6, 0.6);
       rolls.current[i] += (targetRoll - rolls.current[i]) * (1 - Math.pow(0.01, dt));
       ship.group.rotateZ(rolls.current[i]);
 
-      // Nav lights: sharp blink, per-ship phase
-      const blink = Math.sin(time * 3 + i * 1.7) > 0.82 ? 4.5 : 0.3;
+      // Nav lights: a slow blink, or a rapid alert flash while the player is close.
+      const blink = dist < CARGO_REACT_RADIUS
+        ? (Math.sin(time * 14 + i) > 0 ? 6 : 0.4)
+        : (Math.sin(time * 3 + i * 1.7) > 0.82 ? 4.5 : 0.3);
       for (const m of ship.navMats) m.emissiveIntensity = blink;
 
       // Engine burn: uneven thruster flicker, per-ship phase

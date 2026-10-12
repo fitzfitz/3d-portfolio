@@ -6,9 +6,11 @@ export interface ChatterPools {
   comet: string[];
   altitude: string[];
   impact: string[];
+  /** Cargo ships hailing a pilot who flies close (CargoTraffic). */
+  hail: string[];
 }
 
-export type ChatterKind = "ambient" | "zone" | "warp" | "wrap" | "comet" | "altitude" | "impact";
+export type ChatterKind = "ambient" | "zone" | "warp" | "wrap" | "comet" | "altitude" | "impact" | "hail";
 
 /** Pure line-selection + pacing logic. Injectable RNG for tests. */
 export class ChatterScheduler {
@@ -29,6 +31,7 @@ export class ChatterScheduler {
     else if (kind === "comet") pool = this.pools.comet;
     else if (kind === "altitude") pool = this.pools.altitude;
     else if (kind === "impact") pool = this.pools.impact;
+    else if (kind === "hail") pool = this.pools.hail;
     else pool = this.pools.deepSpace;
 
     const candidates = pool.length > 1 ? pool.filter((l) => l !== this.lastLine) : pool;
