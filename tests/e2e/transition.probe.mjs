@@ -59,29 +59,31 @@ const readPerfCounters = (page) => page.evaluate(() => {
 /**
  * Teleports into a planet's gravity well but short of the orbit lock.
  *
- * Geometry (src/constants.ts): PLANET_SIZE 4.8, ZONE_FACTOR 1.8 and
- * LOCK_ENGAGE_FACTOR 1.3, so activeZone sets inside 8.64 units and the lock
- * engages inside 6.24. The ship is placed 6.96 units out along the planet's
- * outward radial — inside the well, outside the lock, outside the planet's own
- * 4.8 surface (see the comment in the body for why radial). A measured
+ * Geometry (src/constants.ts): ZONE_FACTOR 1.8 and LOCK_ENGAGE_FACTOR 1.3 of
+ * the planet's size, so activeZone sets inside 1.8x and the lock engages inside
+ * 1.3x. The ship is placed 1.45x out along the planet's outward radial —
+ * inside the well, outside the lock, outside the planet's own surface (see the
+ * comment in the body for why radial). Size is read from the live module, so
+ * the probe follows PLANET_SIZE instead of pinning it. A measured
  * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
  * at all, so activeZone stayed null and the check silently proved nothing.
  */
 async function approachPlanet(page) {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
+    const { planets } = await import("/src/constants.ts");
     const b = window.__fitz.bodies;
     const name = Object.keys(b)[0];
     const p = b[name];
     // On the planet's outward radial (away from the sun at the origin), at
-    // 1.45x the 4.8 planet size: inside the 1.8x zone, outside the 1.3x lock.
+    // 1.45x the planet size: inside the 1.8x zone, outside the 1.3x lock.
     // Orbits are centred on the origin, so planet motion is perpendicular to
     // this line and the gap can only grow while the probe waits — it can
-    // never close into a lock, and ~5u of drift (several seconds, even at
+    // never close into a lock, and ~17u of drift (about ten seconds, even at
     // SwiftShader frame rates) passes before it leaves the zone. The old
     // fixed (+5, 0, +5) offset could be closed by orbital motion, locking the
     // dossier: a legitimate canvas re-render that failed the check below.
     const r = Math.hypot(p.x, p.y, p.z) || 1;
-    const d = 4.8 * 1.45;
+    const d = planets.find((pl) => pl.name === name).size * 1.45;
     window.__fitz.teleport(p.x + (p.x / r) * d, p.y + (p.y / r) * d, p.z + (p.z / r) * d);
     return name;
   });

@@ -152,8 +152,10 @@ function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity, speed, twinkle
   );
 }
 
-const DUST_COUNT = 350;
-const DUST_CUBE = 120;
+// Dense enough that specks stream past within a few ship-lengths: the main
+// speed cue at cruise. Unmounted in low-perf mode, so no fallback count.
+const DUST_COUNT = 1800;
+const DUST_CUBE = 90;
 const DUST_HALF = DUST_CUBE / 2;
 
 /**
@@ -190,7 +192,7 @@ function DustField() {
         <bufferAttribute attach="attributes-position" args={[positions, 3]}
           count={DUST_COUNT} array={positions} itemSize={3} />
       </bufferGeometry>
-      <pointsMaterial color="#9fb4d8" size={0.08} map={softSprite} transparent={true} opacity={0.6}
+      <pointsMaterial color="#9fb4d8" size={0.13} map={softSprite} transparent={true} opacity={0.6}
         blending={THREE.AdditiveBlending} depthWrite={false} />
     </points>
   );

@@ -23,6 +23,10 @@ const GENERATORS: Record<string, string> = {
   "portfolio.webp": "scripts/textures/gen_planets.mjs",
   "fuxx.webp": "scripts/textures/gen_planets.mjs",
   "fuxx_glow.webp": "scripts/textures/gen_planets.mjs",
+  // Desktop-only 4096-wide variants (--width=4096, see SpacePlanets HI_RES_MAPS).
+  "ruangrapi_4k.webp": "scripts/textures/gen_planets.mjs",
+  "fuxx_4k.webp": "scripts/textures/gen_planets.mjs",
+  "fuxx_glow_4k.webp": "scripts/textures/gen_planets.mjs",
 };
 
 describe("asset provenance", () => {

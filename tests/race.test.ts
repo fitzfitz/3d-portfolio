@@ -5,7 +5,7 @@ import {
 } from "../src/utils/race";
 import { RING_GATES, RING_RADIUS, PAR_SECONDS } from "../src/data/ringCourse";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../src/data/asteroids";
-import { PLANET_ORBITS, PORTAL_POS } from "../src/constants";
+import { PORTAL_POS } from "../src/constants";
 import { SHARDS } from "../src/data/shards";
 
 const v = (x: number, y: number, z: number) => ({ x, y, z });
@@ -60,10 +60,9 @@ describe("the course layout", () => {
       }
     }
   });
-  it("stays inside every planet orbit, so a planet never drifts through a ring", () => {
-    const innermost = Math.min(...Object.values(PLANET_ORBITS).map((o) => o.radius));
-    for (const [x, y, z] of gates) expect(Math.hypot(x, y, z)).toBeLessThan(innermost - 4.8 * 2 - RING_RADIUS);
-  });
+  // Planet-vs-ring clearance is checked against each planet's full swept orbit
+  // in tests/planetClearance.test.ts. The radial bound that used to live here
+  // (innermost orbit minus two planet sizes) stopped fitting once planets grew.
   it("stays well away from the contact portal", () => {
     for (const [x, y, z] of gates) {
       expect(Math.hypot(x - PORTAL_POS[0], y - PORTAL_POS[1], z - PORTAL_POS[2])).toBeGreaterThan(40);

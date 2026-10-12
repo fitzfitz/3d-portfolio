@@ -71,6 +71,13 @@ for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
     if (!existsSync(`${SRC}/${file}.jpg`)) continue;
     await sharp(`${SRC}/${file}.jpg`).webp({ quality: 88 }).toFile(`${OUT}/${file}.webp`);
     console.log(`${file}.webp  ${mb(`${SRC}/${file}.jpg`)} -> ${mb(`${OUT}/${file}.webp`)}`);
+    // Optional desktop-only 4096x2048 variant (assets-src/4k/, same generator
+    // at --width=4096): planets fill the screen in orbit lock, where 2048
+    // texels show as blocks. SpacePlanets picks it on fine-pointer devices.
+    const hi = `${SRC}/4k/${file}.jpg`;
+    if (!existsSync(hi)) continue;
+    await sharp(hi).webp({ quality: 88 }).toFile(`${OUT}/${file}_4k.webp`);
+    console.log(`${file}_4k.webp  ${mb(hi)} -> ${mb(`${OUT}/${file}_4k.webp`)}`);
   }
 }
 console.log("Done.");

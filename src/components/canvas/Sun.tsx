@@ -2,7 +2,7 @@ import { useRef, useMemo, useCallback, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore, bodies } from "../../store/spaceStore";
-import { planets } from "../../constants";
+import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 
 // Photosphere: boiling granulation cells and limb darkening, in HDR so
@@ -90,8 +90,9 @@ interface SunProps {
   onSunReady: (mesh: THREE.Mesh) => void;
 }
 
-const CORE_R = 2.5;
-const CORONA_SIZE = 16;
+/** SUN_COLLIDER (data/asteroids.ts) and PostFX's god-ray occlusion track it. */
+const CORE_R = SUN_RADIUS;
+const CORONA_SIZE = 52;
 
 export default function Sun({ onSunReady }: SunProps) {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);

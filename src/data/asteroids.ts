@@ -23,10 +23,10 @@ export const asteroidInstances: AsteroidData[] = [
   { position: [-200, 60, -80], scale: 2.4, rotationSpeed: [0.04, 0.05, 0.08], initialRotation: [1.8, 0.1, 0.5], variant: 3 },
   { position: [210, -50, -30], scale: 1.6, rotationSpeed: [-0.05, -0.04, 0.05], initialRotation: [0.3, 0.8, 1.1], variant: 1 },
   // Deep-volume sentinels (high above / far below the ecliptic)
-  { position: [70, 150, 90], scale: 2.6, rotationSpeed: [0.05, -0.04, 0.06], initialRotation: [0.7, 1.4, 0.3], variant: 0 },
+  { position: [81, 173, 103], scale: 2.6, rotationSpeed: [0.05, -0.04, 0.06], initialRotation: [0.7, 1.4, 0.3], variant: 0 },
   { position: [-120, 165, 60], scale: 1.9, rotationSpeed: [-0.04, 0.06, 0.03], initialRotation: [1.1, 0.6, 0.8], variant: 2 },
   { position: [90, 185, -60], scale: 3.2, rotationSpeed: [0.03, 0.05, -0.06], initialRotation: [0.2, 1.9, 1.4], variant: 3 },
-  { position: [-60, -155, -110], scale: 2.3, rotationSpeed: [0.06, 0.04, 0.05], initialRotation: [1.6, 0.3, 0.7], variant: 1 },
+  { position: [-66, -171, -121], scale: 2.3, rotationSpeed: [0.06, 0.04, 0.05], initialRotation: [1.6, 0.3, 0.7], variant: 1 },
   { position: [150, -170, 130], scale: 2.7, rotationSpeed: [-0.05, 0.03, 0.04], initialRotation: [0.9, 1.2, 0.5], variant: 0 },
   { position: [-40, -190, 80], scale: 1.7, rotationSpeed: [0.04, -0.05, 0.07], initialRotation: [2.0, 0.8, 1.0], variant: 2 },
 ];
@@ -54,4 +54,4 @@ for (const a of asteroidInstances) {
 export const ASTEROID_COLLIDERS = asteroidInstances.map((a, i) => ({
   id: `asteroid_${i}`, x: a.position[0], y: a.position[1], z: a.position[2], r: a.scale * 2.2,
 }));
-export const SUN_COLLIDER = { id: "sol", x: 0, y: 0, z: 0, r: 4 };
+export const SUN_COLLIDER = { id: "sol", x: 0, y: 0, z: 0, r: 9.5 }; // Sun.tsx CORE_R 8 plus the corona's brightest skirt

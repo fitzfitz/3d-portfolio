@@ -12,8 +12,9 @@ export interface Shard {
 export const SHARDS: Shard[] = [
   // Near spawn — easy first find
   { pos: [8, 1, 22], fact: "WELCOME, PILOT. THIS PORTFOLIO IS ALSO A FLIGHT SIM. NO REFUNDS" },
-  // On the first planet's orbit ring, ahead of its start position
-  { pos: [80, -28, 75], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
+  // Just inside the first planet's orbit, clear of the sphere it sweeps
+  // (tests/planetClearance.test.ts)
+  { pos: [53, -18, 50], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
   // High above the sun (fact says so)
   { pos: [0, 140, 0], fact: "FROM UP HERE THE WHOLE SOLAR SYSTEM IS ONE REACT TREE. THE PILOT FINDS THIS CALMING" },
   // High cluster, near the second planet's upper orbital reach

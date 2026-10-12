@@ -185,7 +185,9 @@ export default async function run() {
     }
 
     // ---- scan loop ----
-    await warpTo(page, orbit.bx, orbit.by, orbit.bz + 18);
+    // 2x size: outside the lock-retain radius (1.9x), inside scan range of the
+    // surface. A fixed 18 sat inside the lock radius once planets grew.
+    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 2);
     await settle(page, 1200);
     s = await readStore(page);
     checks.check("a scannable target is acquired in range", s.scanTarget !== null,

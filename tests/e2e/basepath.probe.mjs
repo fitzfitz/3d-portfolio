@@ -40,11 +40,13 @@ const REQUIRED_ASSETS = [
   "models/moon.glb",
   "models/portal_gateway.glb",
   "models/space_crystal.glb",
-  "models/ruangrapi.webp",
+  // Either size: fine-pointer (desktop) clients load the 4096 variants of the
+  // maps in SpacePlanets' HI_RES_MAPS, touch clients the 2048 originals.
+  ["models/ruangrapi.webp", "models/ruangrapi_4k.webp"],
   "models/ruangrapi_glow.webp",
   "models/portfolio.webp",
-  "models/fuxx.webp",
-  "models/fuxx_glow.webp",
+  ["models/fuxx.webp", "models/fuxx_4k.webp"],
+  ["models/fuxx_glow.webp", "models/fuxx_glow_4k.webp"],
 ];
 
 function run(cmd, args, env) {
@@ -140,9 +142,9 @@ export default async function basepathProbe() {
     checks.check("no failed or 404 requests under the subpath", failed.length === 0,
       failed.slice(0, 5).join(" | "));
 
-    const missing = REQUIRED_ASSETS.filter((a) => !okAssets.some((u) => u.endsWith(a)));
+    const missing = REQUIRED_ASSETS.filter((a) => ![a].flat().some((alt) => okAssets.some((u) => u.endsWith(alt))));
     checks.check(`all ${REQUIRED_ASSETS.length} landing-view assets resolved`, missing.length === 0,
-      missing.length ? `missing: ${missing.join(", ")}` : `${okAssets.length} asset responses`);
+      missing.length ? `missing: ${missing.map((a) => [a].flat().join(" or ")).join(", ")}` : `${okAssets.length} asset responses`);
 
     // Every asset must be REQUESTED from under the base, not the domain root.
     const rootServed = askedForModels.filter((u) => !new URL(u).pathname.startsWith(BASE));
