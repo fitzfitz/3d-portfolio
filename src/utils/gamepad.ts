@@ -13,17 +13,17 @@ export interface PadLike {
 }
 
 /** The flight channels a pad drives. */
-export type PadFlight = Pick<FlightInput, "steer" | "thrust" | "ascend" | "descend" | "boost" | "scan">;
+export type PadFlight = Pick<FlightInput, "steer" | "thrust" | "ascend" | "descend" | "boost" | "scan" | "beam">;
 
 export const PAD_NEUTRAL: Readonly<PadFlight> = {
-  steer: 0, thrust: 0, ascend: false, descend: false, boost: false, scan: false,
+  steer: 0, thrust: 0, ascend: false, descend: false, boost: false, scan: false, beam: false,
 };
 
 const STICK_DEADZONE = 0.15;
 /** Pitch is a digital channel, so the right stick needs a firm push to engage it. */
 const PITCH_THRESHOLD = 0.5;
 
-const A = 0, B = 1, Y = 3, RB = 5, LT = 6, RT = 7;
+const A = 0, B = 1, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7;
 const DPAD_UP = 12, DPAD_DOWN = 13, DPAD_LEFT = 14, DPAD_RIGHT = 15;
 
 /** Zeroes resting drift, then rescales so full deflection still reaches ±1. */
@@ -49,6 +49,7 @@ export function readPadFlight(p: PadLike): PadFlight {
     descend: pitch > PITCH_THRESHOLD,
     boost: pressed(p, RB),
     scan: pressed(p, A),
+    beam: pressed(p, LB),
   };
 }
 

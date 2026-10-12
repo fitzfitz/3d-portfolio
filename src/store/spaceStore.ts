@@ -138,6 +138,8 @@ export interface FlightInput {
   /** Analog thrust from touch joystick, -1 (brake) .. 1 (full). 0 = keyboard only. */
   thrust: number;
   scan: boolean;
+  /** Tractor beam held (F, gamepad LB, touch BEAM). */
+  beam: boolean;
 }
 
 /**
@@ -153,7 +155,7 @@ export const flight = {
   pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
   input: {
     forward: false, backward: false, left: false, right: false,
-    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false,
+    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
   } as FlightInput,
   /**
    * Warp fuel, 0..FUEL_MAX. Written by Spaceship's frame loop (continuous

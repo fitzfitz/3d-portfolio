@@ -5,7 +5,7 @@ import {
   type PadAction, type PadFlight,
 } from "../utils/gamepad";
 
-const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · A SCAN · Y PHOTO · D-PAD JUMP";
+const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · D-PAD JUMP";
 
 /**
  * First pad reporting the W3C standard layout. Flight sticks, wheels and some

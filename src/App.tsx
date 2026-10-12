@@ -235,7 +235,7 @@ export default function App() {
                   Three planets, three projects. Fly into one to open its dossier.
                 </p>
                 <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
-                  &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP"}
+                  &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP · F BEAM"}
                 </div>
                 {/* Fast path: straight into a dossier, no piloting required. */}
                 <div className="text-[10px] font-mono text-white/50 mb-2">OR JUMP STRAIGHT TO</div>

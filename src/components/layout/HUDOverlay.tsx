@@ -226,6 +226,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             </div>
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">
+              <span className="text-white/45">TRACTOR_BEAM</span>
+              <span className="text-white">{pad ? "HOLD LB" : "HOLD F"}</span>
+            </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
               <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">{pad ? "Y" : "P"}</span>
             </div>

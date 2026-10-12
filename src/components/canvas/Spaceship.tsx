@@ -449,7 +449,7 @@ export default function Spaceship() {
     // the first input, then hand over and never touch the controls again.
     if (!hasFlown.current) {
       const touched = input.forward || input.backward || input.left || input.right
-        || input.ascend || input.descend || input.boost || input.steer !== 0 || input.thrust !== 0;
+        || input.ascend || input.descend || input.boost || input.beam || input.steer !== 0 || input.thrust !== 0;
       // Leaving the spawn pad by any other route (a dev/e2e teleport, a
       // collision push) also ends the auto-aim: it only exists to point a
       // parked, untouched ship at a planet.
