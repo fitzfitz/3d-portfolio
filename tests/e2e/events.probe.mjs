@@ -54,9 +54,9 @@ async function events(page, checks) {
       if (!g || !g.visible) return null;
       return Math.hypot(g.position.x - b.x, g.position.y - b.y, g.position.z - b.z);
     }, ev.convoy.planet);
-    return r !== null && Math.abs(r - 16 * 2.2) < 3 ? r : null;
+    return r !== null && Math.abs(r - 16 * 2.5) < 3 ? r : null;
   }, { timeoutMs: 30_000 })).value;
-  checks.check("the convoy settles into orbit at ~2.2x the planet's size", !!orbiting,
+  checks.check("the convoy settles into orbit at ~2.5x the planet's size", !!orbiting,
     orbiting ? `radius=${orbiting.toFixed(1)}` : "never reached orbit");
 
   // ---- budgets while an event runs (spec: Testing) ----

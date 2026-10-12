@@ -76,7 +76,7 @@ export const chatterPools: ChatterPools = {
 };
 
 /** World-event announcements (WorldEventDirector). Convoy lines are keyed by planet id. */
-export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]> } = {
+export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]>; convoyAny: string[] } = {
   comet: [
     "INTERSTELLAR VISITOR INBOUND // CLOSEST PASS 35U. WAVE",
     "UNSCHEDULED COMET ON APPROACH. IT DID NOT BOOK A MEETING",
@@ -101,4 +101,9 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Record<stri
       "FUXX SUPPLY DROP // TERMINAL SESSIONS, STILL WARM",
     ],
   },
+  /** Any planet without its own convoy lines (a project added later). */
+  convoyAny: [
+    "CONVOY INBOUND // CARGO MANIFEST: CLASSIFIED. PROBABLY SNACKS",
+    "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",
+  ],
 };

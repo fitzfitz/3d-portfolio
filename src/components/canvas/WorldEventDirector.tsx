@@ -66,7 +66,7 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
     return true;
   });
   return plan
-    ? { state: { ...base, convoy: { planet: target.name, plan } }, line: pick(eventLines.convoy[target.name] ?? eventLines.flare) }
+    ? { state: { ...base, convoy: { planet: target.name, plan } }, line: pick(eventLines.convoy[target.name] ?? eventLines.convoyAny) }
     : null;
 }
 

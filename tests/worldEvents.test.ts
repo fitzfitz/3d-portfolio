@@ -6,6 +6,7 @@ import {
   type CometPass, type ConvoyPlan,
 } from "../src/utils/worldEvents";
 import { LOCK_RETAIN_FACTOR } from "../src/constants";
+import { eventLines } from "../src/data/chatterLines";
 
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
 const len = (o: { x: number; y: number; z: number }) => Math.hypot(o.x, o.y, o.z);
@@ -93,7 +94,17 @@ describe("convoy path", () => {
   const plan = planConvoy(v(130, 0, 0), size, () => true)!;
   const R = CONVOY_ORBIT_FACTOR * size;
 
-  it("orbits at 2.2x size, outside the lock-retain radius", () => {
+  it("keeps every convoy slot outside lock-retain, with a 2u margin, for the whole event", () => {
+    const floor = size * LOCK_RETAIN_FACTOR + 2;
+    for (const slot of [0, 1, 2] as const) {
+      let min = Infinity;
+      for (let t = 0; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S + 5; t += 0.01) {
+        min = Math.min(min, len(convoyShipOffsetAt(v(), plan, t, slot)));
+      }
+      expect(min, `slot ${slot}`).toBeGreaterThan(floor);
+    }
+  });
+  it("orbits at CONVOY_ORBIT_FACTOR x size, outside the lock-retain radius", () => {
     expect(plan.R).toBeCloseTo(R);
     expect(plan.R).toBeGreaterThan(size * LOCK_RETAIN_FACTOR);
     for (let t = CONVOY_APPROACH_S; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S; t += 0.5) {
@@ -148,5 +159,11 @@ describe("convoy path", () => {
     const u = [p.ux, p.uy, p.uz], vv = [p.vx, p.vy, p.vz], w = [p.wx, p.wy, p.wz];
     expect(dot(u, u)).toBeCloseTo(1); expect(dot(vv, vv)).toBeCloseTo(1); expect(dot(w, w)).toBeCloseTo(1);
     expect(dot(u, vv)).toBeCloseTo(0); expect(dot(u, w)).toBeCloseTo(0); expect(dot(vv, w)).toBeCloseTo(0);
+  });
+});
+
+describe("convoy lines", () => {
+  it("has generic lines for planets without their own", () => {
+    expect(eventLines.convoyAny.length).toBeGreaterThan(0);
   });
 });
