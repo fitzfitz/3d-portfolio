@@ -57,6 +57,16 @@ export default async function run() {
     const waypoint = await page.evaluate(() => document.body.innerText.includes("RING 1/9"));
     checks.check("the waypoint points at ring 1", waypoint);
 
+    // Photo mode freezes the ship, so it must freeze the lap clock too.
+    const raceNow = () => page.evaluate(() => window.__fitz.raceClock.now);
+    await page.keyboard.press("KeyP"); await frames(page, 2);
+    const p0 = await raceNow(); await frames(page, 12); const p1 = await raceNow();
+    await page.keyboard.press("KeyP"); await frames(page, 4);
+    const p2 = await raceNow();
+    checks.check("photo mode stops the lap clock", p1 === p0, `${p0} -> ${p1}`);
+    checks.check("the lap clock runs again after photo mode", p2 > p1 && (await race(page)).phase === "running",
+      `${p1} -> ${p2}`);
+
     // Out of order: ring 3 before ring 1 does not count.
     await hop(page, 3);
     checks.check("a ring flown out of order is ignored", (await race(page)).next === 1);

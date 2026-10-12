@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   crossesGate, buildGates, raceStep, sampleGhost, encodeGhost, decodeGhost,
-  formatRaceTime, isNewBest, parseRaceBest, GHOST_HZ, MAX_STEP, type Gate, type RaceState,
+  formatRaceTime, isNewBest, parseRaceBest, advanceRaceClock, GHOST_HZ, MAX_STEP, type Gate, type RaceState,
 } from "../src/utils/race";
 import { RING_GATES, RING_RADIUS, PAR_SECONDS } from "../src/data/ringCourse";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../src/data/asteroids";
@@ -172,5 +172,21 @@ describe("parseRaceBest", () => {
   });
   it("rejects anything else", () => {
     for (const bad of [null, "41", -3, 0, Number.NaN, Infinity, {}]) expect(parseRaceBest(bad)).toBeNull();
+  });
+});
+
+describe("review fixes", () => {
+  // A position landing exactly on the plane must count once, not on both the
+  // step that reaches it and the step that leaves it.
+  it("counts a crossing through an exact on-plane point once", () => {
+    const onPlane = v(0, 0, 0);
+    expect(crossesGate(v(0, 0, -1), onPlane, G, 6) && crossesGate(onPlane, v(0, 0, 1), G, 6)).toBe(false);
+  });
+  it("pauses the race clock while paused (photo mode freezes the ship)", () => {
+    expect(advanceRaceClock(10, 0.016, true)).toBe(10);
+    expect(advanceRaceClock(10, 0.016, false)).toBeCloseTo(10.016);
+  });
+  it("advances the race clock by the ship's clamped dt", () => {
+    expect(advanceRaceClock(10, 2, false)).toBeCloseTo(10.05);
   });
 });

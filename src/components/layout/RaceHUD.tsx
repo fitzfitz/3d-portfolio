@@ -30,7 +30,7 @@ export default function RaceHUD() {
   if (race.phase === "idle") return null;
   const running = race.phase === "running";
   const ring = running ? (race.next === 0 ? "FINISH" : `RING ${race.next}/${RINGS}`) : "LAP COMPLETE";
-  const isBest = !running && best !== null && race.time <= best;
+  const isBest = !running && race.newBest === true;
 
   return (
     <div data-testid="race-hud"

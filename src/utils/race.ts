@@ -30,7 +30,9 @@ export function crossesGate(a: Vec3, b: Vec3, g: Gate, radius: number): boolean 
   if (len(ab) >= MAX_STEP) return false;
   const da = dot(sub(a, g.c), g.n);
   const db = dot(sub(b, g.c), g.n);
-  if ((da > 0 && db > 0) || (da < 0 && db < 0) || da === db) return false;
+  // Half-open: a point exactly on the plane counts as the positive side, so a
+  // step that lands on it and the step that leaves it can't both cross.
+  if ((da < 0) === (db < 0)) return false;
   const t = da / (da - db);
   const p = { x: a.x + ab.x * t, y: a.y + ab.y * t, z: a.z + ab.z * t };
   return len(sub(p, g.c)) <= radius;
@@ -54,7 +56,17 @@ export type RaceState =
   | { phase: "idle" }
   /** `next` is the ring to fly through; 0 means the finish (ring 0 again). */
   | { phase: "running"; next: number; startClock: number }
-  | { phase: "finished"; time: number };
+  /** `newBest` is set by the caller, which knows the previous best. */
+  | { phase: "finished"; time: number; newBest?: boolean };
+
+/**
+ * One frame of race clock: the ship's own clamped dt, so a tab switch or a
+ * slow frame stops the clock as it stops the ship. Paused in photo mode,
+ * where the ship is frozen in place.
+ */
+export function advanceRaceClock(now: number, delta: number, paused: boolean): number {
+  return paused ? now : now + Math.min(delta, 0.05);
+}
 
 export type RaceEvent = "start" | "gate" | "finish";
 

@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { RACE_GATES, RING_GATES, RING_RADIUS, PAR_SECONDS } from "../../data/ringCourse";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import {
-  raceStep, sampleGhost, encodeGhost, decodeGhost, formatRaceTime, isNewBest,
+  advanceRaceClock, raceStep, sampleGhost, encodeGhost, decodeGhost, formatRaceTime, isNewBest,
   GHOST_HZ, type Ghost, type GhostSample, type RaceEvent, type RaceState, type Vec3,
 } from "../../utils/race";
 import { raceClock } from "../../utils/raceClock";
@@ -131,7 +131,13 @@ export default function RingCourse() {
       const t = next.time;
       const best = s.raceBest;
       const par = t < PAR_SECONDS ? " · UNDER PAR" : "";
-      if (isNewBest(t, best)) {
+      // Close the recording on the finish line itself: the 10 Hz samples
+      // otherwise end up to a tenth of a second short, and the ghost would
+      // vanish just before the ring.
+      recording.current.push({ x: flight.x, y: flight.y, z: flight.z, yaw: flight.heading, pitch: flight.pitch });
+      const newBest = isNewBest(t, best);
+      s.setRace({ ...next, newBest });
+      if (newBest) {
         s.setRaceBest(t);
         const ghost = { time: t, samples: recording.current };
         saveGhost(ghost);
@@ -144,8 +150,9 @@ export default function RingCourse() {
   }
 
   useFrame((_, delta) => {
-    raceClock.now += Math.min(delta, 0.05);
     const s = useSpaceStore.getState();
+    // Photo mode freezes the ship in place; the lap waits for it.
+    raceClock.now = advanceRaceClock(raceClock.now, delta, s.photoMode);
     const cur = { x: flight.x, y: flight.y, z: flight.z };
     const prev = prevPos.current;
     prevPos.current = cur;
@@ -156,7 +163,7 @@ export default function RingCourse() {
       abort();
       race = useSpaceStore.getState().race;
     }
-    if (prev && !s.isOrbitLocked && !s.showClassicCV) {
+    if (prev && !s.isOrbitLocked && !s.showClassicCV && !s.photoMode) {
       const r = raceStep(race, prev, cur, raceClock.now, RACE_GATES, RING_RADIUS);
       if (r.event) {
         s.setRace(r.state);

@@ -2,6 +2,7 @@ import type * as THREE from "three";
 import { useSpaceStore, flight, bodies } from "../store/spaceStore";
 import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
+import { raceClock } from "../utils/raceClock";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -13,6 +14,8 @@ export interface FitzDebug {
   store: typeof useSpaceStore;
   flight: typeof flight;
   bodies: typeof bodies;
+  /** Time-trial clock (seconds), live. */
+  raceClock: typeof raceClock;
   sound: typeof soundManager;
   scene: THREE.Scene | null;
   gl: THREE.WebGLRenderer | null;
@@ -65,6 +68,7 @@ export const fitzDebug: FitzDebug = {
   store: useSpaceStore,
   flight,
   bodies,
+  raceClock,
   sound: soundManager,
   scene: null,
   gl: null,
