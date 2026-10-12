@@ -1,6 +1,7 @@
 import { COSMIC_BOUNDS } from "../constants";
 import { wrapDelta } from "./toroidal";
 import type { Vec3 } from "./reactions";
+import { RADIO_BUSY_S } from "./cargoReaction";
 
 /**
  * Gravity wells (docs/superpowers/specs/2026-10-12-flight-feel-design.md §5).
@@ -148,5 +149,37 @@ export class SlingshotGate {
     if (!exitedFast || radioBusy || raceRunning || now - this.lastAt < SLINGSHOT_COOLDOWN_S) return false;
     this.lastAt = now;
     return true;
+  }
+}
+
+/** Gravity momentum at a well exit below this was not a slingshot (e.g. warp, a cruise past the rim). */
+export const ASSIST_MIN_G = 2;
+
+/**
+ * Decides, every free-flight frame, whether leaving a planet's well was a
+ * slingshot: the whoosh plays on a fast exit that gravity helped (not warp),
+ * and the radio line goes through SlingshotGate. The radio's last-change time
+ * is tracked every frame; sampling it only at exits stamped stale broadcasts
+ * as fresh and dropped most callouts.
+ */
+export class SlingshotWatch {
+  private gate = new SlingshotGate();
+  private inWell: string | null = null;
+  private lastId = 0;
+  private lastAt = -Infinity;
+
+  update(
+    now: number, broadcastId: number, wellNow: string | null, speed: number, gMag: number,
+    warp: boolean, raceRunning: boolean, out: { whoosh: boolean; line: boolean },
+  ): { whoosh: boolean; line: boolean } {
+    out.whoosh = false; out.line = false;
+    if (broadcastId !== this.lastId) { this.lastId = broadcastId; this.lastAt = now; }
+    const exited = this.inWell !== null && wellNow !== this.inWell;
+    this.inWell = wellNow;
+    if (!exited) return out;
+    const assisted = !warp && speed > SLINGSHOT_SPEED && gMag > ASSIST_MIN_G;
+    out.whoosh = assisted;
+    out.line = this.gate.update(assisted, now, now - this.lastAt < RADIO_BUSY_S, raceRunning);
+    return out;
   }
 }

@@ -18,13 +18,12 @@ import { wrapCoord } from "../../utils/edgeHaze";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import {
-  stepGravity, gravityMode, EscapeGrace, SlingshotGate, type Well,
-  PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, SLINGSHOT_SPEED, G_MAX,
+  stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
+  PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
-import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
@@ -94,6 +93,8 @@ const PLANET_WELLS: Well[] = planets.map((p) => ({
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
+/** SlingshotWatch result scratch. */
+const slingshotOut = { whoosh: false, line: false };
 /** Total velocity (pilot + gravity) scratch. */
 const _total = new THREE.Vector3();
 
@@ -124,10 +125,8 @@ export default function Spaceship() {
   const gravity = useRef({ x: 0, y: 0, z: 0 });
   const idleFor = useRef(0);
   const escapeGrace = useRef(new EscapeGrace());
-  /** Planet whose well the ship was in last frame (for slingshot exits). */
-  const inWell = useRef<string | null>(null);
-  const slingshotGate = useRef(new SlingshotGate());
-  const lastBroadcast = useRef({ id: 0, at: -Infinity });
+  /** Well exits -> whoosh and slingshot callout (gravityWell.ts). */
+  const slingshotWatch = useRef(new SlingshotWatch());
   const zeroGravity = () => { gravity.current.x = 0; gravity.current.y = 0; gravity.current.z = 0; };
 
   // Dev-only: e2e probes and the QA checklist need to reposition the ship.
@@ -591,16 +590,12 @@ export default function Spaceship() {
       const b = bodies[planets[i].name];
       if (toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, b.x, b.z, b.y, COSMIC_BOUNDS) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
     }
-    if (inWell.current && wellNow !== inWell.current) {
-      const fast = totalSpeed > SLINGSHOT_SPEED;
-      if (fast) soundManager.whoosh();
-      const bid = store.broadcast?.id ?? 0;
-      if (bid !== lastBroadcast.current.id) { lastBroadcast.current.id = bid; lastBroadcast.current.at = time; }
-      if (slingshotGate.current.update(fast, time, time - lastBroadcast.current.at < RADIO_BUSY_S, store.race.phase === "running")) {
-        store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
-      }
-    }
-    inWell.current = wellNow;
+    const sling = slingshotWatch.current.update(
+      time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
+      Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,
+      store.race.phase === "running", slingshotOut);
+    if (sling.whoosh) soundManager.whoosh();
+    if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
 
     // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so
     // it agrees with utils/toroidal.ts, and silent: it happens inside the edge

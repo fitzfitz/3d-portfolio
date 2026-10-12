@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  stepGravity, wellAccel, gravityMode, EscapeGrace, SlingshotGate, type Well,
+  stepGravity, wellAccel, gravityMode, EscapeGrace, SlingshotGate, SlingshotWatch, type Well,
   PLANET_WELL_G, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
 } from "../src/utils/gravityWell";
 import { canCapture } from "../src/utils/capture";
@@ -220,5 +220,34 @@ describe("speed ceiling never fights the pilot (review #1)", () => {
       stepGravity(G, p, v, w, 1, "free", 1 / 60);
       expect(v.x + G.x).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("SlingshotWatch (review #4, #5)", () => {
+  const out = { whoosh: false, line: false };
+  /** In planet "p" from t=0, exits at `exitAt`; a broadcast (id 1) is first seen at `broadcastAt`. */
+  function exitAt(exitAt: number, opts: { broadcastAt?: number; warp?: boolean; g?: number; race?: boolean; speed?: number } = {}) {
+    const w = new SlingshotWatch();
+    const { broadcastAt = -1, warp = false, g = 6, race = false, speed = 18 } = opts;
+    for (let t = 0; t < exitAt; t += 0.1) w.update(t, t >= broadcastAt && broadcastAt >= 0 ? 1 : 0, "p", 11, g, false, false, out);
+    return { ...w.update(exitAt, broadcastAt >= 0 ? 1 : 0, null, speed, g, warp, race, out) };
+  }
+  it("calls a fast exit with gravity momentum a slingshot", () => {
+    expect(exitAt(20)).toEqual({ whoosh: true, line: true });
+  });
+  it("still calls it after an old broadcast (the radio is only busy for RADIO_BUSY_S)", () => {
+    expect(exitAt(20, { broadcastAt: 2 })).toEqual({ whoosh: true, line: true });
+  });
+  it("holds the line, not the whoosh, while a fresh broadcast is on the radio", () => {
+    expect(exitAt(20, { broadcastAt: 18 })).toEqual({ whoosh: true, line: false });
+  });
+  it("ignores warping out of a well", () => {
+    expect(exitAt(20, { warp: true, speed: 39 })).toEqual({ whoosh: false, line: false });
+  });
+  it("ignores a fast exit gravity did not help", () => {
+    expect(exitAt(20, { g: 0.5 })).toEqual({ whoosh: false, line: false });
+  });
+  it("keeps quiet on the radio during a race", () => {
+    expect(exitAt(20, { race: true })).toEqual({ whoosh: true, line: false });
   });
 });
