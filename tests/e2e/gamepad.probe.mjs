@@ -61,6 +61,16 @@ export default async function run() {
     checks.check("releasing the stick to resting drift zeroes steer", input.steer === 0,
       `steer=${input.steer}`);
 
+    // Orbit lock, photo mode and Cmd-release zero flight.input behind the pad's
+    // back; a stick that is still deflected must win the channel back.
+    await setAxis(page, 1, -1); await frames(page);
+    await page.evaluate(() => { window.__fitz.flight.input.thrust = 0; });
+    await frames(page);
+    input = await readInput(page);
+    checks.check("a held stick re-asserts thrust after another writer zeroes it", input.thrust === 1,
+      `thrust=${input.thrust}`);
+    await setAxis(page, 1, 0); await frames(page);
+
     await setButton(page, 5, true); await frames(page);
     input = await readInput(page);
     checks.check("RB engages warp (boost)", input.boost === true);

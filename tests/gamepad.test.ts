@@ -66,9 +66,16 @@ describe("padFlightChanges", () => {
   it("is empty when nothing changed, so an idle pad never overrides other inputs", () => {
     expect(padFlightChanges(PAD_NEUTRAL, PAD_NEUTRAL)).toEqual({});
   });
-  it("reports only the channels that changed", () => {
+  it("reports only the channels the pad is driving", () => {
     const next = { ...PAD_NEUTRAL, steer: 0.4, boost: true };
     expect(padFlightChanges(PAD_NEUTRAL, next)).toEqual({ steer: 0.4, boost: true });
+  });
+  // Orbit lock, photo mode and Cmd-release all zero flight.input behind the
+  // pad's back. A deflected stick must win it back on the next frame, not
+  // wait for the stick to move to a different value.
+  it("re-reports a held channel every frame, even when unchanged", () => {
+    const held = { ...PAD_NEUTRAL, thrust: 1, scan: true };
+    expect(padFlightChanges(held, held)).toEqual({ thrust: 1, scan: true });
   });
   it("reports the release back to neutral, so the pad lets go of what it held", () => {
     const held = { ...PAD_NEUTRAL, thrust: 1, ascend: true };

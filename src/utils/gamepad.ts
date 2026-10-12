@@ -53,15 +53,17 @@ export function readPadFlight(p: PadLike): PadFlight {
 }
 
 /**
- * Only the channels whose pad value changed since last frame. flight.input is
- * shared with the keyboard and touch joystick, so the pad writes on change
- * rather than every frame: an idle pad must not pin `steer` at 0 under a touch
- * drag, or `forward` under a held W.
+ * The channels the pad should write this frame. flight.input is shared with
+ * the keyboard and touch joystick, so a neutral channel is written only on the
+ * transition to neutral: an idle pad must not pin `steer` at 0 under a touch
+ * drag. A driven channel is written every frame, because other code zeroes
+ * flight.input without telling the pad (orbit lock, photo mode, Cmd release)
+ * and a held stick has to win it back.
  */
 export function padFlightChanges(prev: Readonly<PadFlight>, next: Readonly<PadFlight>): Partial<PadFlight> {
   const out: Partial<PadFlight> = {};
   for (const k of Object.keys(next) as (keyof PadFlight)[]) {
-    if (prev[k] !== next[k]) (out as Record<string, unknown>)[k] = next[k];
+    if (prev[k] !== next[k] || next[k] !== PAD_NEUTRAL[k]) (out as Record<string, unknown>)[k] = next[k];
   }
   return out;
 }

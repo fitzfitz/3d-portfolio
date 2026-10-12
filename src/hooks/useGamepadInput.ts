@@ -7,8 +7,13 @@ import {
 
 const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · A SCAN · Y PHOTO · D-PAD JUMP";
 
+/**
+ * First pad reporting the W3C standard layout. Flight sticks, wheels and some
+ * adapters report `mapping: ""` with their own axis order — a throttle axis
+ * resting at -1 would read as a permanent climb — so they are ignored.
+ */
 function firstPad(): Gamepad | null {
-  for (const p of navigator.getGamepads()) if (p?.connected) return p;
+  for (const p of navigator.getGamepads()) if (p?.connected && p.mapping === "standard") return p;
   return null;
 }
 
@@ -24,7 +29,9 @@ export function useGamepadInput(jumpIds: readonly string[]) {
     if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return;
     let raf = 0;
     let held: PadFlight = { ...PAD_NEUTRAL };
-    let buttons: boolean[] = [];
+    /** Last frame's buttons; null until seeded, so a button already down at connect is not a press. */
+    let buttons: boolean[] | null = null;
+    let padIndex = -1;
 
     const write = (next: PadFlight) => {
       Object.assign(flight.input, padFlightChanges(held, next));
@@ -41,25 +48,39 @@ export function useGamepadInput(jumpIds: readonly string[]) {
       }
     };
 
+    const lost = () => {
+      // Let go of whatever the pad was holding, so the ship doesn't keep turning.
+      write({ ...PAD_NEUTRAL });
+      buttons = null;
+      const s = useSpaceStore.getState();
+      if (s.padConnected) {
+        s.setPadConnected(false);
+        s.sendBroadcast("CONTROLLER LOST // KEYBOARD FLIGHT RESTORED");
+      }
+    };
+
     const tick = () => {
       raf = 0;
       const pad = firstPad();
-      if (!pad) { write({ ...PAD_NEUTRAL }); buttons = []; return; }
-      // The classic résumé is a normal page: the pad must not fly the ship behind it.
-      if (useSpaceStore.getState().showClassicCV) {
+      if (!pad) { lost(); return; }
+      if (pad.index !== padIndex) { padIndex = pad.index; buttons = null; }
+      const next = pressedButtons(pad);
+      // The classic résumé is a normal page: the pad must not fly the ship
+      // behind it. And an unfocused tab gets no pad input at all — the keyboard
+      // hook releases everything on blur, and the pad must not undo that.
+      if (useSpaceStore.getState().showClassicCV || !document.hasFocus()) {
         write({ ...PAD_NEUTRAL });
-        buttons = pressedButtons(pad);
       } else {
         write(readPadFlight(pad));
-        const next = pressedButtons(pad);
-        for (const a of padActions(buttons, next)) act(a);
-        buttons = next;
+        if (buttons) for (const a of padActions(buttons, next)) act(a);
       }
+      buttons = next;
       raf = requestAnimationFrame(tick);
     };
     const start = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
     const onConnect = () => {
+      if (!firstPad()) return; // a non-standard device
       const s = useSpaceStore.getState();
       if (!s.padConnected) {
         s.setPadConnected(true);
@@ -67,40 +88,25 @@ export function useGamepadInput(jumpIds: readonly string[]) {
       }
       start();
     };
-    const onDisconnect = () => {
-      if (firstPad()) return;
-      // Let go of whatever the pad was holding, so the ship doesn't keep turning.
-      write({ ...PAD_NEUTRAL });
-      buttons = [];
-      useSpaceStore.getState().setPadConnected(false);
-      useSpaceStore.getState().sendBroadcast("CONTROLLER LOST // KEYBOARD FLIGHT RESTORED");
-    };
-    // The keyboard hook clears all of flight.input on blur. Forget what the pad
-    // held too, so a stick still deflected on return is written again next frame.
-    const forget = () => { held = { ...PAD_NEUTRAL }; };
-    const onVisibility = () => { if (document.hidden) forget(); };
+    const onDisconnect = () => { if (!firstPad()) lost(); };
 
     // Rumble on impacts. Chrome only; elsewhere vibrationActuator is absent.
     const unsubImpact = useSpaceStore.subscribe((s) => s.impactCount, () => {
-      const pad = firstPad();
-      pad?.vibrationActuator?.playEffect("dual-rumble", {
+      firstPad()?.vibrationActuator?.playEffect("dual-rumble", {
         duration: 140, strongMagnitude: 0.7, weakMagnitude: 0.4,
       }).catch(() => { /* rumble is a nicety */ });
     });
 
     window.addEventListener("gamepadconnected", onConnect);
     window.addEventListener("gamepaddisconnected", onDisconnect);
-    window.addEventListener("blur", forget);
-    document.addEventListener("visibilitychange", onVisibility);
     // A pad that already revealed itself (e.g. after a hot reload) fires no new event.
-    if (firstPad()) onConnect();
+    onConnect();
     return () => {
       if (raf) cancelAnimationFrame(raf);
+      write({ ...PAD_NEUTRAL });
       unsubImpact();
       window.removeEventListener("gamepadconnected", onConnect);
       window.removeEventListener("gamepaddisconnected", onDisconnect);
-      window.removeEventListener("blur", forget);
-      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [jumpIds]);
 }
