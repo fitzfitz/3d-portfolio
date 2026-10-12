@@ -28,7 +28,8 @@ import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
 import SkyBackdrop from "./SkyBackdrop";
-import { flight, useSpaceStore, selectSceneFrozen } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../../store/spaceStore";
+import { flareLevel } from "../../utils/worldEvents";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
@@ -425,6 +426,15 @@ function ShaderWarmup() {
 
 const BEACONS_ENABLED = !!beaconApiUrl();
 
+/** The scene's one sun light; a world-event flare lifts it 2.1 → 3.2 (no new light). */
+function SunLight() {
+  const ref = useRef<THREE.PointLight>(null);
+  useFrame(() => {
+    if (ref.current) ref.current.intensity = 2.1 + 1.1 * flareLevel(worldEventElapsed("flare"));
+  });
+  return <pointLight ref={ref} position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />;
+}
+
 function GlobalCanvas() {
   if (import.meta.env.DEV) fitzDebug.canvasRenderCount++;
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
@@ -517,7 +527,7 @@ function GlobalCanvas() {
           {/* 2.1, up from 2.0: absorbs Sun.tsx's second light at the origin
               (4.8, decay 0.8), which added only ~5% at planet distance and
               cost a full light in every lit fragment. */}
-          <pointLight position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />
+          <SunLight />
 
           {/* Painted galactic sky (scene.background, rendered once) */}
           <SkyBackdrop />
