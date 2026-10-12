@@ -4,10 +4,10 @@ main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
 [vars]
-ALLOWED_ORIGINS = "https://fitzfitz.github.io"
+# Every host that serves the site: GitHub Pages and the Cloudflare copy.
+ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedia.workers.dev"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "fitz-beacons"
-# Paste the id printed by `npx wrangler d1 create fitz-beacons`.
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "57ee4c74-f2c0-4b24-ba5a-b504dfb990dc"
