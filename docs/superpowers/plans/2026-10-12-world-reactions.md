@@ -1350,16 +1350,17 @@ async function reacting(page, checks) {
   await teleport(page, [j0.p[0] + 30, j0.p[1], j0.p[2]]);
   await settle(page, 300);
   const start = (await jelly()).dist;
-  const curious = await pollUntil(async () => {
+  // pollUntil resolves to { ok, value }, never the bare value.
+  const curious = (await pollUntil(async () => {
     const j = await jelly();
     return j.mood === "curious" && j.dist < start - 5 ? j : null;
-  }, { timeoutMs: 8000 });
+  }, { timeoutMs: 8000 })).value;
   checks.check("the jellyfish turns curious and drifts toward a hovering ship", !!curious,
     curious ? `dist ${start.toFixed(1)} -> ${curious.dist.toFixed(1)}` : `start=${start.toFixed(1)}`);
 
   await page.keyboard.down("ShiftLeft");
   await page.keyboard.down("KeyW");
-  const startled = await pollUntil(async () => ((await jelly()).mood === "startled" ? true : null), { timeoutMs: 1500 });
+  const startled = (await pollUntil(async () => ((await jelly()).mood === "startled" ? true : null), { timeoutMs: 1500 })).ok;
   await page.keyboard.up("KeyW");
   await page.keyboard.up("ShiftLeft");
   checks.check("a boost nearby startles it", !!startled);
@@ -1395,9 +1396,9 @@ export default async function run() {
 }
 ```
 
-- [ ] **Step 2: Check `pollUntil`'s contract**
+- [ ] **Step 2: Confirm `pollUntil`'s contract**
 
-Read `tests/e2e/harness.mjs` around `export async function pollUntil`. Confirm that it resolves to the callback's first truthy return value, or to a falsy value on timeout, rather than throwing. If it throws on timeout, wrap each `pollUntil` call in `try { ... } catch { value = null }` so the check records a clean FAIL instead of crashing the probe.
+`pollUntil` (tests/e2e/harness.mjs) resolves to `{ ok, value, error? }` and never throws on a timeout: `ok` is true with the first truthy callback result as `value`, or false with `value: null`. The probe reads `.value` and `.ok` accordingly. Do not compare the returned object itself for truthiness, because it is always an object and so always truthy.
 
 - [ ] **Step 3: Register the probe**
 
