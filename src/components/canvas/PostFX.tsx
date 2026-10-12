@@ -4,7 +4,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import type { GodRaysEffect } from "postprocessing";
-import { useSpaceStore, bodies } from "../../store/spaceStore";
+import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
+import { flareLevel } from "../../utils/worldEvents";
 import { planets, SUN_RADIUS } from "../../constants";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
@@ -52,7 +53,8 @@ function useGodRaysOcclusion(effect: RefObject<GodRaysEffect | null>) {
       const b = bodies[p.name];
       OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
     });
-    e.godRaysMaterial.exposure = GODRAYS_EXPOSURE * sunVisibility(camera.position, OCCLUDERS, SUN_RADIUS);
+    const flare = flareLevel(worldEventElapsed("flare"));
+    e.godRaysMaterial.exposure = GODRAYS_EXPOSURE * (1 + 0.5 * flare) * sunVisibility(camera.position, OCCLUDERS, SUN_RADIUS);
   });
 }
 

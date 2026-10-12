@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { parseRaceBest, type RaceState } from "../utils/race";
+import type { WorldEventKind } from "../utils/eventDirector";
+import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
@@ -188,6 +190,16 @@ export interface CrystalSlot { x: number; y: number; z: number; active: boolean 
  */
 export const crystalSlots: CrystalSlot[] = [];
 
+/** The running world event (docs/superpowers/specs/2026-10-12-world-events-design.md). */
+export interface WorldEventState {
+  kind: WorldEventKind;
+  id: number;
+  /** Director clock (flying seconds) at start; compare with worldClock.now. */
+  startedAt: number;
+  comet?: CometPass;
+  convoy?: { planet: string; plan: ConvoyPlan };
+}
+
 interface SpaceState {
   activeZone: string | null;
   isOrbitLocked: boolean;
@@ -202,6 +214,7 @@ interface SpaceState {
    * ("reading 'isReady'") and ShaderWarmup waits out its 8s cap.
    */
   pendingLowPerf: boolean | null;
+  worldEvent: WorldEventState | null;
   showClassicCV: boolean;
   isNearSpawn: boolean;
   isTeleporting: boolean;
@@ -265,6 +278,8 @@ interface SpaceState {
   addOwnBeacon: (id: string) => void;
   setBeaconPickerOpen: (v: boolean) => void;
   setReducedMotion: (v: boolean, manual?: boolean) => void;
+  startWorldEvent: (ev: WorldEventState, line: string) => void;
+  endWorldEvent: () => void;
 }
 
 // Read once into a module-level const: the two derived fields below must
@@ -290,6 +305,7 @@ export const useSpaceStore = create<SpaceState>()(
     isLowPerf: false,
     lowPerfManual: false,
     pendingLowPerf: null,
+    worldEvent: null,
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,
@@ -402,6 +418,11 @@ export const useSpaceStore = create<SpaceState>()(
       safeSetJSON("fitz-shards", next);
     },
     sendBroadcast: (text) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text } }),
+    startWorldEvent: (ev, line) => {
+      set({ worldEvent: ev });
+      get().sendBroadcast(line);
+    },
+    endWorldEvent: () => { if (get().worldEvent) set({ worldEvent: null }); },
     bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
@@ -440,4 +461,17 @@ export function selectSceneFrozen(
   s: Pick<SpaceState, "isOrbitLocked" | "photoMode">,
 ): boolean {
   return s.isOrbitLocked && !s.photoMode;
+}
+
+/**
+ * The world-event director's clock (flying seconds), written once per frame by
+ * WorldEventDirector. Mutable outside React, like `flight`, so event
+ * animations read it per frame without a subscription.
+ */
+export const worldClock = { now: 0 };
+
+/** Seconds since the running event of `kind` started, or null if none is running. */
+export function worldEventElapsed(kind: WorldEventKind): number | null {
+  const ev = useSpaceStore.getState().worldEvent;
+  return ev && ev.kind === kind ? worldClock.now - ev.startedAt : null;
 }

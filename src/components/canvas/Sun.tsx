@@ -1,7 +1,8 @@
 import { useRef, useMemo, useCallback, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useSpaceStore, bodies } from "../../store/spaceStore";
+import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
+import { flareLevel } from "../../utils/worldEvents";
 import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 
@@ -131,9 +132,12 @@ export default function Sun({ onSunReady }: SunProps) {
     // GodRays pass samples this mesh's silhouette, so a pulsing silhouette
     // would make the rays throb.
     surfaceMaterial.uniforms.uTime.value = t;
-    surfaceMaterial.uniforms.uHeat.value = 0.5 + 0.5 * Math.sin(t * 0.9);
+    // A world-event flare swells the heat and the corona (spec: slow, two peaks 6s apart).
+    const flare = flareLevel(worldEventElapsed("flare"));
+    surfaceMaterial.uniforms.uHeat.value = 0.5 + 0.5 * Math.sin(t * 0.9) + 0.6 * flare;
     coronaMaterial.uniforms.uTime.value = t;
     if (coronaRef.current) coronaRef.current.quaternion.copy(state.camera.quaternion);
+    if (coronaRef.current) coronaRef.current.scale.setScalar(1 + 0.6 * flare);
   });
 
   return (

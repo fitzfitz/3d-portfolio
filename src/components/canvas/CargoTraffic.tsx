@@ -2,7 +2,8 @@ import { useRef, useMemo, useEffect, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF, Trail } from "@react-three/drei";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
+import { convoyShipOffsetAt, CONVOY_HIDE_DIST } from "../../utils/worldEvents";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { dampVec } from "../../utils/reactions";
@@ -42,6 +43,38 @@ const SWERVE_OUT_HALFLIFE = 0.75;
 /** Roll (rad) per unit/s of sideways swerve velocity, so the slide reads as piloted. */
 const SWERVE_ROLL = 0.08;
 const hailLines = new ChatterScheduler(chatterPools);
+const convoyOff = new THREE.Vector3();
+const convoyAhead = new THREE.Vector3();
+
+/** Clones the cargo model into a steerable wrapper; nav/engine materials are cloned so each blinks on its own phase. */
+function buildShip(scene: THREE.Object3D, name: string) {
+  const model = scene.clone(true);
+  // glTF export maps the ship's Blender +Y nose to -Z, but Object3D.lookAt
+  // points +Z at the target — flip the model inside a wrapper we steer.
+  model.rotation.y = Math.PI;
+  const group = new THREE.Group();
+  group.add(model);
+  group.name = name;
+  const navMats: THREE.MeshStandardMaterial[] = [];
+  const engineMats: THREE.MeshStandardMaterial[] = [];
+  model.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      const m = o.material as THREE.MeshStandardMaterial;
+      if (m.name === "NavRed" || m.name === "NavGreen") {
+        const c = m.clone();
+        o.material = c;
+        navMats.push(c);
+      } else if (m.name === "EngineGlow") {
+        const c = m.clone();
+        o.material = c;
+        engineMats.push(c);
+      }
+    }
+  });
+  const dish = model.getObjectByName("RadarDish") ?? null;
+  const trailTarget: RefObject<THREE.Object3D> = { current: group };
+  return { group, navMats, engineMats, dish, trailTarget };
+}
 
 export default function CargoTraffic() {
   const { scene } = useGLTF(assetUrl("/models/cargo_ship.glb"));
@@ -62,38 +95,13 @@ export default function CargoTraffic() {
   }, [offsets]);
 
   // Clone the small ship per NPC; clone nav-light materials so each blinks with its own phase.
-  const ships = useMemo(
-    () =>
-      SHIPS.map((_, i) => {
-        const model = scene.clone(true);
-        // glTF export maps the ship's Blender +Y nose to -Z, but Object3D.lookAt
-        // points +Z at the target — flip the model inside a wrapper we steer.
-        model.rotation.y = Math.PI;
-        const group = new THREE.Group();
-        group.add(model);
-        group.name = `CargoShip${i}`;
-        const navMats: THREE.MeshStandardMaterial[] = [];
-        const engineMats: THREE.MeshStandardMaterial[] = [];
-        model.traverse((o) => {
-          if (o instanceof THREE.Mesh) {
-            const m = o.material as THREE.MeshStandardMaterial;
-            if (m.name === "NavRed" || m.name === "NavGreen") {
-              const c = m.clone();
-              o.material = c;
-              navMats.push(c);
-            } else if (m.name === "EngineGlow") {
-              const c = m.clone();
-              o.material = c;
-              engineMats.push(c);
-            }
-          }
-        });
-        const dish = model.getObjectByName("RadarDish") ?? null;
-        const trailTarget: RefObject<THREE.Object3D> = { current: group };
-        return { group, navMats, engineMats, dish, trailTarget };
-      }),
-    [scene]
-  );
+  const ships = useMemo(() => SHIPS.map((_, i) => buildShip(scene, `CargoShip${i}`)), [scene]);
+  // World-event convoy (spec: cargo convoy): always mounted, hidden until an event.
+  const convoy = useMemo(() => [0, 1, 2].map((i) => {
+    const s = buildShip(scene, `ConvoyShip${i}`);
+    s.group.visible = false; // never flashes at the origin before its first frame
+    return s;
+  }), [scene]);
 
   useFrame((state, delta) => {
     const dt = Math.min(delta, 0.05);
@@ -173,12 +181,37 @@ export default function CargoTraffic() {
       // in this loop (dt would keep it spinning under reduced motion).
       if (ship.dish) ship.dish.rotation.z = time * 1.2;
     }
+
+    // World-event convoy: a planet-relative V formation riding the target's live position.
+    const convoyElapsed = worldEventElapsed("convoy");
+    const convoyEv = store.worldEvent?.convoy;
+    const convoyCount = isLowPerf ? 1 : 3;
+    for (let k = 0; k < convoy.length; k++) {
+      const ship = convoy[k];
+      if (convoyElapsed === null || !convoyEv || k >= convoyCount) { ship.group.visible = false; continue; }
+      const c = bodies[convoyEv.planet];
+      const slot = k as 0 | 1 | 2;
+      convoyShipOffsetAt(convoyOff, convoyEv.plan, convoyElapsed, slot);
+      if (convoyOff.length() > CONVOY_HIDE_DIST) { ship.group.visible = false; continue; }
+      ship.group.visible = true;
+      ship.group.position.set(c.x + convoyOff.x, c.y + convoyOff.y, c.z + convoyOff.z);
+      convoyShipOffsetAt(convoyAhead, convoyEv.plan, convoyElapsed + 0.1, slot);
+      lookTarget.set(c.x + convoyAhead.x, c.y + convoyAhead.y, c.z + convoyAhead.z);
+      ship.group.lookAt(lookTarget);
+      const blink = Math.sin(time * 3 + k * 1.7) > 0.82 ? 4.5 : 0.3;
+      for (const m of ship.navMats) m.emissiveIntensity = blink;
+      const burn = 2.6 + Math.sin(time * 7.3 + k * 2.3) * 0.6;
+      for (const m of ship.engineMats) m.emissiveIntensity = burn;
+    }
   });
 
   return (
     <>
       {ships.slice(0, count).map((s, i) => (
         <primitive key={i} object={s.group} scale={1.6} />
+      ))}
+      {convoy.map((s, i) => (
+        <primitive key={`c${i}`} object={s.group} scale={1.6} />
       ))}
       {/* Faint engine wake, gated off in low-perf mode */}
       {!isLowPerf &&
