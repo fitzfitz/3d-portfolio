@@ -59,6 +59,8 @@ export interface FitzDebug {
   cargoSwerve: { x: number; y: number; z: number }[] | null;
   /** Live jellyfish mood and offset, registered by SpaceJellyfish in dev. */
   jelly: JellyState | null;
+  /** Live mining state (AsteroidBelt, dev only). */
+  mining: typeof import("../utils/mining").miningState | null;
   /** Live tractor-beam state (Spaceship, dev only). */
   beam: typeof import("../store/beamState").beamState | null;
   /** Live gravity momentum G (Spaceship, dev only). */
@@ -96,5 +98,6 @@ export const fitzDebug: FitzDebug = {
   triggerEvent: null,
   gravity: null,
   beam: null,
+  mining: null,
   perfStats,
 };

@@ -4,6 +4,8 @@ import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../consta
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
+import { beamState } from "../../store/beamState";
+import { ORE_PER_CRYSTAL } from "../../utils/mining";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -74,6 +76,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const velRef = useRef<HTMLDivElement>(null);
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
+  const oreRef = useRef<HTMLDivElement>(null);
   const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
@@ -97,6 +100,12 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (fuelLabelRef.current)
         fuelLabelRef.current.textContent =
           pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`;
+      // Mining readout: shown while pebbles are coming in, and 2s after.
+      if (oreRef.current) {
+        const show = performance.now() - beamState.oreAt < 2000;
+        oreRef.current.style.display = show ? "" : "none";
+        if (show) oreRef.current.textContent = `ORE ${beamState.ore}/${ORE_PER_CRYSTAL}`;
+      }
       for (const p of planets) {
         const el = planetRowRefs.current[p.name];
         const b = bodies[p.name];
@@ -175,6 +184,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             className="h-full rounded-full transition-none"
             style={{ width: "100%", backgroundColor: "#00ff87" }} />
         </div>
+        <div ref={oreRef} data-testid="hud-ore" className="text-[#3ff2d0]" style={{ display: "none" }} />
       </div>
 
       <div className="absolute top-16 right-4 sm:top-24 sm:right-6 flex flex-col items-end gap-1.5">
