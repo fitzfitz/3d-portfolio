@@ -73,3 +73,16 @@ export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL
 export function makePlumeGeometry(nozzleRadius: number): THREE.BufferGeometry {
   return new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * 0.18, 1, 20, 12, true);
 }
+
+/**
+ * The tractor beam's cone, drawn with the plume material: an open tube that
+ * is a point at the nose (top, y = 0, the plume shader's bright end) and the
+ * full unit radius at y = -1, so scaling it by (r, range, r) matches the catch
+ * cone in utils/tractorBeam.ts. The plume tube tapers the other way; reusing
+ * it put a 22u-wide bright mouth around the chase camera.
+ */
+export function makeBeamGeometry(): THREE.BufferGeometry {
+  const g = new THREE.CylinderGeometry(0.02, 1, 1, 20, 12, true);
+  g.translate(0, -0.5, 0);
+  return g;
+}

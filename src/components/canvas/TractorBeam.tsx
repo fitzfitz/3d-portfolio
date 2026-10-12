@@ -6,7 +6,7 @@ import { crystalSlots, flight, useSpaceStore } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone, nearestShardInCone } from "../../utils/tractorBeam";
 import { tetherCount, tetherPos } from "../../utils/mining";
-import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
+import { makeBeamGeometry, makePlumeMaterial } from "./enginePlume";
 import { ambientTime } from "../../utils/ambientTime";
 import { soundManager } from "../../audio/soundManager";
 
@@ -27,13 +27,8 @@ export default function TractorBeam() {
   const linesRef = useRef<THREE.LineSegments>(null);
   const wasActive = useRef(false);
 
-  // Unit tube along +Y: radius 1 at the top (the plume's bright end), 0.18 at
-  // the tip. Shifted so the top sits at the origin and the body spans y ∈ [-1, 0].
-  const coneGeometry = useMemo(() => {
-    const g = makePlumeGeometry(1);
-    g.translate(0, -0.5, 0);
-    return g;
-  }, []);
+  // A point at the nose widening to the beam's radius at its range (enginePlume.ts).
+  const coneGeometry = useMemo(() => makeBeamGeometry(), []);
   const coneMaterial = useMemo(() => makePlumeMaterial(4.2, BEAM_TINT), []);
   const lineGeometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
