@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { nearestScannable } from "../../utils/scannables";
+import { nearestScannable, SCAN_RANGE } from "../../utils/scannables";
 import { generateScanReport } from "../../utils/scanReport";
 import { soundManager } from "../../audio/soundManager";
 import { scanState } from "../../utils/scanState";
@@ -23,7 +23,7 @@ export default function Scanner() {
       scanState.label = "";
       return;
     }
-    const near = nearestScannable(flight.x, flight.y, flight.z, 22);
+    const near = nearestScannable(flight.x, flight.y, flight.z, SCAN_RANGE);
     const store = useSpaceStore.getState();
     store.setScanTarget(near?.id ?? null);
     scanState.label = near?.label ?? "";

@@ -100,7 +100,9 @@ export default async function run() {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
       // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
-      window.__fitz.teleport(b.x, b.y, b.z + 18);
+      // 2x size: outside the lock-retain radius (1.9x), inside scan range of
+      // the surface. A fixed offset sat inside the lock once planets grew.
+      window.__fitz.teleport(b.x, b.y, b.z + planets[0].size * 2);
       return planets[0].name;
     });
     await settle(page, 1500);

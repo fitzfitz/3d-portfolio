@@ -8,8 +8,7 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { ambientTime } from "../../utils/ambientTime";
 import { refuel, refuelOutcome, FUEL_MAX } from "../../utils/fuel";
 import {
-  CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, randomCrystalPos, respawnTick,
-  type AvoidPoint,
+  CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, crystalAvoidPoints, randomCrystalPos, respawnTick,
 } from "../../utils/crystalField";
 import { soundManager } from "../../audio/soundManager";
 import { fitzDebug } from "../../debug/bridge";
@@ -67,12 +66,11 @@ export default function FuelCrystals() {
   useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
   /** Places to keep clear of, rebuilt per spawn from live positions. */
-  const avoidFor = (): AvoidPoint[] => [
-    ...planets.map((p) => ({ ...bodies[p.name], r: 20 })),
-    { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2], r: 20 },
-    // Keep clear of the ship so crystals never pop into view.
-    { x: flight.x, y: flight.y, z: flight.z, r: 30 },
-  ];
+  const avoidFor = () => crystalAvoidPoints(
+    planets.map((p) => ({ ...bodies[p.name], size: p.size })),
+    PORTAL_POS,
+    flight,
+  );
 
   // Seed the shared slot array once. `crystalSlots` is module-level state in
   // spaceStore, the same pattern as `flight` and `bodies` — so the radar can read

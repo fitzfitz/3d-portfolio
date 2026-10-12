@@ -24,6 +24,8 @@ export interface PlanetData {
 export const RESERVED_ZONE_IDS = ["contact"] as const;
 
 export const COSMIC_BOUNDS = 250;
+/** Sun core radius, larger than the planets as a star should be. */
+export const SUN_RADIUS = 8;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
 export const PORTAL_POS: [number, number, number] = [0, 95, -150];
 export const SHIP_MAX_SPEED = 10.8;
@@ -48,8 +50,15 @@ export const PORTAL_ORBIT_R = 2.6;
  */
 export const projects: Project[] = projectsData;
 
-/** Planet physical size. Uniform today; per-planet if that ever changes. */
-const PLANET_SIZE = 4.8;
+/**
+ * Planet physical size. Uniform today; per-planet if that ever changes.
+ *
+ * 16, up from 4.8 (2026-10-12): at 4.8 a planet was ~5 ship-lengths wide and
+ * read as a boulder, while the gaps between bodies read as empty. Every lock
+ * radius scales off this, and tests/planetClearance.test.ts guards what is
+ * placed around the orbits it sweeps.
+ */
+const PLANET_SIZE = 16;
 
 /**
  * Inclined living orbits around the sun at origin (spec §3), keyed by project id.
