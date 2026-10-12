@@ -19,6 +19,7 @@ import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide
 import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
+import { useGamepadInput } from "./hooks/useGamepadInput";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById, planets } from "./constants";
@@ -43,12 +44,14 @@ const JUMP_TARGETS = [
   ...planets.map((p) => ({ id: p.name, label: projectById(p.name)?.title ?? p.name, color: p.color })),
   { id: "contact", label: "Contact", color: "#ec4899" },
 ];
+const JUMP_IDS = JUMP_TARGETS.map((t) => t.id);
 
 /** Without WebGL there is no cabin to return to. */
 const CAN_FLY = WEBGL_AVAILABLE;
 
 export default function App() {
   useKeyboardInput();
+  useGamepadInput(JUMP_IDS);
   useSound();
   useReducedMotion();
   const activeZone = useSpaceStore((s) => s.activeZone);
@@ -64,6 +67,7 @@ export default function App() {
   const sceneReady = useSpaceStore((s) => s.sceneReady);
   const isOrbitCooldown = useSpaceStore((s) => s.isOrbitCooldown);
   const isCoarse = useMediaQuery("(pointer: coarse)");
+  const padConnected = useSpaceStore((s) => s.padConnected);
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Dossier/contact dialogs close on Esc (outside text fields, so Esc while
@@ -209,7 +213,7 @@ export default function App() {
                   Three planets, three projects. Fly into one to open its dossier.
                 </p>
                 <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
-                  &gt; {isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP"}
+                  &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP"}
                 </div>
                 {/* Fast path: straight into a dossier, no piloting required. */}
                 <div className="text-[10px] font-mono text-white/50 mb-2">OR JUMP STRAIGHT TO</div>
