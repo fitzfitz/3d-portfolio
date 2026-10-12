@@ -10,7 +10,7 @@ beforeEach(() => {
     shardsCollected: [], broadcast: null, impactCount: 0, scanTarget: null, photoMode: false,
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
-    visitedDossiers: [], jumpRequest: null, warmingUp: false,
+    visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null,
   });
 });
 
@@ -43,6 +43,35 @@ describe("spaceStore", () => {
     useSpaceStore.getState().setLowPerf(false, false);
     expect(useSpaceStore.getState().isLowPerf).toBe(false);
     expect(useSpaceStore.getState().lowPerfManual).toBe(true); // sticky
+  });
+
+  // A tier switch mid-warm-up unmounts the full-detail objects, disposing
+  // materials three's compileAsync is still polling: its poll throws
+  // ("reading 'isReady'") and ShaderWarmup waits out its 8s cap. Reproduced
+  // with an instrumented production build: the decline landed ~300ms into
+  // warm-up and the scene came up ~5s late.
+  it("defers a low-perf switch requested during warm-up until warm-up ends", () => {
+    const s = useSpaceStore.getState();
+    s.setWarmingUp(true);
+    s.setLowPerf(true);
+    expect(useSpaceStore.getState().isLowPerf).toBe(false);
+    useSpaceStore.getState().setWarmingUp(false);
+    expect(useSpaceStore.getState().isLowPerf).toBe(true);
+  });
+
+  it("applies the manual lock at once, even during warm-up", () => {
+    useSpaceStore.getState().setWarmingUp(true);
+    useSpaceStore.getState().setLowPerf(false, true);
+    expect(useSpaceStore.getState().lowPerfManual).toBe(true);
+  });
+
+  it("lets the latest request during warm-up win", () => {
+    const s = useSpaceStore.getState();
+    s.setWarmingUp(true);
+    s.setLowPerf(true);
+    s.setLowPerf(false);
+    useSpaceStore.getState().setWarmingUp(false);
+    expect(useSpaceStore.getState().isLowPerf).toBe(false);
   });
 
   it("flight is a stable mutable object", () => {

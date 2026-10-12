@@ -195,6 +195,13 @@ interface SpaceState {
   isWarping: boolean;
   isLowPerf: boolean;
   lowPerfManual: boolean;
+  /**
+   * A tier switch requested during shader warm-up, applied when warm-up ends.
+   * Switching mid-warm-up unmounts the full-detail objects and disposes
+   * materials three's compileAsync is still polling; its poll then throws
+   * ("reading 'isReady'") and ShaderWarmup waits out its 8s cap.
+   */
+  pendingLowPerf: boolean | null;
   showClassicCV: boolean;
   isNearSpawn: boolean;
   isTeleporting: boolean;
@@ -282,6 +289,7 @@ export const useSpaceStore = create<SpaceState>()(
     isWarping: false,
     isLowPerf: false,
     lowPerfManual: false,
+    pendingLowPerf: null,
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,
@@ -308,7 +316,13 @@ export const useSpaceStore = create<SpaceState>()(
     fuelEmpty: false,
     sceneReady: false,
     warmingUp: false,
-    setWarmingUp: (v) => { if (get().warmingUp !== v) set({ warmingUp: v }); },
+    setWarmingUp: (v) => {
+      const s = get();
+      if (s.warmingUp === v) return;
+      // Ending warm-up releases a tier switch held back during it (setLowPerf).
+      if (!v && s.pendingLowPerf !== null) set({ warmingUp: false, isLowPerf: s.pendingLowPerf, pendingLowPerf: null });
+      else set({ warmingUp: v });
+    },
     visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
     requestJump: (id) => {
@@ -342,8 +356,12 @@ export const useSpaceStore = create<SpaceState>()(
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
     setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
+    // The manual lock applies at once, so an automatic decline arriving during
+    // warm-up is still refused; only the tier itself waits (pendingLowPerf).
     setLowPerf: (v, manual = false) =>
-      set((s) => ({ isLowPerf: v, lowPerfManual: s.lowPerfManual || manual })),
+      set((s) => s.warmingUp
+        ? { pendingLowPerf: v, lowPerfManual: s.lowPerfManual || manual }
+        : { isLowPerf: v, pendingLowPerf: null, lowPerfManual: s.lowPerfManual || manual }),
     // Clearing the lock on the way IN (not just tracked as a side effect of
     // GlobalCanvas unmounting) closes a mount-while-frozen hole: showClassicCV
     // is the only thing that unmounts GlobalCanvas (App.tsx), and until this
