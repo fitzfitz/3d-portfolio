@@ -47,6 +47,7 @@ export default function HUDOverlay() {
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const requestJump = useSpaceStore((s) => s.requestJump);
   const isCoarse = useMediaQuery("(pointer: coarse)");
+  const pad = useSpaceStore((s) => s.padConnected);
   // Mirrors App's spawn-banner condition. On a phone the banner spans the
   // full width over the radar's spot, and the radar is no use before flying.
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -194,17 +195,17 @@ export default function HUDOverlay() {
       <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] transition-opacity duration-700 pointer-events-auto group-data-[quiet=true]/hud:opacity-0 group-data-[quiet=true]/hud:pointer-events-none">
         <div className="flex flex-col">
           <span className="text-white/45">PILOT_STEER</span>
-          <span className="text-white">{isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
+          <span className="text-white">{pad ? "LEFT STICK" : isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
           <span className="text-white/45">PITCH</span>
-          <span className="text-white">{isCoarse ? "PITCH ▲ / ▼" : "SPACE / C"}</span>
+          <span className="text-white">{pad ? "RIGHT STICK" : isCoarse ? "PITCH ▲ / ▼" : "SPACE / C"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
           <span className="text-white/45">WARP_DRIVE</span>
-          <span className="text-white">{isCoarse ? "BOOST BUTTON" : "SHIFT"}</span>
+          <span className="text-white">{pad ? "RB" : isCoarse ? "BOOST BUTTON" : "SHIFT"}</span>
         </div>
         <div className="w-[1px] bg-white/5" />
         <div className="flex flex-col">
@@ -216,12 +217,12 @@ export default function HUDOverlay() {
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">
               <span className="text-white/45">SCAN</span>
-              <span className="text-white">HOLD E</span>
+              <span className="text-white">{pad ? "HOLD A" : "HOLD E"}</span>
             </div>
             <div className="w-[1px] bg-white/5" />
             <div className="flex flex-col">
               <span className="text-white/45">PHOTO_MODE</span>
-              <span className="text-white">P</span>
+              <span className="text-white">{pad ? "Y" : "P"}</span>
             </div>
           </>
         )}

@@ -204,6 +204,8 @@ interface SpaceState {
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
+  /** A gamepad has reported in (it does only after its first button press). */
+  padConnected: boolean;
   reducedMotion: boolean;
   reducedMotionManual: boolean;
   fuelEmpty: boolean;
@@ -238,6 +240,7 @@ interface SpaceState {
   bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
+  setPadConnected: (v: boolean) => void;
   setReducedMotion: (v: boolean, manual?: boolean) => void;
 }
 
@@ -275,6 +278,7 @@ export const useSpaceStore = create<SpaceState>()(
     impactCount: 0,
     scanTarget: null,
     photoMode: false,
+    padConnected: false,
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
@@ -359,6 +363,7 @@ export const useSpaceStore = create<SpaceState>()(
     bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
+    setPadConnected: (v) => set({ padConnected: v }),
     setReducedMotion: (v, manual = false) => {
       if (manual) safeSetReducedMotion(v);
       // Ambient motion is the inverse of reduced motion.

@@ -29,6 +29,11 @@ sector list (bottom right) jumps on click, and a waypoint marks the next unread
 dossier. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
+A gamepad works too, once the browser has seen its first button press: left
+stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
+photo mode, `B` closes a dossier, and the d-pad (clockwise from up) jumps like
+`1`–`4`. Impacts rumble the pad in Chrome.
+
 Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
 some configurations, devtools device emulation.
