@@ -169,9 +169,10 @@ export default function TouchControls() {
         ▼ PITCH
       </button>
 
-      {/* Tractor beam: hold to pull crystals and pebbles, or reel toward a shard */}
+      {/* Tractor beam: hold to pull crystals and pebbles, or reel toward a shard.
+          Beside ▼ PITCH, clear of BOOST, so a thumb reaching for boost never beams. */}
       <button
-        className="fixed bottom-32 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        className="fixed bottom-48 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
         data-testid="touch-beam"
         onPointerDown={(e) => {
           if (beamPointerRef.current !== null) return;
