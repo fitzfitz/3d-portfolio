@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { parseRaceBest, type RaceState } from "../utils/race";
+import type { Beacon } from "../utils/beacons";
 import { planets } from "../constants";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
@@ -211,6 +212,11 @@ interface SpaceState {
   race: RaceState;
   /** Best lap in seconds, persisted; null until the first finish. */
   raceBest: number | null;
+  /** Visitor beacons from the beacon API (empty when it is not configured). */
+  beacons: Beacon[];
+  /** Ids of beacons this browser dropped, persisted, so they render as "yours". */
+  ownBeacons: string[];
+  beaconPickerOpen: boolean;
   reducedMotion: boolean;
   reducedMotionManual: boolean;
   fuelEmpty: boolean;
@@ -248,6 +254,9 @@ interface SpaceState {
   setPadConnected: (v: boolean) => void;
   setRace: (r: RaceState) => void;
   setRaceBest: (t: number) => void;
+  setBeacons: (b: Beacon[]) => void;
+  addOwnBeacon: (id: string) => void;
+  setBeaconPickerOpen: (v: boolean) => void;
   setReducedMotion: (v: boolean, manual?: boolean) => void;
 }
 
@@ -288,6 +297,12 @@ export const useSpaceStore = create<SpaceState>()(
     padConnected: false,
     race: { phase: "idle" },
     raceBest: parseRaceBest(safeGetJSON<unknown>("fitz-race-best", null)),
+    beacons: [],
+    ownBeacons: (() => {
+      const raw = safeGetJSON<unknown>("fitz-own-beacons", []);
+      return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+    })(),
+    beaconPickerOpen: false,
     reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
     reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
@@ -378,6 +393,14 @@ export const useSpaceStore = create<SpaceState>()(
       safeSetJSON("fitz-race-best", t);
       set({ raceBest: t });
     },
+    setBeacons: (beacons) => set({ beacons }),
+    addOwnBeacon: (id) => {
+      // Newest 20: enough to recognise your own, bounded in storage.
+      const next = [id, ...get().ownBeacons.filter((o) => o !== id)].slice(0, 20);
+      safeSetJSON("fitz-own-beacons", next);
+      set({ ownBeacons: next });
+    },
+    setBeaconPickerOpen: (v) => set({ beaconPickerOpen: v }),
     setReducedMotion: (v, manual = false) => {
       if (manual) safeSetReducedMotion(v);
       // Ambient motion is the inverse of reduced motion.

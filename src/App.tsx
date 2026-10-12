@@ -20,6 +20,9 @@ import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useGamepadInput } from "./hooks/useGamepadInput";
+import BeaconPicker from "./components/layout/BeaconPicker";
+import { beaconApiUrl } from "./utils/beaconApi";
+import { loadBeacons, openBeaconPicker } from "./utils/beaconActions";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById, planets } from "./constants";
@@ -45,6 +48,8 @@ const JUMP_TARGETS = [
   { id: "contact", label: "Contact", color: "#ec4899" },
 ];
 const JUMP_IDS = JUMP_TARGETS.map((t) => t.id);
+/** Beacons exist only when an API is configured; read once per page load. */
+const BEACONS_ENABLED = !!beaconApiUrl();
 
 /** Without WebGL there is no cabin to return to. */
 const CAN_FLY = WEBGL_AVAILABLE;
@@ -90,7 +95,12 @@ export default function App() {
       if (isEditableTarget(e.target as HTMLElement | null)) return;
       const s = useSpaceStore.getState();
       if (s.showClassicCV) return;
+      if (s.beaconPickerOpen) return; // its own keys: 1-9 pick, Esc cancels
       if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
+      if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !s.isOrbitLocked) {
+        openBeaconPicker();
+        return;
+      }
       // 1..n jump to each planet in order, n+1 to the contact portal.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
@@ -101,6 +111,11 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [setPhotoMode]);
+
+  // The sky's beacons load once the scene is up, off the critical path.
+  useEffect(() => {
+    if (sceneReady && BEACONS_ENABLED) void loadBeacons();
+  }, [sceneReady]);
 
   // `activeZone` IS the project id, so this is a lookup rather than a mapping.
   // Returns undefined for the contact portal, which has no dossier.
@@ -143,7 +158,8 @@ export default function App() {
       <CustomCursor />
       {import.meta.env.DEV && <PerfOverlay />}
 
-      {!photoMode && !showClassicCV && <HUDOverlay />}
+      {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
+      {BEACONS_ENABLED && <BeaconPicker />}
       {!photoMode && !showClassicCV && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}

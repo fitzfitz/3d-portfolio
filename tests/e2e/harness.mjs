@@ -158,11 +158,16 @@ export class Checks {
  * perf-degradation behavior can still call `setLowPerf(true, ...)` themselves
  * — only the automatic decline path is blocked.
  *
+ * `expectedErrors` is a probe's own list of console-error patterns it causes
+ * on purpose, e.g. the 429 a mocked API returns to test rate limiting: Chrome
+ * logs every 4xx response as a console error, and no app code can stop it.
+ * Scoped to the one probe so it can never hide the same error elsewhere.
+ *
  * `emulateReducedMotion`, if true, emulates the `prefers-reduced-motion:
  * reduce` OS preference before navigation, so the app's own media-query
  * detection sees it on its very first render.
  */
-export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false }, fn) {
+export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false, expectedErrors = [] }, fn) {
   await startServer();
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -182,7 +187,7 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     page.on("console", (m) => {
       if (m.type() !== "error") return;
       const text = m.text();
-      if (IGNORED_ERRORS.some((re) => re.test(text))) return;
+      if ([...IGNORED_ERRORS, ...expectedErrors].some((re) => re.test(text))) return;
       errors.push(`console.error: ${text}`);
     });
     // Arm font interception before navigation: index.html's Google Fonts

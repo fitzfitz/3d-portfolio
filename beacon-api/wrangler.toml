@@ -1,0 +1,24 @@
+# Visitor-beacon API for the portfolio. See beacon-api/README.md.
+name = "fitz-beacons"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Every host that serves the site: GitHub Pages and the Cloudflare copy.
+ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedia.workers.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fitz-beacons"
+database_id = "57ee4c74-f2c0-4b24-ba5a-b504dfb990dc"
+
+# Per-pilot request budget (GET and POST): 30 a minute per Cloudflare
+# location. Stands in for a WAF rule, which needs a zone and this Worker lives
+# on workers.dev. namespace_id is any integer unique to the account.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "7301"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
