@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight, selectSceneFrozen, loadBadges, todayStamp } from "../src/store/spaceStore";
+import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
 import { CHANGELOG } from "../src/data/changelog";
 
 beforeEach(() => {
@@ -12,7 +12,7 @@ beforeEach(() => {
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
-    badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false,
+    badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false, logbookLineAt: 0,
   });
 });
 
@@ -32,23 +32,26 @@ describe("spaceStore", () => {
     expect(useSpaceStore.getState().changelogSeen).toBe(CHANGELOG[0].id);
   });
 
-  it("recordBadge records once, persists with the date and announces", () => {
+  it("recordBadge records once, persists with the date and announces", async () => {
     const s = useSpaceStore.getState();
     s.recordBadge("slingshot");
+    await Promise.resolve();
     const st = useSpaceStore.getState();
     expect(st.badges.map((b) => b.id)).toEqual(["slingshot"]);
     expect(st.badges[0].at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(st.broadcast).toMatchObject({ text: "LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. PRESS L", silent: false });
   });
 
-  it("recordBadge is a no-op once earned, and for derived or unknown ids", () => {
+  it("recordBadge is a no-op once earned, and for derived or unknown ids", async () => {
     const s = useSpaceStore.getState();
     s.recordBadge("comet");
+    await Promise.resolve();
     const id = useSpaceStore.getState().broadcast?.id;
     s.recordBadge("comet");
     s.recordBadge("fuxx");
     s.recordBadge("shards");
     s.recordBadge("nope");
+    await Promise.resolve();
     expect(useSpaceStore.getState().badges).toHaveLength(1);
     expect(useSpaceStore.getState().broadcast?.id).toBe(id);
   });
@@ -76,16 +79,47 @@ describe("spaceStore", () => {
     expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
   });
 
-  it("a badge line waits for a fresh broadcast (scan report, lap time) to be read", () => {
+  it("a badge line waits for a fresh broadcast (scan report, lap time) to be read", async () => {
     vi.useFakeTimers();
     const s = useSpaceStore.getState();
     s.sendBroadcast("SCAN REPORT // COMET_VISITOR");
     s.recordBadge("comet");
+    await Promise.resolve();
     expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["comet"]); // recorded at once
     expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN REPORT // COMET_VISITOR");
     vi.advanceTimersByTime(4500);
     expect(useSpaceStore.getState().broadcast?.text).toMatch(/COMET CHASER EARNED/);
     vi.useRealTimers();
+  });
+
+  it("a badge line also waits for a payoff sent after it in the same frame (lap time)", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.recordBadge("ring");
+    s.sendBroadcast("LAP 0:42 // UNDER PAR");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("LAP 0:42 // UNDER PAR");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
+    vi.useRealTimers();
+  });
+
+  it("logbook lines queue one after another instead of cutting each other off", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.announceLogbook("FIRST");
+    s.announceLogbook("SECOND");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("FIRST");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SECOND");
+    vi.useRealTimers();
+  });
+
+  it("loadShards keeps unique valid shard indices only", () => {
+    expect(loadShards(null)).toEqual([]);
+    expect(loadShards("abc")).toEqual([]);
+    expect(loadShards([1, 1, 99, -1, "2", 1.5, 3])).toEqual([1, 3]);
   });
 
   it("todayStamp formats the local date", () => {

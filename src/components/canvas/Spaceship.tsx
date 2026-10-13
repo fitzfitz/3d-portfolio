@@ -95,6 +95,12 @@ const PLANET_WELLS: Well[] = planets.map((p) => ({
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
+/**
+ * The engine material's original emissive colour, captured the first time the
+ * cached GLTF material is seen. A remount (classic-résumé round trip) with a
+ * non-stock plume must not capture the tint as "stock".
+ */
+const stockEmissive = new WeakMap<THREE.Material, THREE.Color>();
 /** Spark base colour for the current plume (written on plume change, read by the spark loop). */
 const sparkRGB: [number, number, number] = [0.55, 1, 1];
 /** SlingshotWatch result scratch. */
@@ -121,7 +127,11 @@ export default function Spaceship() {
     });
     return engine as THREE.MeshStandardMaterial | null;
   }, [scene]);
-  const engineStockEmissive = useMemo(() => engineMat?.emissive.clone() ?? new THREE.Color("#00f0ff"), [engineMat]);
+  const engineStockEmissive = useMemo(() => {
+    if (!engineMat) return new THREE.Color("#00f0ff");
+    if (!stockEmissive.has(engineMat)) stockEmissive.set(engineMat, engineMat.emissive.clone());
+    return stockEmissive.get(engineMat)!;
+  }, [engineMat]);
 
   const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second

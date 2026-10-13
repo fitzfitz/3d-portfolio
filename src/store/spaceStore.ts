@@ -12,6 +12,7 @@ import { FUEL_MAX } from "../utils/fuel";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { CHANGELOG } from "../data/changelog";
+import { SHARDS } from "../data/shards";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
@@ -134,6 +135,20 @@ export function loadBadges(raw: unknown): BadgeRecord[] {
     if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id)) continue;
     if (out.some((b) => b.id === id)) continue;
     out.push({ id, at });
+  }
+  return out;
+}
+
+/**
+ * Stored shard pickups, sanitised: unique integer indices of real shards. A
+ * hand-edited or corrupt value (null, a string) must not crash the store at
+ * import or grant the Shard hunter badge.
+ */
+export function loadShards(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const v of raw) {
+    if (Number.isInteger(v) && v >= 0 && v < SHARDS.length && !out.includes(v)) out.push(v);
   }
   return out;
 }
@@ -330,6 +345,15 @@ interface SpaceState {
   setPlumeColor: (id: string) => void;
   logbookOpen: boolean;
   setLogbookOpen: (v: boolean) => void;
+  /** When the radio is next free for a logbook line (ms); logbook lines queue rather than cut each other off. */
+  logbookLineAt: number;
+  /**
+   * Announces a logbook line (badge earned, milestone). Decided after the
+   * current frame's broadcasts are out, so a payoff sent in the same frame,
+   * before or after, is read first: a fresh broadcast holds the line 4.5 s,
+   * and logbook lines queue 4.5 s apart.
+   */
+  announceLogbook: (line: string) => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -354,7 +378,7 @@ setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, initialReducedMotio
 const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
 const initialPlume = (() => {
   const raw = safeGetJSON<unknown>("fitz-plume", "stock");
-  const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: safeGetJSON<number[]>("fitz-shards", []), badges: initialBadges };
+  const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])), badges: initialBadges };
   return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
 })();
 
@@ -379,15 +403,24 @@ export const useSpaceStore = create<SpaceState>()(
     badges: initialBadges,
     plumeColor: initialPlume,
     logbookOpen: false,
+    logbookLineAt: 0,
+    announceLogbook: (line) => {
+      queueMicrotask(() => {
+        const now = Date.now();
+        const fresh = now - (get().broadcast?.at ?? -Infinity) < BADGE_LINE_HOLD_MS;
+        const at = Math.max(fresh ? now + BADGE_LINE_DELAY_MS : now, get().logbookLineAt);
+        set({ logbookLineAt: at + BADGE_LINE_DELAY_MS });
+        if (at <= now) get().sendBroadcast(line);
+        else setTimeout(() => get().sendBroadcast(line), at - now);
+      });
+    },
     recordBadge: (id) => {
       if (!isRecordable(id) || get().badges.some((b) => b.id === id)) return;
       const next = [...get().badges, { id, at: todayStamp() }];
       safeSetJSON("fitz-logbook", next);
       set({ badges: next });
       const entry = LOGBOOK.find((e) => e.id === id);
-      const line = badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null);
-      if (Date.now() - (get().broadcast?.at ?? -Infinity) < BADGE_LINE_HOLD_MS) setTimeout(() => get().sendBroadcast(line), BADGE_LINE_DELAY_MS);
-      else get().sendBroadcast(line);
+      get().announceLogbook(badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null));
     },
     setPlumeColor: (id) => {
       const s = get();
@@ -419,7 +452,7 @@ export const useSpaceStore = create<SpaceState>()(
     isMuted: safeGetMuted(),
     cometNear: false,
     altitudeWarn: false,
-    shardsCollected: safeGetJSON<number[]>("fitz-shards", []),
+    shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
     impactCount: 0,
     scanTarget: null,

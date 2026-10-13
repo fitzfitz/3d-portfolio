@@ -60,6 +60,32 @@ async function desktop(page, checks) {
   checks.check("a plume colour adds no shader program", after.programs === before, `before=${before} after=${after.programs}`);
   checks.check("a locked plume cannot be picked",
     await page.evaluate(() => document.querySelector('[data-testid="plume-ring"]')?.disabled === true));
+  // Clicking a swatch must not trap the keyboard (review #4): W still flies, L still closes.
+  await page.keyboard.down("KeyW");
+  await settle(page, 300);
+  const flying = await page.evaluate(() => window.__fitz.flight.input.forward);
+  await page.keyboard.up("KeyW");
+  checks.check("after picking a plume, W still flies the ship", flying === true);
+  // The sheet header sits above the HUD readouts (review #3).
+  const onTop = await page.evaluate(() => {
+    const r = document.querySelector('[data-testid="logbook-panel"]').getBoundingClientRect();
+    const hit = document.elementFromPoint(r.right - 24, r.top + 14);
+    return !!hit?.closest('[data-testid="logbook-panel"]');
+  });
+  checks.check("the open panel's header is not covered by the HUD", onTop);
+  await page.keyboard.press("KeyL");
+  await settle(page, 300);
+  checks.check("after picking a plume, L still closes the panel", !(await readStore(page)).logbookOpen);
+  // A sheet that closes itself on docking leaves focus in the dossier (review #5).
+  await page.click('[data-testid="logbook-button"]');
+  await settle(page, 300);
+  await page.keyboard.press("Digit2");
+  await pollUntil(async () => (await readStore(page)).isOrbitLocked, { timeoutMs: 15_000, intervalMs: 200 });
+  await settle(page, 800);
+  const dossierFocus = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName);
+  checks.check("docking with a sheet open leaves focus in the dossier", /dossier/i.test(dossierFocus ?? ""), `focus=${dossierFocus}`);
+  await page.keyboard.press("Escape");
+  await settle(page, 2500);
 
   // Persistence, the tamper guard, and no announcements for old progress.
   await page.evaluate(() => localStorage.setItem("fitz-plume", JSON.stringify("ring")));
@@ -67,7 +93,7 @@ async function desktop(page, checks) {
   await ready(page);
   await settle(page, 1000);
   const st = await readStore(page);
-  checks.check("progress survives a reload", st.badges.length === 2 && /LOGBOOK 3\/10/.test(await tracker(page)), await tracker(page));
+  checks.check("progress survives a reload", st.badges.length === 2 && /LOGBOOK 4\/10/.test(await tracker(page)), await tracker(page));
   checks.check("a tampered plume for a locked badge falls back to stock", st.plumeColor === "stock", `plume=${st.plumeColor}`);
   checks.check("a reload announces nothing for old progress", !/LOGBOOK \/\/|TOUR COMPLETE/.test(await liveText(page)), await liveText(page));
 }
@@ -86,24 +112,26 @@ async function phone(page, checks) {
   const panel = await rect("logbook-panel");
   const vh = await page.evaluate(() => window.innerHeight);
   checks.check("phone: the panel opens as a bottom sheet", !!panel && panel.b <= vh && panel.t > vh * 0.25, JSON.stringify(panel));
-  const covered = [];
-  for (const id of ["touch-boost", "touch-beam", "touch-rise", "touch-dive"]) {
-    const b = await rect(id);
-    if (b && panel && b.l < panel.r && panel.l < b.r && b.t < panel.b && panel.t < b.b) covered.push(id);
-  }
-  checks.check("phone: the open panel does not cover visible flight buttons", covered.length === 0, covered.join(","));
+  const shown = [];
+  for (const id of ["touch-boost", "touch-beam", "touch-rise", "touch-dive"]) if (await rect(id)) shown.push(id);
+  checks.check("phone: flight buttons step aside while the logbook is open", shown.length === 0, shown.join(","));
+  const close = await rect("logbook-close");
+  checks.check("phone: the logbook's close button is visible", !!close);
+  if (close) await page.touchscreen.tap((close.l + close.r) / 2, (close.t + close.b) / 2);
+  await settle(page, 400);
+  checks.check("phone: tapping close closes the logbook", !(await readStore(page)).logbookOpen);
+  checks.check("phone: flight buttons come back after closing", !!(await rect("touch-boost")));
 
   // The patch notes sheet: same rules.
   await page.evaluate(() => window.__fitz.store.getState().setChangelogOpen(true));
   await settle(page, 400);
   const notes = await rect("changelog-panel");
   checks.check("phone: the patch notes open as a bottom sheet", !!notes && notes.b <= vh && notes.t > vh * 0.25, JSON.stringify(notes));
-  const coveredN = [];
-  for (const id of ["touch-boost", "touch-beam", "touch-rise", "touch-dive"]) {
-    const b = await rect(id);
-    if (b && notes && b.l < notes.r && notes.l < b.r && b.t < notes.b && notes.t < b.b) coveredN.push(id);
-  }
-  checks.check("phone: the open patch notes do not cover visible flight buttons", coveredN.length === 0, coveredN.join(","));
+  const closeN = await rect("changelog-close");
+  checks.check("phone: the patch notes' close button is visible", !!closeN);
+  if (closeN) await page.touchscreen.tap((closeN.l + closeN.r) / 2, (closeN.t + closeN.b) / 2);
+  await settle(page, 400);
+  checks.check("phone: tapping close closes the patch notes", !(await readStore(page)).changelogOpen);
 }
 
 async function changelog(page, checks) {
@@ -140,6 +168,8 @@ async function changelog(page, checks) {
   await settle(page, 800);
   const resume = await page.evaluate(() => document.querySelectorAll('#changelog [data-testid="resume-changelog-entry"]').length);
   checks.check("the résumé lists every changelog entry", resume === n, `${resume}/${n}`);
+  const labels = await page.evaluate(() => [...document.querySelectorAll('#changelog [data-testid="resume-changelog-entry"]:first-child dt')].map((d) => d.textContent));
+  checks.check("résumé entries answer what, why, when and how", JSON.stringify(labels) === JSON.stringify(["WHAT", "WHY", "WHEN", "HOW"]), JSON.stringify(labels));
 }
 
 export default async function run() {

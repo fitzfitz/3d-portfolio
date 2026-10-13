@@ -55,6 +55,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
   const changelogSeen = useSpaceStore((s) => s.changelogSeen);
+  const logbookOpen = useSpaceStore((s) => s.logbookOpen);
+  const changelogOpen = useSpaceStore((s) => s.changelogOpen);
   const notesUnseen = hasUnseen(CHANGELOG[0].id, changelogSeen);
   // Mirrors App's spawn-banner condition. On a phone the banner spans the
   // full width over the radar's spot, and the radar is no use before flying.
@@ -274,21 +276,21 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
 
       {/* Icon-only on phones: four labelled buttons ran off the screen edge. */}
       <div className="absolute bottom-5 left-4 sm:bottom-10 sm:left-6 flex gap-2 pointer-events-auto">
-        <button data-testid="logbook-button" onClick={() => useSpaceStore.getState().setLogbookOpen(true)}
-          aria-label="Open pilot logbook"
+        {!isOrbitLocked && <button data-testid="logbook-button" onClick={() => { const s = useSpaceStore.getState(); s.setLogbookOpen(!s.logbookOpen); }}
+          aria-label="Pilot logbook" aria-expanded={logbookOpen}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <BookOpen className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">LOGBOOK</span>
-        </button>
-        <button data-testid="changelog-button" onClick={() => useSpaceStore.getState().setChangelogOpen(true)}
-          aria-label={notesUnseen ? "Open patch notes, new updates" : "Open patch notes"}
+        </button>}
+        {!isOrbitLocked && <button data-testid="changelog-button" onClick={() => { const s = useSpaceStore.getState(); s.setChangelogOpen(!s.changelogOpen); }}
+          aria-label={notesUnseen ? "Patch notes, new updates" : "Patch notes"} aria-expanded={changelogOpen}
           className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <ScrollText className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">PATCH_NOTES</span>
           {notesUnseen && (
             <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
           )}
-        </button>
+        </button>}
         {beaconsEnabled && !isOrbitLocked && (
           <button data-testid="beacon-button" onClick={openBeaconPicker}
             aria-label="Drop a beacon"

@@ -25,17 +25,23 @@ export default function LogbookTracker() {
   // Previous progress, for the pulse and the milestones.
   const prev = useRef(progress);
   const [pulse, setPulse] = useState(false);
+  // The pulse timer lives in a ref, not an effect cleanup: a later progress
+  // change (a 4th shard, a reduced-motion toggle) must not cancel the timer
+  // that ends the pulse, or the tracker would pulse for the rest of the visit.
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (pulseTimer.current) clearTimeout(pulseTimer.current); }, []);
   useEffect(() => {
     const was = prev.current;
     prev.current = progress;
     if (was === progress) return;
+    // Milestones queue behind the badge line that triggered them (announceLogbook).
     const m = milestoneFor(was, progress);
-    if (m === "all") { soundManager.fanfare(); useSpaceStore.getState().sendBroadcast(ALL_LINE); }
-    else if (m === "essentials") useSpaceStore.getState().sendBroadcast(TOUR_LINE);
+    if (m === "all") { soundManager.fanfare(); useSpaceStore.getState().announceLogbook(ALL_LINE); }
+    else if (m === "essentials") useSpaceStore.getState().announceLogbook(TOUR_LINE);
     if (logbookCount(progress).done > logbookCount(was).done && !reducedMotion) {
       setPulse(true);
-      const id = setTimeout(() => setPulse(false), 1500);
-      return () => clearTimeout(id);
+      if (pulseTimer.current) clearTimeout(pulseTimer.current);
+      pulseTimer.current = setTimeout(() => setPulse(false), 1500);
     }
   }, [progress, reducedMotion]);
 
