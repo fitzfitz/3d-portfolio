@@ -19,6 +19,7 @@ import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
+import { cruiseCap } from "../../utils/speedCap";
 import {
   stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
@@ -554,19 +555,23 @@ export default function Spaceship() {
     beamState.dx = nose.x; beamState.dy = nose.y; beamState.dz = nose.z;
     if (!beamState.active) beamState.oreStreak = 0;
 
+    // Caps sit before the drag below; cruiseCap keeps the post-drag speed the
+    // same at every frame rate (the tuning targets are measured at 60 fps).
     if (warpActive) {
-      vel.current.set(nose.x * WARP_SPEED, nose.y * WARP_SPEED, nose.z * WARP_SPEED);
+      const warp = cruiseCap(WARP_SPEED, SPACE_DRAG, dt);
+      vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {
       vel.current.x += nose.x * ACCEL * thrustInput * dt;
       vel.current.y += nose.y * ACCEL * thrustInput * dt;
       vel.current.z += nose.z * ACCEL * thrustInput * dt;
-      if (vel.current.length() > MAX_SPEED) vel.current.normalize().multiplyScalar(MAX_SPEED);
+      const cap = cruiseCap(MAX_SPEED, SPACE_DRAG, dt);
+      if (vel.current.length() > cap) vel.current.normalize().multiplyScalar(cap);
     } else if (braking) {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
     // Reeling toward a shard counts as thrust for station-keeping.
     const reeling = beamState.active && beamState.reel.active;
-    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, MAX_SPEED);
+    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, cruiseCap(MAX_SPEED, SPACE_DRAG, dt));
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
