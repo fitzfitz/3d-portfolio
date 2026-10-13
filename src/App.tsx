@@ -10,6 +10,7 @@ import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
+import LogbookPanel from "./components/layout/LogbookPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
 // `?cv` or no-WebGL visitor never downloads it at all.
@@ -102,6 +103,10 @@ export default function App() {
         openBeaconPicker();
         return;
       }
+      if (e.code === "KeyL" && !s.photoMode && !s.isOrbitLocked) {
+        s.setLogbookOpen(!s.logbookOpen);
+        return;
+      }
       // 1..n jump to each planet in order, n+1 to the contact portal.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
@@ -165,6 +170,7 @@ export default function App() {
       {import.meta.env.DEV && <PerfOverlay />}
 
       {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
+      <LogbookPanel />
       {BEACONS_ENABLED && <BeaconPicker />}
       {!photoMode && !showClassicCV && <TouchControls />}
 
