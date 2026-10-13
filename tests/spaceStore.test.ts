@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight, selectSceneFrozen } from "../src/store/spaceStore";
+import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
+import { CHANGELOG } from "../src/data/changelog";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -11,10 +12,135 @@ beforeEach(() => {
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
+    badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false, logbookLineAt: 0,
   });
 });
 
 describe("spaceStore", () => {
+  it("the logbook and the changelog never stay open together", () => {
+    const s = useSpaceStore.getState();
+    s.setLogbookOpen(true);
+    s.setChangelogOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: true, logbookOpen: false });
+    s.setLogbookOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: false, logbookOpen: true });
+  });
+
+  it("markChangelogSeen stores the newest entry id", () => {
+    useSpaceStore.setState({ changelogSeen: "old" });
+    useSpaceStore.getState().markChangelogSeen();
+    expect(useSpaceStore.getState().changelogSeen).toBe(CHANGELOG[0].id);
+  });
+
+  it("recordBadge records once, persists with the date and announces", async () => {
+    const s = useSpaceStore.getState();
+    s.recordBadge("slingshot");
+    await Promise.resolve();
+    const st = useSpaceStore.getState();
+    expect(st.badges.map((b) => b.id)).toEqual(["slingshot"]);
+    expect(st.badges[0].at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(st.broadcast).toMatchObject({ text: "LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. PRESS L", silent: false });
+  });
+
+  it("recordBadge is a no-op once earned, and for derived or unknown ids", async () => {
+    const s = useSpaceStore.getState();
+    s.recordBadge("comet");
+    await Promise.resolve();
+    const id = useSpaceStore.getState().broadcast?.id;
+    s.recordBadge("comet");
+    s.recordBadge("fuxx");
+    s.recordBadge("shards");
+    s.recordBadge("nope");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().badges).toHaveLength(1);
+    expect(useSpaceStore.getState().broadcast?.id).toBe(id);
+  });
+
+  it("records the contact essential on the first dock at the portal", () => {
+    useSpaceStore.setState({ activeZone: "contact" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["contact"]);
+  });
+
+  it("loadBadges keeps known recordable ids, drops malformed rows and duplicates", () => {
+    expect(loadBadges([{ id: "comet", at: "2026-10-13" }, { id: "comet", at: "2026-10-14" }, { id: "fuxx", at: "x" },
+      { id: "nope", at: "2026-10-13" }, "junk", null, { id: "ring" }])).toEqual([{ id: "comet", at: "2026-10-13" }]);
+    expect(loadBadges("not an array")).toEqual([]);
+  });
+
+  it("setPlumeColor only accepts unlocked colours", () => {
+    const s = useSpaceStore.getState();
+    s.setPlumeColor("slingshot");
+    expect(useSpaceStore.getState().plumeColor).toBe("stock");
+    s.recordBadge("slingshot");
+    s.setPlumeColor("slingshot");
+    expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
+    s.setPlumeColor("nope");
+    expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
+  });
+
+  it("a badge line waits for a fresh broadcast (scan report, lap time) to be read", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("SCAN REPORT // COMET_VISITOR");
+    s.recordBadge("comet");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["comet"]); // recorded at once
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN REPORT // COMET_VISITOR");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/COMET CHASER EARNED/);
+    vi.useRealTimers();
+  });
+
+  it("a badge line also waits for a payoff sent after it in the same frame (lap time)", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.recordBadge("ring");
+    s.sendBroadcast("LAP 0:42 // UNDER PAR");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("LAP 0:42 // UNDER PAR");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
+    vi.useRealTimers();
+  });
+
+  it("logbook lines queue one after another instead of cutting each other off", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.announceLogbook("FIRST");
+    s.announceLogbook("SECOND");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("FIRST");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SECOND");
+    vi.useRealTimers();
+  });
+
+  it("a queued logbook line waits again if another line went out meanwhile", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("LAP 0:42");
+    s.recordBadge("ring");
+    await Promise.resolve();
+    vi.advanceTimersByTime(4000);
+    s.sendBroadcast("TIME TRIAL ABORTED");
+    vi.advanceTimersByTime(600); // the badge's slot arrives
+    expect(useSpaceStore.getState().broadcast?.text).toBe("TIME TRIAL ABORTED");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
+    vi.useRealTimers();
+  });
+
+  it("loadShards keeps unique valid shard indices only", () => {
+    expect(loadShards(null)).toEqual([]);
+    expect(loadShards("abc")).toEqual([]);
+    expect(loadShards([1, 1, 99, -1, "2", 1.5, 3])).toEqual([1, 3]);
+  });
+
+  it("todayStamp formats the local date", () => {
+    expect(todayStamp(new Date(2026, 9, 3))).toBe("2026-10-03");
+  });
+
   it("sendBroadcast marks lines silent only when asked", () => {
     const s = useSpaceStore.getState();
     s.sendBroadcast("SCAN REPORT");

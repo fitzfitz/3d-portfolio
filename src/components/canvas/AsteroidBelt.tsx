@@ -146,6 +146,7 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
         beamState.oreStreak += absorbed;
         const store = useSpaceStore.getState();
         store.setFuelEmpty(flight.fuel <= 0);
+        if (next.crystals > 0) store.recordBadge("ore"); // logbook: Prospector
         soundManager.oreTick();
         // Once per session, the moment the visitor acted: no busy-radio check.
         if (!firstOreAnnounced) {

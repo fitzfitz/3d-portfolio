@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, type WorldEventState } from "../../store/spaceStore";
+import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, worldEventElapsed, type WorldEventState } from "../../store/spaceStore";
 import { planets, SUN_RADIUS } from "../../constants";
 import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent, type DirectorStep, type DirectorInput } from "../../utils/eventDirector";
-import { planCometPass, planConvoy, convoyShipOffsetAt, type Sphere } from "../../utils/worldEvents";
+import { planCometPass, planConvoy, convoyShipOffsetAt, CONVOY_APPROACH_S, CONVOY_ORBIT_S, type Sphere } from "../../utils/worldEvents";
+import { convoySighted } from "../../utils/logbook";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
 import { orbitPosition } from "../../utils/orbits";
@@ -18,6 +19,9 @@ import { fitzDebug } from "../../debug/bridge";
 const COMET_PLANET_PAD =
   Math.max(...planets.map((p) => p.orbit.radius * Math.abs(p.orbit.angularSpeed))) * EVENT_DURATION.comet + 6;
 const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
+/** Convoy ship positions for the logbook sighting check (reused). */
+const sightShips = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0 }));
+const sightOff = { x: 0, y: 0, z: 0 };
 
 /**
  * Turns a director start into a stored event with its target, or null when no
@@ -76,6 +80,7 @@ export default function WorldEventDirector() {
   const lastBroadcast = useRef({ id: 0, at: -Infinity });
   const forced = useRef<WorldEventKind | null>(null);
   const lastAmbient = useRef<number | null>(null);
+  const nextSightAt = useRef(0);
   // Reused every frame so the director step allocates nothing.
   const stepOut = useMemo<DirectorStep>(() => ({ started: null, ended: null }), []);
   const dirInput = useMemo<DirectorInput>(
@@ -123,6 +128,20 @@ export default function WorldEventDirector() {
       const planned = planEvent(step.started, ambientNow);
       if (planned) s.startWorldEvent(planned.state, planned.line);
       else skipEvent(director); // no clear route: retry shortly, as another kind
+    }
+
+    // Logbook: a convoy watched up close during its delivery orbit (twice a second).
+    const conv = s.worldEvent?.convoy;
+    const convElapsed = worldEventElapsed("convoy");
+    if (conv && convElapsed !== null && convElapsed >= CONVOY_APPROACH_S
+      && convElapsed <= CONVOY_APPROACH_S + CONVOY_ORBIT_S && now >= nextSightAt.current) {
+      nextSightAt.current = now + 0.5;
+      const c = bodies[conv.planet];
+      for (let k = 0; k < 3; k++) {
+        convoyShipOffsetAt(sightOff, conv.plan, convElapsed, k as 0 | 1 | 2);
+        sightShips[k].x = c.x + sightOff.x; sightShips[k].y = c.y + sightOff.y; sightShips[k].z = c.z + sightOff.z;
+      }
+      if (convoySighted(flight, sightShips)) s.recordBadge("convoy");
     }
   });
 

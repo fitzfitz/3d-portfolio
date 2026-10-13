@@ -5,11 +5,14 @@ import Experience from "./components/sections/Experience";
 import Skills from "./components/sections/Skills";
 import Career from "./components/sections/Career";
 import Contact from "./components/sections/Contact";
+import Changelog from "./components/sections/Changelog";
 import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
+import LogbookPanel from "./components/layout/LogbookPanel";
+import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
 // `?cv` or no-WebGL visitor never downloads it at all.
@@ -68,6 +71,8 @@ export default function App() {
   const setShowClassicCV = useSpaceStore((s) => s.setShowClassicCV);
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const photoMode = useSpaceStore((s) => s.photoMode);
+  const logbookOpen = useSpaceStore((s) => s.logbookOpen);
+  const changelogOpen = useSpaceStore((s) => s.changelogOpen);
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -100,6 +105,14 @@ export default function App() {
       if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
       if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !s.isOrbitLocked) {
         openBeaconPicker();
+        return;
+      }
+      if (e.code === "KeyL" && !s.photoMode && !s.isOrbitLocked) {
+        s.setLogbookOpen(!s.logbookOpen);
+        return;
+      }
+      if (e.code === "KeyN" && !s.photoMode && !s.isOrbitLocked) {
+        s.setChangelogOpen(!s.changelogOpen);
         return;
       }
       // 1..n jump to each planet in order, n+1 to the contact portal.
@@ -165,8 +178,12 @@ export default function App() {
       {import.meta.env.DEV && <PerfOverlay />}
 
       {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
+      <LogbookPanel />
+      <ChangelogPanel />
       {BEACONS_ENABLED && <BeaconPicker />}
-      {!photoMode && !showClassicCV && <TouchControls />}
+      {/* Hidden while the logbook or patch-notes sheet is open on a phone: the
+          sheet covers them, and unmounting releases any held touch input. */}
+      {!photoMode && !showClassicCV && !logbookOpen && !changelogOpen && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}
       {/* A failed GLB/texture load or a lost WebGL context throws out of the
@@ -421,6 +438,8 @@ export default function App() {
             <Career />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Skills />
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+            <Changelog />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Contact />
           </main>

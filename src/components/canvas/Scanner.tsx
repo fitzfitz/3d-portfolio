@@ -40,6 +40,7 @@ export default function Scanner() {
       if (scanState.progress >= 1) {
         store.sendBroadcast(generateScanReport(near.id));
         soundManager.scanBeep();
+        if (near.id === "comet_visitor") store.recordBadge("comet"); // logbook: Comet chaser
         scanState.progress = 0;
         latched.current = true; // one report per hold
       }

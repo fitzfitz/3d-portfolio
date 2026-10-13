@@ -5,7 +5,7 @@ import {
   type PadAction, type PadFlight,
 } from "../utils/gamepad";
 
-const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · D-PAD JUMP";
+const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · D-PAD JUMP";
 
 /**
  * First pad reporting the W3C standard layout. Flight sticks, wheels and some
@@ -42,6 +42,7 @@ export function useGamepadInput(jumpIds: readonly string[]) {
       const s = useSpaceStore.getState();
       if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
       else if (a.kind === "close") { if (s.isOrbitLocked) s.breakOrbit(); }
+      else if (a.kind === "logbook") { if (!s.photoMode && !s.isOrbitLocked) s.setLogbookOpen(!s.logbookOpen); }
       else if (!s.photoMode) {
         const id = jumpIds[a.index];
         if (id) s.requestJump(id);

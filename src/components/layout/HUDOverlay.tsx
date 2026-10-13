@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower } from "lucide-react";
+import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -13,6 +13,8 @@ import RaceHUD from "./RaceHUD";
 import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import WaypointMarker from "./WaypointMarker";
+import LogbookTracker from "./LogbookTracker";
+import { CHANGELOG, hasUnseen } from "../../data/changelog";
 
 const ZONE_COLORS: Record<string, string> = {
   ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
@@ -52,6 +54,10 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const requestJump = useSpaceStore((s) => s.requestJump);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
+  const changelogSeen = useSpaceStore((s) => s.changelogSeen);
+  const logbookOpen = useSpaceStore((s) => s.logbookOpen);
+  const changelogOpen = useSpaceStore((s) => s.changelogOpen);
+  const notesUnseen = hasUnseen(CHANGELOG[0].id, changelogSeen);
   // Mirrors App's spawn-banner condition. On a phone the banner spans the
   // full width over the radar's spot, and the radar is no use before flying.
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -178,6 +184,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
           DOSSIERS: {visitedDossiers.length}/{planets.length}
         </div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
+        <LogbookTracker />
         <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
         <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
           <div ref={fuelFillRef} data-testid="hud-fuel-bar"
@@ -244,6 +251,16 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
               <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">{pad ? "Y" : "P"}</span>
             </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">LOGBOOK</span>
+              <span className="text-white">{pad ? "X" : "L"}</span>
+            </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">PATCH_NOTES</span>
+              <span className="text-white">N</span>
+            </div>
             {beaconsEnabled && (
               <>
                 <div className="w-[1px] bg-white/5" />
@@ -259,6 +276,21 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
 
       {/* Icon-only on phones: four labelled buttons ran off the screen edge. */}
       <div className="absolute bottom-5 left-4 sm:bottom-10 sm:left-6 flex gap-2 pointer-events-auto">
+        {!isOrbitLocked && <button data-testid="logbook-button" onClick={() => { const s = useSpaceStore.getState(); s.setLogbookOpen(!s.logbookOpen); }}
+          aria-label="Pilot logbook" aria-expanded={logbookOpen}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
+          <BookOpen className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">LOGBOOK</span>
+        </button>}
+        {!isOrbitLocked && <button data-testid="changelog-button" onClick={() => { const s = useSpaceStore.getState(); s.setChangelogOpen(!s.changelogOpen); }}
+          aria-label={notesUnseen ? "Patch notes, new updates" : "Patch notes"} aria-expanded={changelogOpen}
+          className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
+          <ScrollText className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">PATCH_NOTES</span>
+          {notesUnseen && (
+            <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
+          )}
+        </button>}
         {beaconsEnabled && !isOrbitLocked && (
           <button data-testid="beacon-button" onClick={openBeaconPicker}
             aria-label="Drop a beacon"

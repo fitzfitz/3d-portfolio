@@ -214,6 +214,10 @@ class SoundManager {
   oreTick() {
     this.blip("triangle", 1500, 0.035, 0.03);
   }
+  /** Logbook badge earned: bright three-note rise */
+  badge() {
+    [784, 988, 1318].forEach((f, i) => setTimeout(() => this.blip("triangle", f, 0.12, 0.07), i * 70));
+  }
 }
 
 export const soundManager = new SoundManager();

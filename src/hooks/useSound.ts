@@ -30,6 +30,10 @@ export function useSound() {
         (s) => s.isTeleporting,
         (flash) => { if (flash) soundManager.zap(); }
       ),
+      useSpaceStore.subscribe(
+        (s) => s.badges.length,
+        (n, prev) => { if (n > prev) soundManager.badge(); }
+      ),
     ];
     soundManager.startLoop();
 

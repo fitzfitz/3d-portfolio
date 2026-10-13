@@ -73,9 +73,13 @@ function dropTether(t: number): void {
   cur.ring = last.ring; cur.index = last.index; cur.x = last.x; cur.y = last.y; cur.z = last.z;
 }
 
-/** Fuel and ore counter after `absorbed` pebbles. Pure. */
-export function addOre(fuel: number, ore: number, absorbed: number): { fuel: number; ore: number } {
-  return { fuel: Math.min(FUEL_MAX, fuel + absorbed * ORE_FUEL), ore: (ore + absorbed) % ORE_PER_CRYSTAL };
+/** Fuel and ore counter after `absorbed` pebbles, and how many whole crystals' worth just completed. Pure. */
+export function addOre(fuel: number, ore: number, absorbed: number): { fuel: number; ore: number; crystals: number } {
+  return {
+    fuel: Math.min(FUEL_MAX, fuel + absorbed * ORE_FUEL),
+    ore: (ore + absorbed) % ORE_PER_CRYSTAL,
+    crystals: Math.floor((ore + absorbed) / ORE_PER_CRYSTAL),
+  };
 }
 
 /**

@@ -106,3 +106,11 @@ describe("tractor beam on the pad", () => {
     expect(readPadFlight({ axes: [0, 0, 0, 0], buttons }).beam).toBe(true);
   });
 });
+
+describe("logbook on the pad", () => {
+  it("X opens the logbook on its press edge", () => {
+    const press = (...i: number[]) => Array.from({ length: 16 }, (_, k) => i.includes(k));
+    expect(padActions(press(), press(2))).toEqual([{ kind: "logbook" }]);
+    expect(padActions(press(2), press(2))).toEqual([]);
+  });
+});

@@ -31,6 +31,11 @@ describe("addOre", () => {
   it("clamps at a full tank", () => {
     expect(addOre(FUEL_MAX - 0.5, 0, 3).fuel).toBe(FUEL_MAX);
   });
+  it("reports how many whole crystals' worth this call completed", () => {
+    expect(addOre(0, 14, 1).crystals).toBe(0);
+    expect(addOre(0, 15, 1).crystals).toBe(1);
+    expect(addOre(0, 15, 18).crystals).toBe(2);
+  });
 });
 
 describe("stepMining", () => {

@@ -9,12 +9,23 @@ import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
+import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
+import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
+import { CHANGELOG } from "../data/changelog";
+import { SHARDS } from "../data/shards";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * A badge earned in the same moment as its payoff (a scan report, a lap time)
+ * must not cut that line off: RadioChatter's single typewriter line cancels
+ * whatever it is typing. Same delay as the shard-completion fanfare.
+ */
+const BADGE_LINE_HOLD_MS = 3000;
+const BADGE_LINE_DELAY_MS = 4500;
 
 // localStorage can throw (e.g. SecurityError when cookies/storage are blocked) —
 // guard both accesses so a blocked store degrades to in-memory rather than crashing.
@@ -102,6 +113,44 @@ export function wantsResume(loc: { search: string; hash: string } | undefined =
 function loadVisitedDossiers(): string[] {
   const raw = safeGetJSON<unknown>("fitz-dossiers", []);
   return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PLANET_IDS.includes(id)) : [];
+}
+
+/** Local date as YYYY-MM-DD, for the "earned" stamp. */
+export function todayStamp(d: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Stored badges, sanitised: known recordable ids only, a string date, first
+ * occurrence wins. Hand-edited or stale storage must not crash the store or
+ * grant anything.
+ */
+export function loadBadges(raw: unknown): BadgeRecord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BadgeRecord[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const { id, at } = r as { id?: unknown; at?: unknown };
+    if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id)) continue;
+    if (out.some((b) => b.id === id)) continue;
+    out.push({ id, at });
+  }
+  return out;
+}
+
+/**
+ * Stored shard pickups, sanitised: unique integer indices of real shards. A
+ * hand-edited or corrupt value (null, a string) must not crash the store at
+ * import or grant the Shard hunter badge.
+ */
+export function loadShards(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  const out: number[] = [];
+  for (const v of raw) {
+    if (Number.isInteger(v) && v >= 0 && v < SHARDS.length && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 /** Probed once at import: each probe creates a throwaway WebGL context. */
@@ -224,7 +273,8 @@ interface SpaceState {
   cometNear: boolean;
   altitudeWarn: boolean;
   shardsCollected: number[];
-  broadcast: { id: number; text: string; silent: boolean } | null;
+  /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
+  broadcast: { id: number; text: string; silent: boolean; at: number } | null;
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
@@ -287,6 +337,28 @@ interface SpaceState {
   setReducedMotion: (v: boolean, manual?: boolean) => void;
   startWorldEvent: (ev: WorldEventState, line: string) => void;
   endWorldEvent: () => void;
+  /** Logbook badges earned (persisted as fitz-logbook). Dossiers and shards are derived elsewhere. */
+  badges: BadgeRecord[];
+  recordBadge: (id: string) => void;
+  /** Selected plume colour: "stock" or an unlocked badge id (persisted as fitz-plume). */
+  plumeColor: string;
+  setPlumeColor: (id: string) => void;
+  logbookOpen: boolean;
+  setLogbookOpen: (v: boolean) => void;
+  /** When the radio is next free for a logbook line (ms); logbook lines queue rather than cut each other off. */
+  logbookLineAt: number;
+  /**
+   * Announces a logbook line (badge earned, milestone). Decided after the
+   * current frame's broadcasts are out, so a payoff sent in the same frame,
+   * before or after, is read first: a fresh broadcast holds the line 4.5 s,
+   * and logbook lines queue 4.5 s apart.
+   */
+  announceLogbook: (line: string) => void;
+  changelogOpen: boolean;
+  setChangelogOpen: (v: boolean) => void;
+  /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
+  changelogSeen: string;
+  markChangelogSeen: () => void;
 }
 
 // Read once into a module-level const: the two derived fields below must
@@ -303,6 +375,21 @@ const initialReducedMotionQueryMatches = safeGetReducedMotionQueryMatches();
 // decorative clock kept advancing.
 setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches));
 
+const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
+const initialPlume = (() => {
+  const raw = safeGetJSON<unknown>("fitz-plume", "stock");
+  const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])), badges: initialBadges };
+  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
+})();
+
+/** First visit: everything is new, so mark the newest entry seen and show no dot. */
+const initialChangelogSeen = (() => {
+  const raw = safeGetJSON<unknown>("fitz-changelog-seen", null);
+  if (typeof raw === "string") return raw;
+  safeSetJSON("fitz-changelog-seen", CHANGELOG[0].id);
+  return CHANGELOG[0].id;
+})();
+
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get) => ({
     activeZone: null,
@@ -313,6 +400,59 @@ export const useSpaceStore = create<SpaceState>()(
     lowPerfManual: false,
     pendingLowPerf: null,
     worldEvent: null,
+    badges: initialBadges,
+    plumeColor: initialPlume,
+    logbookOpen: false,
+    logbookLineAt: 0,
+    announceLogbook: (line) => {
+      queueMicrotask(() => {
+        const now = Date.now();
+        const fresh = now - (get().broadcast?.at ?? -Infinity) < BADGE_LINE_HOLD_MS;
+        const at = Math.max(fresh ? now + BADGE_LINE_DELAY_MS : now, get().logbookLineAt);
+        set({ logbookLineAt: at + BADGE_LINE_DELAY_MS });
+        // When its slot arrives, a queued line still yields to anything that
+        // went out meanwhile (a race abort, a scan report), up to a few times.
+        const fire = (tries: number, queuedAt: number) => {
+          const last = get().broadcast;
+          const busy = last && last.at > queuedAt && Date.now() - last.at < BADGE_LINE_HOLD_MS;
+          if (busy && tries > 0) { setTimeout(() => fire(tries - 1, Date.now()), BADGE_LINE_DELAY_MS); return; }
+          get().sendBroadcast(line);
+        };
+        if (at <= now) get().sendBroadcast(line);
+        else setTimeout(() => fire(3, now), at - now);
+      });
+    },
+    recordBadge: (id) => {
+      if (!isRecordable(id) || get().badges.some((b) => b.id === id)) return;
+      const next = [...get().badges, { id, at: todayStamp() }];
+      safeSetJSON("fitz-logbook", next);
+      set({ badges: next });
+      const entry = LOGBOOK.find((e) => e.id === id);
+      get().announceLogbook(badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null));
+    },
+    setPlumeColor: (id) => {
+      const s = get();
+      const progress = { visitedDossiers: s.visitedDossiers, shardsCollected: s.shardsCollected, badges: s.badges };
+      if (!plumeAllowed(id, progress, hasPlumeColour) || s.plumeColor === id) return;
+      safeSetJSON("fitz-plume", id);
+      set({ plumeColor: id });
+    },
+    setLogbookOpen: (v) => {
+      if (get().logbookOpen === v) return;
+      set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
+    },
+    changelogOpen: false,
+    changelogSeen: initialChangelogSeen,
+    setChangelogOpen: (v) => {
+      if (get().changelogOpen === v) return;
+      set(v ? { changelogOpen: true, logbookOpen: false } : { changelogOpen: false });
+    },
+    markChangelogSeen: () => {
+      const newest = CHANGELOG[0].id;
+      if (get().changelogSeen === newest) return;
+      safeSetJSON("fitz-changelog-seen", newest);
+      set({ changelogSeen: newest });
+    },
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,
@@ -320,7 +460,7 @@ export const useSpaceStore = create<SpaceState>()(
     isMuted: safeGetMuted(),
     cometNear: false,
     altitudeWarn: false,
-    shardsCollected: safeGetJSON<number[]>("fitz-shards", []),
+    shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
     impactCount: 0,
     scanTarget: null,
@@ -375,6 +515,8 @@ export const useSpaceStore = create<SpaceState>()(
       } else {
         set({ isOrbitLocked: true, isWarping: false });
       }
+      // Logbook essential: docking at the contact portal.
+      if (zone === "contact") get().recordBadge("contact");
     },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
@@ -424,7 +566,7 @@ export const useSpaceStore = create<SpaceState>()(
       set({ shardsCollected: next });
       safeSetJSON("fitz-shards", next);
     },
-    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false } }),
+    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false, at: Date.now() } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
       get().sendBroadcast(line);
