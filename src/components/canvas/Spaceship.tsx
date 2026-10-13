@@ -92,6 +92,8 @@ const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 const PLANET_WELLS: Well[] = planets.map((p) => ({
   x: 0, y: 0, z: 0, g: PLANET_WELL_G, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
 }));
+/** Well radius by planet name, for the per-frame escape-grace check. */
+const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
@@ -572,8 +574,8 @@ export default function Spaceship() {
     const grace = escapeGrace.current;
     if (grace.skip) {
       const gb = bodies[grace.skip];
-      const gp = planets.find((q) => q.name === grace.skip);
-      if (gb && gp) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gp.size * PLANET_WELL_RADIUS_FACTOR);
+      const gr = WELL_RADIUS_BY_NAME.get(grace.skip);
+      if (gb && gr !== undefined) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gr);
       else grace.clear();
     }
     let wellCount = 0;
