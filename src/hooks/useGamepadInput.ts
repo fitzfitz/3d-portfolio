@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { flight, useSpaceStore } from "../store/spaceStore";
+import { flight, useSpaceStore, type SpaceState } from "../store/spaceStore";
 import {
   PAD_NEUTRAL, padActions, padFlightChanges, pressedButtons, readPadFlight,
   type PadAction, type PadFlight,
@@ -15,6 +15,25 @@ const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB 
 function firstPad(): Gamepad | null {
   for (const p of navigator.getGamepads()) if (p?.connected && p.mapping === "standard") return p;
   return null;
+}
+
+type PadStore = Pick<SpaceState,
+  "showClassicCV" | "beaconPickerOpen" | "photoMode" | "isOrbitLocked" | "logbookOpen" |
+  "setPhotoMode" | "breakOrbit" | "setLogbookOpen" | "requestJump">;
+
+/**
+ * One pad button press. Same guards as the keyboard: nothing while the
+ * classic résumé or the beacon picker is up (the picker owns its own keys).
+ */
+export function runPadAction(a: PadAction, s: PadStore, jumpIds: readonly string[]): void {
+  if (s.showClassicCV || s.beaconPickerOpen) return;
+  if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
+  else if (a.kind === "close") { if (s.isOrbitLocked) s.breakOrbit(); }
+  else if (a.kind === "logbook") { if (!s.photoMode && !s.isOrbitLocked) s.setLogbookOpen(!s.logbookOpen); }
+  else if (!s.photoMode) {
+    const id = jumpIds[a.index];
+    if (id) s.requestJump(id);
+  }
 }
 
 /**
@@ -36,17 +55,6 @@ export function useGamepadInput(jumpIds: readonly string[]) {
     const write = (next: PadFlight) => {
       Object.assign(flight.input, padFlightChanges(held, next));
       held = next;
-    };
-
-    const act = (a: PadAction) => {
-      const s = useSpaceStore.getState();
-      if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
-      else if (a.kind === "close") { if (s.isOrbitLocked) s.breakOrbit(); }
-      else if (a.kind === "logbook") { if (!s.photoMode && !s.isOrbitLocked) s.setLogbookOpen(!s.logbookOpen); }
-      else if (!s.photoMode) {
-        const id = jumpIds[a.index];
-        if (id) s.requestJump(id);
-      }
     };
 
     const lost = () => {
@@ -73,7 +81,7 @@ export function useGamepadInput(jumpIds: readonly string[]) {
         write({ ...PAD_NEUTRAL });
       } else {
         write(readPadFlight(pad));
-        if (buttons) for (const a of padActions(buttons, next)) act(a);
+        if (buttons) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState(), jumpIds);
       }
       buttons = next;
       raf = requestAnimationFrame(tick);

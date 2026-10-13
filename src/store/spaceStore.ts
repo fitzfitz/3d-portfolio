@@ -253,7 +253,7 @@ export interface WorldEventState {
   convoy?: { planet: string; plan: ConvoyPlan };
 }
 
-interface SpaceState {
+export interface SpaceState {
   activeZone: string | null;
   isOrbitLocked: boolean;
   isOrbitCooldown: boolean;
