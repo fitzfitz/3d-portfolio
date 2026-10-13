@@ -129,6 +129,7 @@ export default function RingCourse() {
       soundManager.fanfare();
       finishedAt.current = raceClock.now;
       const t = next.time;
+      if (t < 60) s.recordBadge("ring"); // logbook: Ring runner
       const best = s.raceBest;
       const par = t < PAR_SECONDS ? " · UNDER PAR" : "";
       // Close the recording on the finish line itself: the 10 Hz samples

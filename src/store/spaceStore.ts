@@ -17,6 +17,13 @@ const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * A badge earned in the same moment as its payoff (a scan report, a lap time)
+ * must not cut that line off: RadioChatter's single typewriter line cancels
+ * whatever it is typing. Same delay as the shard-completion fanfare.
+ */
+const BADGE_LINE_HOLD_MS = 3000;
+const BADGE_LINE_DELAY_MS = 4500;
 
 // localStorage can throw (e.g. SecurityError when cookies/storage are blocked) —
 // guard both accesses so a blocked store degrades to in-memory rather than crashing.
@@ -250,7 +257,8 @@ interface SpaceState {
   cometNear: boolean;
   altitudeWarn: boolean;
   shardsCollected: number[];
-  broadcast: { id: number; text: string; silent: boolean } | null;
+  /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
+  broadcast: { id: number; text: string; silent: boolean; at: number } | null;
   impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
@@ -363,7 +371,9 @@ export const useSpaceStore = create<SpaceState>()(
       safeSetJSON("fitz-logbook", next);
       set({ badges: next });
       const entry = LOGBOOK.find((e) => e.id === id);
-      get().sendBroadcast(badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null));
+      const line = badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null);
+      if (Date.now() - (get().broadcast?.at ?? -Infinity) < BADGE_LINE_HOLD_MS) setTimeout(() => get().sendBroadcast(line), BADGE_LINE_DELAY_MS);
+      else get().sendBroadcast(line);
     },
     setPlumeColor: (id) => {
       const s = get();
@@ -486,7 +496,7 @@ export const useSpaceStore = create<SpaceState>()(
       set({ shardsCollected: next });
       safeSetJSON("fitz-shards", next);
     },
-    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false } }),
+    sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false, at: Date.now() } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
       get().sendBroadcast(line);

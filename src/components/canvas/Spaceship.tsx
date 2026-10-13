@@ -603,6 +603,7 @@ export default function Spaceship() {
       Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,
       store.race.phase === "running", slingshotOut);
     if (sling.whoosh) soundManager.whoosh();
+    if (sling.whoosh) store.recordBadge("slingshot"); // logbook: Slingshot
     if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
 
     // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so

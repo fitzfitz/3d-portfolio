@@ -60,6 +60,18 @@ describe("spaceStore", () => {
     expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
   });
 
+  it("a badge line waits for a fresh broadcast (scan report, lap time) to be read", () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("SCAN REPORT // COMET_VISITOR");
+    s.recordBadge("comet");
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["comet"]); // recorded at once
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN REPORT // COMET_VISITOR");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/COMET CHASER EARNED/);
+    vi.useRealTimers();
+  });
+
   it("todayStamp formats the local date", () => {
     expect(todayStamp(new Date(2026, 9, 3))).toBe("2026-10-03");
   });
