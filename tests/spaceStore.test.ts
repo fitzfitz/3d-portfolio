@@ -68,6 +68,11 @@ describe("spaceStore", () => {
     expect(loadBadges("not an array")).toEqual([]);
   });
 
+  it("loadBadges drops a known badge whose date is not a YYYY-MM-DD stamp", () => {
+    expect(loadBadges([{ id: "ring", at: "x" }, { id: "comet", at: "" }, { id: "ore", at: "13/10/2026" },
+      { id: "ring", at: "2026-10-13" }])).toEqual([{ id: "ring", at: "2026-10-13" }]);
+  });
+
   it("setPlumeColor only accepts unlocked colours", () => {
     const s = useSpaceStore.getState();
     s.setPlumeColor("slingshot");
