@@ -16,6 +16,7 @@ import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { drainFuel } from "../../utils/fuel";
 import { wrapCoord } from "../../utils/edgeHaze";
 import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
+import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import {
@@ -94,6 +95,8 @@ const PLANET_WELLS: Well[] = planets.map((p) => ({
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
+/** Spark base colour for the current plume (written on plume change, read by the spark loop). */
+const sparkRGB: [number, number, number] = [0.55, 1, 1];
 /** SlingshotWatch result scratch. */
 const slingshotOut = { whoosh: false, line: false };
 /** Total velocity (pilot + gravity) scratch. */
@@ -118,6 +121,7 @@ export default function Spaceship() {
     });
     return engine as THREE.MeshStandardMaterial | null;
   }, [scene]);
+  const engineStockEmissive = useMemo(() => engineMat?.emissive.clone() ?? new THREE.Color("#00f0ff"), [engineMat]);
 
   const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
@@ -303,6 +307,21 @@ export default function Spaceship() {
     }
   };
   const particlesRef = useRef<THREE.Points>(null);
+
+  // Logbook plume colour (spec §5): uniform and CPU colour changes only, once
+  // per change. The hot white core stays; the cool end, sparks, engine light
+  // and nozzle glow take the colour. Stock restores the original cyan.
+  useEffect(() => {
+    const apply = (id: string) => {
+      const hex = (PLUME_COLORS[id] ?? PLUME_COLORS.stock).hex;
+      for (const m of plumeMaterials) (m.uniforms.uColor.value as THREE.Color).set(hex);
+      if (id === "stock") { sparkRGB[0] = 0.55; sparkRGB[1] = 1; sparkRGB[2] = 1; } else sparkBase(hex, sparkRGB);
+      if (engineLightRef.current) engineLightRef.current.color.set(id === "stock" ? "#00f0ff" : hex);
+      if (engineMat) engineMat.emissive.copy(id === "stock" ? engineStockEmissive : new THREE.Color(hex));
+    };
+    apply(useSpaceStore.getState().plumeColor);
+    return useSpaceStore.subscribe((s) => s.plumeColor, apply);
+  }, [plumeMaterials, engineMat, engineStockEmissive]);
 
   const streakCount = 60;
   const streakGeometry = useMemo(() => {
@@ -676,7 +695,7 @@ export default function Spaceship() {
         // Brightness falls with age (distance travelled), pale cyan.
         const age = Math.min(1, (NOZZLE_Z - data[idx + 2]) / reach);
         const b = (1 - age) * (1 - age) * (0.35 + 0.4 * plumePower.current);
-        cols[idx] = 0.55 * b; cols[idx + 1] = 1.0 * b; cols[idx + 2] = 1.0 * b;
+        cols[idx] = sparkRGB[0] * b; cols[idx + 1] = sparkRGB[1] * b; cols[idx + 2] = sparkRGB[2] * b;
       }
       attr.needsUpdate = true;
       colAttr.needsUpdate = true;
