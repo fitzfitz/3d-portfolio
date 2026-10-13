@@ -9,6 +9,8 @@ import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
+import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
+import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
@@ -102,6 +104,30 @@ export function wantsResume(loc: { search: string; hash: string } | undefined =
 function loadVisitedDossiers(): string[] {
   const raw = safeGetJSON<unknown>("fitz-dossiers", []);
   return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PLANET_IDS.includes(id)) : [];
+}
+
+/** Local date as YYYY-MM-DD, for the "earned" stamp. */
+export function todayStamp(d: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Stored badges, sanitised: known recordable ids only, a string date, first
+ * occurrence wins. Hand-edited or stale storage must not crash the store or
+ * grant anything.
+ */
+export function loadBadges(raw: unknown): BadgeRecord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BadgeRecord[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const { id, at } = r as { id?: unknown; at?: unknown };
+    if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id)) continue;
+    if (out.some((b) => b.id === id)) continue;
+    out.push({ id, at });
+  }
+  return out;
 }
 
 /** Probed once at import: each probe creates a throwaway WebGL context. */
@@ -287,6 +313,14 @@ interface SpaceState {
   setReducedMotion: (v: boolean, manual?: boolean) => void;
   startWorldEvent: (ev: WorldEventState, line: string) => void;
   endWorldEvent: () => void;
+  /** Logbook badges earned (persisted as fitz-logbook). Dossiers and shards are derived elsewhere. */
+  badges: BadgeRecord[];
+  recordBadge: (id: string) => void;
+  /** Selected plume colour: "stock" or an unlocked badge id (persisted as fitz-plume). */
+  plumeColor: string;
+  setPlumeColor: (id: string) => void;
+  logbookOpen: boolean;
+  setLogbookOpen: (v: boolean) => void;
 }
 
 // Read once into a module-level const: the two derived fields below must
@@ -303,6 +337,13 @@ const initialReducedMotionQueryMatches = safeGetReducedMotionQueryMatches();
 // decorative clock kept advancing.
 setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches));
 
+const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
+const initialPlume = (() => {
+  const raw = safeGetJSON<unknown>("fitz-plume", "stock");
+  const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: safeGetJSON<number[]>("fitz-shards", []), badges: initialBadges };
+  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
+})();
+
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get) => ({
     activeZone: null,
@@ -313,6 +354,25 @@ export const useSpaceStore = create<SpaceState>()(
     lowPerfManual: false,
     pendingLowPerf: null,
     worldEvent: null,
+    badges: initialBadges,
+    plumeColor: initialPlume,
+    logbookOpen: false,
+    recordBadge: (id) => {
+      if (!isRecordable(id) || get().badges.some((b) => b.id === id)) return;
+      const next = [...get().badges, { id, at: todayStamp() }];
+      safeSetJSON("fitz-logbook", next);
+      set({ badges: next });
+      const entry = LOGBOOK.find((e) => e.id === id);
+      get().sendBroadcast(badgeLine(id, entry?.plume ? PLUME_COLORS[id]?.name ?? null : null));
+    },
+    setPlumeColor: (id) => {
+      const s = get();
+      const progress = { visitedDossiers: s.visitedDossiers, shardsCollected: s.shardsCollected, badges: s.badges };
+      if (!plumeAllowed(id, progress, hasPlumeColour) || s.plumeColor === id) return;
+      safeSetJSON("fitz-plume", id);
+      set({ plumeColor: id });
+    },
+    setLogbookOpen: (v) => { if (get().logbookOpen !== v) set({ logbookOpen: v }); },
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,
@@ -375,6 +435,8 @@ export const useSpaceStore = create<SpaceState>()(
       } else {
         set({ isOrbitLocked: true, isWarping: false });
       }
+      // Logbook essential: docking at the contact portal.
+      if (zone === "contact") get().recordBadge("contact");
     },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },

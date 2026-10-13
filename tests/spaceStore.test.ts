@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight, selectSceneFrozen } from "../src/store/spaceStore";
+import { useSpaceStore, flight, selectSceneFrozen, loadBadges, todayStamp } from "../src/store/spaceStore";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -11,10 +11,59 @@ beforeEach(() => {
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
+    badges: [], plumeColor: "stock", logbookOpen: false,
   });
 });
 
 describe("spaceStore", () => {
+  it("recordBadge records once, persists with the date and announces", () => {
+    const s = useSpaceStore.getState();
+    s.recordBadge("slingshot");
+    const st = useSpaceStore.getState();
+    expect(st.badges.map((b) => b.id)).toEqual(["slingshot"]);
+    expect(st.badges[0].at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(st.broadcast).toMatchObject({ text: "LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. PRESS L", silent: false });
+  });
+
+  it("recordBadge is a no-op once earned, and for derived or unknown ids", () => {
+    const s = useSpaceStore.getState();
+    s.recordBadge("comet");
+    const id = useSpaceStore.getState().broadcast?.id;
+    s.recordBadge("comet");
+    s.recordBadge("fuxx");
+    s.recordBadge("shards");
+    s.recordBadge("nope");
+    expect(useSpaceStore.getState().badges).toHaveLength(1);
+    expect(useSpaceStore.getState().broadcast?.id).toBe(id);
+  });
+
+  it("records the contact essential on the first dock at the portal", () => {
+    useSpaceStore.setState({ activeZone: "contact" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["contact"]);
+  });
+
+  it("loadBadges keeps known recordable ids, drops malformed rows and duplicates", () => {
+    expect(loadBadges([{ id: "comet", at: "2026-10-13" }, { id: "comet", at: "2026-10-14" }, { id: "fuxx", at: "x" },
+      { id: "nope", at: "2026-10-13" }, "junk", null, { id: "ring" }])).toEqual([{ id: "comet", at: "2026-10-13" }]);
+    expect(loadBadges("not an array")).toEqual([]);
+  });
+
+  it("setPlumeColor only accepts unlocked colours", () => {
+    const s = useSpaceStore.getState();
+    s.setPlumeColor("slingshot");
+    expect(useSpaceStore.getState().plumeColor).toBe("stock");
+    s.recordBadge("slingshot");
+    s.setPlumeColor("slingshot");
+    expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
+    s.setPlumeColor("nope");
+    expect(useSpaceStore.getState().plumeColor).toBe("slingshot");
+  });
+
+  it("todayStamp formats the local date", () => {
+    expect(todayStamp(new Date(2026, 9, 3))).toBe("2026-10-03");
+  });
+
   it("sendBroadcast marks lines silent only when asked", () => {
     const s = useSpaceStore.getState();
     s.sendBroadcast("SCAN REPORT");
