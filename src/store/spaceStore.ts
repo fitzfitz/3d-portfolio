@@ -410,8 +410,16 @@ export const useSpaceStore = create<SpaceState>()(
         const fresh = now - (get().broadcast?.at ?? -Infinity) < BADGE_LINE_HOLD_MS;
         const at = Math.max(fresh ? now + BADGE_LINE_DELAY_MS : now, get().logbookLineAt);
         set({ logbookLineAt: at + BADGE_LINE_DELAY_MS });
+        // When its slot arrives, a queued line still yields to anything that
+        // went out meanwhile (a race abort, a scan report), up to a few times.
+        const fire = (tries: number, queuedAt: number) => {
+          const last = get().broadcast;
+          const busy = last && last.at > queuedAt && Date.now() - last.at < BADGE_LINE_HOLD_MS;
+          if (busy && tries > 0) { setTimeout(() => fire(tries - 1, Date.now()), BADGE_LINE_DELAY_MS); return; }
+          get().sendBroadcast(line);
+        };
         if (at <= now) get().sendBroadcast(line);
-        else setTimeout(() => get().sendBroadcast(line), at - now);
+        else setTimeout(() => fire(3, now), at - now);
       });
     },
     recordBadge: (id) => {

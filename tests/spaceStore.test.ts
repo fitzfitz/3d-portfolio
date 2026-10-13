@@ -116,6 +116,21 @@ describe("spaceStore", () => {
     vi.useRealTimers();
   });
 
+  it("a queued logbook line waits again if another line went out meanwhile", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("LAP 0:42");
+    s.recordBadge("ring");
+    await Promise.resolve();
+    vi.advanceTimersByTime(4000);
+    s.sendBroadcast("TIME TRIAL ABORTED");
+    vi.advanceTimersByTime(600); // the badge's slot arrives
+    expect(useSpaceStore.getState().broadcast?.text).toBe("TIME TRIAL ABORTED");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
+    vi.useRealTimers();
+  });
+
   it("loadShards keeps unique valid shard indices only", () => {
     expect(loadShards(null)).toEqual([]);
     expect(loadShards("abc")).toEqual([]);
