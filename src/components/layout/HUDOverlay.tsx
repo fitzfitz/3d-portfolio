@@ -13,6 +13,7 @@ import RaceHUD from "./RaceHUD";
 import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import WaypointMarker from "./WaypointMarker";
+import LogbookTracker from "./LogbookTracker";
 
 const ZONE_COLORS: Record<string, string> = {
   ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
@@ -178,6 +179,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
           DOSSIERS: {visitedDossiers.length}/{planets.length}
         </div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
+        <LogbookTracker />
         <div ref={fuelLabelRef} data-testid="hud-fuel-label">WARP.FUEL: 100%</div>
         <div className="w-32 h-1 rounded-full bg-white/10 overflow-hidden">
           <div ref={fuelFillRef} data-testid="hud-fuel-bar"

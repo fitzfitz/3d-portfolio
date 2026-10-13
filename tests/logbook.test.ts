@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   LOGBOOK, entryDone, logbookCount, nextGoal, essentialsDone, allDone, isRecordable,
-  badgeLine, convoySighted, plumeAllowed, type LogbookProgress,
+  badgeLine, convoySighted, plumeAllowed, milestoneFor, type LogbookProgress,
 } from "../src/utils/logbook";
 import projects from "../src/data/projects.json";
 
@@ -96,5 +96,22 @@ describe("plumeAllowed", () => {
   it("rejects unknown ids and essentials", () => {
     expect(plumeAllowed("contact", withBadges("contact"), () => true)).toBe(false);
     expect(plumeAllowed("nope", empty, () => true)).toBe(false);
+  });
+});
+
+describe("milestoneFor", () => {
+  const essentials: LogbookProgress = { ...withBadges("contact"), visitedDossiers: projects.map((p) => p.id) };
+  const all: LogbookProgress = {
+    ...withBadges("contact", "slingshot", "comet", "ring", "ore", "convoy"),
+    visitedDossiers: projects.map((p) => p.id), shardsCollected: [1, 2, 3],
+  };
+  it("fires on the transition into essentials-done and into all-done", () => {
+    expect(milestoneFor(withBadges("contact"), essentials)).toBe("essentials");
+    expect(milestoneFor({ ...all, badges: all.badges.slice(0, -1) }, all)).toBe("all");
+  });
+  it("fires no milestone for progress that was already there", () => {
+    expect(milestoneFor(essentials, essentials)).toBeNull();
+    expect(milestoneFor(all, all)).toBeNull();
+    expect(milestoneFor(empty, withBadges("comet"))).toBeNull();
   });
 });

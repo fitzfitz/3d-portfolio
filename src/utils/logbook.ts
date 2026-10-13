@@ -93,3 +93,10 @@ export function plumeAllowed(id: string, p: LogbookProgress, hasColour: (id: str
   const e = LOGBOOK.find((x) => x.id === id);
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }
+
+/** The milestone a progress change crosses (everything-done wins); null if none was newly crossed. */
+export function milestoneFor(prev: LogbookProgress, next: LogbookProgress): "essentials" | "all" | null {
+  if (allDone(next) && !allDone(prev)) return "all";
+  if (essentialsDone(next) && !essentialsDone(prev)) return "essentials";
+  return null;
+}
