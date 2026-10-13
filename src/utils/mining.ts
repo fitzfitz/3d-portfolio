@@ -91,6 +91,20 @@ export function oreReadout(ore: number): string {
 }
 
 /**
+ * The first-ore radio line (spec §6.4): once per session, armed by the first
+ * absorb and held, not dropped, while the radio is busy or a race runs.
+ */
+export class FirstOreLine {
+  private state: "idle" | "pending" | "done" = "idle";
+  update(mined: boolean, radioBusy: boolean, raceRunning: boolean): boolean {
+    if (this.state === "idle" && mined) this.state = "pending";
+    if (this.state !== "pending" || radioBusy || raceRunning) return false;
+    this.state = "done";
+    return true;
+  }
+}
+
+/**
  * One frame: drops tethers when the beam is off or they fall behind, grabs the
  * nearest in-cone pebble when a slot is free and the grab gate allows, pulls
  * every tether toward the ship and absorbs those that arrive. Returns how many

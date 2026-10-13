@@ -8,7 +8,8 @@ import {
   toRingLocal, nearRing, stepRock, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../../utils/beltPush";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
-import { registerRing, pebbleWorld, isTethered, regrowScale, stepMining, miningState, tetherPos, addOre } from "../../utils/mining";
+import { registerRing, pebbleWorld, isTethered, regrowScale, stepMining, miningState, tetherPos, addOre, FirstOreLine } from "../../utils/mining";
+import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { beamState } from "../../store/beamState";
 import { soundManager } from "../../audio/soundManager";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
@@ -25,7 +26,8 @@ const shipLocal = { x: 0, y: 0, z: 0 };
 /** Tether position scratch (mining). */
 const _tp = { x: 0, y: 0, z: 0 };
 /** Module-level so it survives the classic-résumé remount (like FuelCrystals' ventedAnnounced). */
-let firstOreAnnounced = false;
+const firstOreLine = new FirstOreLine();
+const lastBroadcast = { id: 0, at: -Infinity };
 const oreLines = new ChatterScheduler(chatterPools);
 
 /** Deterministic PRNG so the belt is identical every load. */
@@ -148,11 +150,15 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
         store.setFuelEmpty(flight.fuel <= 0);
         if (next.crystals > 0) store.recordBadge("ore"); // logbook: Prospector
         soundManager.oreTick();
-        // Once per session, the moment the visitor acted: no busy-radio check.
-        if (!firstOreAnnounced) {
-          firstOreAnnounced = true;
-          store.sendBroadcast(oreLines.pick("ore"), { silent: true });
-        }
+      }
+      // First-ore line: same busy-radio and race hold as the other pools.
+      // Read the store fresh, so a badge line sent just above counts as busy.
+      const radio = useSpaceStore.getState();
+      const sec = performance.now() / 1000;
+      const bid = radio.broadcast?.id ?? 0;
+      if (bid !== lastBroadcast.id) { lastBroadcast.id = bid; lastBroadcast.at = sec; }
+      if (firstOreLine.update(absorbed > 0, sec - lastBroadcast.at < RADIO_BUSY_S, radio.race.phase === "running")) {
+        radio.sendBroadcast(oreLines.pick("ore"), { silent: true });
       }
     }
   });
