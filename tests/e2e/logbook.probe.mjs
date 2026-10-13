@@ -106,6 +106,14 @@ async function phone(page, checks) {
     return r.width > 0 && r.height > 0 ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null;
   }, id);
   checks.check("phone: the tracker shows", !!(await rect("logbook-tracker")));
+  // The radar must sit below the HUD text column (it used to cover the fuel label).
+  // It hides while the spawn banner is up, so leave the pad first.
+  await page.evaluate(() => { window.__fitz.teleport(150, 60, 150); window.__fitz.setAttitude(0, 0); });
+  await settle(page, 800);
+  const radar = await rect("radar");
+  const fuel = await rect("hud-fuel-bar");
+  checks.check("phone: the radar sits below the HUD text column", !!radar && !!fuel && radar.t >= fuel.b,
+    JSON.stringify({ radarTop: radar?.t, fuelBottom: fuel?.b }));
   checks.check("phone: the logbook button shows", !!(await rect("logbook-button")));
   await page.evaluate(() => window.__fitz.store.getState().setLogbookOpen(true));
   await settle(page, 400);

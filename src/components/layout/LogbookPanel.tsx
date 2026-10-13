@@ -68,12 +68,12 @@ export default function LogbookPanel() {
 
   return (
     <div role="dialog" aria-modal="false" aria-labelledby="logbook-title" data-testid="logbook-panel"
-      className="fixed z-[55] pointer-events-auto font-mono text-[10px] glass-card bg-black/90 border border-white/10 overflow-y-auto
+      className="fixed z-[55] pointer-events-auto font-mono text-[10px] bg-[#07051a] shadow-2xl shadow-black/60 border border-white/10 overflow-y-auto
         inset-x-3 bottom-3 max-h-[70vh] rounded-2xl px-4 pb-4
         sm:inset-x-auto sm:right-6 sm:top-24 sm:bottom-auto sm:w-[380px] sm:max-h-[calc(100vh-8rem)]">
       {/* Sticky header: above the HUD (z-55 > HUD z-50), so its close button is
           always tappable, on phones too. */}
-      <div className="sticky top-0 -mx-4 px-4 pt-4 pb-3 mb-1 bg-black/95 flex items-center justify-between gap-3">
+      <div className="sticky top-0 -mx-4 px-4 pt-4 pb-3 mb-1 bg-[#07051a] flex items-center justify-between gap-3">
         <h2 id="logbook-title" ref={headingRef} tabIndex={-1} className="text-primary text-xs outline-none">PILOT LOGBOOK</h2>
         <span className="ml-auto text-white/60">{done} / {total}</span>
         <button type="button" data-testid="logbook-close" aria-label="Close logbook"
