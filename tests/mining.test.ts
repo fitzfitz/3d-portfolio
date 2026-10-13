@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  registerRing, pebbleWorld, stepMining, tetherCount, isAbsorbed, regrowScale, addOre, resetMining,
+  registerRing, pebbleWorld, stepMining, tetherCount, isAbsorbed, regrowScale, addOre, oreReadout, resetMining,
   ORE_PER_CRYSTAL, ORE_FUEL, PEBBLE_REGROW_S, PEBBLE_GRAB_INTERVAL,
 } from "../src/utils/mining";
 import { beamState } from "../src/store/beamState";
@@ -35,6 +35,16 @@ describe("addOre", () => {
     expect(addOre(0, 14, 1).crystals).toBe(0);
     expect(addOre(0, 15, 1).crystals).toBe(1);
     expect(addOre(0, 15, 18).crystals).toBe(2);
+  });
+});
+
+describe("oreReadout", () => {
+  it("shows the completing pebble as 16/16, not 0/16", () => {
+    expect(oreReadout(addOre(0, 15, 1).ore)).toBe(`ORE ${ORE_PER_CRYSTAL}/${ORE_PER_CRYSTAL}`);
+  });
+  it("shows a part-filled counter as is", () => {
+    expect(oreReadout(addOre(0, 0, 1).ore)).toBe(`ORE 1/${ORE_PER_CRYSTAL}`);
+    expect(oreReadout(15)).toBe(`ORE 15/${ORE_PER_CRYSTAL}`);
   });
 });
 

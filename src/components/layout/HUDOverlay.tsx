@@ -5,7 +5,7 @@ import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { beamState } from "../../store/beamState";
-import { ORE_PER_CRYSTAL } from "../../utils/mining";
+import { oreReadout } from "../../utils/mining";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
@@ -110,7 +110,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (oreRef.current) {
         const show = performance.now() - beamState.oreAt < 2000;
         oreRef.current.style.display = show ? "" : "none";
-        if (show) oreRef.current.textContent = `ORE ${beamState.ore}/${ORE_PER_CRYSTAL}`;
+        if (show) oreRef.current.textContent = oreReadout(beamState.ore);
       }
       for (const p of planets) {
         const el = planetRowRefs.current[p.name];
