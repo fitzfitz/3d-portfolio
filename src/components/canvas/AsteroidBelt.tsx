@@ -5,7 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { useSpaceStore, flight } from "../../store/spaceStore";
 import { decay } from "../../utils/reactions";
 import {
-  toRingLocal, nearRing, stepRock, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
+  toRingLocal, nearRing, stepRock, holdAt, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../../utils/beltPush";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { registerRing, pebbleWorld, isTethered, regrowScale, stepMining, miningState, tetherPos, addOre, FirstOreLine } from "../../utils/mining";
@@ -109,7 +109,9 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
       const j = i * 3;
       // A tethered pebble is pulled by mining.ts in world space; it stops
       // following its orbit and the belt's push until absorbed or released.
-      if (react && !isTethered(ring, i)) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
+      // With reduced motion `ship` is null: no push, but a released pebble
+      // still eases home instead of staying where the beam let go.
+      if (!isTethered(ring, i)) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
       const lx = x + disp[j], ly = y + disp[j + 1], lz = z + disp[j + 2];
       // Ring-local -> world (the group rotates by `tilt` about X).
       world[j] = lx; world[j + 1] = c * ly - s * lz; world[j + 2] = s * ly + c * lz;
@@ -124,12 +126,17 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
     if (count < total) world.fill(NaN, count * 3);
 
     // Tethered pebbles draw where the beam has pulled them (world -> ring-local).
+    // The offset from their orbit slot goes into `disp`, so on release they
+    // ease home from here rather than snapping back.
     for (let k = 0; k < miningState.tetherCount; k++) {
       const tt = miningState.tethers[k];
       if (tt.ring !== ring || tt.index >= count) continue;
       tetherPos(k, _tp);
       const rk = rocks[tt.index];
       dummy.position.set(_tp.x, c * _tp.y + s * _tp.z, -s * _tp.y + c * _tp.z);
+      const a = rk.phase + t * rk.speed;
+      holdAt(disp, tt.index, Math.cos(a) * rk.radius, rk.y, Math.sin(a) * rk.radius,
+        dummy.position.x, dummy.position.y, dummy.position.z);
       dummy.rotation.set(rk.phase + t * rk.spinX, t * rk.spinY, t * rk.spinZ);
       dummy.scale.setScalar(rk.scale);
       dummy.updateMatrix();

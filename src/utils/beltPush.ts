@@ -57,3 +57,16 @@ export function stepRock(
   disp[j + 1] = ty + (disp[j + 1] - ty) * k;
   disp[j + 2] = tz + (disp[j + 2] - tz) * k;
 }
+
+/**
+ * Sets rock `i`'s displacement so its orbit position (rx, ry, rz) plus the
+ * displacement lands on (px, py, pz), all ring-local. Used while the tractor
+ * beam holds a pebble, so on release stepRock eases it home from there
+ * instead of it snapping back to its slot.
+ */
+export function holdAt(
+  disp: Float32Array, i: number, rx: number, ry: number, rz: number, px: number, py: number, pz: number,
+): void {
+  const j = i * 3;
+  disp[j] = px - rx; disp[j + 1] = py - ry; disp[j + 2] = pz - rz;
+}
