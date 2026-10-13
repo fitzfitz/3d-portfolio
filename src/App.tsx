@@ -69,6 +69,7 @@ export default function App() {
   const setShowClassicCV = useSpaceStore((s) => s.setShowClassicCV);
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const photoMode = useSpaceStore((s) => s.photoMode);
+  const logbookOpen = useSpaceStore((s) => s.logbookOpen);
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -172,7 +173,9 @@ export default function App() {
       {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
       <LogbookPanel />
       {BEACONS_ENABLED && <BeaconPicker />}
-      {!photoMode && !showClassicCV && <TouchControls />}
+      {/* Hidden while a logbook sheet is open on a phone: the sheet covers them,
+          and unmounting releases any held touch input. */}
+      {!photoMode && !showClassicCV && !logbookOpen && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}
       {/* A failed GLB/texture load or a lost WebGL context throws out of the
