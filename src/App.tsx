@@ -11,6 +11,7 @@ import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
 import LogbookPanel from "./components/layout/LogbookPanel";
+import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
 // `?cv` or no-WebGL visitor never downloads it at all.
@@ -70,6 +71,7 @@ export default function App() {
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const logbookOpen = useSpaceStore((s) => s.logbookOpen);
+  const changelogOpen = useSpaceStore((s) => s.changelogOpen);
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -106,6 +108,10 @@ export default function App() {
       }
       if (e.code === "KeyL" && !s.photoMode && !s.isOrbitLocked) {
         s.setLogbookOpen(!s.logbookOpen);
+        return;
+      }
+      if (e.code === "KeyN" && !s.photoMode && !s.isOrbitLocked) {
+        s.setChangelogOpen(!s.changelogOpen);
         return;
       }
       // 1..n jump to each planet in order, n+1 to the contact portal.
@@ -172,10 +178,11 @@ export default function App() {
 
       {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
       <LogbookPanel />
+      <ChangelogPanel />
       {BEACONS_ENABLED && <BeaconPicker />}
-      {/* Hidden while a logbook sheet is open on a phone: the sheet covers them,
-          and unmounting releases any held touch input. */}
-      {!photoMode && !showClassicCV && !logbookOpen && <TouchControls />}
+      {/* Hidden while the logbook or patch-notes sheet is open on a phone: the
+          sheet covers them, and unmounting releases any held touch input. */}
+      {!photoMode && !showClassicCV && !logbookOpen && !changelogOpen && <TouchControls />}
 
       {/* Persistent WebGL space Flight Canvas — always rendered, even in photo mode */}
       {/* A failed GLB/texture load or a lost WebGL context throws out of the

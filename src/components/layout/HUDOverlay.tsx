@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen } from "lucide-react";
+import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -14,6 +14,7 @@ import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
+import { CHANGELOG, hasUnseen } from "../../data/changelog";
 
 const ZONE_COLORS: Record<string, string> = {
   ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
@@ -53,6 +54,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const requestJump = useSpaceStore((s) => s.requestJump);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
+  const changelogSeen = useSpaceStore((s) => s.changelogSeen);
+  const notesUnseen = hasUnseen(CHANGELOG[0].id, changelogSeen);
   // Mirrors App's spawn-banner condition. On a phone the banner spans the
   // full width over the radar's spot, and the radar is no use before flying.
   const sceneReady = useSpaceStore((s) => s.sceneReady);
@@ -251,6 +254,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
               <span className="text-white/45">LOGBOOK</span>
               <span className="text-white">{pad ? "X" : "L"}</span>
             </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">PATCH_NOTES</span>
+              <span className="text-white">N</span>
+            </div>
             {beaconsEnabled && (
               <>
                 <div className="w-[1px] bg-white/5" />
@@ -271,6 +279,15 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <BookOpen className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">LOGBOOK</span>
+        </button>
+        <button data-testid="changelog-button" onClick={() => useSpaceStore.getState().setChangelogOpen(true)}
+          aria-label={notesUnseen ? "Open patch notes, new updates" : "Open patch notes"}
+          className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
+          <ScrollText className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">PATCH_NOTES</span>
+          {notesUnseen && (
+            <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
+          )}
         </button>
         {beaconsEnabled && !isOrbitLocked && (
           <button data-testid="beacon-button" onClick={openBeaconPicker}
