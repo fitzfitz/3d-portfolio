@@ -163,3 +163,52 @@ All unit tests, `tsc -b`, lint unchanged, the full e2e suite, a fresh whole-bran
 | The panel covers HUD or touch controls on phones | e2e geometry check (§6.2 item 7) and a phone screenshot |
 | A hook fires per frame and spams `recordBadge` | `recordBadge` is change-guarded and a unit test pins it; hooks sit on discrete events |
 | Gamepad X conflicts with a future binding | Documented in the gamepad mapping comment and the controller-linked line |
+
+## 8. Changelog (patch notes)
+
+Added 2026-10-13, approved in chat; ships in the same branch and PR as the logbook.
+
+### 8.1 Intent
+
+Visitors and recruiters can see what shipped, and why. The changelog starts with **October 2026**: PRs #1–#17, plus the logbook as #18. Each item answers **what / why / when / how**.
+
+### 8.2 Content: `src/data/changelog.ts`
+
+- `ChangelogEntry = { id: string; date: "YYYY-MM-DD"; pr: number; title: string; what: string; why: string; how: string }`; `CHANGELOG: readonly ChangelogEntry[]`, newest first.
+- **When** is the `date` plus the PR number, which links to `https://github.com/fitzfitz/3d-portfolio/pull/<pr>`.
+- Written for visitors, not developers: plain language, no file or function names. Length caps: `what` and `why` ≤ 220 characters, `how` ≤ 240, `title` 1–4 words.
+- Each future feature PR adds its own entry in the same PR.
+
+### 8.3 In-game panel: `src/components/layout/ChangelogPanel.tsx`
+
+- Opened by a **PATCH NOTES** button in the HUD button row (next to LOGBOOK) and the **N** key. N follows the same rules as L: ignored in editable fields, with chords, on the résumé, in photo mode, while docked, and while the beacon picker is open.
+- A non-modal sheet styled like the logbook. Opening either sheet closes the other.
+- Each entry shows its title, then labelled lines: **WHAT**, **WHY**, **WHEN** (`2026-10-13 · PR #17`, the PR part a link) and **HOW**.
+- Same accessibility as the logbook: `role="dialog"`, `aria-modal="false"`, focus to the heading on open and back on close, Esc closes, Tab reaches everything.
+- **NEW dot:** stored as `fitz-changelog-seen`, the newest entry id the visitor has seen.
+  - On a **first visit** (no stored value) it is set silently to the newest id, so first-timers get no dot.
+  - A **returning** visitor whose stored id differs from the newest sees a dot on the button.
+  - Opening the panel stores the newest id and clears the dot.
+
+### 8.4 Résumé section: `src/components/sections/Changelog.tsx`
+
+- The classic résumé gets a **Changelog** section (`id="changelog"`) between Skills and Contact, following the Career section's layout. It shows the same entries newest first, each with the WHAT / WHY / WHEN / HOW labels.
+- A **Changelog** link is added to the résumé navbar.
+
+### 8.5 Store
+
+`changelogOpen` and `setChangelogOpen(v)`. Opening it sets `logbookOpen` false, and opening the logbook sets `changelogOpen` false. `changelogSeen: string` and `markChangelogSeen()`.
+
+### 8.6 Testing
+
+- **Unit (`tests/changelog.test.ts`):**
+  - every entry has valid ISO dates, newest first, unique ids, a positive PR number, and all fields non-empty and within their caps;
+  - every PR from 1 to the newest appears at most once;
+  - the seen rule `hasUnseen(newestId, seen)`.
+- **Store:** `changelogOpen` and `logbookOpen` are mutually exclusive; the first visit stores the newest id; `markChangelogSeen` stores it.
+- **e2e (in the logbook probe):**
+  - the PATCH NOTES button and N open the panel, with focus on the heading;
+  - a returning visitor with an older seen id gets the dot, and opening the panel clears it;
+  - opening the logbook closes the changelog;
+  - the résumé renders a Changelog section with every entry;
+  - on a phone, the open panel does not cover the flight buttons.
