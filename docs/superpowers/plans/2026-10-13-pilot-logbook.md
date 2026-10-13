@@ -1268,12 +1268,466 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Verification bar and real-browser pass
+### Task 9: Changelog data and seen state
+
+**Files:**
+- Create: `src/data/changelog.ts`
+- Modify: `src/store/spaceStore.ts` (`changelogOpen`, `changelogSeen`, mutual exclusion with the logbook)
+- Test: `tests/changelog.test.ts`, `tests/spaceStore.test.ts`
+
+**Interfaces:**
+- Produces: `interface ChangelogEntry { id: string; date: string; pr: number; title: string; what: string; why: string; how: string }`; `CHANGELOG: readonly ChangelogEntry[]` (newest first); `PR_URL = "https://github.com/fitzfitz/3d-portfolio/pull/"`; `hasUnseen(newestId: string, seen: string): boolean`. Store: `changelogOpen: boolean`, `setChangelogOpen(v: boolean): void`, `changelogSeen: string`, `markChangelogSeen(): void`; `setLogbookOpen(true)` now also closes the changelog and vice versa.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/changelog.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { CHANGELOG, hasUnseen, PR_URL } from "../src/data/changelog";
+
+describe("CHANGELOG", () => {
+  it("is newest first with valid ISO dates", () => {
+    for (const e of CHANGELOG) expect(e.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    for (let i = 1; i < CHANGELOG.length; i++) expect(CHANGELOG[i - 1].date >= CHANGELOG[i].date).toBe(true);
+  });
+  it("has unique ids that start with their date, and unique positive PR numbers", () => {
+    expect(new Set(CHANGELOG.map((e) => e.id)).size).toBe(CHANGELOG.length);
+    for (const e of CHANGELOG) expect(e.id.startsWith(e.date)).toBe(true);
+    const prs = CHANGELOG.map((e) => e.pr);
+    expect(new Set(prs).size).toBe(prs.length);
+    for (const n of prs) expect(Number.isInteger(n) && n > 0).toBe(true);
+  });
+  it("answers what, why and how in short plain text", () => {
+    for (const e of CHANGELOG) {
+      expect(e.title.split(" ").length, e.id).toBeLessThanOrEqual(4);
+      expect(e.what.length, `${e.id} what`).toBeGreaterThan(0);
+      expect(e.what.length, `${e.id} what`).toBeLessThanOrEqual(220);
+      expect(e.why.length, `${e.id} why`).toBeGreaterThan(0);
+      expect(e.why.length, `${e.id} why`).toBeLessThanOrEqual(220);
+      expect(e.how.length, `${e.id} how`).toBeGreaterThan(0);
+      expect(e.how.length, `${e.id} how`).toBeLessThanOrEqual(240);
+    }
+  });
+  it("starts with October 2026 and covers every PR from #1 up", () => {
+    expect(CHANGELOG.at(-1)!.date >= "2026-10-01").toBe(true);
+    const prs = new Set(CHANGELOG.map((e) => e.pr));
+    for (let n = 1; n <= Math.max(...prs); n++) expect(prs.has(n), `PR #${n}`).toBe(true);
+  });
+  it("links PRs on GitHub", () => {
+    expect(PR_URL).toBe("https://github.com/fitzfitz/3d-portfolio/pull/");
+  });
+});
+
+describe("hasUnseen", () => {
+  it("is true only when the newest entry differs from the one last seen", () => {
+    expect(hasUnseen("b", "a")).toBe(true);
+    expect(hasUnseen("b", "b")).toBe(false);
+  });
+});
+```
+
+Append to `tests/spaceStore.test.ts`, inside `describe("spaceStore")` (and add `changelogOpen: false,` to the `beforeEach` literal):
+
+```ts
+  it("the logbook and the changelog never stay open together", () => {
+    const s = useSpaceStore.getState();
+    s.setLogbookOpen(true);
+    s.setChangelogOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: true, logbookOpen: false });
+    s.setLogbookOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: false, logbookOpen: true });
+  });
+
+  it("markChangelogSeen stores the newest entry id", () => {
+    useSpaceStore.setState({ changelogSeen: "old" });
+    useSpaceStore.getState().markChangelogSeen();
+    expect(useSpaceStore.getState().changelogSeen).toBe(CHANGELOG[0].id);
+  });
+```
+
+(import `CHANGELOG` from `../src/data/changelog`).
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `npx vitest run tests/changelog.test.ts tests/spaceStore.test.ts`
+Expected: FAIL (module not found / missing members).
+
+- [ ] **Step 3: Implement `src/data/changelog.ts`**
+
+```ts
+/**
+ * Patch notes (spec §8): one entry per shipped update, newest first, from
+ * October 2026. Written for visitors: what changed, why, and how, in plain
+ * language. WHEN is the date plus the PR. Each feature PR adds its entry.
+ * tests/changelog.test.ts guards the format.
+ */
+export interface ChangelogEntry { id: string; date: string; pr: number; title: string; what: string; why: string; how: string }
+
+export const PR_URL = "https://github.com/fitzfitz/3d-portfolio/pull/";
+
+export const CHANGELOG: readonly ChangelogEntry[] = [
+  { id: "2026-10-13-pilot-logbook", date: "2026-10-13", pr: 18, title: "Pilot Logbook", what: "A logbook (L) tracks the essentials, the three project dossiers and the contact portal, plus six flight badges that each unlock an engine-plume colour. These patch notes are new too.", why: "There was plenty to do but nothing tied it together, and a visitor in a hurry had no clear path to the parts of the portfolio that matter most.", how: "Progress is derived from what the site already remembers, plus a small saved badge list. Plume colours only change existing shader values, so they cost nothing extra to render." },
+  { id: "2026-10-13-flight-feel", date: "2026-10-13", pr: 17, title: "Flight Feel", what: "Planets and the sun now pull on your ship, so you can slingshot past them. A tractor beam (F) reels in crystals and mines belt pebbles, and the edge of space is a quiet nebula haze.", why: "Flying was point-and-thrust: nothing bent your path, and the edge of the map announced itself with a flash and a zap. Space should push back a little.", how: "Gravity is a separate model with its own momentum, layered on the pilot's damped velocity, which had been erasing plain gravity. Safeguards zero it on jumps, warp and docking." },
+  { id: "2026-10-12-world-events", date: "2026-10-12", pr: 16, title: "World Events", what: "About 45 seconds in, and every minute or two after, something happens: a comet passes close by, the sun flares, or a cargo convoy flies in formation to the nearest planet.", why: "A visitor who only hovers and reads saw a beautiful but static scene. The universe needed a heartbeat that does not depend on how well you fly.", how: "A seeded event director picks what happens next on the planets' own clock, and checks each comet or convoy route against every planet's drift before it starts. Event objects stay loaded but hidden." },
+  { id: "2026-10-12-smoother-startup", date: "2026-10-12", pr: 15, title: "Smoother Startup", what: "Fixed a race that sometimes made the scene appear about five seconds late. Affected loads now come up in roughly 3.5 seconds instead of 8.", why: "When the site decided mid-load that your device needed lighter graphics, it pulled materials out from under the shader compiler, which then waited out its timeout.", how: "An instrumented production build logged disposals and tier switches to find the overlap. The quality downgrade is now queued until shader warm-up finishes, then applied." },
+  { id: "2026-10-12-world-reactions", date: "2026-10-12", pr: 14, title: "World Reactions", what: "Cargo ships swerve, flash their lights and hail you on the radio. The jellyfish drifts over if you hover, and bolts if you boost. Asteroid belt rocks part around your ship.", why: "Everything moved on its own schedule and ignored the pilot completely. A living place should notice you, even if it is just a startled jellyfish.", how: "Each reaction is an eased offset layered on top of the existing motion, so no route or orbit changes and every offset springs back to zero. No new materials, draw calls or shaders." },
+  { id: "2026-10-12-scale-pass", date: "2026-10-12", pr: 13, title: "Scale Pass", what: "Planets are over three times bigger and the sun now outsizes them. Desktop gets sharper planet maps for close orbits, and the sun no longer glows through planets in front of it.", why: "The sun used to be smaller than the planets, which read as toys, and its god rays drew through any planet that crossed in front of it.", how: "Tests check every fixed object against each planet's full orbit, since bigger worlds swept into shards and asteroids. God rays now fade by how much of the sun the planets cover, computed geometrically." },
+  { id: "2026-10-12-beacons-everywhere", date: "2026-10-12", pr: 12, title: "Beacons Everywhere", what: "Visitor beacons now appear on both copies of the site, not only the GitHub Pages one.", why: "The Cloudflare-hosted copy never received the beacon service's address, so visitors there could neither see nor drop beacons.", how: "The public API address moved into a committed production environment file that both hosts' builds read. Emptying that one value is now the single kill switch for the feature." },
+  { id: "2026-10-12-visitor-beacons", date: "2026-10-12", pr: 11, title: "Visitor Beacons", what: "Press B to leave a beacon where your ship is. Later visitors see it bobbing in space, and a scan shows its message, the pilot's country and how long ago it was dropped.", why: "Every visitor flew alone. Beacons leave a light trace of who came before, without letting anyone write words onto a CV page.", how: "Messages are picked from a fixed phrase list, never free text. A tiny Cloudflare Worker on a SQLite database rate-limits in one atomic insert and stores only a salted hash of each IP." },
+  { id: "2026-10-12-ring-course", date: "2026-10-12", pr: 10, title: "Ring Course", what: "An optional time trial: an amber ring by the spawn pad starts a nine-ring lap through the asteroid belt and back. Your best lap is saved and replayed as a translucent ghost.", why: "Once the dossiers are read there was nothing to master. A lap with a 35-second par gives the flight model a reason to be learned.", how: "A ring counts when the ship's path between two frames crosses its disc, so even warp-speed passes register. The ghost replays a 10 Hz recording, and all nine rings are one instanced draw." },
+  { id: "2026-10-12-gamepad-support", date: "2026-10-12", pr: 9, title: "Gamepad Support", what: "Plug in a controller and fly with it: analog steering and throttle, warp, scan, photo mode, and d-pad jumps to each planet. Impacts rumble the pad in Chrome.", why: "A flight sim begs for a stick, and keyboard flying is a skill not every visitor wants to learn just to read about some projects.", how: "The pad is polled once per frame only while one is connected, through a pure mapping with deadzones. It shares one input channel with keyboard and touch without overriding a held key." },
+  { id: "2026-10-10-cinematic-scene", date: "2026-10-10", pr: 8, title: "Cinematic Scene", what: "The space between objects got a full pass: a Milky Way sky, tapered engine plumes, a proper warp tunnel, sunlit atmospheres, a granulated sun, and a camera that lags and swings.", why: "The models held up, but the space around them did not. The sky was flat black, the engine trail read as a laser line, and warp looked like confetti.", how: "The galactic sky is painted once into a cube texture, so it costs nothing per frame. The engine plumes are shaders driven by throttle, with shock diamonds. Camera motion switches off under reduced motion." },
+  { id: "2026-10-10-cinematic-bodies", date: "2026-10-10", pr: 7, title: "Cinematic Bodies", what: "New hero asteroids with glowing mineral veins, a two-lobed comet nucleus with icy cliffs, and three kinds of moon: cratered rock, fractured ice and volcanic.", why: "Asteroids looked like stacked slabs, the comet like a green wall, and the moons were flat grey. Part bad models, part a rendering bug.", how: "Seeded generators build each model. The fix for squashed rocks reused a lesson from the jellyfish: compressed vertex data was clamped when transforms were baked in, so it is expanded first." },
+  { id: "2026-10-10-a-proper-jellyfish", date: "2026-10-10", pr: 6, title: "A Proper Jellyfish", what: "The space jellyfish (press J) now looks like one: a smooth marked bell, frilly arms and 32 hair-thin tentacles. Fuel crystals also regain their tops.", why: "It read as a frosted blob at about 40% of its intended height, and the crystals were sliced off flat. Both had the same hidden cause.", how: "Models are stored as compressed 16-bit positions in a -1 to 1 range. Baking a scale into that storage clamped anything outside it, so geometry is now widened to full floats first." },
+  { id: "2026-10-10-original-assets", date: "2026-10-10", pr: 5, title: "Original Assets", what: "The ship, contact portal, fuel crystals and planets are all new, original work: a detailed hero ship, and planets with island archipelagos, night-side city lights and glowing rifts.", why: "Five shipped files had no recorded source or licence, which a public portfolio cannot have. Replacing them was also a chance to make them better.", how: "Every asset comes from a deterministic script, mostly Blender, so it can be rebuilt exactly. A test fails if any shipped file lacks a generator, and city lights use a small night-side shader mask." },
+  { id: "2026-10-10-smoother-loading", date: "2026-10-10", pr: 4, title: "Smoother Loading", what: "The freeze as the scene hands over from the loader is roughly a third of what it was. Space also uses fewer lights and has wispier, more structured nebulae.", why: "Startup ran one long blocking compile that stalled the page for half a second or more just as you got control.", how: "Shaders now compile asynchronously, off the main thread where the browser allows, with textures uploaded one at a time. Nebulae use seeded fractal noise sprites, half the overdraw of the old blobs." },
+  { id: "2026-10-10-faster-and-sharper", date: "2026-10-10", pr: 3, title: "Faster and Sharper", what: "The site loads far less up front, and résumé-only visitors skip the 3D engine entirely. Edges are anti-aliased, and stars are round, twinkling and varied in brightness.", why: "The first download was 1.6 MB of script before anything appeared, and the asteroid belt drew far more triangles than anyone could see.", how: "The 3D engine is lazy-loaded as a separate bundle, cutting the main one by three quarters. Belt rocks became an 80-triangle instanced stand-in, removing about 87% of triangles in deep space." },
+  { id: "2026-10-10-recruiter-path", date: "2026-10-10", pr: 2, title: "Recruiter Path", what: "Keys 1 to 4, or a click on the HUD, jump straight to each project or the contact portal. A waypoint and a progress counter track what you've read, and the placeholder projects are now real work.", why: "Reaching a project required learning to fly, and the content behind it was template filler with invented roles and metrics.", how: "A jump drops the ship into orbit and opens the dossier in under half a second. The waypoint updates without React re-renders, and dossiers became proper dialogs with focus and Esc support." },
+  { id: "2026-10-10-first-minute-fixes", date: "2026-10-10", pr: 1, title: "First Minute Fixes", what: "The ship now starts aimed at a planet, the phone HUD stops overlapping itself, and the classic résumé is tidier. A long list of first-minute bugs, from stuck keys to silent mobile audio, is gone.", why: "Holding W at spawn flew away from every planet, and a first-time visitor hit most of these bugs within the first minute, on desktop and phone alike.", how: "Until the first input, the parked ship tracks an intercept course that leads the orbiting planet. Without WebGL, or if the canvas fails, the site falls back to the résumé instead of a blank page." },
+];
+
+/** A dot shows when something shipped since the visitor last opened the notes. */
+export function hasUnseen(newestId: string, seen: string): boolean {
+  return newestId !== seen;
+}
+```
+
+- [ ] **Step 4: Store changes**
+
+In `src/store/spaceStore.ts`:
+
+- Import `CHANGELOG` from `../data/changelog`.
+- `SpaceState`:
+
+```ts
+  changelogOpen: boolean;
+  setChangelogOpen: (v: boolean) => void;
+  /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
+  changelogSeen: string;
+  markChangelogSeen: () => void;
+```
+
+- Before the store, the first-visit rule (a first-timer gets no dot):
+
+```ts
+const initialChangelogSeen = (() => {
+  const raw = safeGetJSON<unknown>("fitz-changelog-seen", null);
+  if (typeof raw === "string") return raw;
+  safeSetJSON("fitz-changelog-seen", CHANGELOG[0].id);
+  return CHANGELOG[0].id;
+})();
+```
+
+- In the store object:
+
+```ts
+    changelogOpen: false,
+    changelogSeen: initialChangelogSeen,
+    setChangelogOpen: (v) => {
+      if (get().changelogOpen === v) return;
+      set(v ? { changelogOpen: true, logbookOpen: false } : { changelogOpen: false });
+    },
+    markChangelogSeen: () => {
+      const newest = CHANGELOG[0].id;
+      if (get().changelogSeen === newest) return;
+      safeSetJSON("fitz-changelog-seen", newest);
+      set({ changelogSeen: newest });
+    },
+```
+
+- Change `setLogbookOpen` so opening it closes the changelog:
+
+```ts
+    setLogbookOpen: (v) => {
+      if (get().logbookOpen === v) return;
+      set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
+    },
+```
+
+- [ ] **Step 5: Run tests and commit**
+
+Run: `npx vitest run tests/changelog.test.ts tests/spaceStore.test.ts && npx tsc -b && npm test`
+Expected: PASS.
+
+```bash
+git add src/data/changelog.ts src/store/spaceStore.ts tests/changelog.test.ts tests/spaceStore.test.ts
+git commit -m "feat(changelog): patch notes from October 2026, with seen state
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: The in-game patch notes panel
+
+**Files:**
+- Create: `src/components/layout/ChangelogPanel.tsx`
+- Modify: `src/App.tsx` (N key; mount), `src/components/layout/HUDOverlay.tsx` (PATCH NOTES button with the dot; controls hint)
+
+**Interfaces:**
+- Consumes: Task 9 data and store.
+- Produces: `<ChangelogPanel />` (`data-testid="changelog-panel"`, heading `id="changelog-title"`, one `<article data-testid="changelog-entry">` per entry); HUD button `data-testid="changelog-button"` with `data-testid="changelog-dot"` while unseen.
+
+- [ ] **Step 1: Create `ChangelogPanel.tsx`**
+
+```tsx
+import { useEffect, useRef } from "react";
+import { useSpaceStore } from "../../store/spaceStore";
+import { CHANGELOG, PR_URL } from "../../data/changelog";
+
+/**
+ * Patch notes (spec §8.3): a non-modal sheet like the logbook. Each entry
+ * answers WHAT, WHY, WHEN and HOW. Opening it marks the newest entry seen.
+ * It closes itself when a dossier opens, photo mode starts or the résumé opens.
+ */
+export default function ChangelogPanel() {
+  const open = useSpaceStore((s) => s.changelogOpen);
+  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const photoMode = useSpaceStore((s) => s.photoMode);
+  const showClassicCV = useSpaceStore((s) => s.showClassicCV);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (open && (isOrbitLocked || photoMode || showClassicCV)) useSpaceStore.getState().setChangelogOpen(false);
+  }, [open, isOrbitLocked, photoMode, showClassicCV]);
+
+  useEffect(() => {
+    if (!open) return;
+    useSpaceStore.getState().markChangelogSeen();
+    opener.current = document.activeElement as HTMLElement | null;
+    headingRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") useSpaceStore.getState().setChangelogOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener.current?.focus?.();
+    };
+  }, [open]);
+
+  if (!open || photoMode || showClassicCV) return null;
+  return (
+    <div role="dialog" aria-modal="false" aria-labelledby="changelog-title" data-testid="changelog-panel"
+      className="fixed z-[46] pointer-events-auto font-mono text-[10px] glass-card bg-black/85 border border-white/10 overflow-y-auto
+        inset-x-3 bottom-3 max-h-[70vh] rounded-2xl p-4
+        sm:inset-x-auto sm:right-6 sm:top-24 sm:bottom-auto sm:w-[420px] sm:max-h-[calc(100vh-8rem)]">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 id="changelog-title" ref={headingRef} tabIndex={-1} className="text-primary text-xs outline-none">PATCH NOTES</h2>
+        <span className="text-white/40">{CHANGELOG.length} UPDATES</span>
+      </div>
+      {CHANGELOG.map((e) => (
+        <article key={e.id} data-testid="changelog-entry" className="py-3 border-t border-white/5 first:border-t-0">
+          <h3 className="text-white text-[11px] mb-1.5">{e.title.toUpperCase()}</h3>
+          <dl className="grid grid-cols-[3.5rem_1fr] gap-x-2 gap-y-1 leading-relaxed">
+            <dt className="text-white/40">WHAT</dt><dd className="text-white/80">{e.what}</dd>
+            <dt className="text-white/40">WHY</dt><dd className="text-white/70">{e.why}</dd>
+            <dt className="text-white/40">WHEN</dt>
+            <dd className="text-white/70">
+              {e.date} · <a href={`${PR_URL}${e.pr}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">PR #{e.pr}</a>
+            </dd>
+            <dt className="text-white/40">HOW</dt><dd className="text-white/70">{e.how}</dd>
+          </dl>
+        </article>
+      ))}
+      <button type="button" onClick={() => useSpaceStore.getState().setChangelogOpen(false)}
+        className="mt-2 text-white/50 hover:text-white">CLOSE [N / ESC]</button>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Ways to open it**
+
+`src/App.tsx`: import and mount `<ChangelogPanel />` next to `<LogbookPanel />`. In the global key handler, after the KeyL block:
+
+```ts
+      if (e.code === "KeyN" && !s.photoMode && !s.isOrbitLocked) {
+        s.setChangelogOpen(!s.changelogOpen);
+        return;
+      }
+```
+
+`src/components/layout/HUDOverlay.tsx`: import `ScrollText` from `lucide-react`, `CHANGELOG` and `hasUnseen` from `../../data/changelog`; read `const changelogSeen = useSpaceStore((s) => s.changelogSeen);`. Add after the LOGBOOK button:
+
+```tsx
+        <button data-testid="changelog-button" onClick={() => useSpaceStore.getState().setChangelogOpen(true)}
+          aria-label={hasUnseen(CHANGELOG[0].id, changelogSeen) ? "Open patch notes, new updates" : "Open patch notes"}
+          className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
+          <ScrollText className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">PATCH_NOTES</span>
+          {hasUnseen(CHANGELOG[0].id, changelogSeen) && (
+            <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
+          )}
+        </button>
+```
+
+And in the desktop controls card after the LOGBOOK entry:
+
+```tsx
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">PATCH_NOTES</span>
+              <span className="text-white">N</span>
+            </div>
+```
+
+- [ ] **Step 3: Verify and commit**
+
+Run: `npx tsc -b && npm test && npm run lint`
+Expected: green.
+
+```bash
+git add src/components/layout/ChangelogPanel.tsx src/App.tsx src/components/layout/HUDOverlay.tsx
+git commit -m "feat(changelog): in-game patch notes panel; N, HUD button and new-updates dot
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 11: Résumé changelog section and e2e
+
+**Files:**
+- Create: `src/components/sections/Changelog.tsx`
+- Modify: `src/App.tsx` (résumé layout), `src/components/layout/Navbar.tsx` (link), `tests/e2e/logbook.probe.mjs`
+
+**Interfaces:**
+- Consumes: Task 9 data.
+- Produces: `<section id="changelog">` with one `[data-testid="resume-changelog-entry"]` per entry.
+
+- [ ] **Step 1: Create the section**
+
+```tsx
+import { motion } from "framer-motion";
+import { CHANGELOG, PR_URL } from "../../data/changelog";
+
+/** Classic-résumé patch notes (spec §8.4): the same entries as the in-game panel, newest first. */
+export default function Changelog() {
+  return (
+    <section id="changelog" className="py-24 relative w-full">
+      <div className="max-w-4xl mx-auto px-6 w-full">
+        <div className="mb-14 text-center md:text-left">
+          <p className="font-mono text-xs text-primary tracking-widest uppercase mb-2">// PATCH_NOTES</p>
+          <h2 className="font-display font-black text-3xl sm:text-4xl lg:text-5xl">Changelog</h2>
+          <p className="text-muted text-sm font-light mt-3 max-w-2xl">
+            What shipped on this flight-sim portfolio, and why. Newest first.
+          </p>
+        </div>
+        <ol className="relative border-l border-white/10 ml-2">
+          {CHANGELOG.map((e, i) => (
+            <motion.li key={e.id} data-testid="resume-changelog-entry"
+              initial={{ opacity: 0, x: -12 }} whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-60px" }} transition={{ duration: 0.4, delay: Math.min(i, 6) * 0.04 }}
+              className="mb-10 ml-6 last:mb-0">
+              <span className="absolute -left-[7px] mt-1.5 w-3.5 h-3.5 rounded-full border-2 border-white/30 bg-[#020108]" aria-hidden="true" />
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2">
+                <h3 className="font-display font-bold text-lg text-white">{e.title}</h3>
+                <span className="font-mono text-xs text-muted">
+                  {e.date} · <a href={`${PR_URL}${e.pr}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">PR #{e.pr}</a>
+                </span>
+              </div>
+              <dl className="grid grid-cols-[4rem_1fr] gap-x-3 gap-y-1.5 text-sm font-light leading-relaxed max-w-2xl">
+                <dt className="font-mono text-xs text-white/40 pt-0.5">WHAT</dt><dd className="text-white/80">{e.what}</dd>
+                <dt className="font-mono text-xs text-white/40 pt-0.5">WHY</dt><dd className="text-muted">{e.why}</dd>
+                <dt className="font-mono text-xs text-white/40 pt-0.5">HOW</dt><dd className="text-muted">{e.how}</dd>
+              </dl>
+            </motion.li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+```
+
+(WHEN sits in the header line beside the title, as on the Career timeline.)
+
+- [ ] **Step 2: Mount it and link it**
+
+`src/App.tsx`, in the résumé `<main>`, between `<Skills />` and `<Contact />`:
+
+```tsx
+            <Skills />
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+            <Changelog />
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+            <Contact />
+```
+
+(import `Changelog from "./components/sections/Changelog"`). In `src/components/layout/Navbar.tsx`, add `{ name: "Changelog", href: "#changelog" },` after the Skills link.
+
+- [ ] **Step 3: e2e**
+
+Append to `tests/e2e/logbook.probe.mjs`, before `export default`:
+
+```js
+async function changelog(page, checks) {
+  const n = await page.evaluate(async () => (await import("/src/data/changelog.ts")).CHANGELOG.length);
+  // A returning visitor who last saw an older entry gets the dot.
+  await page.evaluate(() => localStorage.setItem("fitz-changelog-seen", JSON.stringify("2026-10-10-first-minute-fixes")));
+  await page.reload();
+  await page.waitForFunction(() => window.__fitz?.store.getState().sceneReady, { timeout: 60_000 });
+  checks.check("a returning visitor sees the new-updates dot", !!(await page.$('[data-testid="changelog-dot"]')));
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await page.keyboard.press("KeyN");
+  await settle(page, 400);
+  const st = await page.evaluate(() => ({
+    focus: document.activeElement?.id,
+    entries: document.querySelectorAll('[data-testid="changelog-entry"]').length,
+    labels: [...document.querySelectorAll('[data-testid="changelog-panel"] dt')].slice(0, 4).map((d) => d.textContent),
+  }));
+  checks.check("N opens the patch notes with focus on the heading", st.focus === "changelog-title", `focus=${st.focus}`);
+  checks.check("every entry is listed", st.entries === n, `${st.entries}/${n}`);
+  checks.check("each entry answers what, why, when and how", JSON.stringify(st.labels) === JSON.stringify(["WHAT", "WHY", "WHEN", "HOW"]), JSON.stringify(st.labels));
+  checks.check("opening the notes clears the dot", !(await page.$('[data-testid="changelog-dot"]')));
+  await page.keyboard.press("KeyL");
+  await settle(page, 300);
+  const both = await readStore(page);
+  checks.check("opening the logbook closes the patch notes", both.logbookOpen && !both.changelogOpen);
+  await page.keyboard.press("Escape");
+  // First visit: no dot.
+  await page.evaluate(() => localStorage.removeItem("fitz-changelog-seen"));
+  await page.reload();
+  await page.waitForFunction(() => window.__fitz?.store.getState().sceneReady, { timeout: 60_000 });
+  checks.check("a first-time visitor sees no dot", !(await page.$('[data-testid="changelog-dot"]')));
+  // Résumé section.
+  await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
+  await settle(page, 800);
+  const resume = await page.evaluate(() => document.querySelectorAll('#changelog [data-testid="resume-changelog-entry"]').length);
+  checks.check("the résumé lists every changelog entry", resume === n, `${resume}/${n}`);
+}
+```
+
+and in `run()` add:
+
+```js
+  const c = await withPage({ label: "changelog" }, changelog);
+  checks.results.push(...c.results);
+```
+
+Also extend the `phone` function: after the logbook geometry checks, close the logbook, open the changelog with `setChangelogOpen(true)`, and assert the same bottom-sheet and no-cover checks for `changelog-panel`.
+
+- [ ] **Step 4: Run and commit**
+
+Close app tabs. Run: `npm run test:e2e -- logbook`
+Expected: all checks pass.
+
+```bash
+git add src/components/sections/Changelog.tsx src/App.tsx src/components/layout/Navbar.tsx tests/e2e/logbook.probe.mjs
+git commit -m "feat(changelog): résumé changelog section and navbar link; e2e for patch notes
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 12: Verification bar and real-browser pass
 
 - [ ] **Step 1:** `npm test && npx tsc -b && npm run lint`. Green, lint unchanged.
 - [ ] **Step 2:** Close app tabs, then `npm run test:e2e`. Every check passes.
 - [ ] **Step 3:** `npm run build`, then `grep -l "__fitz" dist/assets/*.js`. It prints nothing.
-- [ ] **Step 4: Real-browser pass (Playwright MCP, dev server on a free port):**
+- [ ] **Step 4: Real-browser pass (Playwright MCP, dev server on a free port).** Also open the patch notes in-game and on the résumé, desktop and phone.
   - Earn slingshot, comet and ore naturally in flight, without store calls.
   - Screenshot the tracker, the open panel, and the ship with each unlocked plume. Do this on desktop (1440×900) and phone (390×844, touch).
   - Confirm each colour reads clearly under bloom. If one washes out, retune it in `plumeColors.ts` and ledger the change.
