@@ -24,6 +24,7 @@ export default function Navbar({ onReturnToCabin }: NavbarProps) {
     { name: "Projects", href: "#projects" },
     { name: "Career", href: "#career" },
     { name: "Skills", href: "#skills" },
+    { name: "Changelog", href: "#changelog" },
     { name: "Contact", href: "#contact" },
   ];
 

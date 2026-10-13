@@ -5,6 +5,7 @@ import Experience from "./components/sections/Experience";
 import Skills from "./components/sections/Skills";
 import Career from "./components/sections/Career";
 import Contact from "./components/sections/Contact";
+import Changelog from "./components/sections/Changelog";
 import Footer from "./components/layout/Footer";
 import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
@@ -437,6 +438,8 @@ export default function App() {
             <Career />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Skills />
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+            <Changelog />
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
             <Contact />
           </main>

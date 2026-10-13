@@ -92,11 +92,61 @@ async function phone(page, checks) {
     if (b && panel && b.l < panel.r && panel.l < b.r && b.t < panel.b && panel.t < b.b) covered.push(id);
   }
   checks.check("phone: the open panel does not cover visible flight buttons", covered.length === 0, covered.join(","));
+
+  // The patch notes sheet: same rules.
+  await page.evaluate(() => window.__fitz.store.getState().setChangelogOpen(true));
+  await settle(page, 400);
+  const notes = await rect("changelog-panel");
+  checks.check("phone: the patch notes open as a bottom sheet", !!notes && notes.b <= vh && notes.t > vh * 0.25, JSON.stringify(notes));
+  const coveredN = [];
+  for (const id of ["touch-boost", "touch-beam", "touch-rise", "touch-dive"]) {
+    const b = await rect(id);
+    if (b && notes && b.l < notes.r && notes.l < b.r && b.t < notes.b && notes.t < b.b) coveredN.push(id);
+  }
+  checks.check("phone: the open patch notes do not cover visible flight buttons", coveredN.length === 0, coveredN.join(","));
+}
+
+async function changelog(page, checks) {
+  const n = await page.evaluate(async () => (await import("/src/data/changelog.ts")).CHANGELOG.length);
+  // A returning visitor who last saw an older entry gets the dot.
+  await page.evaluate(() => localStorage.setItem("fitz-changelog-seen", JSON.stringify("2026-10-10-first-minute-fixes")));
+  await page.reload();
+  await page.waitForFunction(() => window.__fitz?.store.getState().sceneReady, { timeout: 60_000 });
+  checks.check("a returning visitor sees the new-updates dot", !!(await page.$('[data-testid="changelog-dot"]')));
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await page.keyboard.press("KeyN");
+  await settle(page, 400);
+  const st = await page.evaluate(() => ({
+    focus: document.activeElement?.id,
+    entries: document.querySelectorAll('[data-testid="changelog-entry"]').length,
+    labels: [...document.querySelectorAll('[data-testid="changelog-panel"] dt')].slice(0, 4).map((d) => d.textContent),
+  }));
+  checks.check("N opens the patch notes with focus on the heading", st.focus === "changelog-title", `focus=${st.focus}`);
+  checks.check("every entry is listed", st.entries === n, `${st.entries}/${n}`);
+  checks.check("each entry answers what, why, when and how", JSON.stringify(st.labels) === JSON.stringify(["WHAT", "WHY", "WHEN", "HOW"]), JSON.stringify(st.labels));
+  checks.check("opening the notes clears the dot", !(await page.$('[data-testid="changelog-dot"]')));
+  await page.keyboard.press("KeyL");
+  await settle(page, 300);
+  const both = await readStore(page);
+  checks.check("opening the logbook closes the patch notes", both.logbookOpen && !both.changelogOpen);
+  await page.keyboard.press("Escape");
+  // First visit: no dot.
+  await page.evaluate(() => localStorage.removeItem("fitz-changelog-seen"));
+  await page.reload();
+  await page.waitForFunction(() => window.__fitz?.store.getState().sceneReady, { timeout: 60_000 });
+  checks.check("a first-time visitor sees no dot", !(await page.$('[data-testid="changelog-dot"]')));
+  // Résumé section.
+  await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
+  await settle(page, 800);
+  const resume = await page.evaluate(() => document.querySelectorAll('#changelog [data-testid="resume-changelog-entry"]').length);
+  checks.check("the résumé lists every changelog entry", resume === n, `${resume}/${n}`);
 }
 
 export default async function run() {
   const checks = await withPage({ label: "logbook" }, desktop);
   const p = await withPage({ label: "logbook (phone)", device: KnownDevices["iPhone 13"] }, phone);
   checks.results.push(...p.results);
+  const c = await withPage({ label: "changelog" }, changelog);
+  checks.results.push(...c.results);
   return checks;
 }
