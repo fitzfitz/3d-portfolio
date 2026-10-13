@@ -11,6 +11,7 @@ import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
+import { CHANGELOG } from "../data/changelog";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
@@ -329,6 +330,11 @@ interface SpaceState {
   setPlumeColor: (id: string) => void;
   logbookOpen: boolean;
   setLogbookOpen: (v: boolean) => void;
+  changelogOpen: boolean;
+  setChangelogOpen: (v: boolean) => void;
+  /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
+  changelogSeen: string;
+  markChangelogSeen: () => void;
 }
 
 // Read once into a module-level const: the two derived fields below must
@@ -350,6 +356,14 @@ const initialPlume = (() => {
   const raw = safeGetJSON<unknown>("fitz-plume", "stock");
   const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: safeGetJSON<number[]>("fitz-shards", []), badges: initialBadges };
   return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
+})();
+
+/** First visit: everything is new, so mark the newest entry seen and show no dot. */
+const initialChangelogSeen = (() => {
+  const raw = safeGetJSON<unknown>("fitz-changelog-seen", null);
+  if (typeof raw === "string") return raw;
+  safeSetJSON("fitz-changelog-seen", CHANGELOG[0].id);
+  return CHANGELOG[0].id;
 })();
 
 export const useSpaceStore = create<SpaceState>()(
@@ -382,7 +396,22 @@ export const useSpaceStore = create<SpaceState>()(
       safeSetJSON("fitz-plume", id);
       set({ plumeColor: id });
     },
-    setLogbookOpen: (v) => { if (get().logbookOpen !== v) set({ logbookOpen: v }); },
+    setLogbookOpen: (v) => {
+      if (get().logbookOpen === v) return;
+      set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
+    },
+    changelogOpen: false,
+    changelogSeen: initialChangelogSeen,
+    setChangelogOpen: (v) => {
+      if (get().changelogOpen === v) return;
+      set(v ? { changelogOpen: true, logbookOpen: false } : { changelogOpen: false });
+    },
+    markChangelogSeen: () => {
+      const newest = CHANGELOG[0].id;
+      if (get().changelogSeen === newest) return;
+      safeSetJSON("fitz-changelog-seen", newest);
+      set({ changelogSeen: newest });
+    },
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     isNearSpawn: true,

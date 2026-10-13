@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSpaceStore, flight, selectSceneFrozen, loadBadges, todayStamp } from "../src/store/spaceStore";
+import { CHANGELOG } from "../src/data/changelog";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -11,11 +12,26 @@ beforeEach(() => {
     reducedMotion: false, reducedMotionManual: false,
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
-    badges: [], plumeColor: "stock", logbookOpen: false,
+    badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false,
   });
 });
 
 describe("spaceStore", () => {
+  it("the logbook and the changelog never stay open together", () => {
+    const s = useSpaceStore.getState();
+    s.setLogbookOpen(true);
+    s.setChangelogOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: true, logbookOpen: false });
+    s.setLogbookOpen(true);
+    expect(useSpaceStore.getState()).toMatchObject({ changelogOpen: false, logbookOpen: true });
+  });
+
+  it("markChangelogSeen stores the newest entry id", () => {
+    useSpaceStore.setState({ changelogSeen: "old" });
+    useSpaceStore.getState().markChangelogSeen();
+    expect(useSpaceStore.getState().changelogSeen).toBe(CHANGELOG[0].id);
+  });
+
   it("recordBadge records once, persists with the date and announces", () => {
     const s = useSpaceStore.getState();
     s.recordBadge("slingshot");
