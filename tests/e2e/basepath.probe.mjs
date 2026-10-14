@@ -66,7 +66,7 @@ export default async function basepathProbe() {
   rmSync(OUT_DIR, { recursive: true, force: true });
   // Blank the beacon API: a production build reads .env.production, and a
   // test page must never call the live Worker (its CORS refuses localhost).
-  await run("npx", ["vite", "build", "--outDir", OUT_DIR], { BASE_PATH: BASE, VITE_BEACON_API: "" });
+  await run("npx", ["vite", "build", "--outDir", OUT_DIR], { BASE_PATH: BASE, VITE_BEACON_API: "", VITE_LIVE_SKY: "" });
 
   const server = spawn(
     "npx",
