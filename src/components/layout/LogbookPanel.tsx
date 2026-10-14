@@ -3,6 +3,9 @@ import { Lock, Check, X } from "lucide-react";
 import { useSpaceStore } from "../../store/spaceStore";
 import { LOGBOOK, entryDone, logbookCount, plumeAllowed, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../../data/plumeColors";
+import { liveSkyUrl } from "../../utils/liveSky";
+
+const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
@@ -19,6 +22,7 @@ export default function LogbookPanel() {
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
+  const liveSky = useSpaceStore((s) => s.liveSky);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -106,6 +110,19 @@ export default function LogbookPanel() {
           );
         })}
       </div>
+      {LIVE_SKY_ENABLED && (
+        <>
+          <div className="text-white/40 mt-3 mb-1" id="livesky-label">LIVE SKY</div>
+          {/* A button, not a checkbox: a focused <input> would swallow the flight keys. */}
+          <button type="button" role="switch" aria-checked={liveSky} aria-labelledby="livesky-label"
+            aria-describedby="livesky-desc" data-testid="livesky-toggle"
+            onClick={() => useSpaceStore.getState().setLiveSky(!liveSky)}
+            className={`px-2 py-1 rounded-lg border outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer ${liveSky ? "border-primary/60 text-primary" : "border-white/10 text-white/60"}`}>
+            {liveSky ? "ON" : "OFF"}
+          </button>
+          <p id="livesky-desc" className="mt-1 text-white/40">See other pilots flying now. They see your ship, plume and country.</p>
+        </>
+      )}
       <div className="mt-3 text-white/30">CLOSE: L / ESC</div>
     </div>
   );

@@ -86,3 +86,8 @@ export function makeBeamGeometry(): THREE.BufferGeometry {
   g.translate(0, -0.5, 0);
   return g;
 }
+
+/** The ship's nozzle row in its local frame (Spaceship.tsx). Ghosts use the centre one. */
+export const NOZZLE_X = [-0.204, 0, 0.204] as const;
+export const NOZZLE_Y = -0.068;
+export const NOZZLE_Z = -1.225;
