@@ -163,6 +163,7 @@ export default function Spaceship() {
       turnVelocity.current = 0;
       pitchVel.current = 0;
       hasFlown.current = true;
+      flight.hasFlown = true;
     };
     fitzDebug.gravity = gravity.current;
     fitzDebug.beam = beamState;
@@ -482,6 +483,7 @@ export default function Spaceship() {
       turnVelocity.current = 0;
       pitchVel.current = 0;
       hasFlown.current = true;
+      flight.hasFlown = true;
       snapCamera.current = true;
       useSpaceStore.setState({ isOrbitCooldown: false });
       store.triggerTeleportFlash();
@@ -499,6 +501,7 @@ export default function Spaceship() {
       // parked, untouched ship at a planet.
       if (touched || !store.isNearSpawn) {
         hasFlown.current = true;
+        flight.hasFlown = true;
       } else {
         const aim = interceptAim(pos.current, planets, ambient, MAX_SPEED, COLLIDERS, !store.reducedMotion);
         if (aim) {
