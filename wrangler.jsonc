@@ -1,0 +1,14 @@
+// The site's Cloudflare copy (Workers Builds, configured in the dashboard):
+// an assets-only Worker serving the Vite build. Mirrors what production was
+// already running, so `wrangler deploy` (main) and `wrangler versions upload`
+// (every other branch, which has no auto-configuration and failed with
+// "Missing entry-point") now read the same settings. beacon-api/ has its own
+// config and is always run with --config.
+{
+  "name": "3d-portfolio",
+  "compatibility_date": "2026-10-12",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
