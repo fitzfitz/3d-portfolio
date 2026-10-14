@@ -30,7 +30,7 @@ The universe feels alive, but the visitor is always alone in it. Live sky shows 
 
 - New route `GET /live`, a WebSocket upgrade. Anything other than a GET with `Upgrade: websocket` gets 426.
 - **Origin check:** the `Origin` header must be in `ALLOWED_ORIGINS` (the same list beacons use), otherwise 403. As in the beacon README, this stops other websites embedding the feed; it is not abuse protection.
-- **Request budget:** each upgrade attempt spends one `LIMITER` token, keyed like beacons on the hashed client IP. Over budget gets 429. The hash is used for this call only and is never stored or passed to the room.
+- **Request budget:** each upgrade attempt spends one `LIMITER` token, keyed exactly like beacons with `rateKey(ip)` (the IPv4 address, or the IPv6 /64). Over budget gets 429. The key goes only to the rate limiter; it is never stored or passed to the room.
 - The Worker forwards the request to `env.SKY.getByName("sky")`, along with the `CF-IPCountry` value. Everyone shares that one room.
 - The existing `/beacons` routes are unchanged.
 
@@ -49,14 +49,14 @@ The universe feels alive, but the visitor is always alone in it. Live sky shows 
 
 This is free of Cloudflare bindings, like `handler.ts`, so it can be unit tested. It exports functions that take the current pilots and an event and return what to send to whom:
 
-- `onJoin(pilots, newcomer)`: the newcomer gets `hello`; everyone gets `peers`; and every pilot other than the newcomer gets `{t:"sync"}`, asking it to send one `me` even if it is still (see §3.2).
+- `onJoin(pilots, newcomer)`: the newcomer gets `hello`, plus an immediate `snap` of everyone already present; every other pilot gets `peers` and `{t:"sync"}`, asking it to send one `me` even if it is still (see §3.2).
 - `onMessage(pilots, sender, raw, now)`: validates the message (§2.4), updates the sender's `last`, and returns a `snap` broadcast if one is due under the throttle.
 - `onLeave(pilots, leaver)`: `peers` plus one `snap` to everyone who remains.
 - `buildSnap(pilots, forId)`: every pilot with a `last`, except `forId` itself.
 
 The DO class in `index.ts` is a thin adapter around this.
 
-**No timers.** Snapshots are driven by incoming `me` messages and throttled to one per 250 ms room-wide (`lastSnapAt` lives in memory; after hibernation the next message simply broadcasts). A pilot who is not moving sends nothing, and their ghost correctly stays where it is.
+**No repeating timers.** Snapshots are driven by incoming `me` messages and throttled to one per 250 ms room-wide (`lastSnapAt` lives in memory; after hibernation the next message simply broadcasts). A `me` that arrives inside the throttle window schedules **one** trailing snapshot for the end of the window, so a pilot's last move before stopping is never lost; further messages in that window do not schedule more. A pilot who is not moving sends nothing, and their ghost correctly stays where it is.
 
 ### 2.4 Validation
 
@@ -80,7 +80,7 @@ All messages are small JSON objects. Numbers are rounded before sending: positio
 | `hello` | on connect | `{t:"hello", id, peers}`, where `peers` is the number of *other* pilots |
 | `peers` | someone joins or leaves | `{t:"peers", n}` |
 | `sync` | someone else joins | `{t:"sync"}`: send one `me` now |
-| `snap` | throttled, on `me` or a leave | `{t:"snap", ships:[{id, p:[x,y,z], q:[x,y,z,w], plume, cc}]}`, never including your own ship |
+| `snap` | throttled, on `me`, a leave, or a join (to the newcomer) | `{t:"snap", ships:[{id, p:[x,y,z], q:[x,y,z,w], plume, cc}]}`, never including your own ship |
 | `full` | the room is at its cap | `{t:"full"}`, then the socket closes |
 
 ### 3.2 Client to server
@@ -113,8 +113,8 @@ A small class, not React state. It holds the socket, the `GhostBuffer`, `peers` 
 ### 4.3 Rendering (`src/components/canvas/Ghosts.tsx`)
 
 - Up to 8 ghost hulls from `nearestGhosts`, each placed at its pose from the `GhostBuffer`, offset by `wrapDelta` from the pilot's ship so it appears at its nearest wrapped copy.
-- **Look:** the stock ship hull, dimmed and translucent, with a short, steady plume in the ghost's plume colour (no thrust response: ghosts send no throttle). No collisions, gravity, tractor beam, sound, engine light or particles.
-- **Program budget:** ghosts reuse the ship's existing materials and geometry; per-ghost differences are uniforms only. If the translucent variant would compile a new program, ghosts render opaque and dimmed instead. Whichever is used, the deep-space programs probe must stay at 79/79.
+- **Look:** the ship model as an additive wash in the ghost's plume colour, with one short, steady plume on the centre nozzle (no thrust response: ghosts send no throttle). No collisions, gravity, tractor beam, sound, engine light or particles.
+- **Program budget:** the wash uses exactly the parameters of RingCourse's race-ghost material (`MeshBasicMaterial`, additive, transparent, `depthWrite: false`, `toneMapped: false`), and the plume uses `makePlumeMaterial`, so both hit programs that are already compiled; per-ghost differences are colour, opacity and uniforms only. The e2e probe checks that ghosts appearing add no program, and the deep-space probe stays at 79/79.
 - One `useFrame`, no React state updates per frame; the eight mesh slots are pooled and shown or hidden.
 - Mounted only when `liveSkyUrl()` is non-empty, so a build without the URL contains no ghost code path that runs.
 
@@ -148,7 +148,7 @@ The dev localStorage override points at `fake://sky`, and a dev-only fake WebSoc
 3. two scripted ghosts appear and move between snapshots without jumps;
 4. scanning a ghost shows `PILOT FROM ID · LIVE`;
 5. turning the toggle off removes the ghosts and closes the socket;
-6. the deep-space programs count stays at 79.
+6. ghosts appearing add no shader program (the count is the same before and after).
 
 ### 6.3 Real pass before the PR
 
