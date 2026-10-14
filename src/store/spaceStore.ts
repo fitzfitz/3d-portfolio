@@ -43,6 +43,23 @@ function safeSetMuted(v: boolean) {
     /* ignore */
   }
 }
+/** A persisted on/off setting ("1"/"0"), guarded like the mute flag. */
+function safeGetFlag(key: string, fallback: boolean): boolean {
+  try {
+    if (typeof localStorage === "undefined") return fallback;
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === "1";
+  } catch {
+    return fallback;
+  }
+}
+function safeSetFlag(key: string, v: boolean) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(key, v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
 
 // Three states — "1", "0", or absent — because absent (no choice made) must
 // stay distinguishable from an explicit false, which has to beat a media
@@ -204,6 +221,8 @@ export const flight = {
   speed: 0, // world units / second
   heading: 0, // yaw in radians, written by Spaceship each frame
   pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
+  /** The pilot has flown at least once this page (Spaceship sets it). Live sky connects only after it. */
+  hasFlown: false,
   input: {
     forward: false, backward: false, left: false, right: false,
     boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
@@ -356,6 +375,12 @@ export interface SpaceState {
    * and logbook lines queue 4.5 s apart.
    */
   announceLogbook: (line: string) => void;
+  /** Live sky on (persisted as fitz-live-sky, default on): share this ship and see other pilots. */
+  liveSky: boolean;
+  setLiveSky: (v: boolean) => void;
+  /** The live-sky notice has been on the radio (persisted as fitz-live-seen). No pose is sent before it. */
+  liveSkySeen: boolean;
+  setLiveSkySeen: (v: boolean) => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -460,6 +485,8 @@ export const useSpaceStore = create<SpaceState>()(
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
+    liveSky: safeGetFlag("fitz-live-sky", true),
+    liveSkySeen: safeGetFlag("fitz-live-seen", false),
     cometNear: false,
     altitudeWarn: false,
     shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
@@ -545,6 +572,14 @@ export const useSpaceStore = create<SpaceState>()(
       if (v) get().breakOrbit();
       // The ship unmounts with the canvas, so nothing else would clear warp.
       set(v ? { showClassicCV: true, isWarping: false } : { showClassicCV: false });
+    },
+    setLiveSky: (v) => {
+      set({ liveSky: v });
+      safeSetFlag("fitz-live-sky", v);
+    },
+    setLiveSkySeen: (v) => {
+      set({ liveSkySeen: v });
+      safeSetFlag("fitz-live-seen", v);
     },
     setMuted: (v) => {
       set({ isMuted: v });

@@ -24,6 +24,8 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import RingCourse from "./RingCourse";
 import Beacons from "./Beacons";
+import Ghosts from "./Ghosts";
+import { liveSkyUrl } from "../../utils/liveSky";
 import { beaconApiUrl } from "../../utils/beaconApi";
 import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
@@ -426,6 +428,7 @@ function ShaderWarmup() {
 }
 
 const BEACONS_ENABLED = !!beaconApiUrl();
+const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
 /** The scene's one sun light; a world-event flare lifts it 2.1 → 3.2 (no new light). */
 function SunLight() {
@@ -584,6 +587,9 @@ function GlobalCanvas() {
 
           {/* Visitors' beacons — only when the beacon API is configured */}
           {BEACONS_ENABLED && <Beacons />}
+
+          {/* Other pilots flying now — only when the live sky URL is configured */}
+          {LIVE_SKY_ENABLED && <Ghosts />}
 
           {/* Floating warp-fuel crystals */}
           <FuelCrystals />

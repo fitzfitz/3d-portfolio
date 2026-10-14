@@ -22,3 +22,14 @@ namespace_id = "7301"
   [ratelimits.simple]
   limit = 30
   period = 60
+
+# Live sky (src/sky.ts, the Sky class in src/index.ts): one room of
+# hibernatable WebSockets. It stores nothing, but the Workers Free plan only
+# offers SQLite-backed Durable Objects, so it is declared as one.
+[[durable_objects.bindings]]
+name = "SKY"
+class_name = "Sky"
+
+[exports.Sky]
+type = "durable-object"
+storage = "sqlite"

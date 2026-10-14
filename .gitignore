@@ -36,3 +36,6 @@ __pycache__/
 .env
 
 .playwright-mcp
+
+# wrangler dev local state (beacon-api)
+.wrangler/

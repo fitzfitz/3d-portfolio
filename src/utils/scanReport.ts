@@ -1,4 +1,5 @@
 import { beaconRegistry, beaconReport } from "./beacons";
+import { ghostRegistry, ghostReport } from "./liveSky";
 
 const PLANET_REPORTS: Record<string, string> = {
   ruangrapi: "SCAN[PLANET_RUANGRAPI] // CORE: SUPABASE+POSTGRES · CRUST: REACT+TYPESCRIPT · SHIELD: ROW-LEVEL SECURITY // INHABITANTS: KOS LANDLORDS",
@@ -23,6 +24,7 @@ function hash(id: string): number {
 }
 
 export function generateScanReport(id: string): string {
+  if (ghostRegistry.has(id)) return ghostReport(ghostRegistry.get(id) ?? null);
   const beacon = beaconRegistry.get(id);
   if (beacon) return beaconReport(beacon, Date.now());
   const table = PLANET_REPORTS[id];

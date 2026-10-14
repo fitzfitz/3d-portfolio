@@ -28,7 +28,7 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
-import { makePlumeGeometry, makePlumeMaterial } from "./enginePlume";
+import { makePlumeGeometry, makePlumeMaterial, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -70,9 +70,6 @@ const JUMP_PORTAL_R = PORTAL_LOCK_R * 0.8;
  * model (±0.582, -0.05, 3.25) with exit lips at z 3.5, scaled 0.35 and
  * turned π about Y.
  */
-const NOZZLE_X = [-0.204, 0, 0.204] as const;
-const NOZZLE_Y = -0.068;
-const NOZZLE_Z = -1.225;
 
 /** Chase-camera scratch vectors (no per-frame allocation). */
 const _camTarget = new THREE.Vector3();
@@ -163,6 +160,7 @@ export default function Spaceship() {
       turnVelocity.current = 0;
       pitchVel.current = 0;
       hasFlown.current = true;
+      flight.hasFlown = true;
     };
     fitzDebug.gravity = gravity.current;
     fitzDebug.beam = beamState;
@@ -482,6 +480,7 @@ export default function Spaceship() {
       turnVelocity.current = 0;
       pitchVel.current = 0;
       hasFlown.current = true;
+      flight.hasFlown = true;
       snapCamera.current = true;
       useSpaceStore.setState({ isOrbitCooldown: false });
       store.triggerTeleportFlash();
@@ -499,6 +498,7 @@ export default function Spaceship() {
       // parked, untouched ship at a planet.
       if (touched || !store.isNearSpawn) {
         hasFlown.current = true;
+        flight.hasFlown = true;
       } else {
         const aim = interceptAim(pos.current, planets, ambient, MAX_SPEED, COLLIDERS, !store.reducedMotion);
         if (aim) {
