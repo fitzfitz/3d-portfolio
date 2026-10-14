@@ -16,6 +16,17 @@ const _dir = new THREE.Vector3();
 const _tether = { x: 0, y: 0, z: 0 };
 
 /**
+ * Writes tether line `n` (nose to target) into `arr` and returns the next index.
+ * Aims at the target's nearest image, so a tether never spans the universe at the seam.
+ */
+function putTether(arr: Float32Array, n: number, ox: number, oy: number, oz: number, x: number, y: number, z: number): number {
+  const j = n * 6;
+  arr[j] = ox; arr[j + 1] = oy; arr[j + 2] = oz;
+  arr[j + 3] = nearImage(ox, x); arr[j + 4] = nearImage(oy, y); arr[j + 5] = nearImage(oz, z);
+  return n + 1;
+}
+
+/**
  * Tractor beam (spec §6): picks this frame's crystal and shard targets
  * (nearest first, sharing the 3-target budget with tethered pebbles), sets the
  * shard reel, and draws a soft cone plus one tether per target. The cone
@@ -96,15 +107,11 @@ export default function TractorBeam() {
     if (lines) {
       const arr = lines.geometry.attributes.position.array as Float32Array;
       let n = 0;
-      const put = (x: number, y: number, z: number) => {
-        const j = n * 6;
-        // To the target's nearest image, so a tether never spans the universe at the seam.
-        arr[j] = ox; arr[j + 1] = oy; arr[j + 2] = oz;
-        arr[j + 3] = nearImage(ox, x); arr[j + 4] = nearImage(oy, y); arr[j + 5] = nearImage(oz, z);
-        n++;
-      };
-      for (let k = 0; k < sel.count && n < BEAM_MAX_TARGETS; k++) put(sel.x[k], sel.y[k], sel.z[k]);
-      for (let t = 0; t < tetherCount() && n < BEAM_MAX_TARGETS; t++) { tetherPos(t, _tether); put(_tether.x, _tether.y, _tether.z); }
+      for (let k = 0; k < sel.count && n < BEAM_MAX_TARGETS; k++) n = putTether(arr, n, ox, oy, oz, sel.x[k], sel.y[k], sel.z[k]);
+      for (let t = 0; t < tetherCount() && n < BEAM_MAX_TARGETS; t++) {
+        tetherPos(t, _tether);
+        n = putTether(arr, n, ox, oy, oz, _tether.x, _tether.y, _tether.z);
+      }
       lines.geometry.setDrawRange(0, n * 2);
       lines.geometry.attributes.position.needsUpdate = true;
       lines.visible = n > 0;

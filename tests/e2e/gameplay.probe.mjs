@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, chatterText, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, hold, settle, readStore, chatterText, pollUntil, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 /**
  * Teleports the ship next to a world point and zeroes its velocity.
@@ -109,12 +109,21 @@ export default async function run() {
       // side so "forward" actually closes the gap, instead of flying away.
       await warpTo(page, target.x, target.y, target.z - target.r - 2);
       await page.evaluate(() => window.__fitz.setAttitude(0, 0));
-      await hold(page, ["KeyW"], 2500);
+      // Hold W until the first impact lands, not for a fixed time: under load
+      // headless SwiftShader renders so few frames that a fixed 2.5s hold
+      // sometimes stopped short of the rock. Each poll also nudges a frame.
+      await page.keyboard.down("KeyW");
+      const hit = await pollUntil(
+        () => page.evaluate((b) => window.__fitz.store.getState().impactCount > b, before),
+        { timeoutMs: 15_000, intervalMs: 100 },
+      );
+      await page.keyboard.up("KeyW");
       const midResult = await page.evaluate(() => (
         { impactCount: window.__fitz.store.getState().impactCount, t: performance.now() }
       ));
       const mid = midResult.impactCount;
-      checks.check("ramming an asteroid registers an impact", mid > before, `${before} -> ${mid}`);
+      checks.check("ramming an asteroid registers an impact", hit.ok && mid > before,
+        `${before} -> ${mid}${hit.error ? ` (${hit.error.message})` : ""}`);
 
       // A fixed Node-side sleep is NOT a reliable stand-in for real elapsed page
       // time here: headless SwiftShader is slow enough (see harness.mjs) that

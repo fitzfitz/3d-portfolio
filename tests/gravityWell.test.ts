@@ -4,6 +4,7 @@ import {
   PLANET_WELL_G, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
 } from "../src/utils/gravityWell";
 import { canCapture } from "../src/utils/capture";
+import { cruiseCap } from "../src/utils/speedCap";
 
 const MAX = 10.8, ACCEL = 25.2, DRAG = 0.982;
 const planet = (x = 0, y = 0, z = 0): Well => ({ x, y, z, g: PLANET_WELL_G, radius: 56, rMin: 16 });
@@ -26,7 +27,8 @@ function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; second
     if (thrust) {
       v.x += ACCEL * dt;
       const l = Math.hypot(v.x, v.y, v.z);
-      if (l > MAX) { v.x *= MAX / l; v.y *= MAX / l; v.z *= MAX / l; }
+      const cap = cruiseCap(MAX, DRAG, dt);
+      if (l > cap) { v.x *= cap / l; v.y *= cap / l; v.z *= cap / l; }
     }
     const k = Math.pow(DRAG, dt * 60);
     v.x *= k; v.y *= k; v.z *= k;
@@ -135,6 +137,21 @@ describe("tuning targets (spec §5.6)", () => {
   it("b=22 and straight in: docks, never inside 17u first", () => {
     for (const b of [-22, 0.01]) {
       const f = fly({ b });
+      expect(f.captured, `b=${b}`).not.toBeNull();
+      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17);
+    }
+  });
+  // The ship's dt is clamped to 0.05s, so a slow device runs at 20 fps steps.
+  it("b=30 still skims at 30 and 20 fps", () => {
+    for (const dt of [1 / 30, 1 / 20]) {
+      const f = fly({ b: -30, dt });
+      expect(f.captured, `dt=${dt}`).toBeNull();
+      expect(f.minR, `dt=${dt}`).toBeGreaterThan(18);
+    }
+  });
+  it("b=22 and straight in still dock at 20 fps", () => {
+    for (const b of [-22, 0.01]) {
+      const f = fly({ b, dt: 1 / 20 });
       expect(f.captured, `b=${b}`).not.toBeNull();
       expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17);
     }

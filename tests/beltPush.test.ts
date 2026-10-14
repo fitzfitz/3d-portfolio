@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  toRingLocal, nearRing, stepRock,
+  toRingLocal, nearRing, stepRock, holdAt,
   BELT_PUSH_RADIUS, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../src/utils/beltPush";
 import { decay } from "../src/utils/reactions";
@@ -70,6 +70,17 @@ describe("stepRock", () => {
     expect(dispLen(d, 0)).toBe(0);
     expect(dispLen(d, 1)).toBeGreaterThan(BELT_PUSH_RADIUS - 0.01);
     expect(dispLen(d, 2)).toBe(0);
+  });
+  it("eases a released pebble home from where the beam left it, without a jump", () => {
+    const d = new Float32Array(3);
+    const orbit = { x: 10, y: 0, z: 0 }, held = { x: 13, y: 1, z: -2 };
+    holdAt(d, 0, orbit.x, orbit.y, orbit.z, held.x, held.y, held.z);
+    expect([orbit.x + d[0], orbit.y + d[1], orbit.z + d[2]]).toEqual([held.x, held.y, held.z]);
+    // First frame after release: still next to where it was held.
+    stepRock(d, 0, orbit.x, orbit.y, orbit.z, null, kP, kR);
+    expect(Math.hypot(orbit.x + d[0] - held.x, orbit.y + d[1] - held.y, orbit.z + d[2] - held.z)).toBeLessThan(0.1);
+    for (let n = 0; n < 150; n++) stepRock(d, 0, orbit.x, orbit.y, orbit.z, null, kP, kR); // 2.5s
+    expect(dispLen(d)).toBeLessThan(0.5);
   });
   it("lands exactly on target, finite, after a huge dt", () => {
     const d = new Float32Array(3);

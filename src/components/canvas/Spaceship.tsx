@@ -19,6 +19,7 @@ import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
+import { cruiseCap } from "../../utils/speedCap";
 import {
   stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
@@ -92,6 +93,8 @@ const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 const PLANET_WELLS: Well[] = planets.map((p) => ({
   x: 0, y: 0, z: 0, g: PLANET_WELL_G, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
 }));
+/** Well radius by planet name, for the per-frame escape-grace check. */
+const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
@@ -552,19 +555,23 @@ export default function Spaceship() {
     beamState.dx = nose.x; beamState.dy = nose.y; beamState.dz = nose.z;
     if (!beamState.active) beamState.oreStreak = 0;
 
+    // Caps sit before the drag below; cruiseCap keeps the post-drag speed the
+    // same at every frame rate (the tuning targets are measured at 60 fps).
     if (warpActive) {
-      vel.current.set(nose.x * WARP_SPEED, nose.y * WARP_SPEED, nose.z * WARP_SPEED);
+      const warp = cruiseCap(WARP_SPEED, SPACE_DRAG, dt);
+      vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {
       vel.current.x += nose.x * ACCEL * thrustInput * dt;
       vel.current.y += nose.y * ACCEL * thrustInput * dt;
       vel.current.z += nose.z * ACCEL * thrustInput * dt;
-      if (vel.current.length() > MAX_SPEED) vel.current.normalize().multiplyScalar(MAX_SPEED);
+      const cap = cruiseCap(MAX_SPEED, SPACE_DRAG, dt);
+      if (vel.current.length() > cap) vel.current.normalize().multiplyScalar(cap);
     } else if (braking) {
       vel.current.multiplyScalar(Math.pow(BRAKE, dt * 60));
     }
     // Reeling toward a shard counts as thrust for station-keeping.
     const reeling = beamState.active && beamState.reel.active;
-    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, MAX_SPEED);
+    if (reeling) reelStep(vel.current, beamState.reel.x, beamState.reel.y, beamState.reel.z, dt, cruiseCap(MAX_SPEED, SPACE_DRAG, dt));
     vel.current.multiplyScalar(Math.pow(SPACE_DRAG, dt * 60));
 
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
@@ -572,8 +579,8 @@ export default function Spaceship() {
     const grace = escapeGrace.current;
     if (grace.skip) {
       const gb = bodies[grace.skip];
-      const gp = planets.find((q) => q.name === grace.skip);
-      if (gb && gp) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gp.size * PLANET_WELL_RADIUS_FACTOR);
+      const gr = WELL_RADIUS_BY_NAME.get(grace.skip);
+      if (gb && gr !== undefined) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gr);
       else grace.clear();
     }
     let wellCount = 0;

@@ -115,6 +115,8 @@ function loadVisitedDossiers(): string[] {
   return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PLANET_IDS.includes(id)) : [];
 }
 
+const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
+
 /** Local date as YYYY-MM-DD, for the "earned" stamp. */
 export function todayStamp(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -122,8 +124,8 @@ export function todayStamp(d: Date = new Date()): string {
 }
 
 /**
- * Stored badges, sanitised: known recordable ids only, a string date, first
- * occurrence wins. Hand-edited or stale storage must not crash the store or
+ * Stored badges, sanitised: known recordable ids only, a YYYY-MM-DD date (the
+ * `todayStamp` shape), first occurrence wins. Hand-edited or stale storage must not crash the store or
  * grant anything.
  */
 export function loadBadges(raw: unknown): BadgeRecord[] {
@@ -132,7 +134,7 @@ export function loadBadges(raw: unknown): BadgeRecord[] {
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
     const { id, at } = r as { id?: unknown; at?: unknown };
-    if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id)) continue;
+    if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id) || !DATE_STAMP.test(at)) continue;
     if (out.some((b) => b.id === id)) continue;
     out.push({ id, at });
   }
@@ -251,7 +253,7 @@ export interface WorldEventState {
   convoy?: { planet: string; plan: ConvoyPlan };
 }
 
-interface SpaceState {
+export interface SpaceState {
   activeZone: string | null;
   isOrbitLocked: boolean;
   isOrbitCooldown: boolean;
