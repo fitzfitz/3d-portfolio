@@ -52,6 +52,36 @@ The handler lives in `src/handler.ts` and has no Cloudflare bindings. Its tests
 are in [`tests/beaconApi.test.ts`](../tests/beaconApi.test.ts) and run under
 the root `npm test`. `src/index.ts` is the D1 adapter.
 
+## Live sky
+
+The same Worker relays live sky: other visitors flying right now appear as
+ghost ships (spec: `docs/superpowers/specs/2026-10-14-live-sky-design.md`).
+
+- **One room.** `GET /live` is a WebSocket upgrade into a single Durable Object,
+  `Sky`, using the hibernation API. The room logic is pure and unit tested
+  (`src/sky.ts`, `tests/skyRoom.test.ts`); the upgrade gate is
+  `src/liveRoute.ts` (Origin in `ALLOWED_ORIGINS`, one `LIMITER` token per
+  attempt).
+- **Nothing is stored.** No tables, no storage API, no IPs or hashes. A pilot
+  is a random id (new every connection), a country from `CF-IPCountry` (`XX`
+  and `T1` become null, as with beacons), and their last pose, held in the
+  socket's attachment. Closing the socket forgets them.
+- **Quiet when alone.** Clients send their pose only while someone else is in
+  the room and only when it changes, at most 5 times a second. The room
+  snapshots at most every 250 ms, plus one trailing snapshot so a last move is
+  never lost. With nobody moving, the room hibernates.
+- **Limits.** 40 sockets (the 41st gets `full`, close 1013); messages over 256
+  bytes are dropped; more than 10 messages in a second closes the socket (1008).
+- **Cost.** On the Workers Free plan (100k requests and 13,000 GB-s a day;
+  incoming WebSocket messages bill 20:1, outgoing are free; no duration while
+  hibernating), two pilots flying together cost about 900 requests each per
+  hour, so roughly 110 pilot-hours of overlap a day fit. Past the quota,
+  connections fail, clients back off, and visitors are simply alone until
+  00:00 UTC. The Workers Paid plan removes the ceiling.
+
+**Kill switch:** empty `VITE_LIVE_SKY` in `.env.production` and merge. The
+room can stay deployed; nothing connects to it.
+
 ## Deploying
 
 Run these from the repo root. Wrangler is not a dependency of this repo, so
@@ -72,6 +102,11 @@ npx wrangler deploy --config beacon-api/wrangler.toml
 openssl rand -hex 32 | npx wrangler secret put IP_SALT --config beacon-api/wrangler.toml
 npx wrangler secret list --config beacon-api/wrangler.toml
 ```
+
+Deploying also creates the `Sky` Durable Object from `wrangler.toml`
+(`[[durable_objects.bindings]]` plus `[exports.Sky]`); no other step is needed.
+Point the site at it with `VITE_LIVE_SKY=wss://<worker host>/live` in
+`.env.production`.
 
 **Request quota.** `wrangler.toml` binds the Workers Rate Limiting API as
 `LIMITER`: 30 requests a minute per pilot, counted per Cloudflare location,
