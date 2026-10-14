@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  newRoom, onJoin, onMessage, onLeave, onTrailing, buildSnap, randomPilotId,
+  newRoom, onJoin, onMessage, onLeave, onTrailing, buildSnap, randomPilotId, STALE_MS,
   type Room, type Outgoing,
 } from "../beacon-api/src/sky";
 import { SKY_CAP } from "../src/utils/liveSkyProtocol";
@@ -25,7 +25,7 @@ describe("joining", () => {
     const { out } = join(room, "b", 2000);
     expect(to(out, "b")).toEqual([
       { t: "hello", id: "b", peers: 1 },
-      { t: "snap", ships: [{ id: "a", cc: "ID", p: [5, 2, 3], q: [0, 0, 0, 1], plume: "ring" }] },
+      { t: "snap", ships: [{ id: "a", cc: "ID", p: [5, 2, 3], q: [0, 0, 0, 1], plume: "ring", ago: 1000 }] },
     ]);
     expect(to(out, "a")).toEqual([{ t: "peers", n: 1 }, { t: "sync" }]);
   });
@@ -45,7 +45,7 @@ describe("messages", () => {
     const r = onMessage(room, a.pilot, me(1.234567), 1000);
     expect(a.pilot.last).toEqual({ p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring" });
     expect(to(r.out, "a")).toEqual([{ t: "snap", ships: [] }]);
-    expect(to(r.out, "b")).toEqual([{ t: "snap", ships: [{ id: "a", cc: "ID", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring" }] }]);
+    expect(to(r.out, "b")).toEqual([{ t: "snap", ships: [{ id: "a", cc: "ID", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring", ago: 0 }] }]);
     expect(r.close).toBe(false);
   });
   it("drops an invalid message without touching the sender", () => {
@@ -58,7 +58,17 @@ describe("messages", () => {
     const room = newRoom();
     join(room, "a");
     join(room, "b");
-    expect(buildSnap(room, "a")).toEqual({ t: "snap", ships: [] });
+    expect(buildSnap(room, "a", 0)).toEqual({ t: "snap", ships: [] });
+  });
+});
+
+describe("staleness", () => {
+  it("leaves a pilot not heard from for STALE_MS out of snapshots", () => {
+    const room = newRoom();
+    const a = join(room, "a");
+    onMessage(room, a.pilot, me(5), 1000);
+    expect(buildSnap(room, "x", 1000 + STALE_MS).t === "snap" && (buildSnap(room, "x", 1000 + STALE_MS) as { ships: unknown[] }).ships).toHaveLength(1);
+    expect((buildSnap(room, "x", 1001 + STALE_MS) as { ships: unknown[] }).ships).toHaveLength(0);
   });
 });
 
@@ -73,7 +83,8 @@ describe("throttle", () => {
     expect(second.trailingIn).toBe(150);
     expect(onMessage(room, a.pilot, me(3), 1200).trailingIn).toBeNull(); // already scheduled
     const trailing = onTrailing(room, 1250);
-    expect(to(trailing, "b")).toEqual([{ t: "snap", ships: [{ id: "a", cc: "ID", p: [3, 2, 3], q: [0, 0, 0, 1], plume: "ring" }] }]);
+    // ago: the pose is 50 ms old when the trailing snapshot carries it.
+    expect(to(trailing, "b")).toEqual([{ t: "snap", ships: [{ id: "a", cc: "ID", p: [3, 2, 3], q: [0, 0, 0, 1], plume: "ring", ago: 50 }] }]);
     expect(onTrailing(room, 1300)).toEqual([]);
   });
 });

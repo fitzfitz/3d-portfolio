@@ -10,7 +10,8 @@ import { hasPlumeColour } from "../data/plumeColors";
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
 export interface ShipState { p: Vec3; q: Quat; plume: string }
-export interface SnapShip extends ShipState { id: string; cc: string | null }
+/** `ago`: how old the pose was (ms) when the room sent it, so clients can time it without a shared clock. */
+export interface SnapShip extends ShipState { id: string; cc: string | null; ago: number }
 
 export type ServerMessage =
   | { t: "hello"; id: string; peers: number }
@@ -24,6 +25,8 @@ export const SKY_CAP = 40;
 export const MAX_MESSAGE_BYTES = 256;
 /** Room-wide gap between snapshots. */
 export const SNAP_INTERVAL_MS = 250;
+/** A pilot not heard from for this long is left out of snapshots: their connection has likely died without a close. */
+export const STALE_MS = 60_000;
 /** More messages than this in one second closes the socket. A good client sends 5. */
 export const FLOOD_PER_SECOND = 10;
 /** A ship mid-wrap can sit a hair past ±COSMIC_BOUNDS. */

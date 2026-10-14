@@ -3,7 +3,7 @@ import { COSMIC_BOUNDS } from "../constants";
 import { hasPlumeColour } from "../data/plumeColors";
 import { toroidalDistance3, wrapDelta } from "./toroidal";
 import {
-  normQuat, publicCountry, SKY_CAP,
+  normQuat, publicCountry, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
   type Quat, type ServerMessage, type ShipState, type SnapShip, type Vec3,
 } from "./liveSkyProtocol";
 
@@ -13,7 +13,8 @@ import {
  * when this ship's pose is worth sending. Pure apart from liveSkyUrl().
  */
 
-export const RENDER_DELAY_MS = 250;
+/** Two snapshot intervals: room for one late snapshot before a ghost stalls. */
+export const RENDER_DELAY_MS = 2 * SNAP_INTERVAL_MS;
 export const FADE_IN_MS = 500;
 export const MAX_GHOSTS = 8;
 export const GHOST_LABEL = "LIVE PILOT";
@@ -21,6 +22,10 @@ export const LIVE_SKY_NOTICE = "LIVE SKY // OTHER PILOTS CAN SEE YOUR SHIP, PLUM
 const SEND_INTERVAL_MS = 200;
 const MOVE_EPS = 0.05;
 const TURN_EPS = Math.PI / 180;
+/** A still pilot in company re-sends this often, so the room can tell them from a dead connection (STALE_MS). */
+export const KEEPALIVE_MS = 20_000;
+/** A gap this long between a ghost's samples means it sat still, not that it drifted slowly. */
+const STILL_GAP_MS = 1000;
 
 /**
  * Where the live sky room lives, baked in at build time. Empty means the
@@ -42,7 +47,7 @@ const clamp = (v: number) => Math.max(-COSMIC_BOUNDS, Math.min(COSMIC_BOUNDS, v)
 
 function parseShip(row: unknown): SnapShip | null {
   if (!row || typeof row !== "object") return null;
-  const { id, p, q, plume, cc } = row as Record<string, unknown>;
+  const { id, p, q, plume, cc, ago } = row as Record<string, unknown>;
   if (typeof id !== "string" || id.length === 0 || id.length > 16) return null;
   if (!Array.isArray(p) || p.length !== 3 || !p.every((v) => typeof v === "number" && Number.isFinite(v))) return null;
   const nq = normQuat(q);
@@ -53,6 +58,7 @@ function parseShip(row: unknown): SnapShip | null {
     q: nq,
     plume: typeof plume === "string" && hasPlumeColour(plume) ? plume : "stock",
     cc: typeof cc === "string" ? publicCountry(cc) : null,
+    ago: typeof ago === "number" && Number.isFinite(ago) && ago > 0 ? Math.min(ago, STALE_MS) : 0,
   };
 }
 
@@ -99,18 +105,28 @@ export class GhostBuffer {
 
   get size(): number { return this.tracks.size; }
 
-  /** One snapshot, stamped with its arrival time. A ghost missing from it has left. */
-  push(ships: readonly SnapShip[], at: number): void {
+  /**
+   * One snapshot, arriving at `arrival`. Each pose is timed by when it was
+   * sent (arrival minus its `ago`), not when the snapshot came: the pilot's
+   * 200 ms sends and the room's 250 ms snapshots would otherwise alias into a
+   * lurch. A ghost missing from the snapshot has left.
+   */
+  push(ships: readonly SnapShip[], arrival: number): void {
     const seen = new Set<string>();
     for (const s of ships) {
       seen.add(s.id);
-      const sample: Sample = { at, p: s.p, q: s.q };
+      const at = arrival - s.ago;
       const t = this.tracks.get(s.id);
-      if (!t) { this.tracks.set(s.id, { samples: [sample], firstSeen: at, plume: s.plume, cc: s.cc }); continue; }
-      t.samples.push(sample);
-      if (t.samples.length > 4) t.samples.shift();
+      if (!t) { this.tracks.set(s.id, { samples: [{ at, p: s.p, q: s.q }], firstSeen: arrival, plume: s.plume, cc: s.cc }); continue; }
       t.plume = s.plume;
       t.cc = s.cc;
+      const last = t.samples[t.samples.length - 1];
+      if (at <= last.at) continue; // the same pose again (a still pilot), or one older than we hold
+      // After a long stillness, hold the old pose until just before the new
+      // one, so a ghost that starts moving glides off rather than jumping.
+      if (at - last.at > STILL_GAP_MS) t.samples.push({ at: at - SNAP_INTERVAL_MS, p: last.p, q: last.q });
+      t.samples.push({ at, p: s.p, q: s.q });
+      while (t.samples.length > 4) t.samples.shift();
     }
     for (const id of [...this.tracks.keys()]) if (!seen.has(id)) this.tracks.delete(id);
   }
@@ -147,7 +163,7 @@ export const newSendState = (): SendState => ({ lastAt: -Infinity, lastP: null, 
 /** Spec §3.2: only with company, at most every 200 ms, and only when something changed or the room asked. */
 export function shouldSend(s: SendState, peers: number, now: number, me: ShipState): boolean {
   if (peers <= 0 || now - s.lastAt < SEND_INTERVAL_MS) return false;
-  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume) return true;
+  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || now - s.lastAt >= KEEPALIVE_MS) return true;
   const moved = Math.hypot(
     wrapDelta(s.lastP[0], me.p[0], COSMIC_BOUNDS),
     wrapDelta(s.lastP[1], me.p[1], COSMIC_BOUNDS),
@@ -173,6 +189,13 @@ export function shipQuat(heading: number, pitch: number): Quat {
   quat.setFromEuler(euler.set(-pitch, heading, 0, "YXZ"));
   return [quat.x, quat.y, quat.z, quat.w];
 }
+
+/**
+ * The radio line is on screen: the HUD (and RadioChatter in it) is unmounted
+ * in photo mode and on the classic résumé. The live-sky notice only counts as
+ * shown when it is (spec §5): consent is never recorded unseen.
+ */
+export const hudShowsRadio = (s: { photoMode: boolean; showClassicCV: boolean }) => !s.photoMode && !s.showClassicCV;
 
 /** Ghost scannables → their pilot's public country, read by generateScanReport. */
 export const ghostRegistry = new Map<string, string | null>();

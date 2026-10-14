@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import * as THREE from "three";
 import {
   liveSkyUrl, parseServerMessage, GhostBuffer, nearestGhosts, newSendState, shouldSend, markSent,
-  shipQuat, ghostRegistry, ghostScanId, ghostReport, RENDER_DELAY_MS, type GhostPose,
+  shipQuat, ghostRegistry, ghostScanId, ghostReport, hudShowsRadio, RENDER_DELAY_MS, KEEPALIVE_MS, type GhostPose,
 } from "../src/utils/liveSky";
 import { generateScanReport } from "../src/utils/scanReport";
 import { COSMIC_BOUNDS } from "../src/constants";
@@ -11,7 +11,7 @@ import type { ShipState, SnapShip } from "../src/utils/liveSkyProtocol";
 afterEach(() => { vi.unstubAllEnvs(); ghostRegistry.clear(); });
 
 const ship = (id: string, x: number, o: Partial<SnapShip> = {}): SnapShip =>
-  ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, ...o });
+  ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, ago: 0, ...o });
 
 describe("liveSkyUrl", () => {
   it("reads VITE_LIVE_SKY without a trailing slash", () => {
@@ -43,9 +43,18 @@ describe("parseServerMessage", () => {
       "garbage",
     ] }));
     expect(m).toEqual({ t: "snap", ships: [
-      { id: "a", p: [COSMIC_BOUNDS, 0, -COSMIC_BOUNDS], q: [0, 0, 0, 1], plume: "stock", cc: null },
-      { id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID" },
+      { id: "a", p: [COSMIC_BOUNDS, 0, -COSMIC_BOUNDS], q: [0, 0, 0, 1], plume: "stock", cc: null, ago: 0 },
+      { id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 },
     ] });
+  });
+  it("reads a row's ago, treating anything odd as 0 and capping it", () => {
+    const m = parseServerMessage(j({ t: "snap", ships: [
+      { id: "a", p: [0, 0, 0], q: [0, 0, 0, 1], ago: 120 },
+      { id: "b", p: [0, 0, 0], q: [0, 0, 0, 1], ago: -5 },
+      { id: "c", p: [0, 0, 0], q: [0, 0, 0, 1], ago: "soon" },
+      { id: "d", p: [0, 0, 0], q: [0, 0, 0, 1], ago: 1e12 },
+    ] }));
+    expect(m?.t === "snap" && m.ships.map((s) => s.ago)).toEqual([120, 0, 0, 60_000]);
   });
   it("caps a snapshot at 40 ships", () => {
     const ships = Array.from({ length: 50 }, (_, i) => ship(`s${i}`, i));
@@ -59,8 +68,31 @@ describe("GhostBuffer", () => {
     const b = new GhostBuffer();
     b.push([ship("a", 0)], 0);
     b.push([ship("a", 10)], 250);
-    expect(b.sample(250 + 125)[0].p[0]).toBeCloseTo(5);
+    expect(b.sample(125 + RENDER_DELAY_MS)[0].p[0]).toBeCloseTo(5);
     expect(b.sample(250 + RENDER_DELAY_MS)[0].p[0]).toBeCloseTo(10);
+  });
+  it("renders a steady pilot at a steady speed, though sends and snapshots alias", () => {
+    // The pilot sends every 200 ms at 10 u/s; the room snapshots every 250 ms
+    // with each pose's age. Stamped by arrival, the ghost would lurch.
+    const b = new GhostBuffer();
+    let snapAt = 0;
+    for (let now = 0; now <= 3000; now += 50) {
+      for (; snapAt <= now; snapAt += 250) {
+        const sentAt = Math.floor(snapAt / 200) * 200;
+        b.push([ship("a", sentAt / 100, { ago: snapAt - sentAt })], snapAt);
+      }
+      if (now >= 1000) expect(b.sample(now)[0].p[0]).toBeCloseTo((now - RENDER_DELAY_MS) / 100, 1);
+    }
+  });
+  it("a ghost that sat still and starts moving does not jump", () => {
+    const b = new GhostBuffer();
+    b.push([ship("a", 0)], 0);
+    b.push([ship("a", 0, { ago: 4000 })], 4000); // still: same pose, older stamp
+    b.push([ship("a", 2)], 5000);                 // moved 2 u in the last send interval
+    const at = (now: number) => b.sample(now)[0].p[0];
+    expect(at(5000 - 300 + RENDER_DELAY_MS)).toBeCloseTo(0);
+    expect(at(5000 - 100 + RENDER_DELAY_MS)).toBeGreaterThan(0.2);
+    expect(at(5000 - 100 + RENDER_DELAY_MS)).toBeLessThan(1.8);
   });
   it("holds the last pose rather than extrapolating", () => {
     const b = new GhostBuffer();
@@ -136,6 +168,13 @@ describe("shouldSend", () => {
     markSent(s, 0, ME);
     expect(shouldSend(s, 1, 500, { ...ME, plume: "ring" })).toBe(true);
   });
+  it("keeps a still pilot alive every KEEPALIVE_MS while in company", () => {
+    const s = newSendState();
+    markSent(s, 0, ME);
+    expect(shouldSend(s, 1, KEEPALIVE_MS - 1, ME)).toBe(false);
+    expect(shouldSend(s, 1, KEEPALIVE_MS, ME)).toBe(true);
+    expect(shouldSend(s, 0, KEEPALIVE_MS, ME)).toBe(false);
+  });
   it("sends after a sync even when still", () => {
     const s = newSendState();
     markSent(s, 0, ME);
@@ -152,6 +191,14 @@ describe("shipQuat", () => {
     const got = shipQuat(1.2, 0.3);
     expect(got[0]).toBeCloseTo(want.x); expect(got[1]).toBeCloseTo(want.y);
     expect(got[2]).toBeCloseTo(want.z); expect(got[3]).toBeCloseTo(want.w);
+  });
+});
+
+describe("hudShowsRadio", () => {
+  it("is true only when the radio line is on screen", () => {
+    expect(hudShowsRadio({ photoMode: false, showClassicCV: false })).toBe(true);
+    expect(hudShowsRadio({ photoMode: true, showClassicCV: false })).toBe(false);
+    expect(hudShowsRadio({ photoMode: false, showClassicCV: true })).toBe(false);
   });
 });
 

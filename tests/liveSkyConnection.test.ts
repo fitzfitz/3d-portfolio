@@ -50,7 +50,7 @@ function harness(createSocket: (url: string) => SocketLike = (u) => new FakeSock
 }
 
 const ME: ShipState = { p: [1.234, 2, 3], q: [0, 0, 0, 1], plume: "stock" };
-const ship = (id: string) => ({ id, p: [5, 0, 0], q: [0, 0, 0, 1], plume: "ring", cc: "ID" });
+const ship = (id: string) => ({ id, p: [5, 0, 0], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 });
 
 beforeEach(() => { FakeSocket.all = []; });
 
@@ -116,6 +116,19 @@ describe("LiveSkyConnection", () => {
     last().serve({ t: "hello", id: "me1", peers: 1 });
     last().serve({ t: "snap", ships: [ship("me1"), ship("g2")] });
     expect(conn.ghosts.size).toBe(1);
+    expect(conn.ghosts.sample(10_000).map((g) => g.id)).toEqual(["g2"]);
+  });
+
+  it("never shows a ship it flew earlier on this page, after a reconnect", () => {
+    const { conn, advance, last } = harness();
+    conn.setWanted(true);
+    last().open();
+    last().serve({ t: "hello", id: "me1", peers: 1 });
+    last().drop();                      // a network blip; the old socket lingers server-side
+    advance(2000);
+    last().open();
+    last().serve({ t: "hello", id: "me2", peers: 2 });
+    last().serve({ t: "snap", ships: [ship("me1"), ship("g2")] });
     expect(conn.ghosts.sample(10_000).map((g) => g.id)).toEqual(["g2"]);
   });
 

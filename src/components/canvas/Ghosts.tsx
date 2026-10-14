@@ -9,7 +9,7 @@ import { PLUME_COLORS } from "../../data/plumeColors";
 import { wrapDelta } from "../../utils/toroidal";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import {
-  liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, ghostScanId,
+  liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, ghostScanId, hudShowsRadio,
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
@@ -103,14 +103,18 @@ export default function Ghosts() {
   }, [conn]);
 
   // Consent (spec §5): the ship becomes shareable once the notice has actually
-  // reached the radio, not merely been queued.
+  // reached the radio on screen, not merely been queued. Played while the HUD
+  // is unmounted (photo mode), it does not count and is queued again later.
   useEffect(() => useSpaceStore.subscribe((s) => s.broadcast, (b) => {
-    if (b?.text === LIVE_SKY_NOTICE && !useSpaceStore.getState().liveSkySeen) useSpaceStore.getState().setLiveSkySeen(true);
+    const st = useSpaceStore.getState();
+    if (b?.text !== LIVE_SKY_NOTICE || st.liveSkySeen) return;
+    if (hudShowsRadio(st)) st.setLiveSkySeen(true);
+    else noticeQueued.current = false;
   }), []);
 
   useFrame((state) => {
     const s = useSpaceStore.getState();
-    if (s.liveSky && flight.hasFlown && !s.liveSkySeen && !noticeQueued.current) {
+    if (s.liveSky && flight.hasFlown && !s.liveSkySeen && !noticeQueued.current && hudShowsRadio(s)) {
       noticeQueued.current = true;
       s.announceLogbook(LIVE_SKY_NOTICE);
     }

@@ -80,7 +80,7 @@ All messages are small JSON objects. Numbers are rounded before sending: positio
 | `hello` | on connect | `{t:"hello", id, peers}`, where `peers` is the number of *other* pilots |
 | `peers` | someone joins or leaves | `{t:"peers", n}` |
 | `sync` | someone else joins | `{t:"sync"}`: send one `me` now |
-| `snap` | throttled, on `me`, a leave, or a join (to the newcomer) | `{t:"snap", ships:[{id, p:[x,y,z], q:[x,y,z,w], plume, cc}]}`, never including your own ship |
+| `snap` | throttled, on `me`, a leave, or a join (to the newcomer) | `{t:"snap", ships:[{id, p:[x,y,z], q:[x,y,z,w], plume, cc, ago}]}`, never including your own ship. `ago` is how old (ms) the pose was when the room sent it; a pilot not heard from for 60 s (`STALE_MS`) is left out, since their connection has likely died without a close |
 | `full` | the room is at its cap | `{t:"full"}`, then the socket closes |
 
 ### 3.2 Client to server
@@ -91,12 +91,14 @@ All messages are small JSON objects. Numbers are rounded before sending: positio
 - the ship has moved more than 0.05 u or turned more than 1° since the last send, **or** a `sync` arrived since the last send;
 - at least 200 ms have passed since the last send (at most 5 a second).
 
+A still pilot in company also re-sends every 20 s (`KEEPALIVE_MS`), so the room can tell them from a dead connection. A solo pilot still sends nothing.
+
 ## 4. Client
 
 ### 4.1 Pure model (`src/utils/liveSky.ts`)
 
 - `parseServerMessage(raw): ServerMessage | null`: snapshots are untrusted input. Each ship has its position clamped to `±COSMIC_BOUNDS` and its quaternion normalised (rejected if degenerate). Unknown plumes become `"stock"`; anything that isn't a two-letter `[A-Z]{2}` becomes a `null` country. The list is capped at 40, and invalid rows are dropped rather than failing the whole message.
-- `GhostBuffer`: keeps the last snapshots per ghost id with their arrival times. It renders 250 ms in the past, blending positions linearly with `wrapDelta` so a ghost crossing the wrap seam does not streak across the world, and rotations with slerp. If no newer snapshot exists it holds the last pose (no extrapolation). A ghost missing from a snapshot is removed, and an id seen for the first time fades in over 0.5 s.
+- `GhostBuffer`: keeps the last snapshots per ghost id, each timed by when the pose was sent (arrival minus `ago`, so no clock sync is needed; timing by arrival would alias the 200 ms sends against the 250 ms snapshots into a lurch). It renders 500 ms (two snapshot intervals) in the past, blending positions linearly with `wrapDelta` so a ghost crossing the wrap seam does not streak across the world, and rotations with slerp. If no newer snapshot exists it holds the last pose (no extrapolation). After a gap of more than 1 s (the ghost sat still) it holds the old pose until just before the new one, so a ghost that starts moving glides off rather than jumping. Ids this page flew under before a reconnect are never shown. A ghost missing from a snapshot is removed, and an id seen for the first time fades in over 0.5 s.
 - `nearestGhosts(ship, ghosts, n = 8)`: sorted by `toroidalDistance3`.
 - `shouldSend(state, now)`: the rule in §3.2, as a pure function.
 - `liveSkyUrl()`: reads `VITE_LIVE_SKY`; dev builds also accept a `fitz-live-sky-dev` localStorage override, stripped from production exactly like `beaconApiUrl()`.
@@ -126,7 +128,7 @@ Each visible ghost registers a scannable through `setScannable("ghost:<id>", …
 
 - `liveSky: boolean`, persisted as `fitz-live-sky`, default `true`.
 - `liveSkySeen: boolean`, persisted as `fitz-live-seen`.
-- **First-time notice:** at the moment the client would first connect, if `liveSkySeen` is false, it calls `announceLogbook("LIVE SKY // OTHER PILOTS CAN SEE YOUR SHIP, PLUME AND COUNTRY. TOGGLE IN THE LOGBOOK (L)")`, sets `liveSkySeen`, and only then connects. `announceLogbook` queues the line, so it may reach the screen a moment after the socket opens. That is fine: opening the socket shares nothing, and the client holds its first `me` (the only message that carries ship, plume or position) until the radio has shown the line. In §4.2, "the notice has played" therefore means *queued*; the first `me` waits for *shown*.
+- **First-time notice:** at the moment the client would first connect, and only while the HUD is on screen (not in photo mode), if `liveSkySeen` is false, it calls `announceLogbook("LIVE SKY // OTHER PILOTS CAN SEE YOUR SHIP, PLUME AND COUNTRY. TOGGLE IN THE LOGBOOK (L)")`, sets `liveSkySeen`, and only then connects. `announceLogbook` queues the line, so it may reach the screen a moment after the socket opens. That is fine: opening the socket shares nothing, and the client holds its first `me` (the only message that carries ship, plume or position) until the radio has shown the line. In §4.2, "the notice has played" therefore means *queued*; the first `me` waits for *shown*. A notice that reaches the radio while the HUD is unmounted (photo mode) does not count: it is queued again once the HUD is back.
 - **Logbook toggle:** the logbook panel gets a "Live sky" on/off switch with a one-line explanation ("See other pilots flying now. They see your ship, plume and country."). It is keyboard, gamepad and screen-reader reachable like the panel's other controls.
 - Reduced motion: ghosts still appear; the fade-in becomes instant.
 
@@ -178,7 +180,8 @@ Checked against Cloudflare's pricing page on 2026-10-14: 100,000 requests a day,
 
 - **Translucent ghosts compile a new program.** Mitigation: the opaque, dimmed fallback in §4.3, and the probe gate.
 - **Free-tier quota during a traffic spike.** Ghosts stop appearing for the rest of the UTC day; nothing else breaks. The README notes that the Workers Paid plan removes the ceiling.
-- **Clock and network jitter cause stutter.** The 250 ms render delay absorbs normal jitter; arrival times are client-side, so no clock sync is needed.
+- **Clock and network jitter cause stutter.** Poses are timed by their age at send (`ago`), and the 500 ms render delay leaves room for one late snapshot; no clock sync is needed.
+- **A connection dies without a close.** The pilot drops out of snapshots after 60 s of silence (still pilots in company keep alive every 20 s). A full ping/pong eviction was not added, because it would make solo visitors send traffic.
 - **Privacy.** A country is live location data on someone who is on the page right now. Mitigations: the notice comes before the first send, the opt-out is one toggle, nothing is stored, and ids change on every visit. The patch notes say what is shared.
 - **A red Cloudflare check on the PR.** The Workers Builds check fails on every PR branch for config reasons, not code; `main` deploys fine. Do not chase it.
 - **The country reaches the room before consent.** The Worker forwards `CF-IPCountry` when the socket opens, but the room only ever sends it out inside a `snap`, and a pilot appears in a `snap` only after their first `me`. So nothing about a pilot is shared before the notice has been shown.

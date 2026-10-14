@@ -1,5 +1,5 @@
 import {
-  parseMe, roundState, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND,
+  parseMe, roundState, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
   type ServerMessage, type ShipState, type SnapShip,
 } from "../../src/utils/liveSkyProtocol";
 
@@ -16,11 +16,15 @@ export interface Pilot {
   id: string;
   cc: string | null;
   last: ShipState | null;
+  /** When `last` arrived (ms); snapshots carry its age, and a long silence drops the pilot from them. */
+  lastAt: number;
   /** Flood window: messages counted since `start`. */
   win: { start: number; count: number };
 }
 export interface Room { pilots: Pilot[]; lastSnapAt: number; trailingDue: boolean }
 export interface Outgoing { to: string; msg: ServerMessage }
+
+export { STALE_MS };
 
 export const newRoom = (): Room => ({ pilots: [], lastSnapAt: -Infinity, trailingDue: false });
 
@@ -30,23 +34,26 @@ export function randomPilotId(): string {
   return [...bytes].map((b) => (b % 36).toString(36)).join("");
 }
 
-export function buildSnap(room: Room, forId: string): ServerMessage {
+export function buildSnap(room: Room, forId: string, now: number): ServerMessage {
   const ships: SnapShip[] = [];
-  for (const p of room.pilots) if (p.id !== forId && p.last) ships.push({ id: p.id, cc: p.cc, ...p.last });
+  for (const p of room.pilots) {
+    if (p.id === forId || !p.last || now - p.lastAt > STALE_MS) continue;
+    ships.push({ id: p.id, cc: p.cc, ...p.last, ago: now - p.lastAt });
+  }
   return { t: "snap", ships };
 }
 
-const snapAll = (room: Room): Outgoing[] => room.pilots.map((p) => ({ to: p.id, msg: buildSnap(room, p.id) }));
+const snapAll = (room: Room, now: number): Outgoing[] => room.pilots.map((p) => ({ to: p.id, msg: buildSnap(room, p.id, now) }));
 
 export function onJoin(room: Room, id: string, cc: string | null, now: number):
   { ok: false; out: ServerMessage } | { ok: true; pilot: Pilot; out: Outgoing[] } {
   if (room.pilots.length >= SKY_CAP) return { ok: false, out: { t: "full" } };
-  const pilot: Pilot = { id, cc, last: null, win: { start: now, count: 0 } };
+  const pilot: Pilot = { id, cc, last: null, lastAt: 0, win: { start: now, count: 0 } };
   room.pilots.push(pilot);
   const n = room.pilots.length - 1;
   const out: Outgoing[] = [{ to: id, msg: { t: "hello", id, peers: n } }];
   // Everyone already here, straight away: a still pilot sends nothing.
-  if (n > 0) out.push({ to: id, msg: buildSnap(room, id) });
+  if (n > 0) out.push({ to: id, msg: buildSnap(room, id, now) });
   for (const p of room.pilots) {
     if (p.id === id) continue;
     out.push({ to: p.id, msg: { t: "peers", n } });
@@ -63,11 +70,12 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   const state = parseMe(raw);
   if (!state) return { out: [], close: false, trailingIn: null };
   pilot.last = roundState(state);
+  pilot.lastAt = now;
   const wait = room.lastSnapAt + SNAP_INTERVAL_MS - now;
   if (wait <= 0) {
     room.lastSnapAt = now;
     room.trailingDue = false;
-    return { out: snapAll(room), close: false, trailingIn: null };
+    return { out: snapAll(room, now), close: false, trailingIn: null };
   }
   // Inside the window: one trailing snapshot carries this (and any later) move.
   if (room.trailingDue) return { out: [], close: false, trailingIn: null };
@@ -80,7 +88,7 @@ export function onTrailing(room: Room, now: number): Outgoing[] {
   if (!room.trailingDue) return [];
   room.trailingDue = false;
   room.lastSnapAt = now;
-  return snapAll(room);
+  return snapAll(room, now);
 }
 
 export function onLeave(room: Room, id: string, now: number): Outgoing[] {
@@ -92,6 +100,6 @@ export function onLeave(room: Room, id: string, now: number): Outgoing[] {
   const n = room.pilots.length - 1;
   return [
     ...room.pilots.map((p) => ({ to: p.id, msg: { t: "peers", n } as ServerMessage })),
-    ...snapAll(room),
+    ...snapAll(room, now),
   ];
 }

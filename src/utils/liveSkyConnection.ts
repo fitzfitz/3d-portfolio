@@ -47,6 +47,8 @@ export class LiveSkyConnection {
   private deps: ConnectionDeps;
   private socket: SocketLike | null = null;
   private selfId: string | null = null;
+  /** Ids this page flew under before a reconnect: their sockets can linger server-side until the room notices. */
+  private formerIds = new Set<string>();
   private wanted = false;
   private hiddenLong = false;
   private attempt = 0;
@@ -146,6 +148,7 @@ export class LiveSkyConnection {
   }
 
   private reset(): void {
+    if (this.selfId) this.formerIds.add(this.selfId);
     this.ghosts.clear();
     this.peers = 0;
     this.selfId = null;
@@ -160,7 +163,7 @@ export class LiveSkyConnection {
       case "hello": this.selfId = m.id; this.peers = m.peers; break;
       case "peers": this.peers = m.n; if (m.n === 0) this.ghosts.clear(); break;
       case "sync": this.sendState.syncPending = true; break;
-      case "snap": this.ghosts.push(m.ships.filter((s) => s.id !== this.selfId), this.deps.now()); break;
+      case "snap": this.ghosts.push(m.ships.filter((s) => s.id !== this.selfId && !this.formerIds.has(s.id)), this.deps.now()); break;
       case "full": this.full = true; this.cancelRetry(); this.drop(); break;
     }
   }
