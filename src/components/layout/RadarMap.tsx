@@ -150,10 +150,12 @@ export default function RadarMap() {
         ctx.globalAlpha = 1;
       }
 
-      // Career buoys: small amber dots, in range only and never rim-clamped,
-      // like crystals; the station itself is a destination blip above.
+      // Career buoys: small hollow amber rings (crystals are filled dots), in
+      // range only and never rim-clamped; the station itself is a destination
+      // blip above.
       ctx.globalAlpha = 0.9;
-      ctx.fillStyle = CAREER_AMBER;
+      ctx.strokeStyle = CAREER_AMBER;
+      ctx.lineWidth = 1.2;
       for (const p of BUOY_POSITIONS) {
         const dx = wrapDelta(flight.x, p[0], COSMIC_BOUNDS);
         const dz = wrapDelta(flight.z, p[2], COSMIC_BOUNDS);
@@ -161,8 +163,8 @@ export default function RadarMap() {
         if (Math.hypot(dx, dz, dy) > RANGE) continue;
         const { x: sx, up } = worldToRadar(dx, dz, a);
         ctx.beginPath();
-        ctx.arc(c + sx * scale, c - up * scale, 1.8, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.arc(c + sx * scale, c - up * scale, 2.4, 0, Math.PI * 2);
+        ctx.stroke();
       }
       ctx.globalAlpha = 1;
 

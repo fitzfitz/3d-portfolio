@@ -113,7 +113,7 @@ export default async function run() {
     }, { timeoutMs: 10_000, intervalMs: 200 });
     checks.check("flying to a buoy shows its card", shown.ok && shown.value.text.includes(b2.company), JSON.stringify(shown.value));
     const idle = await rects(page);
-    checks.check("the buoy card does not overlap the radio panel", !overlaps(idle.card, idle.radio), JSON.stringify(idle));
+    checks.check("the buoy card does not overlap the radio panel", !!idle.card && !!idle.radio && !overlaps(idle.card, idle.radio), JSON.stringify(idle));
     await page.evaluate((p) => window.__fitz.teleport(p[0], p[1] + 30, p[2]), b2.pos);
     const hidden = await pollUntil(async () => {
       const c = await card(page);
