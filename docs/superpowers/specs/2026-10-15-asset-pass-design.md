@@ -41,7 +41,7 @@ The v1 generator is already substantial (~930 lines: part categories, seam bump,
 
 ### 2. Cargo freighter v3 (`scripts/blender/gen_cargo_ship.py`)
 
-- A long truss spine with a crew cab forward, two racks of ribbed shipping containers (corrugated sides, corner castings, three seeded colours from a muted palette), an engine block with two bell nozzles and a pair of heat-radiator fins, plus greebles: pipes, tanks, a docking light ring.
+- A long truss spine with a crew cab forward, two racks of ribbed shipping containers (corrugated sides, corner castings, colours seeded from a muted four-colour palette, a few slots left empty), an engine block with two bell nozzles and a pair of heat-radiator fins, plus greebles: pipes, tanks, a docking light ring.
 - **Kept names:** materials `HullBaked`, `NavRed`, `NavGreen`, `EngineGlow`; the node `RadarDish` stays a separate, unjoined object (`CargoTraffic.tsx` spins it and pulses the nav and engine materials by name).
 - Same pipeline as v2: colour × AO bake into `HullBaked` at 1024 px; emissive parts are never baked.
 - Nose-to-tail length stays within ±10% of v2, so traffic lanes and swerve radii stay valid.
