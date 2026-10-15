@@ -26,6 +26,31 @@ export default async function run() {
     const activeCrystals = () =>
       page.evaluate(() => (window.__fitz.crystals ?? []).filter((c) => c.active).length);
 
+    // Every teleport in this probe goes through here. An orbit lock freezes the
+    // scene loop (selectSceneFrozen -> frameloop "never"), and while frozen
+    // fitzDebug.teleport only writes a ref nobody reads, so the ship would stay
+    // put and every later check would run against a frozen world. So: break the
+    // lock through the store's own breakOrbit action (the Esc path), teleport,
+    // pump a few frames, then assert the ship really arrived and is not locked.
+    const locked = () => page.evaluate(() => window.__fitz.store.getState().isOrbitLocked);
+    const teleportTo = async (x, y, z, label) => {
+      let broke = false;
+      if (await locked()) {
+        broke = true;
+        await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+        const unlocked = await pollUntil(async () => !(await locked()), { timeoutMs: 5000, intervalMs: 100 });
+        if (!unlocked.ok) checks.check(`${label}: orbit lock broke before the teleport`, false, "still locked");
+      }
+      await page.evaluate(([tx, ty, tz]) => window.__fitz.teleport(tx, ty, tz), [x, y, z]);
+      await pump(page, 10);
+      const p = await position();
+      const dist = Math.hypot(p.x - x, p.y - y, p.z - z);
+      const stillLocked = await locked();
+      checks.check(`${label}: teleport landed (within 1 unit, not orbit-locked)`,
+        dist <= 1 && !stillLocked,
+        `dist=${dist.toFixed(2)} locked=${stillLocked}${broke ? " (orbit lock broken first)" : ""}`);
+    };
+
     checks.check("tank starts full", (await fuel()) === 100, `fuel=${await fuel()}`);
 
     const n0 = await activeCrystals();
@@ -95,7 +120,7 @@ export default async function run() {
       document.querySelector('[data-testid="hud-fuel-label"]')?.textContent);
     checks.check("HUD reads DRY", /DRY/.test(hudLabel ?? ""), `label="${hudLabel}"`);
 
-    await page.evaluate(() => window.__fitz.teleport(-230, -210, -230));
+    await teleportTo(-230, -210, -230, "dry-tank spot");
     await settle(page, 1200);
     await hold(page, ["KeyW", "ShiftLeft"], 1500);
     // ONE measurement, two assertions on it. Reading flight.speed twice with no
@@ -117,11 +142,11 @@ export default async function run() {
     // Refuel by flying onto a crystal.
     const target = await page.evaluate(() => {
       const c = (window.__fitz.crystals ?? []).find((s) => s.active);
-      if (c) window.__fitz.teleport(c.x, c.y, c.z + 1);
       return c ? { x: c.x, y: c.y, z: c.z } : null;
     });
     checks.check("found an active crystal to fly to", target !== null, JSON.stringify(target));
     if (target) {
+      await teleportTo(target.x, target.y, target.z + 1, "refuel crystal");
       await settle(page, 1500);
       const refuelled = await fuel();
       // Fuel was exactly 0 beforehand and FUEL_PER_CRYSTAL is 25, so the
@@ -229,6 +254,15 @@ export default async function run() {
     // which would break the "no crystal spawned inside the belt or halo" check
     // above if that check ever ran after this point. The probe is correct today
     // purely by ordering; nothing enforces it but this comment.
+    // The slot the refuel emptied respawns on a 4-sim-second boundary (~16 s of
+    // wall-clock headless), landing uniformly at random: if that happens after
+    // the far-position search below it can land in radar range. Wait for the
+    // field to be full so the search sees every crystal that will exist.
+    const fieldFull = await pollUntil(async () => (await activeCrystals()) === 40,
+      { timeoutMs: 60_000, intervalMs: 500 });
+    checks.check("crystal field refilled to 40 before the far-position search",
+      fieldFull.ok, `active=${await activeCrystals()}`);
+
     const farSetup = await page.evaluate(async () => {
       const { COSMIC_BOUNDS } = await import("/src/constants.ts");
       const RANGE = 160;
@@ -298,8 +332,7 @@ export default async function run() {
         ? `minDist=${farSetup.minDist.toFixed(1)} (natural gap, no relocation needed)`
         : `minDist=${farSetup.minDist.toFixed(1)} — relocated ${farSetup.relocated} straggler crystal(s) to clear it`);
 
-    await page.evaluate(({ x, y, z }) => window.__fitz.teleport(x, y, z), farSetup);
-    await pump(page, 10); // let the radar's rAF loop actually repaint at the new position
+    await teleportTo(farSetup.x, farSetup.y, farSetup.z, "far position");
     const outOfRangePixels = await crystalPixelCount();
     checks.check("radar shows no crystal-coloured pixels when none are in range",
       outOfRangePixels === 0, `pixels=${outOfRangePixels}`);
@@ -318,8 +351,7 @@ export default async function run() {
       nearCrystal !== null, JSON.stringify(nearCrystal));
 
     if (nearCrystal) {
-      await page.evaluate(({ x, y, z }) => window.__fitz.teleport(x, y, z), nearCrystal);
-      await pump(page, 10); // let the radar's rAF loop actually repaint at the new position
+      await teleportTo(nearCrystal.x, nearCrystal.y, nearCrystal.z, "near crystal");
       const inRangePixels = await crystalPixelCount();
       checks.check("radar shows crystal-coloured pixels when one is in range",
         inRangePixels > 0, `pixels=${inRangePixels}`);
