@@ -58,7 +58,10 @@ const MAX_BODY_BYTES = 1024;
 export const MIN_SALT_LENGTH = 16;
 
 function cors(origin: string | null, deps: Deps): Record<string, string> {
-  if (!origin || !deps.allowedOrigins.includes(origin)) return {};
+  // Vary on every response, not only allowed ones: GETs are publicly cacheable
+  // for 30s, and a copy made for another (or no) Origin, carrying no CORS
+  // headers, must never be served to the site.
+  if (!origin || !deps.allowedOrigins.includes(origin)) return { Vary: "Origin" };
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",

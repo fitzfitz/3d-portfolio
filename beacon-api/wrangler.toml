@@ -4,8 +4,10 @@ main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
 [vars]
-# Every host that serves the site: GitHub Pages and the Cloudflare copy.
-ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedia.workers.dev"
+# Every host that serves the site: GitHub Pages, the Cloudflare copy, and the
+# custom domain on that copy (porto.fitzgeral.my.id). A host missing here gets
+# 403 on /live and no CORS on /beacons: no ghosts, no buoys.
+ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedia.workers.dev,https://porto.fitzgeral.my.id"
 
 [[d1_databases]]
 binding = "DB"
