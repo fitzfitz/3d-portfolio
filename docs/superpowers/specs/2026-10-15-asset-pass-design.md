@@ -49,7 +49,7 @@ The v1 generator is already substantial (~930 lines: part categories, seam bump,
 
 ### 3. Ice moon (`scripts/blender/gen_moon.py`, `Moon_Ice` only)
 
-- Fractured ice shell: a voronoi crack network displaced inward, a faint blue-white subsurface colour in the cracks, darker regolith patches and three to five soft craters. The cracks are colour only (no emissive), so no new shader program.
+- Fractured ice shell: a voronoi crack network displaced inward, a faint blue-white subsurface colour in the cracks, darker regolith patches and three to five soft craters. The cracks glow through Moon_Ice's existing emissive map (it already had one), so there is no new map, material or shader program.
 - `Moon_Rock` and `Moon_Volcanic` must regenerate with identical geometry and textures (the generator's seed order must not shift; checked by comparing their mesh and image data before and after).
 - **Tint fix (`SpacePlanets.tsx`):** the five `OrbitingMoon` colours are replaced with lower-saturation versions of the same hues (HSL saturation ≤ 25%), so a moon reads as rock or ice that picks up a hint of its planet's colour. Check: a photo-mode screenshot beside Fuxx where the ice moon reads as a moon, not a small planet.
 

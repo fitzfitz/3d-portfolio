@@ -8,8 +8,9 @@
 # Game contract (OrbitingMoon in SpacePlanets.tsx picks a variant by name):
 #   node / mesh      material       look
 #   Moon_Rock        MoonRock       grey highlands, dark maria, rayed craters
-#   Moon_Ice         MoonIce        bright ice, long double-ridge lineae,
-#                                   chaos rafts, faint cyan glowing cracks
+#   Moon_Ice         MoonIce        bright blue-white ice, rust lineae, dark
+#                                   regolith patches, relaxed craters, cyan
+#                                   glowing cracks
 #   Moon_Volcanic    MoonVolcanic   dark basalt, calderas with lava lakes,
 #                                   orange glowing fissure network
 #   - each mesh is centred on its own node origin, mean radius 1.0
@@ -353,11 +354,14 @@ def moon_ice():
     rng = np.random.default_rng(SEED + 11)
     nz = Perlin(SEED + 12)
     H = 0.0025 * fbm(nz, P, 2.5, 4) + 0.0003 * fbm(nz, P, 30.0, 3, ridged=True)
-    base = np.array([0.89, 0.92, 0.95], np.float32)
+    base = np.array([0.80, 0.86, 0.92], np.float32)   # bluer, a touch darker: the white ball read as blank
     alb = base * (1.0 + 0.04 * fbm(nz, P + 2.0, 3.0, 5))[..., None]
     tone = smoothstep(0.0, 0.45, fbm(nz, P + 8.0, 1.2, 4))[..., None]
     alb = alb * (1 - 0.5 * tone) + np.array([0.84, 0.82, 0.79], np.float32) * (0.5 * tone)
-    band = np.array([0.68, 0.57, 0.49], np.float32)   # desaturated tan lineae
+    # dark regolith patches: old dusty terrain between the bright ice plains
+    patch = smoothstep(-0.05, 0.25, fbm(nz, P + 14.0, 1.6, 5))[..., None]
+    alb = alb * (1 - 0.7 * patch) + np.array([0.36, 0.38, 0.42], np.float32) * (0.7 * patch)
+    band = np.array([0.50, 0.38, 0.31], np.float32)   # rust-brown lineae: the main contrast on the ice
     glow = np.zeros(P.shape[:-1], np.float32)
 
     Q = warp(nz, P, 1.4, 0.12)          # cycloidal wander of the lineae
@@ -435,6 +439,12 @@ def moon_ice():
             flick = 0.5 + 0.5 * np.clip(fbm(nz, P + float(k) * 3.1, 8.0, 3) * 2 + 0.5, 0, 1)
             glow = np.maximum(glow, core * flick * (0.7 if kind == "band" else 1.0))
 
+    # a few large, relaxed old craters: shallow and wide, darker floors, no rays
+    for c, r in crater_set(rng, 4, 0.09, 0.16, 1.7):
+        idx, x, az, Ps = stamp_crater(H, c, r, depth=r * 0.06, rim=r * 0.02, noise=nz,
+                                      floor_frac=0.5, ext=2.5)
+        alb[idx] = alb[idx] * (1 - 0.35 * (1 - smoothstep(0.7, 1.0, x)))[..., None]
+
     # a few fresh impacts with blue-white ejecta
     for k, (c, r) in enumerate(crater_set(rng, 10, 0.014, 0.055, 1.7)):
         idx, x, az, Ps = stamp_crater(H, c, r, depth=r * 0.16, rim=r * 0.05, noise=nz,
@@ -444,7 +454,7 @@ def moon_ice():
         br = np.maximum(br, 0.6 * (1 - smoothstep(0.8, 1.0, x)))
         alb[idx] = alb[idx] + (np.array([0.95, 0.985, 1.0], np.float32) - alb[idx]) * br[..., None]
 
-    em = srgb_to_lin(hexcol("#7fe8ff"))[None, None, :] * (0.32 * np.clip(glow, 0, 1))[..., None]
+    em = srgb_to_lin(hexcol("#7fe8ff"))[None, None, :] * (0.55 * np.clip(glow, 0, 1))[..., None]
     return H, alb, em, 3.8
 
 
