@@ -45,7 +45,7 @@ export default function BuoyCard() {
 
   return (
     <div ref={rootRef} data-testid="buoy-card" data-index="-1" aria-hidden="true"
-      className={`absolute bottom-40 left-1/2 -translate-x-1/2 w-[min(92vw,26rem)] rounded-xl border bg-black/80 px-4 py-3 pointer-events-none ${reducedMotion ? "" : "transition-opacity duration-300"}`}
+      className={`absolute bottom-[17rem] left-1/2 -translate-x-1/2 w-[min(92vw,26rem)] rounded-xl border bg-black/80 px-4 py-3 pointer-events-none ${reducedMotion ? "" : "transition-opacity duration-300"}`}
       style={{ borderColor: `${CAREER_AMBER}55`, opacity: 0 }}>
       <div className="text-[9px] tracking-widest mb-1" style={{ color: CAREER_AMBER }}>CAREER_BUOY</div>
       <div ref={roleRef} className="font-display font-bold text-sm text-white" />
