@@ -8,8 +8,8 @@ import CloudLayer from "./CloudLayer";
 import {
   COSMIC_BOUNDS, PORTAL_POS, planets,
   ZONE_FACTOR, LOCK_RETAIN_FACTOR,
-  PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R,
 } from "../../constants";
+import { DESTINATIONS } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
@@ -373,9 +373,9 @@ export default function SpacePlanets() {
     return () => membraneMaterial.dispose();
   }, [portalScene, membraneMaterial]);
 
-  // Portal is static; planets are re-registered every frame (they orbit).
+  // Destinations are static; planets are re-registered every frame (they orbit).
   useEffect(() => {
-    setScannable("contact", PORTAL_POS[0], PORTAL_POS[1], PORTAL_POS[2], "PORTAL_SUN");
+    for (const d of DESTINATIONS) setScannable(d.id, d.pos[0], d.pos[1], d.pos[2], d.scanLabel);
   }, []);
 
   // Proximity attraction logic
@@ -483,15 +483,19 @@ export default function SpacePlanets() {
       }
     });
 
-    const portalDist = toroidalDistance3(flight.x, flight.z, flight.y, PORTAL_POS[0], PORTAL_POS[2], PORTAL_POS[1], COSMIC_BOUNDS);
-    if (lockedNow && zoneNow === "contact") {
-      if (portalDist < PORTAL_RETAIN_R) {
-        activeZone = "contact";
-        lockActive = true;
+    // Destinations (src/data/destinations.ts): fixed points with their own
+    // radii, checked after the planets exactly as the portal always was.
+    for (const d of DESTINATIONS) {
+      const dist = toroidalDistance3(flight.x, flight.z, flight.y, d.pos[0], d.pos[2], d.pos[1], COSMIC_BOUNDS);
+      if (lockedNow && zoneNow === d.id) {
+        if (dist < d.retainR) {
+          activeZone = d.id;
+          lockActive = true;
+        }
+      } else if (dist < d.zoneR) {
+        activeZone = d.id;
+        if (dist < d.lockR && !isOrbitCooldown) lockActive = true;
       }
-    } else if (portalDist < PORTAL_ZONE_R) {
-      activeZone = "contact";
-      if (portalDist < PORTAL_LOCK_R && !isOrbitCooldown) lockActive = true;
     }
 
     setActiveZone(activeZone);

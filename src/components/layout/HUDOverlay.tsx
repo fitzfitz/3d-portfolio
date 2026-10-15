@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { DESTINATIONS } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
@@ -16,8 +17,9 @@ import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 
+/** Planet rows only; destination rows take their colour from the table. */
 const ZONE_COLORS: Record<string, string> = {
-  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
+  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent",
 };
 
 /**
@@ -348,7 +350,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
       <div className="absolute bottom-10 right-6 hidden md:flex flex-col gap-2 items-end">
         <div className="text-[9px] text-white/30">{"// SECTOR_PLANETS — CLICK TO JUMP"}</div>
-        {/* Rows double as jump buttons (same as keys 1..n+1). */}
+        {/* Rows double as jump buttons (same as the number keys). */}
         {planets.map((p, i) => (
           <button key={p.name} onClick={() => requestJump(p.name)}
             title={`Jump to ${p.name} [${i + 1}]`}
@@ -361,14 +363,17 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <span className="w-3 text-primary">{visitedDossiers.includes(p.name) ? "✓" : ""}</span>
           </button>
         ))}
-        <button onClick={() => requestJump("contact")}
-          title={`Jump to the contact portal [${planets.length + 1}]`}
-          className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/40"}`}>
-          <span className="text-white/30">[{planets.length + 1}]</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
-          <span>PORTAL_SUN ([{PORTAL_POS.join(", ")}])</span>
-          <span className="w-3" />
-        </button>
+        {DESTINATIONS.map((d, i) => (
+          <button key={d.id} onClick={() => requestJump(d.id)}
+            title={`Jump to the ${d.label.toLowerCase()} [${planets.length + i + 1}]`}
+            className="pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white text-white/40"
+            style={activeZone === d.id ? { color: d.color } : undefined}>
+            <span className="text-white/30">[{planets.length + i + 1}]</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
+            <span>{d.scanLabel} ([{d.pos.join(", ")}])</span>
+            <span className="w-3" />
+          </button>
+        ))}
       </div>
     </div>
   );

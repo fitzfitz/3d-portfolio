@@ -4,6 +4,7 @@ import {
   PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, PORTAL_ZONE_R,
 } from "../src/constants";
 import { planets, SHIP_MAX_SPEED } from "../src/constants";
+import { DESTINATIONS, escapeR } from "../src/data/destinations";
 
 describe("orbit-lock geometry invariants", () => {
   it("planet orbit ring sits safely inside the retention radius", () => {
@@ -23,6 +24,18 @@ describe("moving-center lock safety", () => {
     for (const p of planets) {
       const orbitalSpeed = p.orbit.radius * p.orbit.angularSpeed;
       expect(orbitalSpeed).toBeLessThan(SHIP_MAX_SPEED / 4);
+    }
+  });
+});
+
+describe("destination orbit-lock invariants", () => {
+  it("every destination's orbit sits inside its retention radius, and a jump lands inside its lock", () => {
+    for (const d of DESTINATIONS) {
+      expect(d.orbitR, d.id).toBeLessThan(d.retainR - 0.2);
+      expect(d.lockR, d.id).toBeLessThan(d.orbitR);
+      expect(d.zoneR, d.id).toBeLessThan(d.retainR); // zone must also be retained while locked
+      expect(d.jumpR, d.id).toBeLessThan(d.lockR); // a jump docks on arrival
+      expect(escapeR(d), d.id).toBeGreaterThan(d.retainR); // a break is not re-retained
     }
   });
 });

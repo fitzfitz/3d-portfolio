@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
 import { CHANGELOG } from "../src/data/changelog";
+import { DESTINATIONS } from "../src/data/destinations";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -443,6 +444,13 @@ describe("dossier progress", () => {
 });
 
 describe("requestJump", () => {
+  it("accepts every destination in the table", () => {
+    for (const d of DESTINATIONS) {
+      useSpaceStore.getState().requestJump(d.id);
+      expect(useSpaceStore.getState().jumpRequest?.id).toBe(d.id);
+    }
+  });
+
   it("issues a fresh request each time, even for the same target", () => {
     useSpaceStore.getState().requestJump("portfolio");
     const a = useSpaceStore.getState().jumpRequest;

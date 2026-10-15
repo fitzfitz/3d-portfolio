@@ -46,11 +46,12 @@ describe("nextWaypoint", () => {
   const names = ["saas", "video", "agent"];
 
   it("points at the nearest unvisited planet", () => {
-    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, [])).toBe("saas");
-    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas"])).toBe("video");
+    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, [], "contact")).toBe("saas");
+    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas"], "contact")).toBe("video");
   });
 
-  it("points at the contact portal once every dossier is read", () => {
-    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas", "video", "agent"])).toBe("contact");
+  it("points at the fallback destination once every dossier is read", () => {
+    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas", "video", "agent"], "contact")).toBe("contact");
+    expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas", "video", "agent"], "career")).toBe("career");
   });
 });

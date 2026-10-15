@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { PORTAL_POS, planets, projectById } from "../../constants";
+import { planets, projectById } from "../../constants";
+import { DESTINATIONS, afterPlanets, destinationById } from "../../data/destinations";
 import { bodies, flight, useSpaceStore } from "../../store/spaceStore";
 import { nextWaypoint } from "../../utils/navigation";
 import { waypointState } from "../../utils/waypointState";
@@ -8,7 +9,10 @@ import { RACE_GATES } from "../../data/ringCourse";
 
 
 const PLANET_NAMES = planets.map((p) => p.name);
-const PORTAL = { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2] };
+/** Destinations are fixed points; built once so the frame loop allocates nothing. */
+const DESTINATION_POINTS = new Map<string, { x: number; y: number; z: number }>(
+  DESTINATIONS.map((d) => [d.id, { x: d.pos[0], y: d.pos[1], z: d.pos[2] }]),
+);
 const MARGIN = 0.88; // NDC fraction treated as "on screen"
 /**
  * Off-screen targets get an arrow on an ellipse around the screen centre (in
@@ -20,16 +24,16 @@ const RING_X = 0.6;
 const RING_Y = 0.5;
 const v = new THREE.Vector3();
 
-/** Headless: projects the next unread dossier (then the portal) to the screen — or, mid-lap, the next time-trial ring. */
+/** Headless: projects the next unread dossier (then the next destination) to the screen — or, mid-lap, the next time-trial ring. */
 export default function WaypointDriver() {
   useFrame(({ camera, size }) => {
     const s = useSpaceStore.getState();
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
-    const id = race ? "" : nextWaypoint(flight, PLANET_NAMES, bodies, s.visitedDossiers);
+    const id = race ? "" : nextWaypoint(flight, PLANET_NAMES, bodies, s.visitedDossiers, afterPlanets(s.badges));
     // Nothing to point at while docked there or already inside its pull.
     if (s.isOrbitLocked || (!race && s.activeZone === id)) { waypointState.active = false; return; }
-    const t = race ? RACE_GATES[race.next].c : id === "contact" ? PORTAL : bodies[id];
+    const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? bodies[id];
     if (!t) { waypointState.active = false; return; }
 
     v.set(t.x, t.y, t.z).project(camera);
@@ -57,8 +61,9 @@ export default function WaypointDriver() {
       waypointState.color = "#ffb020";
       return;
     }
-    waypointState.label = id === "contact" ? "CONTACT PORTAL" : (projectById(id)?.title ?? id).toUpperCase();
-    waypointState.color = id === "contact" ? "#ec4899" : (planets.find((p) => p.name === id)?.color ?? "#00ff87");
+    const dest = destinationById(id);
+    waypointState.label = dest ? dest.label : (projectById(id)?.title ?? id).toUpperCase();
+    waypointState.color = dest ? dest.color : (planets.find((p) => p.name === id)?.color ?? "#00ff87");
   });
   return null;
 }

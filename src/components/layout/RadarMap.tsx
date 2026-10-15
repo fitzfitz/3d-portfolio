@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { COSMIC_BOUNDS, planets } from "../../constants";
+import { DESTINATIONS } from "../../data/destinations";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
@@ -8,6 +9,8 @@ import { liveRadar } from "../../utils/liveSky";
 const SIZE = 148;
 const RANGE = 160; // world units mapped to radar radius
 const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
+/** Destinations are fixed: one blip each, in the table's colour. */
+const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -58,7 +61,7 @@ export default function RadarMap() {
           const b = bodies[p.name];
           return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
         }),
-        { name: "contact", x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2], color: "#ec4899" },
+        ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
       for (const t of targets) {

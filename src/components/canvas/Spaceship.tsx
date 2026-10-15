@@ -2,7 +2,8 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, PORTAL_ORBIT_R, ZONE_FACTOR, PORTAL_ZONE_R, PORTAL_LOCK_R } from "../../constants";
+import { COSMIC_BOUNDS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR } from "../../constants";
+import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
@@ -59,11 +60,11 @@ const ESCAPE_MARGIN = 1.15;
 const ESCAPE_SPEED = 4;
 
 /**
- * Jump standoffs: inside each lock radius (planet 1.3x size, portal 1.5) and
- * outside the body, so the lock engages on the frame the ship arrives.
+ * Jump standoff for planets: inside the lock radius (1.3x size) and outside
+ * the body, so the lock engages on the frame the ship arrives. Destinations
+ * carry their own standoff (`jumpR`, src/data/destinations.ts).
  */
 const JUMP_PLANET_FACTOR = 1.2;
-const JUMP_PORTAL_R = PORTAL_LOCK_R * 0.8;
 
 /**
  * Nozzle exit centres in ship space: the GLB's Engine_Emissive clusters at
@@ -221,17 +222,18 @@ export default function Spaceship() {
       const activeZone = useSpaceStore.getState().activeZone;
       lockedZone.current = activeZone;
       const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
+      const dest = destinationById(activeZone);
       if (planet) {
         const b = bodies[planet.name];
         lockedCenter.current.set(b.x, b.y, b.z);
         targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
         dockMinRadius.current = planet.size + CAPTURE_SURFACE_MARGIN;
         escapeRadius.current = planet.size * ZONE_FACTOR * ESCAPE_MARGIN;
-      } else if (activeZone === "contact") {
-        lockedCenter.current.set(...PORTAL_POS);
+      } else if (dest) {
+        lockedCenter.current.set(dest.pos[0], dest.pos[1], dest.pos[2]);
         dockMinRadius.current = 0;
-        targetLockRadius.current = PORTAL_ORBIT_R;
-        escapeRadius.current = PORTAL_ZONE_R * ESCAPE_MARGIN * 1.5;
+        targetLockRadius.current = dest.orbitR;
+        escapeRadius.current = escapeR(dest);
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
@@ -469,21 +471,24 @@ export default function Spaceship() {
       const id = pendingJump.current;
       pendingJump.current = null;
       const planet = planets.find((p) => p.name === id);
-      const target = planet ? bodies[planet.name] : { x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2] };
-      const standoff = planet ? planet.size * JUMP_PLANET_FACTOR : JUMP_PORTAL_R;
-      const j = jumpPoint(pos.current, target, standoff);
-      pos.current.set(j.x, j.y, j.z);
-      vel.current.set(0, 0, 0);
-      zeroGravity();
-      angle.current = j.yaw;
-      pitch.current = 0;
-      turnVelocity.current = 0;
-      pitchVel.current = 0;
-      hasFlown.current = true;
-      flight.hasFlown = true;
-      snapCamera.current = true;
-      useSpaceStore.setState({ isOrbitCooldown: false });
-      store.triggerTeleportFlash();
+      const dest = planet ? undefined : destinationById(id);
+      const target = planet ? bodies[planet.name] : dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] };
+      const standoff = planet ? planet.size * JUMP_PLANET_FACTOR : dest?.jumpR;
+      if (target && standoff !== undefined) {
+        const j = jumpPoint(pos.current, target, standoff);
+        pos.current.set(j.x, j.y, j.z);
+        vel.current.set(0, 0, 0);
+        zeroGravity();
+        angle.current = j.yaw;
+        pitch.current = 0;
+        turnVelocity.current = 0;
+        pitchVel.current = 0;
+        hasFlown.current = true;
+        flight.hasFlown = true;
+        snapCamera.current = true;
+        useSpaceStore.setState({ isOrbitCooldown: false });
+        store.triggerTeleportFlash();
+      }
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
