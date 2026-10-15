@@ -50,7 +50,10 @@ function inWorld(p: unknown): p is Vec3 {
 
 /** A client's `me` message, as the room sees it. Null for anything invalid. */
 export function parseMe(raw: unknown): ShipState | null {
-  if (typeof raw !== "string" || new TextEncoder().encode(raw).length > MAX_MESSAGE_BYTES) return null;
+  // A UTF-8 string is never shorter in bytes than in characters, so the cheap
+  // length check turns away an oversized frame before it is encoded.
+  if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return null;
+  if (new TextEncoder().encode(raw).length > MAX_MESSAGE_BYTES) return null;
   let m: unknown;
   try { m = JSON.parse(raw); } catch { return null; }
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
@@ -60,13 +63,12 @@ export function parseMe(raw: unknown): ShipState | null {
   return nq ? { p: [p[0], p[1], p[2]], q: nq, plume } : null;
 }
 
-/** Rounded for the wire: positions to 0.01, quaternion components to 0.001. */
-export function roundState(s: ShipState): ShipState {
-  return {
-    p: s.p.map((v) => Math.round(v * 100) / 100) as Vec3,
-    q: s.q.map((v) => Math.round(v * 1000) / 1000) as Quat,
-    plume: s.plume,
-  };
+/** Rounded for the wire: positions to 0.01, quaternion components to 0.001. Pass `out` to reuse an object. */
+export function roundState(s: ShipState, out: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" }): ShipState {
+  for (let i = 0; i < 3; i++) out.p[i] = Math.round(s.p[i] * 100) / 100;
+  for (let i = 0; i < 4; i++) out.q[i] = Math.round(s.q[i] * 1000) / 1000;
+  out.plume = s.plume;
+  return out;
 }
 
 /** CF-IPCountry as a public code: unknown (XX), Tor (T1) and anything malformed become null. */

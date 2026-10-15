@@ -17,7 +17,7 @@ The universe feels alive, but the visitor is always alone in it. Live sky shows 
 
 1. Two people flying at the same time see each other move smoothly, with no visible jumps between updates.
 2. A visitor who is alone sends nothing after connecting, and the room hibernates.
-3. Nothing about a pilot is stored. There are no tables, IPs or hashes, and closing the tab removes the ghost.
+3. Nothing about a pilot is stored. There are no tables and no IPs; the only hash is a salted visitor key held in the socket's memory to cap places per visitor (§2.2), never sent to anyone, and closing the tab removes the ghost and the key.
 4. No new WebGL shader programs (the deep-space programs probe stays at 79/79), and no React renders per frame.
 5. The site keeps working if the Worker is down, over quota or switched off; the visitor is simply alone.
 6. It runs inside the Workers Free plan at portfolio traffic (see §7).
@@ -41,9 +41,11 @@ The universe feels alive, but the visitor is always alone in it. Live sky shows 
   - `id`: a random 8-character id, new on every connection, never derived from the IP or anything stable;
   - `cc`: a two-letter country, or `null` for `XX`, `T1` or a missing header (the same rule as beacons);
   - `last`: the last valid state `{ p, q, plume }`, or `null` if the pilot has not sent any yet;
-  - `win`: `{ start, count }` for the message flood limit (§2.4).
+  - `recent`: arrival times of the last 10 messages, for the sliding flood limit (§2.4);
+  - `visitor`: a salted HMAC of the pilot's IPv4 address or IPv6 /64 (the same hash beacons use, keyed with `IP_SALT`), set by the Worker in the `X-Sky-Visitor` header (any client-sent value is replaced). It is used only to cap one visitor at 3 places (`VISITOR_CAP`), is never put in a snapshot, and is cleared when the socket closes. Without a usable salt it is null and the cap is off.
 - The constructor rebuilds nothing from storage: the DO uses no storage API and declares no SQL tables. After hibernation, `ctx.getWebSockets()` plus attachments are the whole state.
-- **Cap:** 40 open sockets. Socket 41 receives `{t:"full"}` and is closed with code 1013. Its client stays solo and does not retry until the next page load.
+- **Cap:** 40 open sockets, and at most 3 per visitor. A socket over either limit receives `{t:"full"}` and is closed with code 1013. Its client stays solo and tries again after 5 minutes (`FULL_RETRY_MS`).
+- **Leaving** clears the socket's attachment, so a room rebuilt while the socket is still closing cannot count the pilot again.
 
 ### 2.3 Pure room logic (`beacon-api/src/sky.ts`)
 
@@ -67,7 +69,7 @@ A `me` message is accepted only if all of these hold:
 - `q` has four finite numbers whose squared length is between 0.9 and 1.1; the server normalises it;
 - `plume` is `"stock"` or a key of `PLUME_COLORS` (imported from `src/data/plumeColors.ts`, as `handler.ts` imports `src/utils/beacons.ts`). The server cannot check that the pilot really unlocked it, but a spoofed plume is cosmetic and harmless.
 
-Any invalid message is dropped silently. **Flood limit:** more than 10 messages in any one-second window closes the socket with code 1008. A well-behaved client sends at most 5 a second.
+Any invalid message is dropped silently; one longer than 256 characters is rejected before it is decoded. **Flood limit:** more than 10 messages in any one-second span (a sliding window) closes the socket with code 1008. A well-behaved client sends at most 5 a second.
 
 ## 3. Protocol
 
@@ -108,7 +110,7 @@ A still pilot in company also re-sends every 20 s (`KEEPALIVE_MS`), so the room 
 A small class, not React state. It holds the socket, the `GhostBuffer`, `peers` and the send state. The scene reads it per frame through a ref.
 
 - **When to connect:** only when all of these are true: `liveSkyUrl()` is non-empty, the visitor is in the 3D scene (never the classic résumé), the ship has flown at least once (`hasFlown`), live sky is enabled, and the first-time notice has played (§5).
-- **Reconnects:** back off with jitter from 2 s, doubling to 60 s, and reset after a connection lasts 30 s. A `full` stops retries until the next page load. A failed upgrade (over quota, 429, Worker down) is just another backoff step, with no user-visible error.
+- **Reconnects:** back off with jitter from 2 s, doubling to 60 s, and reset after a connection lasts 30 s. After a `full`, wait 5 minutes before trying again. A failed upgrade (over quota, 429, Worker down) is just another backoff step, with no user-visible error.
 - **Hidden tab:** disconnect after the tab has been hidden for 60 s, and reconnect when it becomes visible again.
 - **Toggle off:** close the socket, clear the buffer, remove ghost scannables, and stop all sending.
 
@@ -120,7 +122,11 @@ A small class, not React state. It holds the socket, the `GhostBuffer`, `peers` 
 - One `useFrame`, no React state updates per frame; the eight mesh slots are pooled and shown or hidden.
 - Mounted only when `liveSkyUrl()` is non-empty, so a build without the URL contains no ghost code path that runs.
 
-### 4.4 Scanning
+### 4.4 Radar
+
+Every ghost in the room (not only the 8 drawn as ships) appears on the HUD radar as a hollow diamond in its plume colour, with the planets' altitude chevron, rim-clamped and dimmed when out of range, so a visitor always knows which way the other pilots are. `Ghosts` writes the smoothed poses into a shared, reused list (`liveRadar`) each frame; `RadarMap` reads it in its own draw loop.
+
+### 4.5 Scanning
 
 Each visible ghost registers a scannable through `setScannable("ghost:<id>", …)` and removes it when it leaves. A completed scan reports `PILOT FROM <CC> · LIVE`, or `PILOT · LIVE` when the country is null. Scanning a ghost does not count towards the comet badge or any other logbook entry.
 

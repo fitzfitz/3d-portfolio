@@ -62,16 +62,23 @@ ghost ships (spec: `docs/superpowers/specs/2026-10-14-live-sky-design.md`).
   (`src/sky.ts`, `tests/skyRoom.test.ts`); the upgrade gate is
   `src/liveRoute.ts` (Origin in `ALLOWED_ORIGINS`, one `LIMITER` token per
   attempt).
-- **Nothing is stored.** No tables, no storage API, no IPs or hashes. A pilot
-  is a random id (new every connection), a country from `CF-IPCountry` (`XX`
-  and `T1` become null, as with beacons), and their last pose, held in the
-  socket's attachment. Closing the socket forgets them.
+- **Nothing is stored.** No tables, no storage API, no IPs. A pilot is a
+  random id (new every connection), a country from `CF-IPCountry` (`XX` and
+  `T1` become null, as with beacons), their last pose, and a visitor key,
+  all held in the socket's attachment. Closing the socket forgets them.
+- **Visitor key.** The Worker hashes the client IP (IPv4, or IPv6 /64) with
+  `IP_SALT`, as beacons do, and passes it to the room in `X-Sky-Visitor`,
+  replacing anything a client sent. The room uses it only to cap one visitor
+  at 3 places and never sends it out. Without a 16+ character salt the key is
+  null and the cap is off.
 - **Quiet when alone.** Clients send their pose only while someone else is in
   the room and only when it changes, at most 5 times a second. The room
   snapshots at most every 250 ms, plus one trailing snapshot so a last move is
   never lost. With nobody moving, the room hibernates.
-- **Limits.** 40 sockets (the 41st gets `full`, close 1013); messages over 256
-  bytes are dropped; more than 10 messages in a second closes the socket (1008).
+- **Limits.** 40 sockets, and 3 per visitor (over either, `full` and close
+  1013; the client retries after 5 minutes); messages over 256 bytes are
+  dropped; more than 10 messages in any one-second span closes the socket
+  (1008).
 - **Cost.** On the Workers Free plan (100k requests and 13,000 GB-s a day;
   incoming WebSocket messages bill 20:1, outgoing are free; no duration while
   hibernating), two pilots flying together cost about 900 requests each per

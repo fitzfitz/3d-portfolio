@@ -30,6 +30,8 @@ const OPEN = 1;
 export const HIDDEN_GRACE_MS = 60_000;
 /** A connection that lasted this long resets the backoff. */
 export const STABLE_MS = 30_000;
+/** After `full`, try again this much later: the room may have freed up. */
+export const FULL_RETRY_MS = 5 * 60_000;
 
 /** 2 s doubling to 60 s, ±25% jitter so a room restart doesn't get every client back at once. */
 export function backoffMs(attempt: number, random: number): number {
@@ -39,7 +41,7 @@ export function backoffMs(attempt: number, random: number): number {
 export class LiveSkyConnection {
   readonly ghosts = new GhostBuffer();
   peers = 0;
-  /** The room was full: no retries until the next page load. */
+  /** The room was full: no retries until FULL_RETRY_MS has passed. */
   full = false;
   /** Pose messages sent (tests and the e2e probe read it). */
   sent = 0;
@@ -55,7 +57,10 @@ export class LiveSkyConnection {
   private openedAt = 0;
   private retryTimer: unknown = null;
   private hiddenTimer: unknown = null;
+  private fullTimer: unknown = null;
   private sendState = newSendState();
+  /** The rounded pose, reused: tick runs every frame. */
+  private rounded: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
 
   constructor(deps: ConnectionDeps) { this.deps = deps; }
 
@@ -87,7 +92,7 @@ export class LiveSkyConnection {
   tick(me: ShipState | null): void {
     const ws = this.socket;
     if (!me || !ws || ws.readyState !== OPEN) return;
-    const r = roundState(me);
+    const r = roundState(me, this.rounded);
     const now = this.deps.now();
     if (!shouldSend(this.sendState, this.peers, now, r)) return;
     try {
@@ -101,6 +106,7 @@ export class LiveSkyConnection {
     this.wanted = false;
     this.cancelRetry();
     if (this.hiddenTimer !== null) { this.deps.clearTimer(this.hiddenTimer); this.hiddenTimer = null; }
+    if (this.fullTimer !== null) { this.deps.clearTimer(this.fullTimer); this.fullTimer = null; }
     this.drop();
   }
 
@@ -164,7 +170,12 @@ export class LiveSkyConnection {
       case "peers": this.peers = m.n; if (m.n === 0) this.ghosts.clear(); break;
       case "sync": this.sendState.syncPending = true; break;
       case "snap": this.ghosts.push(m.ships.filter((s) => s.id !== this.selfId && !this.formerIds.has(s.id)), this.deps.now()); break;
-      case "full": this.full = true; this.cancelRetry(); this.drop(); break;
+      case "full":
+        this.full = true;
+        this.cancelRetry();
+        this.drop();
+        this.fullTimer = this.deps.setTimer(() => { this.fullTimer = null; this.full = false; this.reconcile(); }, FULL_RETRY_MS);
+        break;
     }
   }
 }
