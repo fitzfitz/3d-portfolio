@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Contact keeps its current position, radii, labels and colour exactly: pos `[0, 95, -150]`, zoneR 2.2, lockR 1.5, retainR 3.4, orbitR 2.6, colour `#ec4899`, scan label `PORTAL_SUN`, jump standoff 1.2, escape push 3.795.
-- Career radii: zoneR 8.5, lockR 5.8, retainR 13, orbitR 10 (spec), plus jumpR 5.4 (this plan's ruling). orbitR must stay inside retainR (`tests/orbitInvariant.test.ts`).
+- Career radii: zoneR 8.5, lockR 7.2, retainR 13, orbitR 10 (spec), plus jumpR 6.7 (this plan's ruling; revised from 5.8 / 5.4 so the whole ship docks clear of the hull). orbitR must stay inside retainR (`tests/orbitInvariant.test.ts`).
 - Keys: `[1–3]` planets, `[4]` Career, `[5]` Contact. Gamepad: d-pad clockwise from up = targets 1–4; Menu/Start (standard button 9) = target 5.
 - Logbook: a fifth essential, `id: "career"`, title "Read the career dossier", recorded when you dock at the station.
 - Waypoint order: nearest unread planet, then the career station, then the contact portal.

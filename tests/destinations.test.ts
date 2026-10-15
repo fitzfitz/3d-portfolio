@@ -62,7 +62,7 @@ describe("career station row", () => {
     const c = destinationById("career")!;
     expect(c).toMatchObject({
       id: "career", label: "CAREER STATION", jumpLabel: "Career", scanLabel: "STATION_CAREER",
-      color: "#ffb547", zoneR: 8.5, lockR: 5.8, retainR: 13, orbitR: 10, jumpR: 5.4,
+      color: "#ffb547", zoneR: 8.5, lockR: 7.2, retainR: 13, orbitR: 10, jumpR: 6.7,
     });
     expect(c.pos).toBe(STATION_POS);
   });

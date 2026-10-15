@@ -291,6 +291,17 @@ describe("career station (career_station.glb)", () => {
     expect(b.max[1]).toBeLessThanOrEqual(3.2);
   });
 
+  it("parks a jump with the whole ship clear of the hull, not just its centre", async () => {
+    // The ship's origin is what sits at jumpR; its nose or tail reaches half a
+    // ship length further toward the station. SHIP_RENDER_SCALE is the scale
+    // Spaceship.tsx renders spaceship.glb at (<primitive ... scale={0.35}>).
+    const SHIP_RENDER_SCALE = 0.35;
+    const ship = bounds(await load("spaceship"));
+    const SHIP_HALF_LENGTH = Math.max(Math.abs(ship.min[2]), Math.abs(ship.max[2])) * SHIP_RENDER_SCALE;
+    const stationMaxRadius = maxRadius(await load("career_station"));
+    expect(STATION_RADII.jumpR).toBeGreaterThanOrEqual(stationMaxRadius + SHIP_HALF_LENGTH);
+  });
+
   it("reuses the freighter's material configurations, so it adds no shader program", async () => {
     const [station, cargo] = [await load("career_station"), await load("cargo_ship")];
     expect(textureSet(station, "HullBaked")).toEqual(textureSet(cargo, "HullBaked"));

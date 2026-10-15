@@ -18,10 +18,11 @@ export const STATION_POS: Vec3 = [0, -108, 156];
 
 /**
  * The portal's lock radii scaled for a model of radius ~5 (about 4x the
- * portal). jumpR parks a jump just outside the model (radius ≤ 5.3,
- * tests/assetContracts.test.ts) and inside lockR, so it docks on arrival.
+ * portal). jumpR parks a jump outside the model (radius ≤ 5.3) with the
+ * whole ship clear of the hull too (model radius + the ship's half length,
+ * tests/assetContracts.test.ts), and inside lockR, so it docks on arrival.
  */
-export const STATION_RADII = { zoneR: 8.5, lockR: 5.8, retainR: 13, orbitR: 10, jumpR: 5.4 } as const;
+export const STATION_RADII = { zoneR: 8.5, lockR: 7.2, retainR: 13, orbitR: 10, jumpR: 6.7 } as const;
 
 /** The career landmarks' accent colour: station lights, buoy glow, radar, dossier. */
 export const CAREER_AMBER = "#ffb547";

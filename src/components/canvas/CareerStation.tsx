@@ -13,8 +13,9 @@ const POSITION: [number, number, number] = [STATION_POS[0], STATION_POS[1], STAT
  * The career station (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1),
  * built by scripts/blender/gen_career_station.py. Docking is SpacePlanets'
  * zone check on the destination table and opens the Career dossier. There is
- * no collider, as with the portal: the lock radius (5.8) lies outside the
- * model (≤ 5.3), so an approaching ship docks before it reaches the hull. The
+ * no collider, as with the portal: the lock radius (7.2) lies outside the
+ * model (≤ 5.3) by more than the ship's half length, so an approaching ship
+ * docks before its nose reaches the hull. The
  * habitat ring stops turning under reduced motion (ambientTime freezes).
  */
 export default function CareerStation() {
