@@ -5,6 +5,7 @@ import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore
 import { flareLevel } from "../../utils/worldEvents";
 import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
+import { GOD_RAYS_SOURCE_FLAGS } from "./godRays";
 
 // Photosphere: boiling granulation cells and limb darkening, in HDR so
 // bloom and the god-ray pass keep their punch. Replaces a flat
@@ -104,6 +105,9 @@ export default function Sun({ onSunReady }: SunProps) {
       uniforms: { uTime: { value: 0 }, uHeat: { value: 1 } },
       vertexShader: surfaceVertex,
       fragmentShader: surfaceFragment,
+      // The GodRays pass would set these on mount; set them here so warm-up
+      // compiles the variant that is drawn (godRays.ts).
+      ...GOD_RAYS_SOURCE_FLAGS,
     }),
     []
   );
