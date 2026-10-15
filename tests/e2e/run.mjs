@@ -3,7 +3,7 @@ import { stopServer } from "./harness.mjs";
 
 const PROBES = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : ["smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "basepath"];
+  : ["smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "career", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "basepath"];
 
 const all = [];
 let crashed = 0;
