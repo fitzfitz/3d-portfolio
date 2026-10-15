@@ -157,6 +157,18 @@ describe("cargo ship (cargo_ship.glb)", () => {
     expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(12000);
     expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
   });
+
+  it("is a detailed freighter, not a box hauler", async () => {
+    // v2 was 7.9k triangles of primitive boxes; v3 adds a truss spine,
+    // ribbed containers and radiators.
+    expect(triangles(await load("cargo_ship"), "HullBaked")).toBeGreaterThan(9000);
+  });
+
+  it("keeps the nav lights on opposite sides, red to port", async () => {
+    const doc = await load("cargo_ship");
+    expect(materialBounds(doc, "NavRed").max[0]).toBeLessThan(0);
+    expect(materialBounds(doc, "NavGreen").min[0]).toBeGreaterThan(0);
+  });
 });
 
 describe("fuel crystal (space_crystal.glb)", () => {
