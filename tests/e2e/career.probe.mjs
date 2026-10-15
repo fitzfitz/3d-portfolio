@@ -44,6 +44,7 @@ export default async function run() {
 
     // Read all three planet dossiers: the radio then points at the career station.
     let announced = null;
+    let lastClosedAt = 0;
     const watchAnnouncement = async () => {
       const t = (await chatterText(page)) ?? "";
       const b = (await readStore(page)).broadcast?.text ?? "";
@@ -56,6 +57,7 @@ export default async function run() {
       checks.check(`${key} docks at a planet`, d.ok);
       await settle(page, 600);
       await page.keyboard.press("Escape");
+      lastClosedAt = Date.now();
       // The announcement fires on leaving the last dossier and zone chatter
       // can overwrite it within seconds, so sample while the dock releases.
       await pollUntil(async () => { await watchAnnouncement(); return announced || !(await readStore(page)).isOrbitLocked ? true : null; },
@@ -63,7 +65,13 @@ export default async function run() {
     }
     await pollUntil(async () => { await watchAnnouncement(); return announced ? true : null; }, { timeoutMs: 8_000, intervalMs: 100 });
     checks.check("after all three dossiers the radio names the career station and key 4", !!announced, announced ?? (await chatterText(page)));
-    await settle(page, 1500);
+    // The hint is content, not flavour: zone entry / ambient chatter must not
+    // overwrite it for 8 s (src/utils/radioHold.ts). Check the line itself ~5 s
+    // after the last dossier closed, not just while the dock releases.
+    await settle(page, Math.max(0, 5000 - (Date.now() - lastClosedAt)));
+    const heldLine = (await chatterText(page)) ?? "";
+    checks.check("the next-stop hint is still on the radio ~5 s after the dossier closes",
+      /CAREER STATION/.test(heldLine) && /PRESS 4/.test(heldLine), heldLine);
 
     // [4] Career: jump, dock, dossier, essential.
     await page.evaluate(() => document.activeElement?.blur?.());

@@ -3,6 +3,7 @@ import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { useSpaceStore } from "../../store/spaceStore";
 import { soundManager } from "../../audio/soundManager";
+import { flavourAllowed, holdUntil } from "../../utils/radioHold";
 
 /** Typewriter terminal line, bottom-center HUD. rAF + DOM writes, no React state. */
 export default function RadioChatter() {
@@ -14,6 +15,8 @@ export default function RadioChatter() {
     let raf = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let disposed = false;
+    // performance.now() until which a content broadcast owns the line.
+    let heldUntil = 0;
 
     const typeLine = (text: string) => {
       if (disposed || !lineRef.current) return;
@@ -35,6 +38,12 @@ export default function RadioChatter() {
     const scheduleAmbient = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
+        const now = performance.now();
+        // A broadcast is still on the line: try again once its hold ends.
+        if (!flavourAllowed(now, heldUntil)) {
+          timer = setTimeout(scheduleAmbient, heldUntil - now);
+          return;
+        }
         const s = useSpaceStore.getState();
         typeLine(
           s.isWarping
@@ -44,25 +53,32 @@ export default function RadioChatter() {
       }, scheduler.nextDelayMs());
     };
 
+    // Flavour lines (zone entry, comet, altitude, impact) never overwrite a
+    // held broadcast; they are dropped, not queued.
+    const flavour = (pick: () => string) => {
+      if (flavourAllowed(performance.now(), heldUntil)) typeLine(pick());
+    };
+
     // Zone entry interrupts the ambient cadence immediately
     const unsubs = [
       useSpaceStore.subscribe(
         (s) => s.activeZone,
-        (zone) => { if (zone) typeLine(scheduler.pick("zone", zone)); }
+        (zone) => { if (zone) flavour(() => scheduler.pick("zone", zone)); }
       ),
       useSpaceStore.subscribe(
         (s) => s.cometNear,
-        (near) => { if (near) typeLine(scheduler.pick("comet")); }
+        (near) => { if (near) flavour(() => scheduler.pick("comet")); }
       ),
       useSpaceStore.subscribe(
         (s) => s.altitudeWarn,
-        (warn) => { if (warn) typeLine(scheduler.pick("altitude")); }
+        (warn) => { if (warn) flavour(() => scheduler.pick("altitude")); }
       ),
       useSpaceStore.subscribe(
         (s) => s.broadcast,
         (b) => {
           if (!b) return;
           typeLine(b.text);
+          heldUntil = holdUntil(performance.now(), b);
           // Broadcasts carry real content (shard facts, scan reports, the
           // completion pointer). Announce them whole: the typewriter line
           // changes every 22ms and would be noise to a screen reader. Silent
@@ -72,7 +88,7 @@ export default function RadioChatter() {
       ),
       useSpaceStore.subscribe(
         (s) => s.impactCount,
-        () => typeLine(scheduler.pick("impact"))
+        () => flavour(() => scheduler.pick("impact"))
       ),
     ];
 
