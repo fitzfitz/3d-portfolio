@@ -20,6 +20,7 @@ import { setScannable } from "../../utils/scannables";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { makeGuideLineMaterial, makePlanetRingMaterial } from "./guideLine";
 import { assetUrl } from "../../utils/assetUrl";
+import { MOON_TINTS } from "../../data/moonTints";
 
 /**
  * Orbit-ring breathe. Baseline 0.22 is the opacity the rings were authored with,
@@ -510,7 +511,7 @@ export default function SpacePlanets() {
         </mesh>
         <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={0.168} />
-        <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={planets[0].size * 0.104} color="#8fffc9" variant="Rock" />
+        <OrbitingMoon distance={planets[0].size * 1.7} speed={0.4} inclination={0.45} size={planets[0].size * 0.104} color={MOON_TINTS.ruangrapiRock} variant="Rock" />
 
         {/* Planetary ring: banded, translucent, with a division (guideLine.ts) */}
         <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]} material={planetRingMat}>
@@ -532,8 +533,8 @@ export default function SpacePlanets() {
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
-        <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={planets[1].size * 0.0875} color="#9be8ff" phase={2} variant="Ice" />
-        <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={planets[1].size * 0.115} color="#9be8ff" phase={4.2} variant="Rock" />
+        <OrbitingMoon distance={planets[1].size * 1.9} speed={-0.28} inclination={-0.3} size={planets[1].size * 0.0875} color={MOON_TINTS.portfolioIce} phase={2} variant="Ice" />
+        <OrbitingMoon distance={planets[1].size * 1.38} speed={0.5} inclination={0.1} size={planets[1].size * 0.115} color={MOON_TINTS.portfolioRock} phase={4.2} variant="Rock" />
 
         {/* Proximity gravity-field circle: dashed, shown only on approach */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[1]}>
@@ -550,8 +551,8 @@ export default function SpacePlanets() {
             emissiveMap={fuxxGlow} emissive="#e070ff" emissiveIntensity={1.2} />
         </mesh>
         <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} intensity={0.5} thickness={1.05} />
-        <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={planets[2].size * 0.094} color="#e3b8ff" variant="Volcanic" />
-        <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={planets[2].size * 0.0625} color="#caa2ff" phase={3.5} variant="Ice" />
+        <OrbitingMoon distance={planets[2].size * 1.6} speed={0.5} inclination={0.6} size={planets[2].size * 0.094} color={MOON_TINTS.fuxxVolcanic} variant="Volcanic" />
+        <OrbitingMoon distance={planets[2].size * 2.1} speed={-0.22} inclination={-0.2} size={planets[2].size * 0.0625} color={MOON_TINTS.fuxxIce} phase={3.5} variant="Ice" />
 
         {/* Proximity gravity-field circle: dashed, shown only on approach */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[2]}>
