@@ -17,6 +17,9 @@ mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_portal.py
 "$BLENDER" --background --python scripts/blender/gen_crystal.py
 "$BLENDER" --background --python scripts/blender/gen_shard.py
+# Career landmarks (2026-10-15): the career station and its trail buoy.
+"$BLENDER" --background --python scripts/blender/gen_career_station.py
+"$BLENDER" --background --python scripts/blender/gen_buoy.py
 # Planet colour + glow maps (pure Node + sharp, no Blender).
 node scripts/textures/gen_planets.mjs
 npm run assets:optimize

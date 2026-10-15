@@ -3,11 +3,12 @@ import { readdirSync, statSync } from "node:fs";
 import { NodeIO, getBounds, type Document } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
+import { STATION_RADII } from "../src/data/careerTrail";
 
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -73,6 +74,49 @@ function baseColorFactor(doc: Document, material: string): number[] {
   const m = doc.getRoot().listMaterials().find((x) => x.getName() === material);
   if (!m) throw new Error(`no material ${material}`);
   return m.getBaseColorFactor().slice(0, 3);
+}
+
+/** What decides a material's shader program: which texture slots are filled, alpha mode and extensions. */
+function textureSet(doc: Document, material: string) {
+  const m = doc.getRoot().listMaterials().find((x) => x.getName() === material);
+  if (!m) throw new Error(`no material ${material}`);
+  return {
+    base: !!m.getBaseColorTexture(), normal: !!m.getNormalTexture(), emissive: !!m.getEmissiveTexture(),
+    metalRough: !!m.getMetallicRoughnessTexture(), occlusion: !!m.getOcclusionTexture(),
+    alpha: m.getAlphaMode(), extensions: m.listExtensions().map((e) => e.extensionName).sort(),
+  };
+}
+
+/** Every vertex attribute used anywhere in the file (COLOR_0 or TANGENT would add a shader program). */
+const semantics = (doc: Document) => [...new Set(doc.getRoot().listMeshes()
+  .flatMap((mesh) => mesh.listPrimitives().flatMap((p) => p.listSemantics())))].sort();
+
+function node(doc: Document, name: string) {
+  const n = doc.getRoot().listNodes().find((x) => x.getName() === name);
+  if (!n) throw new Error(`no node ${name}`);
+  return n;
+}
+
+/** Farthest vertex from the model's origin, in world space (dequantized). */
+function maxRadius(doc: Document): number {
+  let max = 0;
+  const el: number[] = [];
+  for (const n of doc.getRoot().listNodes()) {
+    const mesh = n.getMesh();
+    if (!mesh) continue;
+    const m = n.getWorldMatrix();
+    for (const p of mesh.listPrimitives()) {
+      const pos = p.getAttribute("POSITION")!;
+      for (let i = 0; i < pos.getCount(); i++) {
+        pos.getElement(i, el);
+        const x = m[0] * el[0] + m[4] * el[1] + m[8] * el[2] + m[12];
+        const y = m[1] * el[0] + m[5] * el[1] + m[9] * el[2] + m[13];
+        const z = m[2] * el[0] + m[6] * el[1] + m[10] * el[2] + m[14];
+        max = Math.max(max, Math.hypot(x, y, z));
+      }
+    }
+  }
+  return max;
 }
 
 describe("hero ship (spaceship.glb)", () => {
@@ -214,6 +258,96 @@ describe("moons (moon.glb)", () => {
     expect(nodeNames(doc)).toEqual(["Moon_Ice", "Moon_Rock", "Moon_Volcanic"]);
     expect(materialNames(doc)).toEqual(["MoonIce", "MoonRock", "MoonVolcanic"]);
     for (const m of ["MoonIce", "MoonRock", "MoonVolcanic"]) expect(triangles(doc, m)).toBe(4480);
+  });
+});
+
+describe("career station (career_station.glb)", () => {
+  it("has the two nodes CareerStation.tsx uses and two materials", async () => {
+    const doc = await load("career_station");
+    expect(nodeNames(doc)).toEqual(["CareerStation", "HabitatRing"]);
+    expect(materialNames(doc)).toEqual(["DockLight", "HullBaked"]);
+  });
+
+  it("keeps the habitat ring a separate, unrotated node on the hub axis, in HullBaked only", async () => {
+    // CareerStation.tsx spins the ring by writing rotation.y on this node.
+    const doc = await load("career_station");
+    const ring = node(doc, "HabitatRing");
+    const [x, , z] = ring.getTranslation();
+    expect(Math.abs(x)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(z)).toBeLessThanOrEqual(0.02);
+    expect(ring.getRotation()).toEqual([0, 0, 0, 1]);
+    expect(ring.getMesh()!.listPrimitives().map((p) => p.getMaterial()?.getName())).toEqual(["HullBaked"]);
+    const b = getBounds(ring);
+    expect(b.max[1] - b.min[1]).toBeLessThanOrEqual(1.0);
+    expect(b.max[0]).toBeGreaterThan(3.8);
+    expect(b.max[0]).toBeLessThan(4.3);
+  });
+
+  it("fits inside the career jump standoff, so a jump never lands in the hull", async () => {
+    const doc = await load("career_station");
+    expect(maxRadius(doc)).toBeLessThan(STATION_RADII.jumpR);
+    const b = bounds(doc);
+    expect(b.min[1]).toBeGreaterThanOrEqual(-3.0);
+    expect(b.max[1]).toBeLessThanOrEqual(3.2);
+  });
+
+  it("reuses the freighter's material configurations, so it adds no shader program", async () => {
+    const [station, cargo] = [await load("career_station"), await load("cargo_ship")];
+    expect(textureSet(station, "HullBaked")).toEqual(textureSet(cargo, "HullBaked"));
+    expect(textureSet(station, "DockLight")).toEqual(textureSet(cargo, "NavRed"));
+    expect(semantics(station)).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+  });
+
+  it("glows amber at the dock lights", async () => {
+    const m = (await load("career_station")).getRoot().listMaterials().find((x) => x.getName() === "DockLight")!;
+    const [r, g, b] = m.getEmissiveFactor();
+    expect(r).toBeGreaterThan(0.9);
+    expect(g).toBeGreaterThan(0.3);
+    expect(g).toBeLessThan(0.6);
+    expect(b).toBeLessThan(0.15);
+  });
+
+  it("stays inside its triangle and download budget", async () => {
+    const t = triangles(await load("career_station"));
+    expect(t).toBeGreaterThanOrEqual(2000);
+    expect(t).toBeLessThanOrEqual(6000);
+    expect(kb("career_station")).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("career buoy (buoy.glb)", () => {
+  it("is one node, one mesh, one primitive, one BuoyGlow material", async () => {
+    const root = (await load("buoy")).getRoot();
+    expect(root.listNodes().map((n) => n.getName())).toEqual(["Buoy"]);
+    expect(root.listMeshes()).toHaveLength(1);
+    expect(root.listMeshes()[0].listPrimitives()).toHaveLength(1);
+    expect(root.listMaterials().map((m) => m.getName())).toEqual(["BuoyGlow"]);
+  });
+
+  it("shares Data_Shard's texture set, so the instanced buoys add no shader program", async () => {
+    const [buoy, shard] = [await load("buoy"), await load("data_shard")];
+    expect(textureSet(buoy, "BuoyGlow")).toEqual(textureSet(shard, "Data_Shard"));
+    expect(semantics(buoy)).toEqual(semantics(shard));
+  });
+
+  it("stands upright around its glow ring", async () => {
+    const b = bounds(await load("buoy"));
+    expect(b.min[1]).toBeGreaterThanOrEqual(-1.75);
+    expect(b.min[1]).toBeLessThanOrEqual(-1.6);
+    expect(b.max[1]).toBeGreaterThanOrEqual(1.5);
+    expect(b.max[1]).toBeLessThanOrEqual(1.65);
+    for (const r of [0, 2]) {
+      expect(b.min[r]).toBeGreaterThanOrEqual(-0.75);
+      expect(b.max[r]).toBeLessThanOrEqual(0.75);
+    }
+  });
+
+  it("stays inside its triangle and download budget", async () => {
+    // Drawn five times (one InstancedMesh), against the deep-space ceiling.
+    const t = triangles(await load("buoy"));
+    expect(t).toBeGreaterThanOrEqual(200);
+    expect(t).toBeLessThanOrEqual(400);
+    expect(kb("buoy")).toBeLessThanOrEqual(40);
   });
 });
 

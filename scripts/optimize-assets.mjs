@@ -45,7 +45,10 @@ const TEXTURE_OPTS = {
   asteroids: { quality: 85 },
 };
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
-for (const k of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head"]) {
+// Every Blender-authored model, in one list, so a new model cannot get texture
+// settings without also being processed (or the other way round).
+const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head", "career_station", "buoy"];
+for (const k of MODELS) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }
 
@@ -53,7 +56,7 @@ for (const k of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "d
 // (except the TEXTURE_OPTS above).
 // (asteroids.glb = 4 sculpted variants with 512px bakes, replaces the old
 // single 4K-textured asteroid.glb)
-for (const name of ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head"]) {
+for (const name of MODELS) {
   if (!wanted(name)) continue;
   if (!existsSync(`${SRC}/${name}.glb`)) {
     console.log(`skip ${name}.glb (not in assets-src)`);
