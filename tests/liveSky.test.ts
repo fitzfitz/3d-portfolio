@@ -3,6 +3,7 @@ import * as THREE from "three";
 import {
   liveSkyUrl, parseServerMessage, GhostBuffer, nearestGhosts, newSendState, shouldSend, markSent,
   shipQuat, ghostRegistry, ghostScanId, ghostReport, hudShowsRadio, RENDER_DELAY_MS, KEEPALIVE_MS, type GhostPose,
+  liveRadar, writeRadarBlips,
 } from "../src/utils/liveSky";
 import { generateScanReport } from "../src/utils/scanReport";
 import { COSMIC_BOUNDS } from "../src/constants";
@@ -121,6 +122,21 @@ describe("GhostBuffer", () => {
     b.push([ship("b", 1)], 250);
     expect(b.sample(600).map((g) => g.id)).toEqual(["b"]);
   });
+  it("reuses its pose objects and output array frame to frame", () => {
+    const b = new GhostBuffer();
+    b.push([ship("a", 0), ship("b", 5)], 0);
+    const first = b.sample(1000);
+    const [p0, p1] = first;
+    const second = b.sample(1100);
+    expect(second).toBe(first);
+    expect(second[0]).toBe(p0);
+    expect(second[1]).toBe(p1);
+  });
+  it("carries each ghost's scan id, built once", () => {
+    const b = new GhostBuffer();
+    b.push([ship("ab12", 0)], 0);
+    expect(b.sample(1000)[0].scanId).toBe(ghostScanId("ab12"));
+  });
   it("fades a new ghost in, instantly when fadeMs is 0", () => {
     const b = new GhostBuffer();
     b.push([ship("a", 0)], 1000);
@@ -130,11 +146,13 @@ describe("GhostBuffer", () => {
 });
 
 describe("nearestGhosts", () => {
-  const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, alpha: 1 });
+  const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
   it("sorts by toroidal distance and keeps n", () => {
     const at = { x: -COSMIC_BOUNDS + 5, y: 0, z: 0 };
-    const out = nearestGhosts(at, [pose("mid", 0), pose("acrossSeam", COSMIC_BOUNDS - 5), pose("near", -COSMIC_BOUNDS + 8)], 2);
+    const list = [pose("mid", 0), pose("acrossSeam", COSMIC_BOUNDS - 5), pose("near", -COSMIC_BOUNDS + 8)];
+    const out = nearestGhosts(at, list, 2);
     expect(out.map((g) => g.id)).toEqual(["near", "acrossSeam"]);
+    expect(out).toBe(list); // sorted and trimmed in place: no per-frame allocation
   });
 });
 
@@ -186,11 +204,34 @@ describe("shouldSend", () => {
 });
 
 describe("shipQuat", () => {
+  it("writes into the array it is given", () => {
+    const out: [number, number, number, number] = [0, 0, 0, 0];
+    expect(shipQuat(0.4, 0.1, out)).toBe(out);
+    expect(out).not.toEqual([0, 0, 0, 0]);
+  });
   it("matches the ship's YXZ rotation (-pitch, heading, 0)", () => {
     const want = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.3, 1.2, 0, "YXZ"));
     const got = shipQuat(1.2, 0.3);
     expect(got[0]).toBeCloseTo(want.x); expect(got[1]).toBeCloseTo(want.y);
     expect(got[2]).toBeCloseTo(want.z); expect(got[3]).toBeCloseTo(want.w);
+  });
+});
+
+describe("radar blips", () => {
+  it("lists every ghost with its plume colour, reusing entries", () => {
+    const g = (id: string, x: number, plume: string): GhostPose =>
+      ({ id, p: [x, 1, 2], q: [0, 0, 0, 1], plume, cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
+    writeRadarBlips([g("a", 5, "ring"), g("b", -9, "stock")]);
+    expect(liveRadar.count).toBe(2);
+    const first = liveRadar.blips[0];
+    expect(first).toMatchObject({ x: 5, y: 1, z: 2, hex: "#ff3df0" });
+    expect(liveRadar.blips[1]).toMatchObject({ x: -9, hex: "#00d9ff" });
+    writeRadarBlips([g("c", 7, "ore")]);
+    expect(liveRadar.count).toBe(1);
+    expect(liveRadar.blips[0]).toBe(first);
+    expect(first).toMatchObject({ x: 7, hex: "#ff8a1f" });
+    writeRadarBlips([]);
+    expect(liveRadar.count).toBe(0);
   });
 });
 

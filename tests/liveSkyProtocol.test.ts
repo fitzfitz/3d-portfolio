@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { parseMe, normQuat, publicCountry, roundState, MAX_MESSAGE_BYTES } from "../src/utils/liveSkyProtocol";
 import { COSMIC_BOUNDS } from "../src/constants";
 
@@ -29,6 +29,12 @@ describe("parseMe", () => {
   it("rejects binary frames", () => expect(parseMe(new ArrayBuffer(8))).toBeNull());
   it("rejects anything over the byte cap", () => {
     expect(parseMe(me({ pad: "x".repeat(MAX_MESSAGE_BYTES) }))).toBeNull();
+  });
+  it("rejects an oversized frame on its length, before encoding it", () => {
+    const spy = vi.spyOn(TextEncoder.prototype, "encode");
+    expect(parseMe("x".repeat(1_000_000))).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
   it("normalises a near-unit quaternion", () => {
     expect(parseMe(me({ q: [0, 0, 0, 1.04] }))!.q[3]).toBeCloseTo(1, 10);

@@ -72,6 +72,24 @@ variance.
 | Modal open | 94 | 365738 | 83 | 4 |
 | 40 anomalies | 32 | 217892 | 78 | 4 |
 
+**Programs measured 2026-10-15 (warm-up compiles for the PostFX target).**
+`ShaderWarmup` used to compile with no render target bound, so every program
+got its on-screen variant (sRGB output, tone mapped), while with PostFX on the
+scene actually draws into the composer's buffer (linear, no tone mapping).
+Visible objects compiled their real variant on the first frames anyway, so
+each paid twice, and anything hidden at load (the race ghost, live-sky ghosts)
+compiled its real variant mid-play, the first time it appeared. Warm-up now
+binds a 1×1 render target when PostFX is on. A full run read deep space 56,
+close approach 57, modal 57, 40 anomalies 56 (from 78/83/83/78).
+
+The ceilings above are deliberately **not** lowered to match. Under headless
+SwiftShader the performance monitor can decline to low-perf while assets load,
+before warm-up runs; warm-up then rightly compiles for the screen, and the
+harness's later switch back to PostFX compiles the real variants on top, which
+lands back near the old counts. The table keeps the old baselines so the
+ceilings cover both paths; `tests/e2e/livesky.probe.mjs` locks low-perf off
+before load and asserts that ghosts appearing add no program at all.
+
 **Programs re-baselined 2026-10-12 (time-trial ring course).** `RingCourse.tsx`
 adds two material variants, both compiled by `ShaderWarmup` at load rather than
 during play: the instanced, instance-coloured additive ring material, and the

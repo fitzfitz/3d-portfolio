@@ -1,5 +1,5 @@
 import { handleRequest, withListCache, type BeaconStore, type RequestLimiter, type StoredBeacon } from "./handler";
-import { refuseLive } from "./liveRoute";
+import { refuseLive, skyRequest, visitorKey, VISITOR_HEADER } from "./liveRoute";
 import { newRoom, onJoin, onLeave, onMessage, onTrailing, randomPilotId, type Outgoing, type Pilot } from "./sky";
 import { publicCountry } from "../../src/utils/liveSkyProtocol";
 
@@ -85,7 +85,9 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (new URL(req.url).pathname === "/live") {
       const refusal = await refuseLive(req, { allowedOrigins: origins(env), limiter: env.LIMITER });
-      return refusal ?? env.SKY.getByName("sky").fetch(req);
+      if (refusal) return refusal;
+      const visitor = await visitorKey(req.headers.get("CF-Connecting-IP") ?? "unknown", env.IP_SALT ?? "");
+      return env.SKY.getByName("sky").fetch(skyRequest(req, visitor));
     }
     store ??= withListCache(d1Store(env.DB), 30_000, Date.now);
     return handleRequest(req, {
@@ -122,7 +124,8 @@ export class Sky {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     this.ctx.acceptWebSocket(server);
-    const joined = onJoin(this.room, randomPilotId(), publicCountry(req.headers.get("CF-IPCountry")), Date.now());
+    const joined = onJoin(this.room, randomPilotId(), publicCountry(req.headers.get("CF-IPCountry")), Date.now(),
+      req.headers.get(VISITOR_HEADER));
     if (!joined.ok) {
       // No attachment: webSocketClose ignores this socket.
       server.send(JSON.stringify(joined.out));
@@ -161,6 +164,9 @@ export class Sky {
   private leave(ws: HibernatableSocket) {
     const id = (ws.deserializeAttachment() as Pilot | null)?.id;
     if (!id) return;
+    // Forget it in the attachment too: a room rebuilt while this socket is
+    // still closing must not count the pilot again.
+    ws.serializeAttachment(null);
     this.sockets.delete(id);
     this.deliver(onLeave(this.room, id, Date.now()));
   }

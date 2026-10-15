@@ -379,9 +379,20 @@ function ShaderWarmup() {
 
     const hidden: THREE.Object3D[] = [];
     scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
-    // compile() inside compileAsync runs synchronously, so visibility can be
-    // restored as soon as the call returns.
+    // three.js picks each program's colour-space and tone-mapping variant from
+    // the bound render target. With PostFX on, the scene draws into the
+    // composer's buffer (linear, no tone mapping), not the screen, so compile
+    // for an off-screen target: otherwise anything hidden at load (the race
+    // ghost, live-sky ghosts) compiles a second variant the first time it is
+    // drawn. Low-perf mode has no composer and draws to the screen.
+    const postFx = !(store.pendingLowPerf ?? store.isLowPerf);
+    const target = postFx ? new THREE.WebGLRenderTarget(1, 1) : null;
+    const previous = gl.getRenderTarget();
+    if (target) gl.setRenderTarget(target);
+    // compile() inside compileAsync runs synchronously, so visibility and the
+    // render target can be restored as soon as the call returns.
     const ready = gl.compileAsync(scene, camera);
+    if (target) { gl.setRenderTarget(previous); target.dispose(); }
     for (const o of hidden) o.visible = false;
 
     // compileAsync polls program readiness forever: a context lost mid-load,

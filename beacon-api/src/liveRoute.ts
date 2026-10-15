@@ -1,4 +1,7 @@
-import { rateKey, type RequestLimiter } from "./handler";
+import { hmacHex, rateKey, MIN_SALT_LENGTH, type RequestLimiter } from "./handler";
+
+/** The header the Worker sets for the Sky room; whatever a client sent under it is replaced. */
+export const VISITOR_HEADER = "X-Sky-Visitor";
 
 export interface LiveDeps {
   allowedOrigins: readonly string[];
@@ -22,4 +25,21 @@ export async function refuseLive(req: Request, deps: LiveDeps): Promise<Response
     return new Response("slow down", { status: 429, headers: { "Retry-After": "60" } });
   }
   return null;
+}
+
+/**
+ * The key the room caps places by: HMAC(IP_SALT, the pilot's IPv4 or IPv6
+ * /64), as beacons hash it. Null without a usable salt, which turns the
+ * per-visitor cap off rather than hashing weakly.
+ */
+export async function visitorKey(ip: string, salt: string): Promise<string | null> {
+  return salt.length < MIN_SALT_LENGTH ? null : hmacHex(salt, rateKey(ip));
+}
+
+/** The upgrade as forwarded to the room: only the Worker may set the visitor header. */
+export function skyRequest(req: Request, visitor: string | null): Request {
+  const r = new Request(req);
+  if (visitor) r.headers.set(VISITOR_HEADER, visitor);
+  else r.headers.delete(VISITOR_HEADER);
+  return r;
 }

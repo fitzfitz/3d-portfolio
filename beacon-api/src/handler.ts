@@ -55,7 +55,7 @@ export const GLOBAL_PER_MINUTE = 10;
 /** Rows kept; older beacons fall off. The scene only shows BEACON_LIMIT anyway. */
 export const KEEP_ROWS = 500;
 const MAX_BODY_BYTES = 1024;
-const MIN_SALT_LENGTH = 16;
+export const MIN_SALT_LENGTH = 16;
 
 function cors(origin: string | null, deps: Deps): Record<string, string> {
   if (!origin || !deps.allowedOrigins.includes(origin)) return {};
@@ -91,7 +91,7 @@ export function rateKey(ip: string): string {
   return groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":");
 }
 
-async function hmacHex(key: string, text: string): Promise<string> {
+export async function hmacHex(key: string, text: string): Promise<string> {
   const enc = new TextEncoder();
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", k, enc.encode(text));

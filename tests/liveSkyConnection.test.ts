@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { LiveSkyConnection, backoffMs, HIDDEN_GRACE_MS, STABLE_MS, type SocketLike } from "../src/utils/liveSkyConnection";
+import { LiveSkyConnection, backoffMs, HIDDEN_GRACE_MS, STABLE_MS, FULL_RETRY_MS, type SocketLike } from "../src/utils/liveSkyConnection";
 import type { ShipState } from "../src/utils/liveSkyProtocol";
 
 class FakeSocket implements SocketLike {
@@ -176,18 +176,20 @@ describe("LiveSkyConnection", () => {
     expect(FakeSocket.all).toHaveLength(1);
   });
 
-  it("full stops all retries for this page", () => {
+  it("after full, waits FULL_RETRY_MS before trying again", () => {
     const { conn, advance, last } = harness();
     conn.setWanted(true);
     last().open();
     last().serve({ t: "full" });
     expect(last().readyState).toBe(3);
     last().drop();
-    advance(600_000);
     conn.setWanted(false);
-    conn.setWanted(true);
+    conn.setWanted(true);                // toggling does not skip the wait
+    advance(FULL_RETRY_MS - 1);
     expect(FakeSocket.all).toHaveLength(1);
-    expect(conn.full).toBe(true);
+    advance(1);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(conn.full).toBe(false);
   });
 
   it("disconnects after the tab has been hidden 60 s, and reconnects on return", () => {

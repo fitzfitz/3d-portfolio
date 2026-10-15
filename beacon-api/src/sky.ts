@@ -18,13 +18,22 @@ export interface Pilot {
   last: ShipState | null;
   /** When `last` arrived (ms); snapshots carry its age, and a long silence drops the pilot from them. */
   lastAt: number;
-  /** Flood window: messages counted since `start`. */
-  win: { start: number; count: number };
+  /** Arrival times of the last FLOOD_PER_SECOND messages: a sliding flood window. */
+  recent: number[];
+  /**
+   * Salted hash of the pilot's address (liveRoute.ts visitorKey), or null.
+   * Held only in this socket's attachment to cap places per visitor; never
+   * sent to anyone and gone when the socket closes.
+   */
+  visitor: string | null;
 }
 export interface Room { pilots: Pilot[]; lastSnapAt: number; trailingDue: boolean }
 export interface Outgoing { to: string; msg: ServerMessage }
 
 export { STALE_MS };
+
+/** Places one visitor may hold: a few tabs or a household, not the whole room. */
+export const VISITOR_CAP = 3;
 
 export const newRoom = (): Room => ({ pilots: [], lastSnapAt: -Infinity, trailingDue: false });
 
@@ -45,10 +54,11 @@ export function buildSnap(room: Room, forId: string, now: number): ServerMessage
 
 const snapAll = (room: Room, now: number): Outgoing[] => room.pilots.map((p) => ({ to: p.id, msg: buildSnap(room, p.id, now) }));
 
-export function onJoin(room: Room, id: string, cc: string | null, now: number):
+export function onJoin(room: Room, id: string, cc: string | null, now: number, visitor: string | null):
   { ok: false; out: ServerMessage } | { ok: true; pilot: Pilot; out: Outgoing[] } {
   if (room.pilots.length >= SKY_CAP) return { ok: false, out: { t: "full" } };
-  const pilot: Pilot = { id, cc, last: null, lastAt: 0, win: { start: now, count: 0 } };
+  if (visitor && room.pilots.filter((p) => p.visitor === visitor).length >= VISITOR_CAP) return { ok: false, out: { t: "full" } };
+  const pilot: Pilot = { id, cc, last: null, lastAt: 0, recent: [], visitor };
   room.pilots.push(pilot);
   const n = room.pilots.length - 1;
   const out: Outgoing[] = [{ to: id, msg: { t: "hello", id, peers: n } }];
@@ -64,9 +74,13 @@ export function onJoin(room: Room, id: string, cc: string | null, now: number):
 
 export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   { out: Outgoing[]; close: boolean; trailingIn: number | null } {
-  if (now - pilot.win.start >= 1000) pilot.win = { start: now, count: 0 };
-  pilot.win.count++;
-  if (pilot.win.count > FLOOD_PER_SECOND) return { out: [], close: true, trailingIn: null };
+  const recent = pilot.recent ?? (pilot.recent = []);
+  // The (FLOOD_PER_SECOND + 1)th message inside any one second closes the socket.
+  if (recent.length >= FLOOD_PER_SECOND && now - recent[recent.length - FLOOD_PER_SECOND] < 1000) {
+    return { out: [], close: true, trailingIn: null };
+  }
+  recent.push(now);
+  if (recent.length > FLOOD_PER_SECOND) recent.shift();
   const state = parseMe(raw);
   if (!state) return { out: [], close: false, trailingIn: null };
   pilot.last = roundState(state);

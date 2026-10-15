@@ -6,6 +6,7 @@ import { raceClock } from "../utils/raceClock";
 import type { JellyState } from "../utils/jellyMood";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { LiveSkyConnection } from "../utils/liveSkyConnection";
+import { liveRadar } from "../utils/liveSky";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -64,6 +65,8 @@ export interface FitzDebug {
   mining: typeof import("../utils/mining").miningState | null;
   /** The live sky connection (Ghosts, dev only): peers, ghosts, sent count. */
   liveSky: LiveSkyConnection | null;
+  /** Live pilots on the HUD radar (liveSky.ts), dev only. */
+  liveRadar: typeof import("../utils/liveSky").liveRadar;
   /** Live tractor-beam state (Spaceship, dev only). */
   beam: typeof import("../store/beamState").beamState | null;
   /** Live gravity momentum G (Spaceship, dev only). */
@@ -103,5 +106,6 @@ export const fitzDebug: FitzDebug = {
   beam: null,
   mining: null,
   liveSky: null,
+  liveRadar,
   perfStats,
 };

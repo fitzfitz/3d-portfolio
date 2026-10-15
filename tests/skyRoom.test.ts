@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
-  newRoom, onJoin, onMessage, onLeave, onTrailing, buildSnap, randomPilotId, STALE_MS,
+  newRoom, onJoin, onMessage, onLeave, onTrailing, buildSnap, randomPilotId, STALE_MS, VISITOR_CAP,
   type Room, type Outgoing,
 } from "../beacon-api/src/sky";
 import { SKY_CAP } from "../src/utils/liveSkyProtocol";
 
 const me = (x = 1, plume = "ring") => JSON.stringify({ t: "me", p: [x, 2, 3], q: [0, 0, 0, 1], plume });
 const to = (out: Outgoing[], id: string) => out.filter((o) => o.to === id).map((o) => o.msg);
-function join(room: Room, id: string, now = 0, cc: string | null = "ID") {
-  const r = onJoin(room, id, cc, now);
+function join(room: Room, id: string, now = 0, cc: string | null = "ID", visitor: string | null = null) {
+  const r = onJoin(room, id, cc, now, visitor);
   if (!r.ok) throw new Error("room full");
   return r;
 }
@@ -32,8 +32,35 @@ describe("joining", () => {
   it("turns the pilot past the cap away with full", () => {
     const room = newRoom();
     for (let i = 0; i < SKY_CAP; i++) join(room, `p${i}`);
-    expect(onJoin(room, "late", null, 0)).toEqual({ ok: false, out: { t: "full" } });
+    expect(onJoin(room, "late", null, 0, null)).toEqual({ ok: false, out: { t: "full" } });
     expect(room.pilots).toHaveLength(SKY_CAP);
+  });
+});
+
+describe("per-visitor limit", () => {
+  it("lets one visitor hold at most VISITOR_CAP places, others are unaffected", () => {
+    const room = newRoom();
+    for (let i = 0; i < VISITOR_CAP; i++) join(room, `v${i}`, 0, "ID", "visitor-a");
+    expect(onJoin(room, "v-extra", "ID", 0, "visitor-a")).toEqual({ ok: false, out: { t: "full" } });
+    expect(onJoin(room, "other", "ID", 0, "visitor-b").ok).toBe(true);
+  });
+  it("never limits a pilot without a visitor key", () => {
+    const room = newRoom();
+    for (let i = 0; i < VISITOR_CAP + 2; i++) join(room, `n${i}`, 0, "ID", null);
+    expect(room.pilots).toHaveLength(VISITOR_CAP + 2);
+  });
+  it("frees the place when that visitor leaves", () => {
+    const room = newRoom();
+    for (let i = 0; i < VISITOR_CAP; i++) join(room, `v${i}`, 0, "ID", "visitor-a");
+    onLeave(room, "v0", 10);
+    expect(onJoin(room, "v-again", "ID", 20, "visitor-a").ok).toBe(true);
+  });
+  it("keeps the visitor key out of every snapshot", () => {
+    const room = newRoom();
+    const a = join(room, "a", 0, "ID", "secret-key");
+    join(room, "b");
+    const r = onMessage(room, a.pilot, me(1), 1000);
+    expect(JSON.stringify(r.out)).not.toContain("secret-key");
   });
 });
 
@@ -98,6 +125,16 @@ describe("flood limit", () => {
     const b = join(room, "b", 3000);
     for (let i = 0; i < 10; i++) onMessage(room, b.pilot, me(i), 3000 + i);
     expect(onMessage(room, b.pilot, me(), 4001).close).toBe(false);
+  });
+});
+
+describe("sliding flood window", () => {
+  it("closes on 11 messages inside any one second, even across a window boundary", () => {
+    const room = newRoom();
+    const a = join(room, "a");
+    for (let i = 0; i < 5; i++) expect(onMessage(room, a.pilot, me(i), 500 + i).close).toBe(false);
+    for (let i = 0; i < 5; i++) expect(onMessage(room, a.pilot, me(i), 1001 + i).close).toBe(false);
+    expect(onMessage(room, a.pilot, me(), 1006).close).toBe(true);
   });
 });
 
