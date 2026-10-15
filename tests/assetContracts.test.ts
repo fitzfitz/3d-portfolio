@@ -69,6 +69,12 @@ function materialBounds(doc: Document, material: string) {
   return { min, max };
 }
 
+function baseColorFactor(doc: Document, material: string): number[] {
+  const m = doc.getRoot().listMaterials().find((x) => x.getName() === material);
+  if (!m) throw new Error(`no material ${material}`);
+  return m.getBaseColorFactor().slice(0, 3);
+}
+
 describe("hero ship (spaceship.glb)", () => {
   it("keeps the names Spaceship.tsx looks up", async () => {
     const names = materialNames(await load("spaceship"));
@@ -94,6 +100,41 @@ describe("hero ship (spaceship.glb)", () => {
   it("stays inside its triangle and download budget", async () => {
     expect(triangles(await load("spaceship"))).toBeLessThanOrEqual(22000);
     expect(kb("spaceship")).toBeLessThanOrEqual(600);
+  });
+
+  it("splits the hull into three paint zones and drops the old single Hull", async () => {
+    const doc = await load("spaceship");
+    const names = materialNames(doc);
+    for (const n of ["Hull_Primary", "Hull_Secondary", "Hull_Trim"]) {
+      expect(names).toContain(n);
+      expect(triangles(doc, n), n).toBeGreaterThan(200);
+    }
+    expect(names).not.toContain("Hull");
+  });
+
+  it("colours each zone through baseColorFactor, not the baked texture", async () => {
+    const doc = await load("spaceship");
+    expect(close(baseColorFactor(doc, "Hull_Primary"), [0.4, 0.42, 0.46], 0.01)).toBe(true);
+    expect(close(baseColorFactor(doc, "Hull_Secondary"), [0.16, 0.17, 0.2], 0.01)).toBe(true);
+    expect(close(baseColorFactor(doc, "Hull_Trim"), [0.7, 0.86, 0.92], 0.01)).toBe(true);
+  });
+
+  it("paints the hull zones as dielectric paint, so their colour reads against dark space", async () => {
+    // At metalness 0.55 the hull mostly mirrored the near-black sky and no
+    // albedo change showed in game; paint is a non-metal.
+    const mats = (await load("spaceship")).getRoot().listMaterials();
+    for (const n of ["Hull_Primary", "Hull_Secondary", "Hull_Trim"]) {
+      expect(mats.find((m) => m.getName() === n)!.getMetallicFactor(), n).toBeLessThanOrEqual(0.25);
+    }
+  });
+
+  it("gives every hull zone the same texture set as Accent_Metal, so they share one shader program", async () => {
+    const mats = (await load("spaceship")).getRoot().listMaterials();
+    const sig = (name: string) => {
+      const m = mats.find((x) => x.getName() === name)!;
+      return [!!m.getBaseColorTexture(), !!m.getNormalTexture(), !!m.getEmissiveTexture(), m.getAlphaMode(), m.getDoubleSided()].join();
+    };
+    for (const n of ["Hull_Primary", "Hull_Secondary", "Hull_Trim"]) expect(sig(n), n).toBe(sig("Accent_Metal"));
   });
 });
 
