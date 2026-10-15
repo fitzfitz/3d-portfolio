@@ -6,6 +6,14 @@ import {
 // Runs in the page before any script (evaluateOnNewDocument). Fakes only
 // fake:// sockets; everything else (Vite's HMR) gets the real WebSocket.
 function installFakeSky() {
+  // Keep the full-fidelity (PostFX) path from the start, as on a real GPU:
+  // headless SwiftShader otherwise declines to low-perf during loading, so
+  // ShaderWarmup rightly compiles for the screen, and the harness's later
+  // switch back to PostFX recompiles anything hidden at load.
+  const lock = setInterval(() => {
+    const store = window.__fitz?.store;
+    if (store) { store.getState().setLowPerf(false, true); clearInterval(lock); }
+  }, 5);
   const sky = { created: 0, sent: [], sockets: [] };
   window.__fakeSky = sky;
   class FakeSocket {
@@ -82,6 +90,9 @@ export default async function run() {
     await inPage(page, (s) => { window.__fakeSky.serve({ t: "peers", n: 2 }); window.__fakeSky.serve(s); }, snap(0));
     const visible = await pollUntil(async () => (await sceneQuery(page, "LiveGhost_0")).visible, { timeoutMs: 5000 });
     checks.check("ghosts appear for pilots in the room", visible.ok);
+    const radar = await inPage(page, () => ({ count: window.__fitz.liveRadar.count, hexes: window.__fitz.liveRadar.blips.slice(0, window.__fitz.liveRadar.count).map((b) => b.hex) }));
+    checks.check("every pilot in the room is on the radar", radar.count === 2 && radar.hexes.includes("#ff3df0"),
+      JSON.stringify(radar));
     const sent = await inPage(page, () => window.__fakeSky.sent);
     checks.check("with company, the client shares its pose once", sent.length >= 1 && sent[0].t === "me" && sent[0].plume === "stock",
       JSON.stringify(sent[0]));
@@ -109,13 +120,10 @@ export default async function run() {
 
     await settle(page, 1000);
     const programsAfter = await inPage(page, () => window.__fitz.gl.info.programs.length);
-    // ShaderWarmup compiles hidden objects for the screen, but the scene renders
-    // into the postprocessing target, so anything hidden at load (the race
-    // ghost too) compiles its srgb-linear variant on first sight. Ghosts may
-    // add exactly that one basic-material variant, once, and nothing else.
+    // ShaderWarmup compiles hidden objects for the render target the scene
+    // actually draws into, so ghosts appearing must not compile anything.
     const added = (await programKeys()).filter((k) => !keysBefore.includes(k));
-    checks.check("ghosts add at most their one first-sight program", programsAfter - programsBefore <= 1
-      && added.every((k) => k.startsWith("|basic,highp,srgb-linear,")),
+    checks.check("ghosts add no shader program", programsAfter === programsBefore,
       `before=${programsBefore} after=${programsAfter} added=${JSON.stringify(added)}`);
 
     const target = await pollUntil(async () => (await readStore(page)).scanTarget !== null, { timeoutMs: 3000 });
@@ -132,6 +140,8 @@ export default async function run() {
     checks.check("the logbook switch turns live sky off", off === "false", `aria-checked=${off}`);
     const gone = await pollUntil(async () => !(await sceneQuery(page, "LiveGhost_0")).visible, { timeoutMs: 3000 });
     checks.check("turning it off hides the ghosts", gone.ok);
+    const radarOff = await inPage(page, () => window.__fitz.liveRadar.count);
+    checks.check("turning it off clears the radar", radarOff === 0, `count=${radarOff}`);
     const open = await inPage(page, () => window.__fakeSky.open());
     checks.check("turning it off closes the socket", open === 0, `open=${open}`);
     await settle(page, 800);
