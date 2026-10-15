@@ -196,6 +196,11 @@ describe("fuel crystal (space_crystal.glb)", () => {
     expect(t).toBeGreaterThanOrEqual(300);
     expect(t).toBeLessThanOrEqual(800);
   });
+
+  it("is a full cluster, not five plain prisms", async () => {
+    // v1 was 366 triangles; seven shards with stepped tips land around 500-650.
+    expect(triangles(await load("space_crystal"))).toBeGreaterThanOrEqual(450);
+  });
 });
 
 describe("moons (moon.glb)", () => {
