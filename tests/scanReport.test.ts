@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { generateScanReport } from "../src/utils/scanReport";
 
 describe("generateScanReport", () => {
+  it("reports the career station by its scan label", () => {
+    expect(generateScanReport("career")).toMatch(/^SCAN\[STATION_CAREER\] \/\/ .*DOCK/);
+  });
   it("is deterministic per id", () => {
     expect(generateScanReport("asteroid_3")).toBe(generateScanReport("asteroid_3"));
   });

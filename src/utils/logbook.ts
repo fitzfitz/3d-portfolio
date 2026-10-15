@@ -4,7 +4,7 @@ import type { Vec3 } from "./reactions";
 
 /**
  * The pilot logbook (docs/superpowers/specs/2026-10-13-pilot-logbook-design.md):
- * four essentials that tour the portfolio, then six flight badges that each
+ * five essentials that tour the portfolio, then six flight badges that each
  * unlock a plume colour. Pure. Dossier and shard entries are derived from
  * state the store already persists; the rest are recorded badges.
  */
@@ -27,6 +27,7 @@ export const LOGBOOK: readonly LogbookEntry[] = [
   { id: "ruangrapi", section: "essential", title: "Read the RuangRapi dossier", hint: "READ THE RUANGRAPI DOSSIER", hintShort: "RUANGRAPI DOSSIER", plume: false },
   { id: "portfolio", section: "essential", title: "Read the Flight-Sim CV dossier", hint: "READ THE FLIGHT-SIM CV DOSSIER", hintShort: "CV DOSSIER", plume: false },
   { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "READ THE FUXX DOSSIER", hintShort: "FUXX DOSSIER", plume: false },
+  { id: "career", section: "essential", title: "Read the career dossier", hint: "DOCK AT THE CAREER STATION", hintShort: "CAREER DOSSIER", plume: false },
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
   { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET FAST FOR A GRAVITY ASSIST", hintShort: "SLINGSHOT A PLANET", plume: true },
   { id: "comet", section: "badge", title: "Comet chaser", hint: "SCAN A VISITING COMET (HOLD E)", hintShort: "SCAN A COMET", plume: true },
@@ -69,6 +70,7 @@ export function isRecordable(id: string): boolean {
 /** The announced radio line for a newly earned entry. */
 export function badgeLine(id: string, plumeName: string | null): string {
   if (id === "contact") return "LOGBOOK // CONTACT PORTAL REACHED";
+  if (id === "career") return "LOGBOOK // CAREER DOSSIER READ";
   const e = LOGBOOK.find((x) => x.id === id);
   const title = (e?.title ?? id).toUpperCase();
   return plumeName

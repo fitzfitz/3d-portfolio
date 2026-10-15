@@ -1,6 +1,7 @@
 import {
   PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById,
 } from "../constants";
+import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
 
 /**
  * Places you can jump to and dock at that are not project planets
@@ -36,6 +37,12 @@ export interface Destination {
 }
 
 export const DESTINATIONS: readonly Destination[] = [
+  // Key 4. Radii in careerTrail.ts, next to the placement they were tested with.
+  {
+    id: "career", label: "CAREER STATION", jumpLabel: "Career", scanLabel: "STATION_CAREER", pos: STATION_POS,
+    color: CAREER_AMBER, ...STATION_RADII,
+  },
+  // Key 5.
   {
     id: "contact", label: "CONTACT PORTAL", jumpLabel: "Contact", scanLabel: "PORTAL_SUN", pos: PORTAL_POS, color: "#ec4899",
     zoneR: PORTAL_ZONE_R, lockR: PORTAL_LOCK_R, retainR: PORTAL_RETAIN_R, orbitR: PORTAL_ORBIT_R, jumpR: PORTAL_LOCK_R * 0.8,

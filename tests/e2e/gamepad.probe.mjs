@@ -83,7 +83,8 @@ export default async function run() {
     checks.check("right stick up pitches up (ascend)", input.ascend === true);
     await setAxis(page, 3, 0); await frames(page);
 
-    // D-pad jumps mirror the number keys: up = 1st target, left = 4th (contact).
+    // D-pad jumps mirror the number keys: up = 1st target, left = 4th (the
+    // career station); Menu = 5th (the contact portal).
     await press(page, 12);
     s = await readStore(page);
     const firstId = s.jumpRequest?.id;
@@ -99,7 +100,15 @@ export default async function run() {
     }
     await press(page, 14);
     s = await readStore(page);
-    checks.check("d-pad left requests the contact portal", s.jumpRequest?.id === "contact",
+    checks.check("d-pad left requests the career station", s.jumpRequest?.id === "career",
+      `jump=${s.jumpRequest?.id}`);
+    // Let that jump dock and close it, so Menu's request is a fresh one.
+    const atStation = await pollUntil(async () => (await readStore(page)).isOrbitLocked,
+      { timeoutMs: 15_000, intervalMs: 300 });
+    if (atStation.ok) await press(page, 1);
+    await press(page, 9);
+    s = await readStore(page);
+    checks.check("Menu requests the contact portal", s.jumpRequest?.id === "contact",
       `jump=${s.jumpRequest?.id}`);
 
     await press(page, 3);

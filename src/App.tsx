@@ -12,6 +12,7 @@ import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
 import LogbookPanel from "./components/layout/LogbookPanel";
+import CareerDossier from "./components/layout/CareerDossier";
 import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
@@ -394,6 +395,11 @@ export default function App() {
                 </div>
                 <Contact isSidebar={true} />
               </motion.div>
+            )}
+
+            {/* Career station Orbit Lock: Career dossier */}
+            {isOrbitLocked && zoneDestination === "career" && (
+              <CareerDossier key="career-dossier" onClose={breakOrbit} />
             )}
 
             {/* Proximity hover tip overlays (if within gravity well but not yet

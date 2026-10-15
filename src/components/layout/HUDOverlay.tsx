@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
-import { DESTINATIONS } from "../../data/destinations";
+import { DESTINATIONS, JUMP_TARGETS, afterPlanets, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
@@ -144,14 +144,18 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     );
   }, [fuelEmpty]);
 
-  // Once every dossier is read, point the pilot at the portal — announced on
-  // leaving the last dossier, when the chatter line is actually visible.
+  // Once every dossier is read, point the pilot at the next destination (the
+  // career station, then the contact portal), announced on leaving the last
+  // dossier, when the chatter line is actually visible.
   const allRead = visitedDossiers.length >= planets.length;
   useEffect(() => {
     if (!allRead || isOrbitLocked || completionAnnounced) return;
     completionAnnounced = true;
+    const next = destinationById(afterPlanets(useSpaceStore.getState().badges));
+    if (!next) return;
+    const key = JUMP_TARGETS.findIndex((t) => t.id === next.id) + 1;
     useSpaceStore.getState().sendBroadcast(
-      `ALL ${planets.length} DOSSIERS READ // THE PILOT TAKES MESSAGES AT THE PORTAL ABOVE THE SUN — PRESS ${planets.length + 1} TO JUMP THERE`
+      `ALL ${planets.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
   }, [allRead, isOrbitLocked]);
 
@@ -204,7 +208,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div className="text-[11px] font-bold">
           TARGET:{" "}
           <span className={activeZone ? "text-primary animate-pulse" : "text-white/20"}>
-            {activeZone ? `PLANET_${activeZone.toUpperCase()}` : "DEEP_SPACE"}
+            {activeZone ? (destinationById(activeZone)?.scanLabel ?? `PLANET_${activeZone.toUpperCase()}`) : "DEEP_SPACE"}
           </span>
         </div>
         {activeZone && (

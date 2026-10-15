@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runPadAction } from "../src/hooks/useGamepadInput";
+import { padActions } from "../src/utils/gamepad";
+import { JUMP_TARGETS } from "../src/data/destinations";
 
 function store(over: Record<string, unknown> = {}) {
   return {
@@ -10,6 +12,16 @@ function store(over: Record<string, unknown> = {}) {
 }
 
 describe("runPadAction", () => {
+  it("sends d-pad left to the career station and Menu to the contact portal", () => {
+    const s = store();
+    const ids = JUMP_TARGETS.map((t) => t.id);
+    const press = (i: number) => Array.from({ length: 17 }, (_, k) => k === i);
+    const none = press(-1);
+    for (const a of padActions(none, press(14))) runPadAction(a, s, ids);
+    for (const a of padActions(none, press(9))) runPadAction(a, s, ids);
+    expect(s.requestJump.mock.calls).toEqual([["career"], ["contact"]]);
+  });
+
   it("X toggles the logbook in normal flight", () => {
     const s = store();
     runPadAction({ kind: "logbook" }, s, []);

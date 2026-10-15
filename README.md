@@ -22,7 +22,8 @@ Tailwind, on Vite.
 | `B` | Drop a beacon (only when a beacon API is configured) |
 | `J` | Summon the space jellyfish |
 | `1`–`3` | Jump straight into a project's orbit (opens its dossier) |
-| `4` | Jump to the contact portal |
+| `4` | Jump to the career station (opens the Career dossier) |
+| `5` | Jump to the contact portal |
 | `Esc` | Close the open dossier or contact form |
 
 No flying required: the spawn card has jump buttons for each project, the
@@ -43,8 +44,8 @@ text, and later visitors can scan it. Without the API the feature is absent. See
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
-photo mode, `B` closes a dossier, and the d-pad (clockwise from up) jumps like
-`1`–`4`. Impacts rumble the pad in Chrome.
+photo mode, `B` closes a dossier, the d-pad (clockwise from up) jumps like
+`1`–`4`, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
 Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in

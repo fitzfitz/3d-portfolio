@@ -63,6 +63,17 @@ describe("spaceStore", () => {
     expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["contact"]);
   });
 
+  it("records the career essential on the first dock at the station, and it is not a planet dossier", () => {
+    useSpaceStore.setState({ activeZone: "career" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["career"]);
+    expect(useSpaceStore.getState().visitedDossiers).toEqual([]);
+  });
+
+  it("keeps a stored career badge (returning visitors who already docked)", () => {
+    expect(loadBadges([{ id: "career", at: "2026-10-15" }])).toEqual([{ id: "career", at: "2026-10-15" }]);
+  });
+
   it("loadBadges keeps known recordable ids, drops malformed rows and duplicates", () => {
     expect(loadBadges([{ id: "comet", at: "2026-10-13" }, { id: "comet", at: "2026-10-14" }, { id: "fuxx", at: "x" },
       { id: "nope", at: "2026-10-13" }, "junk", null, { id: "ring" }])).toEqual([{ id: "comet", at: "2026-10-13" }]);

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterPlanets,
 } from "../src/data/destinations";
+import { STATION_POS } from "../src/data/careerTrail";
+import { nextWaypoint } from "../src/utils/navigation";
 import { PORTAL_POS, PORTAL_LOCK_R, projects, planets } from "../src/constants";
 
 describe("destination table", () => {
@@ -46,8 +48,39 @@ describe("jump order", () => {
 
 describe("afterPlanets", () => {
   it("points at the first destination whose essential is not done, then at the last one", () => {
+    expect(DESTINATIONS.length).toBeGreaterThan(1);
     expect(afterPlanets([])).toBe(DESTINATIONS[0].id);
     expect(afterPlanets([{ id: "slingshot" }])).toBe(DESTINATIONS[0].id);
+    expect(afterPlanets([{ id: DESTINATIONS[0].id }])).toBe(DESTINATIONS[1].id);
+    expect(afterPlanets([{ id: DESTINATIONS[1].id }])).toBe(DESTINATIONS[0].id);
     expect(afterPlanets(DESTINATIONS.map((d) => ({ id: d.id })))).toBe(DESTINATIONS[DESTINATIONS.length - 1].id);
+  });
+});
+
+describe("career station row", () => {
+  it("sits at the trail's station with the portal's radii scaled for a ~5-unit model", () => {
+    const c = destinationById("career")!;
+    expect(c).toMatchObject({
+      id: "career", label: "CAREER STATION", jumpLabel: "Career", scanLabel: "STATION_CAREER",
+      color: "#ffb547", zoneR: 8.5, lockR: 5.8, retainR: 13, orbitR: 10, jumpR: 5.4,
+    });
+    expect(c.pos).toBe(STATION_POS);
+  });
+
+  it("comes before the contact portal: keys 4 and 5, d-pad left and Menu", () => {
+    const ids = JUMP_TARGETS.map((t) => t.id);
+    expect(ids.indexOf("career")).toBe(3);
+    expect(ids.indexOf("contact")).toBe(4);
+  });
+
+  it("orders the waypoint: unread planets, then the career station, then the contact portal", () => {
+    const names = planets.map((p) => p.name);
+    const bodies = Object.fromEntries(planets.map((p, i) => [p.name, { x: 10 * (i + 1), y: 0, z: 0 }]));
+    const ship = { x: 0, y: 0, z: 0 };
+    expect(nextWaypoint(ship, names, bodies, [], afterPlanets([]))).toBe(names[0]);
+    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([]))).toBe("career");
+    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "contact" }]))).toBe("career");
+    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }]))).toBe("contact");
+    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }, { id: "contact" }]))).toBe("contact");
   });
 });
