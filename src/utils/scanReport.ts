@@ -1,5 +1,10 @@
 import { beaconRegistry, beaconReport } from "./beacons";
 import { ghostRegistry, ghostReport } from "./liveSky";
+import { BUOYS } from "../data/careerTrail";
+
+/** One report per career buoy: the posting it marks, from src/data/career.ts. */
+const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
+  `SCAN[${b.label}] // ${b.entry.role} · ${b.entry.company} · ${b.entry.start} – ${b.entry.end ?? "Present"} // ${b.entry.summary}`.toUpperCase()]));
 
 const PLANET_REPORTS: Record<string, string> = {
   ruangrapi: "SCAN[PLANET_RUANGRAPI] // CORE: SUPABASE+POSTGRES · CRUST: REACT+TYPESCRIPT · SHIELD: ROW-LEVEL SECURITY // INHABITANTS: KOS LANDLORDS",
@@ -28,6 +33,8 @@ export function generateScanReport(id: string): string {
   if (ghostRegistry.has(id)) return ghostReport(ghostRegistry.get(id) ?? null);
   const beacon = beaconRegistry.get(id);
   if (beacon) return beaconReport(beacon, Date.now());
+  const buoy = BUOY_REPORTS.get(id);
+  if (buoy) return buoy;
   const table = PLANET_REPORTS[id];
   if (table) return table;
   const h = hash(id);

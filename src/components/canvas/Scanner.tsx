@@ -5,6 +5,8 @@ import { nearestScannable, SCAN_RANGE } from "../../utils/scannables";
 import { generateScanReport } from "../../utils/scanReport";
 import { soundManager } from "../../audio/soundManager";
 import { scanState } from "../../utils/scanState";
+import { gameTime } from "../../utils/ambientTime";
+import { buoyCardState, buoyIndex, BUOY_SCAN_HOLD_S } from "../../utils/buoyCard";
 
 
 /** Headless: drives scan targeting/progress/report dispatch each frame. Renders nothing. */
@@ -17,7 +19,7 @@ export default function Scanner() {
   // instead of crediting the new target with the old one's partial scan.
   const prevTargetId = useRef<string | null>(null);
 
-  useFrame((_, dt) => {
+  useFrame((state, dt) => {
     if (useSpaceStore.getState().photoMode) {
       scanState.progress = 0;
       scanState.label = "";
@@ -41,6 +43,9 @@ export default function Scanner() {
         store.sendBroadcast(generateScanReport(near.id));
         soundManager.scanBeep();
         if (near.id === "comet_visitor") store.recordBadge("comet"); // logbook: Comet chaser
+        // A scanned career buoy keeps its HUD card up for a while (CareerTrail shows it).
+        const buoy = buoyIndex(near.id);
+        if (buoy >= 0) buoyCardState.scan = { index: buoy, until: gameTime(state.clock.getElapsedTime()) + BUOY_SCAN_HOLD_S };
         scanState.progress = 0;
         latched.current = true; // one report per hold
       }

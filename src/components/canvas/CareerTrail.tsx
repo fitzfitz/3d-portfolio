@@ -4,7 +4,9 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { BUOYS, BUOY_POSITIONS, CAREER_AMBER, TRAIL_ARC } from "../../data/careerTrail";
 import { setScannable, removeScannable } from "../../utils/scannables";
-import { ambientTime } from "../../utils/ambientTime";
+import { ambientTime, gameTime } from "../../utils/ambientTime";
+import { activeBuoy, buoyCardState } from "../../utils/buoyCard";
+import { flight } from "../../store/spaceStore";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 import { arcPlacement } from "../../utils/trailGuide";
@@ -77,6 +79,11 @@ export default function CareerTrail() {
     // freezes under reduced motion, which leaves the glow steady.
     const phase = (ambientTime(state.clock.getElapsedTime()) * 0.4) % 1;
     material.emissiveIntensity = BUOY_GLOW * (phase < 0.12 ? 1 : 0.55);
+    // Fly-by card (BuoyCard reads this). gameTime survives the clock reset an
+    // orbit lock causes, and keeps running under reduced motion.
+    const prev = buoyCardState.index >= 0 ? buoyCardState.index : null;
+    const next = activeBuoy(flight, BUOY_POSITIONS, prev, buoyCardState.scan, gameTime(state.clock.getElapsedTime()));
+    buoyCardState.index = next ?? -1;
   });
 
   return (

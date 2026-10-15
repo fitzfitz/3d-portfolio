@@ -13,6 +13,7 @@ import RadioChatter from "./RadioChatter";
 import RaceHUD from "./RaceHUD";
 import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
+import BuoyCard from "./BuoyCard";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
@@ -174,6 +175,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {/* The Scanner stops with the frozen scene, so its last label would
           otherwise hang over the dossier. */}
       {!isOrbitLocked && <ScanRing />}
+      {/* Frozen with the scene while docked, so hidden then too. */}
+      {!isOrbitLocked && <BuoyCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
       <div className="absolute top-16 left-4 sm:top-24 sm:left-6 flex flex-col gap-1.5">
