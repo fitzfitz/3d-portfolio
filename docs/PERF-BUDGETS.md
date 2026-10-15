@@ -82,6 +82,15 @@ compiled its real variant mid-play, the first time it appeared. Warm-up now
 binds a 1×1 render target when PostFX is on. A full run read deep space 56,
 close approach 57, modal 57, 40 anomalies 56 (from 78/83/83/78).
 
+That also explains the old note that programs "reach 90 after crossing the
+whole system": a tour of every landmark climbed 79 → 91 on the old warm-up,
+all srgb-linear variants, not light-count variants. One straggler remained:
+GodRaysEffect forces its light source (the sun's core) transparent with no
+depth write, and when PostFX mounted after warm-up the sun compiled a second
+program on first draw (about one run in four). The sun is now built in that
+state (`godRays.ts`). `tests/e2e/programs.probe.mjs` flies the tour and
+asserts no program is added.
+
 The ceilings above are deliberately **not** lowered to match. Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,
 before warm-up runs; warm-up then rightly compiles for the screen, and the
