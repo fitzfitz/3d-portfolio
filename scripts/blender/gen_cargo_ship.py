@@ -185,7 +185,7 @@ for p in parts:
     bpy.context.view_layer.objects.active = p
     bev = p.modifiers.new("bevel", "BEVEL")
     bev.width = 0.008
-    bev.segments = 3
+    bev.segments = 2
     bev.limit_method = "ANGLE"
     bpy.ops.object.modifier_apply(modifier=bev.name)
 

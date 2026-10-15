@@ -1,4 +1,4 @@
-# Energy crystal: seven bevelled quartz-style shards (three with two-stage tips) growing from a faceted
+# Energy crystal: six bevelled quartz-style shards (the main one with a two-stage tip) growing from a faceted
 # rock, joined into ONE mesh with ONE material ("Energy_Crystal") carrying a
 # painted base-colour atlas and a GRAYSCALE emissive-intensity atlas.
 #   $BLENDER --background --python scripts/blender/gen_crystal.py
@@ -154,12 +154,11 @@ def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, t
 make_rock()
 # idx, base xy, base z, tilt, azimuth, length, radius, sides, tip length / radius
 add_shard(0, (0.00, 0.00), 0.40, 5, 40, 3.62, 0.42, 6, 2.3, stepped=True)
-add_shard(1, (0.24, 0.12), 0.36, 21, 22, 2.45, 0.31, 6, 2.1, stepped=True)
-add_shard(2, (-0.22, 0.16), 0.36, 26, 142, 2.05, 0.28, 6, 2.2, stepped=True)
+add_shard(1, (0.24, 0.12), 0.36, 21, 22, 2.45, 0.31, 6, 2.1, chip=0.25)
+add_shard(2, (-0.22, 0.16), 0.36, 26, 142, 2.05, 0.28, 6, 2.2)
 add_shard(3, (-0.14, -0.26), 0.30, 36, 246, 1.55, 0.23, 6, 2.0, chip=0.35)
 add_shard(4, (0.26, -0.22), 0.26, 46, 315, 1.10, 0.18, 5, 1.9)
 add_shard(5, (0.05, 0.30), 0.30, 58, 95, 0.85, 0.15, 5, 1.8, chip=0.35)
-add_shard(6, (-0.30, -0.02), 0.28, 62, 190, 0.70, 0.13, 5, 1.7, chip=0.30)
 
 bm.normal_update()
 

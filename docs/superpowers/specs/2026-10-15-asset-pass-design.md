@@ -57,7 +57,7 @@ The v1 generator is already substantial (~930 lines: part categories, seam bump,
 
 - An asymmetric cluster of 5–7 hexagonal prisms with chipped tips and stepped terminations, set in a small rock socket.
 - **Still one mesh, one primitive, one material** (`Energy_Crystal`): `FuelCrystals.tsx` clones a single material and drives `emissive` (#ffd24a) and `emissiveIntensity` on it. The "inner core" look comes from the material's emissive map (brighter towards the cluster centre, darker on the rock socket), baked into the existing texture slot, not from a second material.
-- **Budget:** ≤ 800 triangles (v1: 366).
+- **Budget:** ≤ 520 triangles (v1: 366). It is drawn instanced 80 times (40 fuel slots + 40 plasma anomalies), so each triangle costs 80 against the deep-space ceiling; a 626-triangle build broke it.
 
 ### 5. Distant galaxies (`src/components/canvas/DistantGalaxies.tsx`)
 

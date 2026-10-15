@@ -158,10 +158,12 @@ describe("cargo ship (cargo_ship.glb)", () => {
     expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
   });
 
-  it("is a detailed freighter, not a box hauler", async () => {
-    // v2 was 7.9k triangles of primitive boxes; v3 adds a truss spine,
-    // ribbed containers and radiators.
-    expect(triangles(await load("cargo_ship"), "HullBaked")).toBeGreaterThan(9000);
+  it("stays light enough for five on screen at once", async () => {
+    // Up to five freighters fly at once, so each triangle counts five times
+    // against the deep-space and modal-open ceilings (docs/PERF-BUDGETS.md);
+    // a 10.5k build (bevel segments 3) broke both. Detail comes from parts
+    // (truss, ribbed racks, radiators), not from rounder bevels.
+    expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(8500);
   });
 
   it("keeps the nav lights on opposite sides, red to port", async () => {
@@ -192,9 +194,12 @@ describe("fuel crystal (space_crystal.glb)", () => {
   });
 
   it("stays inside its triangle budget", async () => {
+    // Drawn instanced 80 times (40 fuel slots + 40 plasma anomalies), so
+    // every triangle here costs 80 against the deep-space ceiling; a
+    // 626-triangle cluster broke it.
     const t = triangles(await load("space_crystal"));
     expect(t).toBeGreaterThanOrEqual(300);
-    expect(t).toBeLessThanOrEqual(800);
+    expect(t).toBeLessThanOrEqual(520);
   });
 
   it("is a full cluster, not five plain prisms", async () => {
