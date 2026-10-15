@@ -3,6 +3,7 @@ import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
+import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
 const RANGE = 160; // world units mapped to radar radius
@@ -144,6 +145,47 @@ export default function RadarMap() {
         }
         ctx.globalAlpha = 1;
       }
+
+      // Live pilots (live sky): a hollow diamond in the pilot's plume colour,
+      // so it never reads as a planet dot. Rim-clamped and dimmed like distant
+      // planets: the point is knowing which way the other pilots are.
+      for (let i = 0; i < liveRadar.count; i++) {
+        const g = liveRadar.blips[i];
+        const dx = wrapDelta(flight.x, g.x, COSMIC_BOUNDS);
+        const dz = wrapDelta(flight.z, g.z, COSMIC_BOUNDS);
+        const { x: sx, up } = worldToRadar(dx, dz, a);
+        let px = sx * scale;
+        let py = -up * scale;
+        const dist = Math.hypot(px, py);
+        let onRim = false;
+        if (dist > rimR - 3) {
+          const k = (rimR - 3) / dist;
+          px *= k; py *= k; onRim = true;
+        }
+        ctx.globalAlpha = onRim ? 0.55 : 1;
+        ctx.strokeStyle = g.hex;
+        ctx.fillStyle = g.hex;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(c + px, c + py - 3.2);
+        ctx.lineTo(c + px + 3.2, c + py);
+        ctx.lineTo(c + px, c + py + 3.2);
+        ctx.lineTo(c + px - 3.2, c + py);
+        ctx.closePath();
+        ctx.stroke();
+        const cue = altitudeCue(wrapDelta(flight.y, g.y, COSMIC_BOUNDS));
+        if (cue.dir !== 0) {
+          ctx.globalAlpha = cue.alpha * (onRim ? 0.55 : 0.9);
+          const by = c + py - cue.dir * 7;
+          ctx.beginPath();
+          ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
+          ctx.lineTo(c + px, by);
+          ctx.lineTo(c + px + 2.5, by + cue.dir * 2.5);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
 
       // Ship chevron (always center, pointing up)
       ctx.strokeStyle = "#ffffff";

@@ -9,9 +9,10 @@ import { PLUME_COLORS } from "../../data/plumeColors";
 import { wrapDelta } from "../../utils/toroidal";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import {
-  liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, ghostScanId, hudShowsRadio,
+  liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, hudShowsRadio, writeRadarBlips,
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
+import type { ShipState } from "../../utils/liveSkyProtocol";
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
 import { makePlumeGeometry, makePlumeMaterial, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
@@ -22,6 +23,8 @@ const GHOST_PLUME_LEN = 0.3;
 const GHOST_PLUME_POWER = 0.3;
 const B = COSMIC_BOUNDS;
 const NONE: GhostPose[] = [];
+/** This ship's pose for conn.tick, reused every frame. */
+const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
 
 interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE.ShaderMaterial; plume: string; scanId: string | null }
 
@@ -86,6 +89,7 @@ export default function Ghosts() {
   useEffect(() => () => {
     conn.dispose();
     for (const s of slots) { releaseScan(s); s.hull.dispose(); s.flame.dispose(); }
+    writeRadarBlips(NONE);
     flameGeometry.dispose();
   }, [conn, slots, flameGeometry]);
 
@@ -122,18 +126,22 @@ export default function Ghosts() {
     if (want !== wanted.current) { wanted.current = want; conn.setWanted(want); }
 
     if (s.liveSkySeen && conn.peers > 0) {
-      conn.tick({ p: [flight.x, flight.y, flight.z], q: shipQuat(flight.heading, flight.pitch), plume: s.plumeColor });
+      me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
+      shipQuat(flight.heading, flight.pitch, me.q);
+      me.plume = s.plumeColor;
+      conn.tick(me);
     }
 
-    const poses = conn.ghosts.size
-      ? nearestGhosts(flight, conn.ghosts.sample(performance.now(), s.reducedMotion ? 0 : FADE_IN_MS), MAX_GHOSTS)
-      : NONE;
+    const all = conn.ghosts.size ? conn.ghosts.sample(performance.now(), s.reducedMotion ? 0 : FADE_IN_MS) : NONE;
+    // The radar shows every pilot in the room; only the nearest are drawn as ships.
+    writeRadarBlips(all);
+    const poses = all === NONE ? NONE : nearestGhosts(flight, all, MAX_GHOSTS);
     const t = state.clock.getElapsedTime();
     // Pass 1: release every slot whose ghost changed or left, so pass 2 can
     // re-register an id that moved to another slot this frame.
     for (let i = 0; i < slots.length; i++) {
       const g = poses[i];
-      if (!g || slots[i].scanId !== ghostScanId(g.id)) releaseScan(slots[i]);
+      if (!g || slots[i].scanId !== g.scanId) releaseScan(slots[i]);
     }
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
@@ -159,7 +167,7 @@ export default function Ghosts() {
       slot.hull.opacity = g.alpha;
       slot.flame.uniforms.uPower.value = GHOST_PLUME_POWER * g.alpha;
       slot.flame.uniforms.uTime.value = t;
-      slot.scanId = ghostScanId(g.id);
+      slot.scanId = g.scanId;
       ghostRegistry.set(slot.scanId, g.cc);
       setScannable(slot.scanId, g.p[0], g.p[1], g.p[2], GHOST_LABEL);
     }
