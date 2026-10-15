@@ -1,6 +1,6 @@
 import { COSMIC_BOUNDS, LOCK_RETAIN_FACTOR } from "../constants";
 
-/** A sphere spawns must stay clear of — a planet, the portal, or the ship. */
+/** A sphere spawns must stay clear of — a planet, a landmark, or the ship. */
 export interface AvoidPoint { x: number; y: number; z: number; r: number }
 
 /** Slots in the field. Mean spacing at this count is ~146 units. */
@@ -45,8 +45,12 @@ export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoi
   return false;
 }
 
-/** Keep-out around the portal and the ship (crystals never pop into view). */
-const PORTAL_KEEP_OUT = 20;
+/**
+ * Keep-out around each landmark (the contact portal, the career station),
+ * well outside their lock radii, so collecting a crystal never docks you;
+ * and around the ship, so crystals never pop into view.
+ */
+export const LANDMARK_KEEP_OUT = 20;
 const SHIP_KEEP_OUT = 30;
 
 /**
@@ -57,12 +61,12 @@ const SHIP_KEEP_OUT = 30;
  */
 export function crystalAvoidPoints(
   planetBodies: readonly { x: number; y: number; z: number; size: number }[],
-  portal: readonly [number, number, number],
+  landmarks: readonly (readonly [number, number, number])[],
   ship: { x: number; y: number; z: number },
 ): AvoidPoint[] {
   return [
     ...planetBodies.map((b) => ({ x: b.x, y: b.y, z: b.z, r: b.size * LOCK_RETAIN_FACTOR + CRYSTAL_PICKUP_RADIUS })),
-    { x: portal[0], y: portal[1], z: portal[2], r: PORTAL_KEEP_OUT },
+    ...landmarks.map((p) => ({ x: p[0], y: p[1], z: p[2], r: LANDMARK_KEEP_OUT })),
     { x: ship.x, y: ship.y, z: ship.z, r: SHIP_KEEP_OUT },
   ];
 }

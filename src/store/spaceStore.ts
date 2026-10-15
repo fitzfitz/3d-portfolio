@@ -5,6 +5,7 @@ import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
 import { planets } from "../constants";
+import { destinationById } from "../data/destinations";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
@@ -321,8 +322,9 @@ export interface SpaceState {
   /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
   visitedDossiers: string[];
   /**
-   * Pending jump to a planet id or "contact", consumed by Spaceship's frame
-   * loop. `seq` makes a repeat request for the same target a new value.
+   * Pending jump to a planet id or a destination id (src/data/destinations.ts),
+   * consumed by Spaceship's frame loop. `seq` makes a repeat request for the
+   * same target a new value.
    */
   jumpRequest: { id: string; seq: number } | null;
   requestJump: (id: string) => void;
@@ -518,7 +520,7 @@ export const useSpaceStore = create<SpaceState>()(
     visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
     requestJump: (id) => {
-      if (id !== "contact" && !PLANET_IDS.includes(id)) return;
+      if (!destinationById(id) && !PLANET_IDS.includes(id)) return;
       set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
     },
     setSceneReady: (v) => { if (get().sceneReady !== v) set({ sceneReady: v }); },
@@ -544,8 +546,10 @@ export const useSpaceStore = create<SpaceState>()(
       } else {
         set({ isOrbitLocked: true, isWarping: false });
       }
-      // Logbook essential: docking at the contact portal.
-      if (zone === "contact") get().recordBadge("contact");
+      // Logbook essential: docking at a destination records the badge named
+      // after it (recordBadge ignores ids the logbook does not list).
+      const dest = destinationById(zone);
+      if (dest) get().recordBadge(dest.id);
     },
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { projects, planets, projectById, PLANET_ORBITS, RESERVED_ZONE_IDS } from "../src/constants";
+import { projects, planets, projectById, PLANET_ORBITS } from "../src/constants";
+import { RESERVED_ZONE_IDS } from "../src/data/destinations";
 
 /**
  * projects.json is content, so TypeScript cannot check it the way it checks a

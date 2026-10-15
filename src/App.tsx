@@ -12,6 +12,7 @@ import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
 import LogbookPanel from "./components/layout/LogbookPanel";
+import CareerDossier from "./components/layout/CareerDossier";
 import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
@@ -29,7 +30,8 @@ import { beaconApiUrl } from "./utils/beaconApi";
 import { loadBeacons, openBeaconPicker } from "./utils/beaconActions";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
-import { projects, projectById, planets } from "./constants";
+import { projects, projectById } from "./constants";
+import { JUMP_TARGETS, destinationById } from "./data/destinations";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
 
@@ -46,11 +48,7 @@ function EngineLoading() {
   );
 }
 
-/** Jump destinations, in key order: each planet's project, then the portal. */
-const JUMP_TARGETS = [
-  ...planets.map((p) => ({ id: p.name, label: projectById(p.name)?.title ?? p.name, color: p.color })),
-  { id: "contact", label: "Contact", color: "#ec4899" },
-];
+/** Jump targets in key order (src/data/destinations.ts): each planet's project, then the destination table. */
 const JUMP_IDS = JUMP_TARGETS.map((t) => t.id);
 /** Beacons exist only when an API is configured; read once per page load. */
 const BEACONS_ENABLED = !!beaconApiUrl();
@@ -115,7 +113,7 @@ export default function App() {
         s.setChangelogOpen(!s.changelogOpen);
         return;
       }
-      // 1..n jump to each planet in order, n+1 to the contact portal.
+      // Number keys jump to JUMP_TARGETS in order: planets, then destinations.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
         const target = JUMP_TARGETS[Number(digit[1]) - 1];
@@ -132,8 +130,10 @@ export default function App() {
   }, [sceneReady]);
 
   // `activeZone` IS the project id, so this is a lookup rather than a mapping.
-  // Returns undefined for the contact portal, which has no dossier.
+  // Returns undefined for destinations, which have no project dossier.
   const planetProject = projectById(activeZone);
+  // Each destination opens its own modal (the contact form, the career dossier).
+  const zoneDestination = destinationById(activeZone)?.id;
 
   return (
     // framer-motion ignores the CSS reduced-motion rule; drive it from the
@@ -371,7 +371,7 @@ export default function App() {
             )}
 
             {/* Portal gravity Orbit Lock: Contact form modal */}
-            {isOrbitLocked && activeZone === "contact" && (
+            {isOrbitLocked && zoneDestination === "contact" && (
               <motion.div
                 key="contact-portal"
                 initial={{ opacity: 0, scale: 0.92 }}
@@ -395,6 +395,11 @@ export default function App() {
                 </div>
                 <Contact isSidebar={true} />
               </motion.div>
+            )}
+
+            {/* Career station Orbit Lock: Career dossier */}
+            {isOrbitLocked && zoneDestination === "career" && (
+              <CareerDossier key="career-dossier" onClose={breakOrbit} />
             )}
 
             {/* Proximity hover tip overlays (if within gravity well but not yet

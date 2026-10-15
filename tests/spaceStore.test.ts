@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
 import { CHANGELOG } from "../src/data/changelog";
+import { DESTINATIONS } from "../src/data/destinations";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -60,6 +61,17 @@ describe("spaceStore", () => {
     useSpaceStore.setState({ activeZone: "contact" });
     useSpaceStore.getState().setOrbitLocked(true);
     expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["contact"]);
+  });
+
+  it("records the career essential on the first dock at the station, and it is not a planet dossier", () => {
+    useSpaceStore.setState({ activeZone: "career" });
+    useSpaceStore.getState().setOrbitLocked(true);
+    expect(useSpaceStore.getState().badges.map((b) => b.id)).toEqual(["career"]);
+    expect(useSpaceStore.getState().visitedDossiers).toEqual([]);
+  });
+
+  it("keeps a stored career badge (returning visitors who already docked)", () => {
+    expect(loadBadges([{ id: "career", at: "2026-10-15" }])).toEqual([{ id: "career", at: "2026-10-15" }]);
   });
 
   it("loadBadges keeps known recordable ids, drops malformed rows and duplicates", () => {
@@ -443,6 +455,13 @@ describe("dossier progress", () => {
 });
 
 describe("requestJump", () => {
+  it("accepts every destination in the table", () => {
+    for (const d of DESTINATIONS) {
+      useSpaceStore.getState().requestJump(d.id);
+      expect(useSpaceStore.getState().jumpRequest?.id).toBe(d.id);
+    }
+  });
+
   it("issues a fresh request each time, even for the same target", () => {
     useSpaceStore.getState().requestJump("portfolio");
     const a = useSpaceStore.getState().jumpRequest;

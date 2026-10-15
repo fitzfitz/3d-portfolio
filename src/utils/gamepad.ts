@@ -5,7 +5,7 @@ import type { FlightInput } from "../store/spaceStore";
  * mainstream controller reports in Chrome, Firefox and Safari:
  *
  *   axes     0 left-stick X · 1 left-stick Y · 2 right-stick X · 3 right-stick Y  (Y is +1 down)
- *   buttons  0 A · 1 B · 2 X (logbook) · 3 Y · 4 LB · 5 RB · 6 LT · 7 RT · 12–15 d-pad up/down/left/right
+ *   buttons  0 A · 1 B · 2 X (logbook) · 3 Y · 4 LB · 5 RB · 6 LT · 7 RT · 9 Menu/Start · 12–15 d-pad up/down/left/right
  */
 export interface PadLike {
   readonly axes: readonly number[];
@@ -23,7 +23,7 @@ const STICK_DEADZONE = 0.15;
 /** Pitch is a digital channel, so the right stick needs a firm push to engage it. */
 const PITCH_THRESHOLD = 0.5;
 
-const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7;
+const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7, MENU = 9;
 const DPAD_UP = 12, DPAD_DOWN = 13, DPAD_LEFT = 14, DPAD_RIGHT = 15;
 
 /** Zeroes resting drift, then rescales so full deflection still reaches ±1. */
@@ -71,8 +71,12 @@ export function padFlightChanges(prev: Readonly<PadFlight>, next: Readonly<PadFl
 
 export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook" } | { kind: "jump"; index: number };
 
-/** D-pad clockwise from up → jump targets 1–4, matching the number keys. */
+/**
+ * D-pad clockwise from up → jump targets 1–4, matching the number keys. Menu
+ * → target 5: the contact portal once the career station is target 4.
+ */
 const DPAD_JUMPS = [DPAD_UP, DPAD_RIGHT, DPAD_DOWN, DPAD_LEFT];
+const MENU_JUMP = 4;
 
 /** One-shot actions, fired on the press edge only so a held button acts once. */
 export function padActions(prev: readonly boolean[], next: readonly boolean[]): PadAction[] {
@@ -82,6 +86,7 @@ export function padActions(prev: readonly boolean[], next: readonly boolean[]): 
   if (edge(B)) out.push({ kind: "close" });
   if (edge(X)) out.push({ kind: "logbook" });
   DPAD_JUMPS.forEach((b, index) => { if (edge(b)) out.push({ kind: "jump", index }); });
+  if (edge(MENU)) out.push({ kind: "jump", index: MENU_JUMP });
   return out;
 }
 

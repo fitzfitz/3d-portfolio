@@ -16,13 +16,6 @@ export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;
 }
 
-/**
- * Zone ids the engine reserves for non-project destinations. A project may not
- * claim one — `activeZone === "contact"` is the portal, and a project with that
- * id would make flying to the portal open a project dossier instead.
- */
-export const RESERVED_ZONE_IDS = ["contact"] as const;
-
 export const COSMIC_BOUNDS = 250;
 /** Sun core radius, larger than the planets as a star should be. */
 export const SUN_RADIUS = 8;

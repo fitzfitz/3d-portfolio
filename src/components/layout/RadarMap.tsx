@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
-import { COSMIC_BOUNDS, PORTAL_POS, planets } from "../../constants";
+import { COSMIC_BOUNDS, planets } from "../../constants";
+import { DESTINATIONS } from "../../data/destinations";
+import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
@@ -8,6 +10,8 @@ import { liveRadar } from "../../utils/liveSky";
 const SIZE = 148;
 const RANGE = 160; // world units mapped to radar radius
 const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
+/** Destinations are fixed: one blip each, in the table's colour. */
+const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -58,7 +62,7 @@ export default function RadarMap() {
           const b = bodies[p.name];
           return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
         }),
-        { name: "contact", x: PORTAL_POS[0], y: PORTAL_POS[1], z: PORTAL_POS[2], color: "#ec4899" },
+        ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
       for (const t of targets) {
@@ -145,6 +149,24 @@ export default function RadarMap() {
         }
         ctx.globalAlpha = 1;
       }
+
+      // Career buoys: small hollow amber rings (crystals are filled dots), in
+      // range only and never rim-clamped; the station itself is a destination
+      // blip above.
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = CAREER_AMBER;
+      ctx.lineWidth = 1.2;
+      for (const p of BUOY_POSITIONS) {
+        const dx = wrapDelta(flight.x, p[0], COSMIC_BOUNDS);
+        const dz = wrapDelta(flight.z, p[2], COSMIC_BOUNDS);
+        const dy = wrapDelta(flight.y, p[1], COSMIC_BOUNDS);
+        if (Math.hypot(dx, dz, dy) > RANGE) continue;
+        const { x: sx, up } = worldToRadar(dx, dz, a);
+        ctx.beginPath();
+        ctx.arc(c + sx * scale, c - up * scale, 2.4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
 
       // Live pilots (live sky): a hollow diamond in the pilot's plume colour,
       // so it never reads as a planet dot. Rim-clamped and dimmed like distant

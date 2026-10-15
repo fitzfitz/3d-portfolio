@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, isRejectedSpawn, randomCrystalPos, respawnTick,
+  CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, LANDMARK_KEEP_OUT, crystalAvoidPoints, isRejectedSpawn, randomCrystalPos, respawnTick,
 } from "../src/utils/crystalField";
 import { COSMIC_BOUNDS } from "../src/constants";
 
@@ -108,5 +108,15 @@ describe("respawnTick", () => {
   it("has a sane cap so CRYSTAL_MAX is reachable but not absurd", () => {
     expect(CRYSTAL_MAX).toBeGreaterThan(10);
     expect(CRYSTAL_MAX).toBeLessThanOrEqual(60);
+  });
+});
+
+describe("crystalAvoidPoints", () => {
+  it("keeps every landmark clear, not only the portal", () => {
+    const avoid = crystalAvoidPoints([], [[0, 95, -150], [0, -108, 156]], { x: 0, y: 0, z: 0 });
+    // Both points are outside the belt bands and far from the ship.
+    expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT - 1, 156, avoid)).toBe(true);
+    expect(isRejectedSpawn(0, 95, -150 + LANDMARK_KEEP_OUT - 1, avoid)).toBe(true);
+    expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT + 1, 156, avoid)).toBe(false);
   });
 });

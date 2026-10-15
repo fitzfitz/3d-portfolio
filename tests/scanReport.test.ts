@@ -2,6 +2,14 @@ import { describe, it, expect } from "vitest";
 import { generateScanReport } from "../src/utils/scanReport";
 
 describe("generateScanReport", () => {
+  it("reports a career buoy's posting, oldest first", () => {
+    expect(generateScanReport("career_0")).toMatch(/^SCAN\[CAREER_2015\] \/\/ FRONT-END DEVELOPER · SOFTWARESENI · JUN 2015 – JAN 2016 \/\/ /);
+    expect(generateScanReport("career_4")).toContain("HUBEXO");
+    expect(generateScanReport("career_4")).toContain("NOV 2020 – PRESENT");
+  });
+  it("reports the career station by its scan label", () => {
+    expect(generateScanReport("career")).toMatch(/^SCAN\[STATION_CAREER\] \/\/ .*DOCK/);
+  });
   it("is deterministic per id", () => {
     expect(generateScanReport("asteroid_3")).toBe(generateScanReport("asteroid_3"));
   });

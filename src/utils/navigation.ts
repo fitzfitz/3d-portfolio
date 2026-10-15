@@ -24,15 +24,17 @@ export function jumpPoint(ship: Vec3, target: Vec3, standoff: number): JumpPoint
 
 /**
  * The destination the HUD waypoint should point at: the nearest planet whose
- * dossier hasn't been opened, then the contact portal once all have.
+ * dossier hasn't been opened, then `fallback` once all have. The caller passes
+ * the next destination from the table (`afterPlanets`, src/data/destinations.ts).
  */
 export function nextWaypoint(
   ship: Vec3,
   names: readonly string[],
   bodies: Record<string, Vec3>,
   visited: readonly string[],
+  fallback: string,
 ): string {
-  let best = "contact", bestD = Infinity;
+  let best = fallback, bestD = Infinity;
   for (const n of names) {
     if (visited.includes(n)) continue;
     const b = bodies[n];

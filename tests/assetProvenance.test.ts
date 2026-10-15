@@ -18,6 +18,8 @@ const GENERATORS: Record<string, string> = {
   "moon.glb": "scripts/blender/gen_moon.py",
   "comet_head.glb": "scripts/blender/gen_comet_head.py",
   "creature.glb": "scripts/blender/gen_creature.py",
+  "career_station.glb": "scripts/blender/gen_career_station.py",
+  "buoy.glb": "scripts/blender/gen_buoy.py",
   "ruangrapi.webp": "scripts/textures/gen_planets.mjs",
   "ruangrapi_glow.webp": "scripts/textures/gen_planets.mjs",
   "portfolio.webp": "scripts/textures/gen_planets.mjs",

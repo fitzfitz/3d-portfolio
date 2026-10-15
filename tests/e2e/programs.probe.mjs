@@ -27,13 +27,20 @@ export default async function run() {
 
     const keys = () => page.evaluate(() => window.__fitz.gl.info.programs.map((p) => p.cacheKey));
     const before = await keys();
-    const stops = await page.evaluate(() => [
-      ...Object.entries(window.__fitz.bodies).map(([name, b]) => [name, b.x, b.y, b.z + 30]),
-      ["contact portal", 0, 95, -140],
-      ["sun", 0, 0, 40],
-      ["deep space", -230, -210, -230],
-      ["world edge", 240, 200, 240],
-    ]);
+    const stops = await page.evaluate(async () => {
+      const { STATION_POS, BUOYS } = await import("/src/data/careerTrail.ts");
+      const mid = BUOYS[2].pos;
+      return [
+        ...Object.entries(window.__fitz.bodies).map(([name, b]) => [name, b.x, b.y, b.z + 30]),
+        ["contact portal", 0, 95, -140],
+        // 14 out: outside the station's 8.5 zone, so the tour never docks.
+        ["career station", STATION_POS[0], STATION_POS[1], STATION_POS[2] + 14],
+        ["career trail", mid[0] + 10, mid[1], mid[2]],
+        ["sun", 0, 0, 40],
+        ["deep space", -230, -210, -230],
+        ["world edge", 240, 200, 240],
+      ];
+    });
     for (const [, x, y, z] of stops) {
       await page.evaluate((p) => window.__fitz.teleport(p[0], p[1], p[2]), [x, y, z]);
       await settle(page, 2500);

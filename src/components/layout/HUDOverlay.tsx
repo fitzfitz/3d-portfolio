@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
-import { COSMIC_BOUNDS, PORTAL_POS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { DESTINATIONS, JUMP_TARGETS, afterPlanets, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
@@ -12,12 +13,14 @@ import RadioChatter from "./RadioChatter";
 import RaceHUD from "./RaceHUD";
 import { openBeaconPicker } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
+import BuoyCard from "./BuoyCard";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 
+/** Planet rows only; destination rows take their colour from the table. */
 const ZONE_COLORS: Record<string, string> = {
-  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent", contact: "text-pink-500",
+  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent",
 };
 
 /**
@@ -142,14 +145,18 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     );
   }, [fuelEmpty]);
 
-  // Once every dossier is read, point the pilot at the portal — announced on
-  // leaving the last dossier, when the chatter line is actually visible.
+  // Once every dossier is read, point the pilot at the next destination (the
+  // career station, then the contact portal), announced on leaving the last
+  // dossier, when the chatter line is actually visible.
   const allRead = visitedDossiers.length >= planets.length;
   useEffect(() => {
     if (!allRead || isOrbitLocked || completionAnnounced) return;
     completionAnnounced = true;
+    const next = destinationById(afterPlanets(useSpaceStore.getState().badges));
+    if (!next) return;
+    const key = JUMP_TARGETS.findIndex((t) => t.id === next.id) + 1;
     useSpaceStore.getState().sendBroadcast(
-      `ALL ${planets.length} DOSSIERS READ // THE PILOT TAKES MESSAGES AT THE PORTAL ABOVE THE SUN — PRESS ${planets.length + 1} TO JUMP THERE`
+      `ALL ${planets.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
   }, [allRead, isOrbitLocked]);
 
@@ -168,6 +175,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {/* The Scanner stops with the frozen scene, so its last label would
           otherwise hang over the dossier. */}
       {!isOrbitLocked && <ScanRing />}
+      {/* Frozen with the scene while docked, so hidden then too. */}
+      {!isOrbitLocked && <BuoyCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
       <div className="absolute top-16 left-4 sm:top-24 sm:left-6 flex flex-col gap-1.5">
@@ -202,7 +211,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div className="text-[11px] font-bold">
           TARGET:{" "}
           <span className={activeZone ? "text-primary animate-pulse" : "text-white/20"}>
-            {activeZone ? `PLANET_${activeZone.toUpperCase()}` : "DEEP_SPACE"}
+            {activeZone ? (destinationById(activeZone)?.scanLabel ?? `PLANET_${activeZone.toUpperCase()}`) : "DEEP_SPACE"}
           </span>
         </div>
         {activeZone && (
@@ -348,7 +357,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
       <div className="absolute bottom-10 right-6 hidden md:flex flex-col gap-2 items-end">
         <div className="text-[9px] text-white/30">{"// SECTOR_PLANETS — CLICK TO JUMP"}</div>
-        {/* Rows double as jump buttons (same as keys 1..n+1). */}
+        {/* Rows double as jump buttons (same as the number keys). */}
         {planets.map((p, i) => (
           <button key={p.name} onClick={() => requestJump(p.name)}
             title={`Jump to ${p.name} [${i + 1}]`}
@@ -361,14 +370,17 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <span className="w-3 text-primary">{visitedDossiers.includes(p.name) ? "✓" : ""}</span>
           </button>
         ))}
-        <button onClick={() => requestJump("contact")}
-          title={`Jump to the contact portal [${planets.length + 1}]`}
-          className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${activeZone === "contact" ? ZONE_COLORS.contact : "text-white/40"}`}>
-          <span className="text-white/30">[{planets.length + 1}]</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]" />
-          <span>PORTAL_SUN ([{PORTAL_POS.join(", ")}])</span>
-          <span className="w-3" />
-        </button>
+        {DESTINATIONS.map((d, i) => (
+          <button key={d.id} onClick={() => requestJump(d.id)}
+            title={`Jump to the ${d.label.toLowerCase()} [${planets.length + i + 1}]`}
+            className="pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white text-white/40"
+            style={activeZone === d.id ? { color: d.color } : undefined}>
+            <span className="text-white/30">[{planets.length + i + 1}]</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
+            <span>{d.scanLabel} ([{d.pos.join(", ")}])</span>
+            <span className="w-3" />
+          </button>
+        ))}
       </div>
     </div>
   );
