@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, planets } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
+import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
@@ -148,6 +149,22 @@ export default function RadarMap() {
         }
         ctx.globalAlpha = 1;
       }
+
+      // Career buoys: small amber dots, in range only and never rim-clamped,
+      // like crystals; the station itself is a destination blip above.
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = CAREER_AMBER;
+      for (const p of BUOY_POSITIONS) {
+        const dx = wrapDelta(flight.x, p[0], COSMIC_BOUNDS);
+        const dz = wrapDelta(flight.z, p[2], COSMIC_BOUNDS);
+        const dy = wrapDelta(flight.y, p[1], COSMIC_BOUNDS);
+        if (Math.hypot(dx, dz, dy) > RANGE) continue;
+        const { x: sx, up } = worldToRadar(dx, dz, a);
+        ctx.beginPath();
+        ctx.arc(c + sx * scale, c - up * scale, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
 
       // Live pilots (live sky): a hollow diamond in the pilot's plume colour,
       // so it never reads as a planet dot. Rim-clamped and dimmed like distant

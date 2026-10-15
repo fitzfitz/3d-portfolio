@@ -80,7 +80,7 @@ describe("crystal spawns near planets", () => {
     const at = { x: 100, y: 0, z: 0 };
     const avoid = crystalAvoidPoints(
       planets.map((p) => ({ ...at, size: p.size })),
-      PORTAL_POS,
+      [PORTAL_POS],
       { x: 0, y: 200, z: 0 },
     );
     for (const p of planets) {
