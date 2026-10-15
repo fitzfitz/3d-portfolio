@@ -1,4 +1,4 @@
-# Energy crystal: five bevelled quartz-style shards growing from a faceted
+# Energy crystal: six bevelled quartz-style shards (the main one with a two-stage tip) growing from a faceted
 # rock, joined into ONE mesh with ONE material ("Energy_Crystal") carrying a
 # painted base-colour atlas and a GRAYSCALE emissive-intensity atlas.
 #   $BLENDER --background --python scripts/blender/gen_crystal.py
@@ -93,7 +93,8 @@ def make_rock():
 SHARDS = []  # (base, axis, length) per shard, for UV mapping
 
 
-def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, tip_ratio):
+def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, tip_ratio,
+              stepped=False, chip=0.14):
     tilt, az = math.radians(tilt_deg), math.radians(azim_deg)
     a = Vector((math.sin(tilt) * math.cos(az), math.sin(tilt) * math.sin(az), math.cos(tilt)))
     t1 = a.cross(Vector((0, 1, 0)) if abs(a.y) < 0.9 else Vector((1, 0, 0))).normalized()
@@ -112,7 +113,10 @@ def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, t
 
     bottom = ring(-bury, 0.80)  # slight taper: shards flare as they grow out
     top = ring(shoulder, 0.97)
-    apex_off = (t1 * rng.uniform(-1, 1) + t2 * rng.uniform(-1, 1)) * radius * 0.14
+    # chip > 0.14 pushes the apex off-axis: a broken, asymmetric termination
+    apex_off = (t1 * rng.uniform(-1, 1) + t2 * rng.uniform(-1, 1)) * radius * chip
+    # stepped: a second, narrower ring partway up the tip -> two-stage termination
+    mid = ring(shoulder + (length - shoulder) * 0.42, 0.58) if stepped else None
     apex = bm.verts.new(base + a * length + apex_off)
 
     def axis_pt(p):
@@ -123,8 +127,14 @@ def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, t
         j = (i + 1) % sides
         faces.append(oriented_face([bottom[i], bottom[j], top[j], top[i]], axis_pt,
                                    KIND_BODY, rng.randrange(len(BODY_CELLS)), idx))
-        faces.append(oriented_face([top[i], top[j], apex], axis_pt,
-                                   KIND_TIP, rng.randrange(len(TIP_CELLS)), idx))
+        if mid is None:
+            faces.append(oriented_face([top[i], top[j], apex], axis_pt,
+                                       KIND_TIP, rng.randrange(len(TIP_CELLS)), idx))
+        else:
+            faces.append(oriented_face([top[i], top[j], mid[j], mid[i]], axis_pt,
+                                       KIND_TIP, rng.randrange(len(TIP_CELLS)), idx))
+            faces.append(oriented_face([mid[i], mid[j], apex], axis_pt,
+                                       KIND_TIP, rng.randrange(len(TIP_CELLS)), idx))
     bottom_set = set(bottom)
     edges = {e for f in faces for e in f.edges
              if not (e.verts[0] in bottom_set and e.verts[1] in bottom_set)}
@@ -143,11 +153,12 @@ def add_shard(idx, base_xy, base_z, tilt_deg, azim_deg, length, radius, sides, t
 
 make_rock()
 # idx, base xy, base z, tilt, azimuth, length, radius, sides, tip length / radius
-add_shard(0, (0.00, 0.00), 0.40, 5, 40, 3.62, 0.42, 6, 2.3)
-add_shard(1, (0.24, 0.12), 0.36, 21, 22, 2.45, 0.31, 6, 2.1)
+add_shard(0, (0.00, 0.00), 0.40, 5, 40, 3.62, 0.42, 6, 2.3, stepped=True)
+add_shard(1, (0.24, 0.12), 0.36, 21, 22, 2.45, 0.31, 6, 2.1, chip=0.25)
 add_shard(2, (-0.22, 0.16), 0.36, 26, 142, 2.05, 0.28, 6, 2.2)
-add_shard(3, (-0.14, -0.26), 0.30, 36, 246, 1.55, 0.23, 6, 2.0)
+add_shard(3, (-0.14, -0.26), 0.30, 36, 246, 1.55, 0.23, 6, 2.0, chip=0.35)
 add_shard(4, (0.26, -0.22), 0.26, 46, 315, 1.10, 0.18, 5, 1.9)
+add_shard(5, (0.05, 0.30), 0.30, 58, 95, 0.85, 0.15, 5, 1.8, chip=0.35)
 
 bm.normal_update()
 
@@ -288,7 +299,8 @@ for cell in BODY_CELLS:
         pu, pv = nrng.uniform(0.3, 0.7), nrng.uniform(0.35, 0.85)
         pocket += np.exp(-(((U - pu) * BODY_ASPECT) ** 2 + (V - pv) ** 2 * 0.25) / 0.012) * 0.22
     vn = veins(U, V, int(nrng.integers(2, 4)), 0.010, aspect=BODY_ASPECT)
-    e = core + rim + crown + pocket + vn * (0.35 + 0.45 * V) + waves(U, V, amp=0.03)
+    root = np.exp(-V / 0.10) * 0.28  # glow where shards leave the rock: the cluster's hot core
+    e = core + rim + crown + pocket + root + vn * (0.35 + 0.45 * V) + waves(U, V, amp=0.03)
     c = CRYS_ROOT[None, None] * (1 - V[..., None]) + CRYS_TOP[None, None] * V[..., None]
     c = c + (rim[..., None] * 0.25) + vn[..., None] * 0.12
     put(cell, e, c)
@@ -317,7 +329,7 @@ for k, cell in enumerate(ROCK_CELLS):
     d = np.minimum(np.minimum(dl, dr), V)
     grain = waves(U * 3, V * 3, n=4, amp=1.0)
     rim = np.exp(-d / 0.04)
-    e = 0.025 + 0.015 * grain + rim * 0.05
+    e = 0.012 + 0.010 * grain + rim * 0.03  # darker socket so the shards' roots carry the glow
     if k > 0:
         e = e + veins(U, V, 2, 0.018, v_lo=0.0, v_hi=1.0) * 0.55
     slate = np.array([0.075, 0.072, 0.085], np.float32)

@@ -8,6 +8,7 @@
 #   nozzle glow material is named exactly "Engine_Emissive" (the code matches
 #   /engine/i, so NO other material may contain "engine"); every other emissive
 #   is named Neon_* so the code leaves its glow alone.
+#   hull paint zones: Hull_Primary / Hull_Secondary / Hull_Trim share Accent_Metal's maps; colour = baseColorFactor
 # Blender axes used while building: +Y = nose, -Y = engines, +Z = up. The glTF
 # exporter maps Blender (x, y, z) -> glTF (x, z, -y), giving the contract above.
 import bpy
@@ -34,17 +35,20 @@ NOZZLE_X = (-0.582, 0.0, 0.582)
 NOZZLE_Z = -0.05  # Blender z of the nozzle axis (= glTF y)
 
 # ---------------------------------------------------------------- materials ---
-# Bake materials: albedo is designed procedurally here (panel seams, per-panel
-# tone, grime, edge wear, livery) then baked into one texture. metallic=0 so the
-# DIFFUSE/COLOR pass returns the full albedo.
+# Bake materials: tone and wear are designed procedurally here (panel seams,
+# per-panel tone, grime, edge wear) then baked into one GREYSCALE detail map.
+# Hue comes from each paint-zone material's colour factor (Hull_Primary /
+# Hull_Secondary / Hull_Trim, below), so the hull-paint feature can recolour a
+# zone without fighting a baked livery. Values are luminance only and leave
+# headroom for the tone x grime x edge-wear gain (up to ~1.6x) before clipping.
+# metallic=0 so the DIFFUSE/COLOR pass returns the full albedo.
 BAKE_BASE = {
-    "hull": (0.052, 0.056, 0.064),
-    "hull_mid": (0.080, 0.085, 0.096),
-    "panel": (0.150, 0.155, 0.165),
-    "metal": (0.300, 0.310, 0.330),
-    "dark": (0.014, 0.015, 0.018),
+    "hull": (0.62, 0.62, 0.62),
+    "hull_mid": (0.68, 0.68, 0.68),
+    "panel": (0.74, 0.74, 0.74),
+    "metal": (0.300, 0.310, 0.330),  # Accent_Metal: factor stays white, look unchanged
+    "dark": (0.16, 0.16, 0.16),
 }
-PAINT_LIGHT = (0.62, 0.62, 0.60)
 
 
 def _n(nt, kind, **props):
@@ -155,16 +159,6 @@ def make_bake_material(cat):
     noise.inputs["Detail"].default_value = 8.0
     grime = _math(nt, "ADD", 0.80, _math(nt, "MULTIPLY", noise.outputs["Fac"], 0.32))
     col = _scale_col(nt, base, _math(nt, "MULTIPLY", tone, grime))
-    if cat not in ("metal", "dark"):
-        # livery: chordwise double stripe near each wingtip, cyan fin tips
-        def band(lo, hi):
-            return _math(nt, "MULTIPLY", _math(nt, "GREATER_THAN", ax, lo), _math(nt, "LESS_THAN", ax, hi))
-        stripe = _math(nt, "MAXIMUM", band(1.86, 1.95), band(2.00, 2.03))
-        col = _mix_col(nt, stripe, col, PAINT_LIGHT)
-        fin = _math(nt, "MULTIPLY", _math(nt, "GREATER_THAN", sp.outputs[2], 0.555), _math(nt, "GREATER_THAN", ax, 0.45))
-        col = _mix_col(nt, fin, col, PAINT_LIGHT)
-        fin2 = _math(nt, "MULTIPLY", _math(nt, "GREATER_THAN", sp.outputs[2], 0.50), _math(nt, "LESS_THAN", sp.outputs[2], 0.53))
-        col = _mix_col(nt, _math(nt, "MULTIPLY", fin2, _math(nt, "GREATER_THAN", ax, 0.45)), col, PAINT_LIGHT)
     # seams: dark recessed lines
     col = _mix_col(nt, seam, col, _scale_col(nt, col, 0.28))
     # edge wear: bevel-node normal deviates from the true normal near edges
@@ -232,6 +226,24 @@ NON_BAKED = {"canopy": CANOPY, "engine": ENGINE, "neon_c": NEON_CYAN, "neon_g": 
 # ------------------------------------------------------------ mesh helpers ---
 PARTS = []  # (object, category, bevel_width, bevel_segments)
 
+# Paint zones. Each baked part carries a per-face "zone" attribute through the
+# bevel and join, and the final materials are assigned from it. First matching
+# rule wins; anything unmatched is primary. Metal parts become Accent_Metal
+# whatever their zone, and non-baked parts (glass, glow, neon) are not tagged.
+ZONE_PRIMARY, ZONE_SECONDARY, ZONE_TRIM = 0, 1, 2
+ZONE_RULES = (
+    (lambda n: n == "spine" or n.startswith("tip_fin_"), ZONE_TRIM),
+    (lambda n: n.startswith(("wing_", "flap_", "canard_", "intake_", "nacelle_", "tip_pod_",
+                             "ventral_fin", "vane_", "tailfin_")), ZONE_SECONDARY),
+)
+
+
+def zone_of(name):
+    for rule, zone in ZONE_RULES:
+        if rule(name):
+            return zone
+    return ZONE_PRIMARY
+
 
 def make_obj(name, verts, faces, cat, bevel=0.0, segs=2, recalc=True):
     me = bpy.data.meshes.new(name)
@@ -244,6 +256,9 @@ def make_obj(name, verts, faces, cat, bevel=0.0, segs=2, recalc=True):
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(me)
     bm.free()
+    if cat not in NON_BAKED:
+        attr = me.attributes.new("zone", "INT", "FACE")
+        attr.data.foreach_set("value", [zone_of(name)] * len(me.polygons))
     ob = bpy.data.objects.new(name, me)
     SCENE.collection.objects.link(ob)
     mat = NON_BAKED.get(cat) or BAKE_MATS[cat]
@@ -492,7 +507,7 @@ def canopy_ring(y, grow=0.0, lift=0.0):
 can_ys = [0.80, 0.86, 0.95, 1.08, 1.25, 1.42, 1.60, 1.78, 1.95, 2.08, 2.20, 2.30, 2.38]
 loft("canopy", [canopy_ring(y) for y in can_ys], "canopy", bevel=0.0)
 # canopy frame arches + spine sill
-for k, y0 in enumerate((1.18, 1.72)):
+for k, y0 in enumerate((1.18, 1.45, 1.72, 1.95)):
     loft(f"canopy_arch_{k}", [canopy_ring(y, 0.012, 0.012) for y in (y0 - 0.022, y0 + 0.022)], "metal", bevel=0.004, segs=1)
 
 # ------------------------------------------------------------- engine block ---
@@ -785,6 +800,18 @@ for s in (-1, 1):
     slab(f"canard_{s}", can_poly, "hull_mid", lambda u, v: (-0.085 - (u - 0.3) * 0.05, 0.03 - 0.012 * (u - 0.3) / 0.6),
          lambda u, v, w, s=s: (u * s, v, w), inset=0.03, edge_frac=0.3, bevel=0.004, segs=1)
 
+# ------------------------------------------------------------- v2 greebles ---
+# Access hatches and bolt heads on the two bare stretches of spine (between the
+# vent grilles, and from the forward grille to the sensor dome). The v1 upper
+# hull read as unbroken plating at chase-camera distance.
+for k, (y0, y1) in enumerate(((-1.62, -1.05), (-0.15, 0.30))):
+    for j in range(3):
+        yy = y0 + (j + 0.5) * (y1 - y0) / 3
+        zt = lerp_keys(SPINE, yy)[2]
+        s = 1 if (k + j) % 2 else -1
+        box(f"spine_hatch_{k}_{j}", (s * 0.045, yy, zt + 0.006), (0.06, 0.09, 0.012), "panel", 0.003)
+        box(f"spine_bolt_{k}_{j}", (-s * 0.05, yy, zt + 0.010), (0.025, 0.025, 0.02), "metal", 0.002)
+
 # --------------------------------------------------------- normals + bevels ---
 def activate(ob):
     bpy.ops.object.select_all(action="DESELECT")
@@ -870,7 +897,7 @@ albedo.pack()
 nrm_img.pack()
 
 
-def final_mat(name, metallic, roughness):
+def final_mat(name, metallic, roughness, factor=(1.0, 1.0, 1.0)):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
@@ -879,23 +906,40 @@ def final_mat(name, metallic, roughness):
     b.inputs["Roughness"].default_value = roughness
     t = nt.nodes.new("ShaderNodeTexImage")
     t.image = albedo
-    nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
+    # Texture x constant colour: the glTF exporter writes the constant as
+    # baseColorFactor. Socket indices: RGBA-mode Mix uses inputs 6/7, output 2.
+    mix = nt.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.blend_type = "MULTIPLY"
+    mix.inputs[0].default_value = 1.0
+    nt.links.new(t.outputs["Color"], mix.inputs[6])
+    mix.inputs[7].default_value = (*factor, 1.0)
+    nt.links.new(mix.outputs[2], b.inputs["Base Color"])
     bake_utils.attach_normal_map(m, nrm_img, strength=1.0)
     return m
 
 
-HULL = final_mat("Hull", 0.55, 0.48)
+# Paint zones (linear RGB), dielectric like real paint: at metalness 0.55 the hull
+# mirrored the black sky and read near-black whatever its colour. The
+# hull-paint feature changes only these colour factors.
+HULL_PRIMARY = final_mat("Hull_Primary", 0.2, 0.5, (0.40, 0.42, 0.46))    # gunmetal
+HULL_SECONDARY = final_mat("Hull_Secondary", 0.2, 0.5, (0.16, 0.17, 0.20))  # graphite
+HULL_TRIM = final_mat("Hull_Trim", 0.2, 0.5, (0.70, 0.86, 0.92))         # cyan-white
 ACCENT = final_mat("Accent_Metal", 0.9, 0.30)
 me = hull.data
-slot_is_metal = [mat.name == "BAKE_metal" for mat in me.materials]
+slot_is_metal = np.array([mat.name == "BAKE_metal" for mat in me.materials])
 mi = np.empty(len(me.polygons), dtype=np.int32)
 me.polygons.foreach_get("material_index", mi)
-new_mi = np.array([1 if slot_is_metal[i] else 0 for i in mi], dtype=np.int32)
+zone = np.empty(len(me.polygons), dtype=np.int32)
+me.attributes["zone"].data.foreach_get("value", zone)
+new_mi = np.where(slot_is_metal[mi], 3, zone).astype(np.int32)
+me.attributes.remove(me.attributes["zone"])
 me.materials.clear()
-me.materials.append(HULL)
-me.materials.append(ACCENT)
+for m in (HULL_PRIMARY, HULL_SECONDARY, HULL_TRIM, ACCENT):
+    me.materials.append(m)
 me.polygons.foreach_set("material_index", new_mi)
 me.update()
+print("ZONES", {n: int((new_mi == i).sum()) for i, n in enumerate(("primary", "secondary", "trim", "accent"))})
 for m in list(bpy.data.materials):
     if m.name.startswith("BAKE_"):
         bpy.data.materials.remove(m)
