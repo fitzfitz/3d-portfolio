@@ -117,6 +117,16 @@ describe("GET /beacons", () => {
   });
 });
 
+describe("caching across origins", () => {
+  it("always varies on Origin, so a shared cache never serves one origin's CORS answer to another", async () => {
+    for (const origin of [ORIGIN, "https://elsewhere.example"]) {
+      expect((await get(origin)).headers.get("Vary")).toBe("Origin");
+    }
+    const bare = await handleRequest(new Request("https://api.example/beacons"), deps());
+    expect(bare.headers.get("Vary")).toBe("Origin");
+  });
+});
+
 describe("routing", () => {
   it("answers preflight for the site", async () => {
     const res = await handleRequest(new Request("https://api.example/beacons", {
