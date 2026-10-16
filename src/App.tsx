@@ -13,6 +13,7 @@ import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
 import LogbookPanel from "./components/layout/LogbookPanel";
 import CareerDossier from "./components/layout/CareerDossier";
+import HangarPanel from "./components/layout/HangarPanel";
 import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
@@ -130,7 +131,7 @@ export default function App() {
   // `activeZone` IS the project id, so this is a lookup rather than a mapping.
   // Returns undefined for destinations, which have no project dossier.
   const planetProject = projectById(activeZone);
-  // Each destination opens its own modal (the contact form, the career dossier).
+  // Each destination opens its own modal (the contact form, the career dossier, the hangar).
   const zoneDestination = destinationById(activeZone)?.id;
 
   return (
@@ -398,6 +399,11 @@ export default function App() {
             {/* Career station Orbit Lock: Career dossier */}
             {isOrbitLocked && zoneDestination === "career" && (
               <CareerDossier key="career-dossier" onClose={breakOrbit} />
+            )}
+
+            {/* Shipyard Orbit Lock: Hangar (the plume picker) */}
+            {isOrbitLocked && zoneDestination === "shipyard" && (
+              <HangarPanel key="hangar" onClose={breakOrbit} />
             )}
 
             {/* Proximity hover tip overlays (if within gravity well but not yet

@@ -40,7 +40,7 @@ describe("spaceStore", () => {
     const st = useSpaceStore.getState();
     expect(st.badges.map((b) => b.id)).toEqual(["slingshot"]);
     expect(st.badges[0].at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(st.broadcast).toMatchObject({ text: "LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. PRESS L", silent: false });
+    expect(st.broadcast).toMatchObject({ text: "LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]", silent: false });
   });
 
   it("recordBadge is a no-op once earned, and for derived or unknown ids", async () => {
