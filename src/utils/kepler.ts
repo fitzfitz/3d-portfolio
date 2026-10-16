@@ -15,6 +15,16 @@ export interface CometOrbit {
 }
 
 /**
+ * Kepler's third law, T² = 4π²a³/GM (docs/UNIVERSE-RULES.md L7). Every orbit
+ * around one body shares that body's GM, so one known orbit fixes the rest.
+ */
+export const keplerGM = (a: number, periodSeconds: number): number =>
+  (4 * Math.PI * Math.PI * a * a * a) / (periodSeconds * periodSeconds);
+export const keplerPeriod = (a: number, gm: number): number => Math.PI * 2 * Math.sqrt((a * a * a) / gm);
+/** Mean angular speed (rad/s); for a circle, the actual one. */
+export const keplerOmega = (a: number, gm: number): number => Math.sqrt(gm / (a * a * a));
+
+/**
  * Keplerian orbit position with the sun at the FOCUS (origin): the body
  * whips past perihelion and crawls at aphelion, per Kepler's second law.
  * Solves Kepler's equation E - e·sinE = M with a few Newton iterations,

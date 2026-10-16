@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { makePlumeMaterial, makeBeamGeometry } from "../src/components/canvas/enginePlume";
+import { makePlumeMaterial, makeBeamGeometry, makePlumeGeometry, plumeSpreadFor, PLUME_HALF_ANGLE_DEG } from "../src/components/canvas/enginePlume";
 
 describe("makePlumeMaterial", () => {
   it("defaults to the engine's cyan and accepts a tint without changing the shader source", () => {
@@ -27,5 +27,38 @@ describe("makeBeamGeometry", () => {
     }
     expect(nose).toBeLessThan(0.05);
     expect(far).toBeCloseTo(1, 5);
+  });
+});
+
+describe("vacuum plume (L31)", () => {
+  const R = 0.07;
+  it("is a plain tube; the shader does the fanning", () => {
+    const p = makePlumeGeometry(R).attributes.position;
+    for (let i = 0; i < p.count; i++) expect(Math.hypot(p.getX(i), p.getZ(i))).toBeCloseTo(R, 6);
+  });
+  it("fans out at about 30 degrees half-angle at idle, cruise and warp lengths", () => {
+    expect(PLUME_HALF_ANGLE_DEG).toBe(30);
+    for (const len of [0.35, 1.7, 3.7]) {
+      const tip = R * (1 + plumeSpreadFor(len, R, PLUME_HALF_ANGLE_DEG)); // tip radius, world
+      const deg = (Math.atan((tip - R) / len) * 180) / Math.PI;
+      expect(Math.abs(deg - 30)).toBeLessThan(1);
+    }
+  });
+  it("widens the tube in the vertex shader and thins it as it widens", () => {
+    const m = makePlumeMaterial(0);
+    expect(m.vertexShader).toMatch(/uSpread/);
+    expect(m.fragmentShader).toMatch(/vWiden/);
+    expect(m.uniforms.uSpread.value).toBe(0);
+  });
+  it("the tractor beam's material does not widen (uSpread 0)", () => {
+    expect(makePlumeMaterial(4.2, new THREE.Color("#3ff2d0")).uniforms.uSpread.value).toBe(0);
+  });
+  it("keeps the same triangle count", () => {
+    expect(makePlumeGeometry(0.07).index!.count).toBe(20 * 12 * 6);
+  });
+  it("has no shock diamonds (they need an atmosphere)", () => {
+    const f = makePlumeMaterial(0).fragmentShader;
+    expect(f).not.toMatch(/diamond/i);
+    expect(f).not.toMatch(/sin\(t \*/);
   });
 });

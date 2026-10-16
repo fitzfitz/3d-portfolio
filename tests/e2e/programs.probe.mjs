@@ -4,8 +4,8 @@ import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./ha
 // system must not compile any more. Before ShaderWarmup compiled for the
 // PostFX render target, a tour of the landmarks below climbed 79 → 91
 // (srgb-linear variants of anything not on screen at load). After that, the
-// sun still compiled one more about one run in four: GodRaysEffect forced its
-// material transparent after warm-up whenever PostFX mounted late (godRays.ts).
+// sun still compiled one more about one run in four, from a since-removed
+// post pass that flipped its material transparent after warm-up.
 // The tour stops include the shipyard and the dormant gate.
 //
 // Low-perf is locked off before load, as on a real GPU: headless SwiftShader

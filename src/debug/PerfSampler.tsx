@@ -39,7 +39,7 @@ export default function PerfSampler() {
   // true, which it is here -- and stays here, see the DO-NOT-TOUCH note
   // below). PostFX's EffectComposer renders through several internal passes
   // per frame (RenderPass for the real scene, then a merged fullscreen
-  // EffectPass for Bloom/Vignette/ChromaticAberration/GodRays), each calling
+  // EffectPass for Bloom/Vignette/ChromaticAberration), each calling
   // renderer.render() again -- so by the time composer.render() returns,
   // gl.info holds only the LAST pass's tiny counts (one fullscreen quad).
   // EffectComposer's own useFrame runs at renderPriority=1, and R3F runs

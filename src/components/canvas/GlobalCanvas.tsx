@@ -1,8 +1,8 @@
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState, useEffect, useLayoutEffect, memo } from "react";
+import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
-import { ambientTime } from "../../utils/ambientTime";
+import { makeStarMaterial } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
@@ -48,56 +48,15 @@ interface StarLayerProps {
   /** Largest star diameter in CSS pixels; most stars are far smaller. */
   maxPx: number;
   opacity: number;
-  /** rad/s around Y; sign controls direction */
-  speed: number;
-  twinkle?: boolean;
 }
 
-/**
- * Round, soft-edged stars with per-star brightness and twinkle phase. The old
- * PointsMaterial drew every star as a same-size square (sub-pixel at these
- * distances, so 1px boxes) and "twinkled" by pulsing a whole layer's size in
- * unison. Sizes are in screen pixels, unattenuated: the shells are a sky at
- * infinity riding with the ship, not objects at a distance.
- */
-const STAR_VERT = /* glsl */ `
-  attribute float aSize;
-  attribute float aPhase;
-  uniform float uTime;
-  uniform float uPixelRatio;
-  uniform float uTwinkle;
-  varying vec3 vColor;
-  varying float vFlicker;
-  void main() {
-    vColor = color;
-    float flicker = 1.0 + uTwinkle * 0.35 * sin(uTime * (1.3 + aPhase * 0.25) + aPhase * 6.2831);
-    vFlicker = flicker;
-    gl_PointSize = max(1.0, aSize * flicker * uPixelRatio);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-const STAR_FRAG = /* glsl */ `
-  uniform float uOpacity;
-  varying vec3 vColor;
-  varying float vFlicker;
-  void main() {
-    float d = length(gl_PointCoord - 0.5);
-    // Bright core plus a soft halo; zero at the sprite edge so no square rim.
-    float a = 1.0 - smoothstep(0.0, 0.5, d);  // edge0 < edge1: reversed edges are undefined in GLSL
-    a = a * a * (0.6 + 0.4 * vFlicker);
-    if (a < 0.003) discard;
-    gl_FragColor = vec4(vColor * a * uOpacity, 1.0);
-  }
-`;
-
-function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity, speed, twinkle = false }: StarLayerProps) {
+function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity }: StarLayerProps) {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const [positions, colors, sizes, phases] = useMemo(() => {
+  const [positions, colors, sizes] = useMemo(() => {
     const posArr = new Float32Array(count * 3);
     const colArr = new Float32Array(count * 3);
     const sizeArr = new Float32Array(count);
-    const phaseArr = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       // Uniform on the sphere: y = cos(polar) uniform in [-1, 1)
       const u = Math.random() * 2 - 1;
@@ -116,46 +75,27 @@ function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity, speed, twinkle
       const tint = rand < 0.75 ? [1, 1, 1] : rand < 0.9 ? [0.72, 0.88, 1.0] : [1.0, 0.78, 0.58];
       colArr.set([tint[0] * bright, tint[1] * bright, tint[2] * bright], i * 3);
       sizeArr[i] = maxPx * (0.35 + 0.65 * m);
-      phaseArr[i] = Math.random();
     }
-    return [posArr, colArr, sizeArr, phaseArr];
+    return [posArr, colArr, sizeArr];
   }, [count, radiusMin, radiusMax, maxPx]);
 
-  const material = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: STAR_VERT,
-    fragmentShader: STAR_FRAG,
-    vertexColors: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    uniforms: {
-      uTime: { value: 0 },
-      uPixelRatio: { value: 1 },
-      uOpacity: { value: opacity },
-      uTwinkle: { value: twinkle ? 1 : 0 },
-    },
-  }), [opacity, twinkle]);
+  const material = useMemo(() => makeStarMaterial(opacity), [opacity]);
   useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
-    // ambientTime freezes under reduced motion, so twinkle and drift stop too.
-    const time = ambientTime(state.clock.getElapsedTime());
     // The shells are the infinite sky: they translate with the ship (no positional
-    // parallax — the DustField supplies that) and keep their slow rotation drift.
+    // parallax — the DustField supplies that) and never rotate or flicker.
     pointsRef.current.position.set(flight.x, flight.y, flight.z);
-    pointsRef.current.rotation.y = time * speed;
-    material.uniforms.uTime.value = time;
     material.uniforms.uPixelRatio.value = state.gl.getPixelRatio();
   });
 
   return (
-    <points ref={pointsRef} material={material}>
+    <points ref={pointsRef} name="StarLayer" material={material}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} count={count} array={positions} itemSize={3} />
         <bufferAttribute attach="attributes-color" args={[colors, 3]} count={count} array={colors} itemSize={3} />
         <bufferAttribute attach="attributes-aSize" args={[sizes, 1]} count={count} array={sizes} itemSize={1} />
-        <bufferAttribute attach="attributes-aPhase" args={[phases, 1]} count={count} array={phases} itemSize={1} />
       </bufferGeometry>
     </points>
   );
@@ -207,18 +147,14 @@ function DustField() {
   );
 }
 
-// Three-depth parallax sky: far slow, mid counter-rotating, near faster + twinkling.
+// Three depths of fixed stars that ride with the ship: no parallax, they never
+// move (L24) and never twinkle in vacuum (L23).
 function GalaxyStarfield({ isLowPerf }: { isLowPerf: boolean }) {
   return (
     <>
-      {/* Rates were 0.0015 / -0.003 / 0.006 rad/s — periods of 70, 35 and 17
-          MINUTES, indistinguishable from static over any real visit. Calibrated
-          by eye and baked at 12x those originals, giving ~5.2 / 2.6 / 1.3 minute
-          periods, so the parallax between the three counter-rotating depths
-          actually reads. Free — one rotation write per layer per frame. */}
-      <StarLayer count={1300} radiusMin={140} radiusMax={260} maxPx={2.2} opacity={0.8} speed={0.02} />
-      <StarLayer count={800} radiusMin={80} radiusMax={180} maxPx={2.8} opacity={0.9} speed={-0.04} />
-      <StarLayer count={400} radiusMin={40} radiusMax={120} maxPx={3.6} opacity={1.0} speed={0.08} twinkle={true} />
+      <StarLayer count={1300} radiusMin={140} radiusMax={260} maxPx={2.2} opacity={0.8} />
+      <StarLayer count={800} radiusMin={80} radiusMax={180} maxPx={2.8} opacity={0.9} />
+      <StarLayer count={400} radiusMin={40} radiusMax={120} maxPx={3.6} opacity={1.0} />
       {!isLowPerf && <DustField />}
     </>
   );
@@ -462,7 +398,6 @@ function GlobalCanvas() {
   // A dossier freezes the loop; so does the shader warm-up (ShaderWarmup).
   const sceneFrozen = useSpaceStore((s) => selectSceneFrozen(s) || s.warmingUp);
   const anomaliesRef = useRef<AnomaliesRef>(null);
-  const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
   // frameloop="never" means R3F stops driving rAF entirely; the first frame
   // after unfreezing has to be requested explicitly or the canvas holds the
   // stale frame until something else invalidates it.
@@ -568,7 +503,7 @@ function GlobalCanvas() {
           <SpacePlanets />
 
           {/* Central sun core + corona/flare shell */}
-          <Sun onSunReady={setSunMesh} />
+          <Sun />
 
           {/* Scattered Deep Space Asteroids */}
           <Asteroids />
@@ -642,7 +577,7 @@ function GlobalCanvas() {
         {/* Always mounted; low-perf disables it (see PostFX) rather than
             unmounting, which recompiled Bloom/SMAA on every round trip. */}
         <SafeErrorBoundary>
-          <PostFX sunMesh={sunMesh} enabled={!isLowPerf} />
+          <PostFX enabled={!isLowPerf} />
         </SafeErrorBoundary>
       </Canvas>
     </div>

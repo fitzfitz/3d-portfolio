@@ -17,6 +17,7 @@ import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 import { assetUrl } from "../../utils/assetUrl";
 import { lowPolyRock } from "../../utils/lowPolyRock";
+import { sunOmega } from "../../constants";
 
 const COUNT_FULL = 400;
 const COUNT_LOW = 200;
@@ -67,8 +68,9 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
       return {
         radius,
         y: (rand() - 0.5) * yJitter,
-        // Kepler-ish: inner rocks orbit faster
-        speed: 0.02 - ((radius - rMin) / span) * 0.012,
+        // Kepler's third law around the same sun as the planets
+        // (docs/UNIVERSE-RULES.md L7): ~86 s a lap at r 40, ~199 s at r 70.
+        speed: sunOmega(radius),
         phase: rand() * Math.PI * 2,
         spinX: 0.2 + rand() * 0.6,
         spinY: 0.2 + rand() * 0.6,

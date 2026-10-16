@@ -1,6 +1,8 @@
 import { beaconRegistry, beaconReport } from "./beacons";
 import { ghostRegistry, ghostReport } from "./liveSky";
 import { BUOYS } from "../data/careerTrail";
+import { planets } from "../constants";
+import { formatOrbit } from "./realUnits";
 
 /** One report per career buoy: the posting it marks, from src/data/career.ts. */
 const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
@@ -38,7 +40,10 @@ export function generateScanReport(id: string): string {
   const buoy = BUOY_REPORTS.get(id);
   if (buoy) return buoy;
   const table = PLANET_REPORTS[id];
-  if (table) return table;
+  if (table) {
+    const planet = planets.find((p) => p.name === id);
+    return planet ? `${table} // ${formatOrbit(planet.orbit)}` : table;
+  }
   const h = hash(id);
   const e1 = ELEMENTS[h % ELEMENTS.length];
   const e2 = ELEMENTS[(h >> 3) % ELEMENTS.length];

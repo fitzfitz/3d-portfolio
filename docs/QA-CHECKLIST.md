@@ -240,7 +240,7 @@ hits?
 weighted impact? (b) Does the 0.5s cooldown feel right rather than
 machine-gun during a sustained grind?
 
-### 7. God-ray occlusion
+### 7. Sun glare occlusion
 
 **Setup:**
 
@@ -255,19 +255,19 @@ __fitz.teleport(p.x * k, p.y * k, p.z * k)
 ```
 
 **Do:** Turn to face back toward the sun (roughly toward the origin). Watch
-the sun's rays as the planet's continued orbital motion (or your own small
+the sun's glare and spikes as the planet's continued orbital motion (or your own small
 sideways drift) carries it across the direct line between your ship and the
 sun.
 
 For a fixed reference to compare against, run the automated sky probe once
-(`npm run test:e2e` — it captures `sky-godrays-open.png` into the probe's
-scratch output with the rays unoccluded) and eyeball the difference when a
+(`npm run test:e2e` — it captures `sky-glare-open.png` into the probe's
+scratch output with the glare unoccluded) and eyeball the difference when a
 body is in the way versus that baseline.
 
-**Look for:** Do the god rays visibly dim while the planet occludes the sun,
+**Look for:** Do the glare and diffraction spikes visibly dim while the planet occludes the sun,
 and re-emerge (brighten back up) once it clears the line?
 
-**Pass criterion (yes/no):** Do the rays visibly dim during occlusion and
+**Pass criterion (yes/no):** Do the glare and spikes visibly dim during occlusion and
 recover afterward?
 
 ### 8. Real-device touch ergonomics
@@ -329,6 +329,6 @@ empty row. Do not fill in Pass/Fail without actually performing the check.
 | | | 4. Altitude bar vs dead-ahead blip overlap | NOT RUN — awaiting human pass | |
 | | | 5. Chatter cadence | NOT RUN — awaiting human pass | |
 | | | 6. Asteroid ram impact weight | NOT RUN — awaiting human pass | |
-| | | 7. God-ray occlusion | NOT RUN — awaiting human pass | |
+| | | 7. Sun glare occlusion | NOT RUN — awaiting human pass | |
 | | | 8. Real-device touch ergonomics | NOT RUN — awaiting human pass | |
 | | | 9. Audio mix balance | NOT RUN — awaiting human pass | |

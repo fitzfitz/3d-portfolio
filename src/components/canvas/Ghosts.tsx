@@ -14,12 +14,13 @@ import {
 } from "../../utils/liveSky";
 import type { ShipState } from "../../utils/liveSkyProtocol";
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
-import { makePlumeGeometry, makePlumeMaterial, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
+import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
 
 /** RingCourse's race-ghost wash strength. */
 const GHOST_WASH = 0.55;
 const GHOST_PLUME_LEN = 0.3;
+const GHOST_NOZZLE_R = 0.07;
 const GHOST_PLUME_POWER = 0.3;
 const B = COSMIC_BOUNDS;
 const NONE: GhostPose[] = [];
@@ -43,6 +44,7 @@ function makeSlot(shipScene: THREE.Object3D, flameGeometry: THREE.BufferGeometry
   model.position.set(0, -0.05, 0);
   const flame = makePlumeMaterial(i * 1.7, stock);
   flame.uniforms.uPower.value = GHOST_PLUME_POWER;
+  flame.uniforms.uSpread.value = plumeSpreadFor(GHOST_PLUME_LEN, GHOST_NOZZLE_R, PLUME_HALF_ANGLE_DEG);
   const plume = new THREE.Mesh(flameGeometry, flame);
   plume.position.set(0, NOZZLE_Y, NOZZLE_Z - GHOST_PLUME_LEN / 2);
   plume.rotation.set(Math.PI / 2, 0, 0);
@@ -70,7 +72,7 @@ function releaseScan(slot: Slot) {
  */
 export default function Ghosts() {
   const { scene: shipScene } = useGLTF(assetUrl("/models/spaceship.glb"));
-  const flameGeometry = useMemo(() => makePlumeGeometry(0.07), []);
+  const flameGeometry = useMemo(() => makePlumeGeometry(GHOST_NOZZLE_R), []);
   const slots = useMemo(
     () => Array.from({ length: MAX_GHOSTS }, (_, i) => makeSlot(shipScene, flameGeometry, i)),
     [shipScene, flameGeometry],

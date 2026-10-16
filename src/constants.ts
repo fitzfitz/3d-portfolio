@@ -1,4 +1,5 @@
 import type { OrbitalElements } from "./utils/orbits";
+import { keplerGM, keplerOmega } from "./utils/kepler";
 import projectsData from "./data/projects.json";
 
 export interface Project {
@@ -20,7 +21,11 @@ export const COSMIC_BOUNDS = 250;
 
 /** The scale the player ship (spaceship.glb) is rendered at; tests/assetContracts.test.ts sizes the career dock standoff from it. */
 export const PLAYER_SHIP_SCALE = 0.35;
-/** Sun core radius, larger than the planets as a star should be. */
+/**
+ * Sun core radius: the solid sphere, smaller than a planet (16). The corona
+ * disc (52 wide in Sun.tsx) is what reads as the sun's size, and it is larger.
+ * A deliberate break from real proportions (docs/UNIVERSE-RULES.md L35, fix F12).
+ */
 export const SUN_RADIUS = 8;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
 export const PORTAL_POS: [number, number, number] = [0, 95, -150];
@@ -57,7 +62,37 @@ export const projects: Project[] = projectsData;
 const PLANET_SIZE = 16;
 
 /**
+ * The sun's pull, GM (docs/UNIVERSE-RULES.md L7). Every orbit around the sun
+ * (planets, belt, halo, comets) takes its speed from this one value through
+ * Kepler's third law, anchored so Ruangrapi (r 115) keeps its 420 s year.
+ */
+/** Scene units per AU: Ruangrapi's orbit radius (docs/UNIVERSE-RULES.md "Units"). */
+export const AU = 115;
+/** Game seconds per Earth year: Ruangrapi's period. */
+export const YEAR_S = 420;
+export const GM_SUN = keplerGM(AU, YEAR_S);
+/** Angular speed (rad/s) of a circular orbit of radius `r` around the sun. */
+export const sunOmega = (r: number): number => keplerOmega(r, GM_SUN);
+
+/**
+ * One planet's pull, GM, shared by all three because they share PLANET_SIZE
+ * (docs/UNIVERSE-RULES.md L11). Anchored so Ruangrapi's moon (1.7 × size)
+ * keeps its 0.4 rad/s. Moon systems are magnified insets on their own clock
+ * (principle P3, law L13), so this is not comparable with GM_SUN.
+ */
+export const GM_PLANET = keplerGM(PLANET_SIZE * 1.7, (Math.PI * 2) / 0.4);
+
+/**
+ * Sign of a `rotation.y` rate that turns the same way the planets orbit
+ * (docs/UNIVERSE-RULES.md L9). `orbitPosition` with a positive angularSpeed
+ * runs clockwise seen from +Y, which is a negative rotation about Y.
+ * tests/universeRules.test.ts measures this rather than trusting it.
+ */
+export const PROGRADE = -1;
+
+/**
  * Inclined living orbits around the sun at origin (spec §3), keyed by project id.
+ * Speeds follow Kepler's third law (sunOmega), so outer planets are slower.
  * Periods are minutes-slow: orbital speed stays ≪ ship speed so orbit-lock
  * tracking is trivial (tests/orbitInvariant.test.ts).
  *
@@ -68,9 +103,9 @@ const PLANET_SIZE = 16;
  * with no entry here, and on an entry with no project.
  */
 export const PLANET_ORBITS: Record<string, OrbitalElements> = {
-  ruangrapi: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
-  portfolio: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
-  fuxx: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
+  ruangrapi: { radius: 115, angularSpeed: sunOmega(115), inclination: 0.3491, node: 0, phase: 0 }, // 420 s
+  portfolio: { radius: 150, angularSpeed: sunOmega(150), inclination: -0.6981, node: 2.0944, phase: 2.1 }, // ~626 s
+  fuxx: { radius: 185, angularSpeed: sunOmega(185), inclination: 1.0472, node: 4.1888, phase: 4.2 }, // ~857 s
 };
 
 const byId = new Map(projects.map((p) => [p.id, p]));
