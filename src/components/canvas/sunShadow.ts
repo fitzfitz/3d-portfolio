@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { SUN_RADIUS } from "../../constants";
+import type { Occluder } from "../../utils/sunOcclusion";
 
 /**
  * Analytic sun shadows (F4). Bodies are spheres and the sun is a disc of
@@ -14,6 +15,12 @@ import { SUN_RADIUS } from "../../constants";
  *   whose discs a moon's shadow can cross part of).
  * - "object": one factor per material, `sunVis`, written on the CPU from
  *   `sunVisibility` (for moons and the ship, small enough to be all in or out).
+ *
+ * Patch the material instance that actually renders. `Material.clone()` does
+ * not copy `onBeforeCompile`, `onBeforeRender` or `customProgramCacheKey`, so
+ * a patched material's clone is unpatched: clone first, then patch the clone
+ * (OrbitingMoon does this per moon). Patching is idempotent per instance; a
+ * second call returns the first call's handle.
  */
 
 /** Occluder slots in the shared uniform array. */
@@ -34,9 +41,18 @@ export const sunShadowUniforms = {
   uSunView: { value: new THREE.Vector3() },
 };
 
-/** Writes occluder slot `i` in place. Frame loops call this; it allocates nothing. */
+/**
+ * The same slots on the CPU, for `sunVisibility` (object mode: moons and the
+ * ship). Fixed objects, rewritten in place by `setOccluder`. Unused slots keep
+ * r = 0, which covers nothing.
+ */
+export const occluders: readonly Occluder[] = Array.from({ length: MAX_OCCLUDERS }, () => ({ x: 0, y: 0, z: 0, r: 0 }));
+
+/** Writes occluder slot `i` in place, GPU and CPU. Frame loops call this; it allocates nothing. */
 export function setOccluder(i: number, x: number, y: number, z: number, r: number): void {
   sunShadowUniforms.uOccluders.value[i].set(x, y, z, r);
+  const o = occluders[i];
+  o.x = x; o.y = y; o.z = z; o.r = r;
 }
 
 /**
@@ -119,6 +135,14 @@ type Mode = keyof typeof GATE;
 
 const defaultCacheKey = THREE.Material.prototype.customProgramCacheKey;
 
+type Handle = { sunVis?: { value: number } };
+
+/**
+ * Materials already patched, with the handle they were given. A second patch
+ * would inject the header and the gate twice, which does not compile.
+ */
+const patched = new WeakMap<THREE.Material, Handle>();
+
 /**
  * Patches `material` so the sun's light is scaled by its visibility. Composes
  * with any `onBeforeCompile`, `onBeforeRender` and `customProgramCacheKey`
@@ -128,15 +152,20 @@ const defaultCacheKey = THREE.Material.prototype.customProgramCacheKey;
  * material is drawn on; it is skipped, as the body's own night side is already
  * dark from N·L. Returns `sunVis` in object mode: the CPU writes the visible
  * fraction there (it starts at 1, a clear sun). It belongs to this material,
- * so objects sharing a material share it.
+ * so objects sharing a material share it; pass `opts.sunVis` to make several
+ * materials (the ship's hull parts) read one shared value instead.
+ *
+ * Patching the same material again returns the existing handle unchanged.
  */
 export function patchSunShadow(
   material: THREE.Material,
   mode: Mode,
-  opts?: { selfIndex?: number },
-): { sunVis?: { value: number } } {
+  opts?: { selfIndex?: number; sunVis?: { value: number } },
+): Handle {
+  const existing = patched.get(material);
+  if (existing) return existing;
   const selfIndex = mode === "fragment" ? (opts?.selfIndex ?? -1) : -1;
-  const sunVis = mode === "object" ? { value: 1 } : undefined;
+  const sunVis = mode === "object" ? (opts?.sunVis ?? { value: 1 }) : undefined;
 
   const prevCompile = material.onBeforeCompile;
   const prevRender = material.onBeforeRender;
@@ -178,5 +207,7 @@ export function patchSunShadow(
 
   material.customProgramCacheKey = () => `${prevKey()}|sunShadow:${mode}:${selfIndex}`;
 
-  return sunVis ? { sunVis } : {};
+  const handle: Handle = sunVis ? { sunVis } : {};
+  patched.set(material, handle);
+  return handle;
 }

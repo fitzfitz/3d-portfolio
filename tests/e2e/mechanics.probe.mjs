@@ -160,6 +160,101 @@ async function reducedMotion(page, checks) {
   checks.check("reduced motion: the beam still pulls a crystal", got.ok);
 }
 
+/**
+ * Eclipses (docs/UNIVERSE-RULES.md L20, F4), with the planets and moons frozen
+ * by reduced motion. Ruangrapi (16 across, the sun 8) is bigger than the sun,
+ * so its umbra never closes: 2.5 sizes out on the far side is full night.
+ */
+async function eclipses(page, checks) {
+  await page.keyboard.press("KeyW");
+  const wired = await page.evaluate(() => !!window.__fitz.shipShadow && !!window.__fitz.sunShadow);
+  checks.check("the ship's sunVis and the occluder slots are on the debug bridge", wired);
+  if (!wired) return;
+
+  // Occluder slots 3-7 are the moons, in MOONS order, at their meshes.
+  const moons = await page.evaluate(async () => {
+    const { MOONS } = await import("/src/data/moons.ts");
+    const { planets } = await import("/src/constants.ts");
+    const v = window.__fitz.camera.position.clone();
+    const u = window.__fitz.sunShadow;
+    return {
+      count: u.uOccluderCount.value,
+      moons: MOONS.map((m, i) => {
+        const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
+        if (!mesh) return { id: m.id, err: Infinity, dr: Infinity };
+        mesh.getWorldPosition(v);
+        const s = u.uOccluders.value[3 + i];
+        return { id: m.id, err: Math.hypot(s.x - v.x, s.y - v.y, s.z - v.z), dr: Math.abs(s.w - m.size * planets[m.planet].size) };
+      }),
+    };
+  });
+  checks.check("all eight occluder slots are in use", moons.count === 8, `count=${moons.count}`);
+  checks.check("occluder slots track the moons", moons.moons.every((m) => m.err < 0.01 && m.dr < 1e-6),
+    moons.moons.map((m) => `${m.id} ${m.err.toFixed(4)}`).join(", "));
+
+  // Each planet's own slot is skipped: its compiled program says so. Reading
+  // the program in use (not the material's key function) also proves the
+  // patch survived React and is what three actually compiled.
+  const programs = await page.evaluate(async () => {
+    const { planets } = await import("/src/constants.ts");
+    const { MOONS } = await import("/src/data/moons.ts");
+    const gl = window.__fitz.gl, ctx = gl.getContext();
+    const used = (mat) => {
+      const prog = gl.properties.get(mat).currentProgram;
+      return prog ? { key: prog.cacheKey, src: ctx.getShaderSource(prog.fragmentShader) ?? "" } : { key: "", src: "" };
+    };
+    return {
+      planets: planets.map((p, i) => {
+        const mesh = window.__fitz.scene.getObjectByName(`Planet_${p.name}`);
+        const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
+        return { name: p.name, key: key.includes(`|sunShadow:fragment:${i}`), self: src.includes(`#define SUN_SHADOW_SELF ${i}\n`),
+          gate: src.includes("sunShadowCoverage( sunShadowWorld( geometryPosition ) )"), cityLights: src.includes("uniform vec3 uSunView;") };
+      }),
+      clouds: (() => {
+        const mesh = window.__fitz.scene.getObjectByName("CloudLayer");
+        const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
+        return key.includes("|sunShadow:fragment:0") && src.includes("#define SUN_SHADOW_SELF 0\n");
+      })(),
+      moons: MOONS.map((m) => {
+        const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
+        const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
+        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+      }),
+      ship: window.__fitz.shipShadow.materials.map((mat) => {
+        const { key, src } = used(mat);
+        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+      }),
+    };
+  });
+  checks.check("a planet does not shadow itself (its own slot is compiled out)",
+    programs.planets.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.planets));
+  checks.check("Ruangrapi keeps its night-side city lights alongside the shadow", programs.planets[0]?.cityLights === true);
+  checks.check("Ruangrapi's clouds darken in the same shadows (its slot skipped)", programs.clouds === true);
+  checks.check("every moon draws with its object-mode shadow program", programs.moons.every(Boolean), JSON.stringify(programs.moons));
+  checks.check("every ship hull material draws with its shadow program",
+    programs.ship.length > 0 && programs.ship.every(Boolean), `materials=${programs.ship.length} ${JSON.stringify(programs.ship)}`);
+
+  // The ship in Ruangrapi's umbra, then beside it.
+  const place = (side) => page.evaluate(async (s) => {
+    const { planets } = await import("/src/constants.ts");
+    const size = planets.find((p) => p.name === "ruangrapi").size;
+    const b = window.__fitz.bodies.ruangrapi;
+    const r = Math.hypot(b.x, b.y, b.z);
+    const ux = b.x / r, uy = b.y / r, uz = b.z / r;
+    const h = Math.hypot(ux, uz), sx = -uz / h, sz = ux / h;
+    window.__fitz.teleport(b.x + ux * size * 2.5 + sx * size * 4 * s, b.y + uy * size * 2.5, b.z + uz * size * 2.5 + sz * size * 4 * s);
+  }, side);
+  const sunVis = () => page.evaluate(() => window.__fitz.shipShadow.sunVis.value);
+  await place(0);
+  const dark = await pollUntil(async () => (await sunVis()) < 0.05, { timeoutMs: 10_000, intervalMs: 250 });
+  const darkV = await sunVis();
+  checks.check("the ship goes dark in a planet's umbra", dark.ok, `sunVis=${darkV}`);
+  await place(1);
+  const lit = await pollUntil(async () => (await sunVis()) > 0.95, { timeoutMs: 10_000, intervalMs: 250 });
+  const litV = await sunVis();
+  checks.check("...and is fully lit beside it", lit.ok, `sunVis=${litV}`);
+}
+
 export default async function run() {
   const checks = await withPage({ label: "mechanics: edge" }, edge);
   for (const [label, fn, opts] of [
@@ -167,6 +262,7 @@ export default async function run() {
     ["mechanics: beam", beam, {}],
     ["mechanics: photo mode", photoMode, {}],
     ["mechanics: reduced motion", reducedMotion, { emulateReducedMotion: true }],
+    ["mechanics: eclipses (planets frozen)", eclipses, { emulateReducedMotion: true }],
   ]) {
     const c = await withPage({ label, ...opts }, fn);
     checks.results.push(...c.results);

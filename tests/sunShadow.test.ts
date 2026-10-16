@@ -178,3 +178,35 @@ describe("patchSunShadow", () => {
     expect(sunShadowUniforms.uSunView.value.y).toBeCloseTo(-5, 6);
   });
 });
+
+describe("patchSunShadow: patch once, shared sunVis", () => {
+  it("a second patch of the same material returns the first handle and injects nothing twice", () => {
+    const m = new THREE.MeshStandardMaterial();
+    const first = patchSunShadow(m, "object");
+    const keyAfterFirst = m.customProgramCacheKey();
+    const compileAfterFirst = m.onBeforeCompile;
+    const second = patchSunShadow(m, "object");
+    expect(second).toBe(first);
+    expect(second.sunVis).toBe(first.sunVis);
+    expect(m.onBeforeCompile).toBe(compileAfterFirst);
+    expect(m.customProgramCacheKey()).toBe(keyAfterFirst);
+    const shader = stubShader();
+    m.onBeforeCompile(shader, renderer);
+    expect(shader.fragmentShader.match(/float sunShadowCoverage\(/g)).toHaveLength(1);
+    expect(shader.fragmentShader.match(/#define SUN_SHADOW_SELF/g)).toHaveLength(1);
+    expect(shader.fragmentShader.match(/uniform float uSunVis;/g)).toHaveLength(1);
+  });
+
+  it("object mode can share one sunVis across several materials", () => {
+    const shared = { value: 0.5 };
+    const a = new THREE.MeshStandardMaterial();
+    const b = new THREE.MeshStandardMaterial();
+    expect(patchSunShadow(a, "object", { sunVis: shared }).sunVis).toBe(shared);
+    expect(patchSunShadow(b, "object", { sunVis: shared }).sunVis).toBe(shared);
+    const sa = stubShader(), sb = stubShader();
+    a.onBeforeCompile(sa, renderer);
+    b.onBeforeCompile(sb, renderer);
+    expect(sa.uniforms.uSunVis).toBe(shared);
+    expect(sb.uniforms.uSunVis).toBe(shared);
+  });
+});

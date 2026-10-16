@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR } from "../../constants";
+import { COSMIC_BOUNDS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -32,6 +32,8 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
+import { occluders, patchSunShadow } from "./sunShadow";
+import { sunVisibility } from "../../utils/sunOcclusion";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -110,6 +112,13 @@ const sparkRGB: [number, number, number] = [0.55, 1, 1];
 const slingshotOut = { whoosh: false, line: false };
 /** Total velocity (pilot + gravity) scratch. */
 const _total = new THREE.Vector3();
+/**
+ * How much of the sun the player ship sees (F4, docs/UNIVERSE-RULES.md L20),
+ * shared by all its hull materials. Module-level because the GLTF scene, and
+ * so its patched materials, outlive a remount (the classic-résumé round
+ * trip): a patch is applied once and keeps the uniform it was given.
+ */
+const SHIP_SUN_VIS = { value: 1 };
 
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
@@ -130,6 +139,26 @@ export default function Spaceship() {
     });
     return engine as THREE.MeshStandardMaterial | null;
   }, [scene]);
+  // Eclipses: every lit hull material (the GLB's own; the race ghost and the
+  // live-sky ghosts clone the scene and swap in their own materials) scales
+  // the sun's light by SHIP_SUN_VIS, measured on the CPU each frame below.
+  const hullMats = useMemo(() => {
+    const mats = new Set<THREE.Material>();
+    scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      for (const m of Array.isArray(child.material) ? child.material : [child.material]) {
+        if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) mats.add(m);
+      }
+    });
+    for (const m of mats) patchSunShadow(m, "object", { sunVis: SHIP_SUN_VIS });
+    return [...mats];
+  }, [scene]);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.shipShadow = { sunVis: SHIP_SUN_VIS, materials: hullMats };
+    return () => { fitzDebug.shipShadow = null; };
+  }, [hullMats]);
+
   const engineStockEmissive = useMemo(() => {
     if (!engineMat) return new THREE.Color("#00f0ff");
     if (!stockEmissive.has(engineMat)) stockEmissive.set(engineMat, engineMat.emissive.clone());
@@ -771,6 +800,13 @@ export default function Spaceship() {
     flight.heading = angle.current;
     flight.pitch = pitch.current;
     store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
+  });
+
+  // The ship in a planet's or moon's shadow. Runs after the flight loop above,
+  // so it sees this frame's position. The occluder slots are SpacePlanets',
+  // which runs after this component: a frame old, a few hundredths of a unit.
+  useFrame(() => {
+    SHIP_SUN_VIS.value = sunVisibility(pos.current, occluders, SUN_RADIUS);
   });
 
   return (

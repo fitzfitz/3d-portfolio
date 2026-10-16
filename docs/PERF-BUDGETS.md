@@ -96,6 +96,17 @@ read deep space 35 calls / 241916 triangles / 51 programs, close approach
 GodRays effect, and the new glare sprites reuse the flare ghosts' sprite
 program. The tour adds 0 programs. The ceilings are unchanged.
 
+**Programs measured 2026-10-17 (eclipses, F4 / L20).** Analytic sun shadows
+patch the three planet surfaces and Ruangrapi's cloud layer (fragment mode, one
+variant per planet slot, since each compiles its own slot out), the five moons
+and the player ship's nine hull materials (object mode, one shared variant).
+Warm-up compiles all of them: deep space, close approach and modal now read 54
+programs, 40 anomalies 55 (51 / 51 / 51 / 52 the day before, so +3). The tour
+in `programs.probe.mjs` still adds 0. Calls and triangles are unchanged (deep
+space 35 / 241,916, close approach 57 / 349,368, modal 109 / 418,492, 40
+anomalies 36 / 242,940): the shadows are shader work, not geometry. Startup
+read 10.1-10.4 s in the mechanics run. The ceilings are unchanged.
+
 The ceilings above are deliberately **not** lowered to match. Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,
 before warm-up runs; warm-up then rightly compiles for the screen, and the

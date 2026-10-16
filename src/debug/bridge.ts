@@ -82,6 +82,19 @@ export interface FitzDebug {
    * for a frame-independent light count instead.
    */
   perfStats: typeof perfStats;
+  /**
+   * The shared eclipse uniforms (sunShadow.ts), live, registered by
+   * SpacePlanets in dev: `uOccluders.value[i]` is slot i (xyz world position,
+   * w radius; planets first, then moons in MOONS order), `uOccluderCount` how
+   * many are read.
+   */
+  sunShadow: typeof import("../components/canvas/sunShadow").sunShadowUniforms | null;
+  /**
+   * The player ship's eclipse state (Spaceship, dev only): `sunVis.value` is
+   * the visible fraction of the sun (1 clear, 0 eclipsed), shared by every
+   * patched hull material in `materials`.
+   */
+  shipShadow: { sunVis: { value: number }; materials: THREE.Material[] } | null;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -108,4 +121,6 @@ export const fitzDebug: FitzDebug = {
   liveSky: null,
   liveRadar,
   perfStats,
+  sunShadow: null,
+  shipShadow: null,
 };

@@ -7,7 +7,7 @@ import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import {
   COSMIC_BOUNDS, PORTAL_POS, planets, PROGRADE,
-  ZONE_FACTOR, LOCK_RETAIN_FACTOR,
+  ZONE_FACTOR, LOCK_RETAIN_FACTOR, SUN_RADIUS,
 } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
@@ -21,7 +21,26 @@ import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { makeGuideLineMaterial, makePlanetRingMaterial } from "./guideLine";
 import { assetUrl } from "../../utils/assetUrl";
 import { MOON_TINTS } from "../../data/moonTints";
-import { MOONS, moonOrbitSpeed, type MoonSpec } from "../../data/moons";
+import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moons";
+import { MAX_OCCLUDERS, occluders, patchSunShadow, setOccluder, sunShadowUniforms } from "./sunShadow";
+import { sunVisibility } from "../../utils/sunOcclusion";
+import { fitzDebug } from "../../debug/bridge";
+
+/**
+ * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20), fixed so a
+ * planet's own slot can be compiled out of its shader: the planets first, in
+ * `planets` order, then the moons in MOONS order.
+ */
+const MOON_SLOT0 = planets.length;
+const OCCLUDER_COUNT = Math.min(MAX_OCCLUDERS, planets.length + MOONS.length);
+/** The planets' CPU slots: what a moon's sunVis is measured against. */
+const PLANET_OCCLUDERS = occluders.slice(0, planets.length);
+const MOON_SPEEDS = MOONS.map(moonOrbitSpeed);
+const MOON_RADII = MOONS.map((m) => m.size * planets[m.planet].size);
+/** Moon orbit groups and sunVis uniforms, by MOONS index; SpacePlanets' frame drives both. */
+const moonOrbitGroups: (THREE.Group | null)[] = MOONS.map(() => null);
+const moonSunVis: ({ value: number } | null)[] = MOONS.map(() => null);
+const moonScratch = { x: 0, y: 0, z: 0 };
 
 /**
  * Orbit-ring breathe. Baseline 0.22 is the opacity the rings were authored with,
@@ -213,15 +232,14 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
  * the planet, as every large moon in the solar system does.
  */
 function OrbitingMoon({ moon }: { moon: MoonSpec }) {
+  const index = MOONS.indexOf(moon);
   const planetSize = planets[moon.planet].size;
   const distance = moon.distance * planetSize, size = moon.size * planetSize;
-  const { inclination, phase, variant } = moon;
-  const speed = moonOrbitSpeed(moon);
+  const { inclination, variant } = moon;
   const color = MOON_TINTS[moon.id];
   const { scene } = useGLTF(assetUrl("/models/moon.glb"));
-  const orbitRef = useRef<THREE.Group>(null);
 
-  const { geometry, material } = useMemo(() => {
+  const { geometry, material, sunVis } = useMemo(() => {
     // Prefer the named variant (Moon_Rock / Moon_Ice / Moon_Volcanic); fall
     // back to the first mesh so a single-moon file still renders.
     let src: THREE.Mesh | undefined;
@@ -236,18 +254,24 @@ function OrbitingMoon({ moon }: { moon: MoonSpec }) {
     const g = bakeNodeTransform(src, { center: true });
     const m = (src.material as THREE.MeshStandardMaterial).clone();
     m.color.multiply(new THREE.Color(color)); // per-moon tint over the baked gray
-    return { geometry: g, material: m };
+    // Patch the clone, the instance that renders: clone() drops the patch.
+    // A moon is small enough to be wholly in or out of a planet's shadow, so
+    // one CPU-measured factor per moon (object mode) is enough.
+    const { sunVis } = patchSunShadow(m, "object");
+    return { geometry: g, material: m, sunVis: sunVis! };
   }, [scene, color, variant]);
   useEffect(() => () => { material.dispose(); geometry.dispose(); }, [material, geometry]);
+  useEffect(() => {
+    moonSunVis[index] = sunVis;
+    return () => { if (moonSunVis[index] === sunVis) moonSunVis[index] = null; };
+  }, [index, sunVis]);
 
-  useFrame((state) => {
-    const t = ambientTime(state.clock.getElapsedTime());
-    if (orbitRef.current) orbitRef.current.rotation.y = phase + t * speed;
-  });
+  // The orbit angle is driven by SpacePlanets' frame loop, which also places
+  // this moon's occluder slot from the same angle.
   return (
     <group rotation={[inclination, 0, 0]}>
-      <group ref={orbitRef}>
-        <mesh position={[distance, 0, 0]} scale={size} geometry={geometry} material={material} />
+      <group ref={(g) => { moonOrbitGroups[index] = g; }}>
+        <mesh name={`Moon_${moon.id}`} position={[distance, 0, 0]} scale={size} geometry={geometry} material={material} />
       </group>
     </group>
   );
@@ -341,6 +365,33 @@ export default function SpacePlanets() {
   );
   const cityLights = useNightSideEmissive();
 
+  // Surface materials, built here rather than as JSX so that no re-render can
+  // re-apply an `onBeforeCompile` prop over the composed shadow patch. Each is
+  // patched in fragment mode with its own slot skipped (selfIndex): its night
+  // side is already dark from N·L. Ruangrapi composes with its city lights.
+  const planetMats = useMemo(() => {
+    const ruangrapi = new THREE.MeshStandardMaterial({
+      map: ruangrapiTex, roughness: 0.5, metalness: 0,
+      emissiveMap: ruangrapiGlow, emissive: new THREE.Color("#ffd9a0"), emissiveIntensity: 1.4,
+    });
+    ruangrapi.onBeforeCompile = cityLights;
+    const portfolio = new THREE.MeshStandardMaterial({ map: portfolioTex, roughness: 0.95, metalness: 0 });
+    const fuxx = new THREE.MeshStandardMaterial({
+      map: fuxxTex, roughness: 0.9, metalness: 0,
+      emissiveMap: fuxxGlow, emissive: new THREE.Color("#e070ff"), emissiveIntensity: 1.2,
+    });
+    const mats = [ruangrapi, portfolio, fuxx];
+    mats.forEach((m, i) => patchSunShadow(m, "fragment", { selfIndex: i }));
+    return mats;
+  }, [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow, cityLights]);
+  useEffect(() => () => planetMats.forEach((m) => m.dispose()), [planetMats]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    fitzDebug.sunShadow = sunShadowUniforms;
+    return () => { fitzDebug.sunShadow = null; };
+  }, []);
+
   const gl = useThree((s) => s.gl);
   useEffect(() => {
     const maxAniso = gl.capabilities.getMaxAnisotropy();
@@ -393,7 +444,24 @@ export default function SpacePlanets() {
       const g = planetGroupRefs.current[i];
       if (g) g.position.set(pos.x, pos.y, pos.z);
       setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase(), p.size);
+      setOccluder(i, pos.x, pos.y, pos.z, p.size);
     }
+
+    // 0.5. Moons: orbit angle, occluder slot and sunVis from one angle, after
+    // the planets have moved, so the slots match what this frame draws.
+    for (let k = 0; k < MOONS.length && MOON_SLOT0 + k < OCCLUDER_COUNT; k++) {
+      const m = MOONS[k];
+      const angle = m.phase + time * MOON_SPEEDS[k];
+      const g = moonOrbitGroups[k];
+      if (g) g.rotation.y = angle;
+      const b = bodies[planets[m.planet].name];
+      moonOffset(m, angle, moonScratch);
+      const slot = MOON_SLOT0 + k;
+      setOccluder(slot, b.x + moonScratch.x, b.y + moonScratch.y, b.z + moonScratch.z, MOON_RADII[k]);
+      const vis = moonSunVis[k];
+      if (vis) vis.value = sunVisibility(occluders[slot], PLANET_OCCLUDERS, SUN_RADIUS);
+    }
+    sunShadowUniforms.uOccluderCount.value = OCCLUDER_COUNT;
 
     // 1. Slowly rotate planets
     // Prograde, like their orbits (docs/UNIVERSE-RULES.md L9). They spun
@@ -511,14 +579,11 @@ export default function SpacePlanets() {
       {/* 1. RUANGRAPI PLANET (Neon Green, Rings) */}
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={saasPlanetRef}>
+        <mesh ref={saasPlanetRef} name={`Planet_${planets[0].name}`} material={planetMats[0]}>
           <sphereGeometry args={[planets[0].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={ruangrapiTex} roughness={0.5} metalness={0.0}
-            emissiveMap={ruangrapiGlow} emissive="#ffd9a0" emissiveIntensity={1.4}
-            onBeforeCompile={cityLights} />
         </mesh>
         <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
-        <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} />
+        <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} shadowSlot={0} />
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
         {/* Planetary ring: banded, translucent, with a division (guideLine.ts) */}
@@ -535,9 +600,8 @@ export default function SpacePlanets() {
       {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={videoPlanetRef}>
+        <mesh ref={videoPlanetRef} name={`Planet_${planets[1].name}`} material={planetMats[1]}>
           <sphereGeometry args={[planets[1].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={portfolioTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} orbitRadius={planets[1].orbit.radius} intensity={0.55} thickness={1.06} />
@@ -552,10 +616,8 @@ export default function SpacePlanets() {
       {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={agentPlanetRef}>
+        <mesh ref={agentPlanetRef} name={`Planet_${planets[2].name}`} material={planetMats[2]}>
           <sphereGeometry args={[planets[2].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-          <meshStandardMaterial map={fuxxTex} roughness={0.9} metalness={0.0}
-            emissiveMap={fuxxGlow} emissive="#e070ff" emissiveIntensity={1.2} />
         </mesh>
         <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} orbitRadius={planets[2].orbit.radius} intensity={0.5} thickness={1.05} />
         {MOONS.filter((m) => m.planet === 2).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
