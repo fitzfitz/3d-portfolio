@@ -81,8 +81,8 @@ The system is pinned to real units by two anchors: Ruangrapi orbits at
 | L20 | **Shadows and eclipses.** A body in another's shadow goes dark; moons cast shadows on planets. | **Breaks → F4.** Nothing casts a shadow. |
 | L21 | **Light is invisible in flight.** Beams show only where dust or air scatters them, and vacuum has none. | **Breaks → F5.** God rays draw shafts through empty space. |
 | L22 | **Camera optics are real.** Bloom, glare, lens flare, diffraction and exposure are effects of the lens and eye, so they are lawful. | Follows: bloom. F3 and F5 lean on this. |
-| L23 | **Stars don't twinkle in space.** Twinkling comes from Earth's air; Hubble sees steady points. | **Breaks → F6.** The nearest star layer twinkles. |
-| L24 | **Fixed stars.** At these distances stars show no parallax and do not move. | **Breaks → F6.** The star shells drift slowly. Their lack of parallax is correct. |
+| L23 | **Stars don't twinkle in space.** Twinkling comes from Earth's air; Hubble sees steady points. | Follows. The star shaders have no time input; the stars hold steady. |
+| L24 | **Fixed stars.** At these distances stars show no parallax and do not move. | Follows *(tested)*: the three star shells ride with the ship and never rotate; they show no parallax. |
 | L25 | **Wien's law.** Colour shows temperature: hot is blue-white, cool is orange-red. | Follows: the sun is about 5,800 K white (`#fff4e0`); background stars are mostly white with some blue-white and orange. |
 | L26 | **Stefan–Boltzmann law.** Luminosity ∝ R²T⁴. | Follows: no conflict at our sizes (P3). F12 must keep the sun's colour and brightness consistent if its size changes. |
 | L27 | **Rayleigh scattering.** Thin air glows blue at the limb. | Follows: Ruangrapi's rim, bright on the day side. |

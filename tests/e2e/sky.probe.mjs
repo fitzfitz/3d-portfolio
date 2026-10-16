@@ -58,8 +58,8 @@ export default async function run() {
         ? `y ${c0.rotation?.y?.toFixed(3)} -> ${c1.rotation?.y?.toFixed(3)}`
         : `evaluate failed (c0: ${c0r.ok ? "ok" : c0r.error?.message}, c1: ${c1r.ok ? "ok" : c1r.error?.message})`);
 
-    // Star shells translate with the ship and keep their own slow rotation:
-    // turning must change the ship's heading while shells stay centred on it.
+    // Star shells translate with the ship and never rotate (L24): turning must
+    // change the ship's heading while shells stay centred on it.
     //
     // Selector note: a bare `type === "Points" && name !== "NebulaCluster"`
     // (the brief's original filter) also matches Comets.tsx's per-comet ion/
@@ -92,14 +92,27 @@ export default async function run() {
     if (s0r.ok && s1r.ok) {
       checks.check("heading changes when turning", s0.heading !== s1.heading,
         `${s0.heading.toFixed(3)} -> ${s1.heading.toFixed(3)}`);
-      checks.check("star shells drift independently of heading",
-        s1.shells.length > 0 && s1.shells.some((r, i) => r !== s0.shells[i]),
-        `${s1.shells.length} shells`);
     } else {
       const detail = `evaluate failed (s0: ${s0r.ok ? "ok" : s0r.error?.message}, s1: ${s1r.ok ? "ok" : s1r.error?.message})`;
       checks.check("heading changes when turning", false, detail);
-      checks.check("star shells drift independently of heading", false, detail);
     }
+
+    // L24 fixed stars: the shells never move, so each StarLayer's world
+    // quaternion is identical before and after a wait.
+    const starQuats = () => page.evaluate(() => {
+      const q = [];
+      window.__fitz.scene.traverse((o) => {
+        if (o.name === "StarLayer") q.push(o.getWorldQuaternion(new o.quaternion.constructor()).toArray());
+      });
+      return q;
+    });
+    const q0r = await retryEval(starQuats);
+    await settle(page, 2000);
+    const q1r = await retryEval(starQuats);
+    checks.check("the star shells hold still",
+      q0r.ok && q1r.ok && q0r.value.length === 3 && q1r.value.length === 3
+        && q1r.value.every((q, i) => q.every((c, k) => c === q0r.value[i][k])),
+      q0r.ok && q1r.ok ? `${q1r.value.length} StarLayer objects` : `evaluate failed (a: ${q0r.ok ? "ok" : q0r.error?.message}, b: ${q1r.ok ? "ok" : q1r.error?.message})`);
 
     const centredR = await retryEval(() => page.evaluate(() => {
       const f = window.__fitz.flight;
