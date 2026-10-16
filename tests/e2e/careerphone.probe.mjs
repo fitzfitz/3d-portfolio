@@ -26,17 +26,6 @@ export default async function run() {
       return op === "1" && m.scan ? m : null;
     }, { timeoutMs: 15_000, intervalMs: 200 });
     checks.check("a buoy card and the touch SCAN button are both up at a phone viewport", shown.ok, JSON.stringify(shown.value));
-    // Fly for a second so the readout shows a live speed, then the (longest) velocity line must fit.
-    await page.keyboard.down("w");
-    await settle(page, 1000);
-    const vel = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="hud-velocity"]');
-      if (!el) return null;
-      const b = el.getBoundingClientRect();
-      return { text: el.textContent, right: b.right, width: window.innerWidth };
-    });
-    await page.keyboard.up("w");
-    checks.check("the HUD velocity line fits the phone screen", !!vel && vel.right <= vel.width, JSON.stringify(vel));
     for (const vp of [{ width: 375, height: 667 }, { width: 390, height: 844 }]) {
       await page.setViewport({ ...page.viewport(), ...vp });
       await settle(page, 600);
@@ -48,5 +37,32 @@ export default async function run() {
         all && !overlaps(m.card, m.scan) && !overlaps(m.card, m.rise) && !overlaps(m.card, m.radar), JSON.stringify(m));
       checks.check(`${tag}: the buoy card stays on screen`, all && m.card.l >= 0 && m.card.r <= vp.width && m.card.t >= 0, JSON.stringify(m.card));
     }
+    // Run after the viewport loop: the 1 s hold below moves the ship off the buoy.
+    // Teleport into a planet's gravity zone so the warning shows in the right column.
+    const name = await page.evaluate(async () => (await import("/src/constants.ts")).planets[0].name);
+    await page.evaluate((n) => { const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - 27, b.y + 5, b.z); window.__fitz.setAttitude(0, 0); }, name);
+    const zone = await pollUntil(() => page.evaluate(() => !!window.__fitz.store.getState().activeZone), { timeoutMs: 10_000, intervalMs: 200 });
+    checks.check("the ship is inside a planet's gravity zone (warning shown)", zone.ok);
+    let vel = null;
+    try {
+      // Fly for a second so the readout shows a live speed.
+      await page.keyboard.down("w");
+      await settle(page, 1000);
+      vel = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="hud-velocity"]');
+        const col = [...document.querySelectorAll("div")].find((d) => d.className.includes("right-4") && d.className.includes("top-16") && d.textContent.includes("TARGET"));
+        if (!el || !col) return null;
+        const box = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+        const v = box(el);
+        const hit = [...col.querySelectorAll("*")].filter((e) => { const b = box(e); return b.r > b.l && b.b > b.t; })
+          .filter((e) => { const b = box(e); return v.l < b.r && b.l < v.r && v.t < b.b && b.t < v.b; })
+          .map((e) => e.textContent.slice(0, 40));
+        return { text: el.textContent, box: v, right: v.r, width: window.innerWidth, warning: col.textContent.includes("GRAVITY"), hit };
+      });
+    } finally {
+      await page.keyboard.up("w");
+    }
+    checks.check("the HUD velocity line fits and does not overlap the right column",
+      !!vel && vel.warning && vel.right <= vel.width && vel.hit.length === 0, JSON.stringify(vel));
   });
 }
