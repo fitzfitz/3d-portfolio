@@ -23,8 +23,9 @@ Tailwind, on Vite.
 | `J` | Summon the space jellyfish |
 | `1`–`3` | Jump straight into a project's orbit (opens its dossier) |
 | `4` | Jump to the career station (opens the Career dossier) |
-| `5` | Jump to the contact portal |
-| `Esc` | Close the open dossier or contact form |
+| `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
+| `6` | Jump to the contact portal |
+| `Esc` | Close the open dossier, hangar or contact form |
 
 No flying required: the spawn card has jump buttons for each project, the
 sector list (bottom right) jumps on click, and a waypoint marks the next unread
@@ -45,7 +46,7 @@ text, and later visitors can scan it. Without the API the feature is absent. See
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
 photo mode, `B` closes a dossier, the d-pad (clockwise from up) jumps like
-`1`–`4`, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
+`1`–`4`, View jumps to the shipyard, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
 Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
@@ -111,6 +112,7 @@ npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public
 | --- | --- |
 | Hero ship, contact portal, fuel crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
 | Asteroids, cargo ship, moon, comet head, jellyfish | `scripts/blender/gen_*.py` |
+| Career station, buoy, shipyard, dormant gate | `scripts/blender/gen_career_station.py`, `gen_buoy.py`, `gen_shipyard.py`, `gen_dormant_gate.py` |
 | Planet colour + glow maps (one world per project) | `scripts/textures/gen_planets.mjs` |
 
 The optimize pass is deliberately **visually lossless**: weld, dedup, prune,
