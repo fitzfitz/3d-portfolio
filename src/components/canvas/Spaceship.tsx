@@ -31,6 +31,7 @@ import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
+import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -76,8 +77,7 @@ const JUMP_PLANET_FACTOR = 1.2;
 const _camTarget = new THREE.Vector3();
 const _camSide = new THREE.Vector3();
 
-/** Spawn point, and the first planet the ship faces there. */
-const SPAWN = { x: 0, y: 0, z: 18 };
+/** The first planet the ship faces from the spawn point (src/data/spawn.ts). */
 const FIRST_TARGET = planets[0];
 
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
@@ -191,7 +191,7 @@ export default function Spaceship() {
   // than applied in the store subscription: an open dossier freezes the frame
   // loop, so the jump first breaks orbit and lands on the next live frame.
   const pendingJump = useRef<string | null>(null);
-  const snapCamera = useRef(false);
+  const snapCamera = useRef(true); // first frame snaps: the camera starts at the spawn, not the canvas default
   useEffect(() => useSpaceStore.subscribe(
     (s) => s.jumpRequest,
     (req) => {
@@ -770,7 +770,7 @@ export default function Spaceship() {
     flight.speed = totalSpeed;
     flight.heading = angle.current;
     flight.pitch = pitch.current;
-    store.setNearSpawn(Math.abs(pos.current.x) < 0.6 && Math.abs(pos.current.z - 18) < 0.6 && Math.abs(pos.current.y) < 3);
+    store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
   });
 
   return (

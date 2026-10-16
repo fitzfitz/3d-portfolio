@@ -7,10 +7,10 @@ import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
+import { SPAWN } from "../src/data/spawn";
 import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
 
-/** Spawn pad (Spaceship.tsx SPAWN, beacons.ts SPAWN). */
-const SPAWN: Vec3 = [0, 0, 18];
+const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
 const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
   { name: "station", pos: STATION_POS, keepOut: STATION_RADII.zoneR },
@@ -61,7 +61,7 @@ describe("career trail shape", () => {
     }
   });
   it("starts 30-45 units from the spawn point and ends 15-25 from the station", () => {
-    const first = d3(BUOYS[0].pos, SPAWN);
+    const first = d3(BUOYS[0].pos, SPAWN_V);
     const last = d3(BUOYS[BUOYS.length - 1].pos, STATION_POS);
     expect(first).toBeGreaterThanOrEqual(30);
     expect(first).toBeLessThanOrEqual(45);

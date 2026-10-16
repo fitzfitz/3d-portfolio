@@ -40,6 +40,7 @@ import { flareLevel } from "../../utils/worldEvents";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
+import { SPAWN } from "../../data/spawn";
 
 interface StarLayerProps {
   count: number;
@@ -445,7 +446,7 @@ function GlobalCanvas() {
           alpha: true,
           powerPreference: "high-performance",
         }}
-        camera={{ position: [0, 5, 8], fov: 60 }}
+        camera={{ position: [SPAWN.x, SPAWN.y + 5, SPAWN.z + 8], fov: 60 }}
         // Neutral rather than R3F's ACES default: it leaves in-gamut neon
         // colours nearly untouched and only rolls off highlights. PostFX's
         // ToneMapping pass uses the same curve, so the grade no longer shifts

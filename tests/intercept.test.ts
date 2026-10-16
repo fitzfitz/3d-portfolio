@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { interceptAim } from "../src/utils/intercept";
 import { orbitPosition } from "../src/utils/orbits";
 import { noseDirection } from "../src/utils/pitchFlight";
+import { SPAWN } from "../src/data/spawn";
 import { planets, SHIP_MAX_SPEED, LOCK_ENGAGE_FACTOR } from "../src/constants";
 
-const SPAWN = { x: 0, y: 0, z: 18 };
 
 /** Fly a straight line at cruise speed and report the closest pass to the aimed planet. */
 function closestPass(now: number, obstacles: { x: number; y: number; z: number; r: number }[] = []) {

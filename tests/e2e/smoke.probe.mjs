@@ -19,6 +19,14 @@ export default async function run() {
       checks.check(`scene object ${name} exists`, o.found, `matches=${o.matches}`);
     }
 
+    // SPAWN is -50, 62, 69 (src/data/spawn.ts); a probe cannot import TypeScript.
+    const camDist = await page.evaluate(() => {
+      const c = window.__fitz.camera?.position;
+      return c ? Math.hypot(c.x - -50, c.y - 62, c.z - 69) : null;
+    });
+    checks.check("the camera starts at the ship, not across the system", camDist !== null && camDist < 30,
+      `camera distance to SPAWN=${camDist === null ? "n/a" : camDist.toFixed(1)}`);
+
     await page.evaluate(() => window.__fitz.teleport(-230, -210, -230));
     await new Promise((r) => setTimeout(r, 1200));
     const p = await page.evaluate(() => {

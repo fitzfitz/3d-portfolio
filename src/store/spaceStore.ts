@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { SPAWN } from "../data/spawn";
 import { subscribeWithSelector } from "zustand/middleware";
 import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
@@ -216,9 +217,9 @@ export interface FlightInput {
  * way — deliberately NOT in React state so flight never re-renders the tree.
  */
 export const flight = {
-  x: 0,
-  z: 18,
-  y: 0, // altitude, written by Spaceship each frame
+  x: SPAWN.x as number, // widened: SPAWN is `as const`, flight is mutated
+  z: SPAWN.z as number,
+  y: SPAWN.y as number, // altitude, written by Spaceship each frame
   speed: 0, // world units / second
   heading: 0, // yaw in radians, written by Spaceship each frame
   pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
