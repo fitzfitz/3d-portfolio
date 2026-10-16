@@ -38,8 +38,8 @@ interface PostFXProps {
 }
 
 /**
- * multisampling=0: the composer renders into an offscreen target, so the
- * canvas's MSAA never applied here; SMAA (last pass) handles edges.
+ * multisampling=0 is a choice: SMAA (last pass) handles edges, and MSAA on
+ * the composer's offscreen target would cost a multisampled buffer.
  */
 export default function PostFX({ enabled }: PostFXProps) {
   const gl = useThree((s) => s.gl);

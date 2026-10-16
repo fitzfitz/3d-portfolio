@@ -5,8 +5,8 @@
 ## Intent
 
 The owner's words: someone who knows astronomy and physics should "feel like
-they are in a universe in their understanding". The catalogue lists 40 laws.
-The scene now follows most of them, but 15 still break, and the rest of this
+they are in a universe in their understanding". The catalogue lists 41 laws.
+The scene now follows most of them, but 16 still break, and the rest of this
 document fixes them. When this work is done, every law is either followed or
 is one of the two disclosed orrery conventions (enlarged sizes, fast clock,
 principle P3).
@@ -215,6 +215,12 @@ What any good planetarium does:
   readouts against it.
 
 Deviation: the note is not on a sun scan. The ship spawns at (0, 0, 18), 10 units from the sun's surface and inside SCAN_RANGE 22, so a scannable sun would capture the first scan of every visit. The note lives in the logbook, the HUD and planet scans instead.
+
+### F14. Shooting stars (L41)
+
+`ShootingStars.tsx` draws meteor streaks, which are air glowing around a
+falling grain. Either remove the streaks, or turn them into faint sunlit dust
+glints. Phase 1 follow-up: my call pending owner.
 
 ## Order
 

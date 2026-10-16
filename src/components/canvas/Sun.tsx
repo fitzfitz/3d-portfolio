@@ -213,6 +213,9 @@ const _ndc = new THREE.Vector3();
 /** Reused every frame: planet occluders, positions refreshed from `bodies`. */
 const OCCLUDERS: Occluder[] = planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size }));
 const FLARE_DEPTH = 4; // world units in front of the camera
+/** The spikes are faint (spec F5): glareLevels peaks at 1.5 with a flare, so scale that to ~0.55. */
+const SPIKE_OPACITY_SCALE = 0.55 / 1.5;
+const GLARE_OUT = { spikes: 0, veil: 0 };
 
 function SunFlare() {
   const groupRef = useRef<THREE.Group>(null);
@@ -232,13 +235,13 @@ function SunFlare() {
     const inFront = _ndc.z < 1;
     const onScreen = inFront && Math.abs(_ndc.x) < 1.1 && Math.abs(_ndc.y) < 1.1;
     // Occlusion by planets: fraction of the sun left uncovered (0..1).
-    planets.forEach((p, i) => {
-      const b = bodies[p.name];
+    for (let i = 0; i < planets.length; i++) {
+      const b = bodies[planets[i].name];
       OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
-    });
+    }
     const visibility = inFront ? sunVisibility(cam.position, OCCLUDERS, SUN_RADIUS) : 0;
     const flare = flareLevel(worldEventElapsed("flare"));
-    const glare = glareLevels(_ndc.x, _ndc.y, inFront, visibility, flare);
+    const glare = glareLevels(_ndc.x, _ndc.y, inFront, visibility, flare, GLARE_OUT);
     const target = onScreen ? visibility * (1 - Math.min(1, Math.hypot(_ndc.x, _ndc.y) / 1.4) * 0.6) : 0;
     vis.current += (target - vis.current) * (1 - Math.pow(0.001, Math.min(delta, 0.05)));
     g.visible = vis.current > 0.01 || glare.spikes > 0.005;
@@ -248,22 +251,28 @@ function SunFlare() {
     const halfW = halfH * cam.aspect;
     g.position.copy(cam.position);
     g.quaternion.copy(cam.quaternion);
-    for (const [sp, size, op] of [[spikesRef.current, 0.45, glare.spikes], [veilRef.current, 1.2, glare.veil]] as const) {
-      if (!sp) continue;
+    const sp = spikesRef.current, vl = veilRef.current;
+    if (sp) {
       sp.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
-      sp.scale.set(size * halfH * 2, size * halfH * 2, 1);
-      (sp.material as THREE.SpriteMaterial).opacity = op;
+      sp.scale.set(0.45 * halfH * 2, 0.45 * halfH * 2, 1);
+      (sp.material as THREE.SpriteMaterial).opacity = glare.spikes * SPIKE_OPACITY_SCALE;
     }
-    FLARE_GHOSTS.forEach((gh, i) => {
+    if (vl) {
+      vl.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
+      vl.scale.set(1.2 * halfH * 2, 1.2 * halfH * 2, 1);
+      (vl.material as THREE.SpriteMaterial).opacity = glare.veil;
+    }
+    for (let i = 0; i < FLARE_GHOSTS.length; i++) {
+      const gh = FLARE_GHOSTS[i];
       const s = sprites.current[i];
-      if (!s) return;
+      if (!s) continue;
       const nx = _ndc.x * (1 - gh.t * 1.25);
       const ny = _ndc.y * (1 - gh.t * 1.25);
       s.position.set(nx * halfW, ny * halfH, -FLARE_DEPTH);
       const size = gh.size * halfH * 2;
       s.scale.set(size, size, 1);
       (s.material as THREE.SpriteMaterial).opacity = vis.current * 0.3;
-    });
+    }
   });
 
   return (

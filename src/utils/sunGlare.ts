@@ -12,10 +12,14 @@ export function glareLevels(
   inFront: boolean,
   visibility: number,
   flare: number,
+  /** Reused result, so a frame loop allocates nothing. */
+  out: { spikes: number; veil: number } = { spikes: 0, veil: 0 },
 ): { spikes: number; veil: number } {
-  if (!inFront) return { spikes: 0, veil: 0 };
+  if (!inFront) { out.spikes = 0; out.veil = 0; return out; }
   const k = visibility * (1 + 0.5 * Math.min(flare, 1));
   const off = Math.hypot(ndcX, ndcY);
   const v = clamp01(1 - off / 0.9);
-  return { spikes: k * clamp01(1 - off / 1.6), veil: 0.35 * k * v * v };
+  out.spikes = k * clamp01(1 - off / 1.6);
+  out.veil = 0.35 * k * v * v;
+  return out;
 }
