@@ -310,8 +310,13 @@ nrm_img.pack()
 GATE_STONE = bpy.data.materials.new("GateStone")
 GATE_STONE.use_nodes = True
 _hb = GATE_STONE.node_tree.nodes["Principled BSDF"]
-_hb.inputs["Metallic"].default_value = 0.3   # dielectric enough to read grey against black space
-_hb.inputs["Roughness"].default_value = 0.5
+# Matte stone, unlike the hull: the gate faces the sun and is seen from the
+# sun side, so view and light share the face normal. At metalness 0.3 /
+# roughness 0.5 the GGX highlight filled every face with the warm sun colour
+# (in-app, 2026-10-16: tan plates) at ~4x the near-black diffuse. Factors
+# only, so the texture set (and shader program) stays the freighter's.
+_hb.inputs["Metallic"].default_value = 0.0
+_hb.inputs["Roughness"].default_value = 0.92
 _tex = GATE_STONE.node_tree.nodes.new("ShaderNodeTexImage")
 _tex.image = albedo
 GATE_STONE.node_tree.links.new(_tex.outputs["Color"], _hb.inputs["Base Color"])
