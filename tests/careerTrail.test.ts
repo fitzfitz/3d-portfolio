@@ -68,6 +68,13 @@ describe("career trail shape", () => {
     expect(last).toBeGreaterThanOrEqual(15);
     expect(last).toBeLessThanOrEqual(25);
   });
+  it("keeps the whole arc 60+ from the sun and the buoys no more than 50 apart", () => {
+    for (let k = 0; k <= 400; k++) {
+      const p = arcPoint(TRAIL_ARC, k / 400);
+      expect(d3(p, [SUN_COLLIDER.x, SUN_COLLIDER.y, SUN_COLLIDER.z]), `arc t=${k / 400}`).toBeGreaterThanOrEqual(60);
+    }
+    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(50);
+  });
   it("puts the station below the orbital plane, as the portal is above it", () => {
     expect(STATION_POS[1]).toBeLessThan(-80);
   });

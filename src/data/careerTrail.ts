@@ -32,13 +32,14 @@ export const BUOY_CARD_R = 6;
 
 /**
  * The trail is the circular arc from TRAIL_START through TRAIL_BEND to
- * TRAIL_END. It runs from about 40 units off the spawn pad, down
- * through the orbital plane between the planet orbits, then out to the
- * station. The buoys sit at equal angles along it.
+ * TRAIL_END. It starts about 45 units from the spawn pad, stays 60+
+ * units from the sun along its whole length, and sweeps down through the
+ * orbital plane to the station. The buoys sit at equal angles along it, about
+ * 50 apart, so each one reads from the last (tests/careerTrail.test.ts).
  */
-export const TRAIL_START: Vec3 = [-58, 101, 74];
-export const TRAIL_BEND: Vec3 = [26, -15, -7];
-export const TRAIL_END: Vec3 = [7, -129, 167];
+export const TRAIL_START: Vec3 = [-32, 24, 85];
+export const TRAIL_BEND: Vec3 = [-29, 7, 156];
+export const TRAIL_END: Vec3 = [-11, -104, 178];
 
 /** A circular arc: angle 0 at centre + radius·u, turning toward v, for `span` radians. n = u × v. */
 export interface Arc { centre: Vec3; radius: number; u: Vec3; v: Vec3; n: Vec3; span: number }
