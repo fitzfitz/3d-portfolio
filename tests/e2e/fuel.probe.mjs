@@ -43,6 +43,7 @@ export default async function run() {
       // then poll for the arrival. flight.x/y/z only republish on a real frame
       // and headless rAF lags under load, so a fixed pump is not enough.
       let attempts = 0, broke = false;
+      const tries = [];
       for (; attempts < 3; attempts++) {
         if (await locked()) {
           broke = true;
@@ -52,13 +53,14 @@ export default async function run() {
         await page.evaluate(([tx, ty, tz]) => window.__fitz.teleport(tx, ty, tz), [x, y, z]);
         const arrived = await pollUntil(async () => (await distTo()) <= tolerance, { timeoutMs: 3000, intervalMs: 100 });
         if (arrived.ok) break;
+        tries.push(`#${attempts + 1} missed by ${(await distTo()).toFixed(1)} locked=${await locked()}`);
       }
       await pump(page, 10); // let the radar's rAF loop repaint at the new position
       const dist = await distTo();
       const stillLocked = await locked();
       checks.check(`${label}: teleport landed (within ${tolerance} unit${tolerance === 1 ? "" : "s"}, not orbit-locked)`,
         dist <= tolerance && !stillLocked,
-        `dist=${dist.toFixed(2)} locked=${stillLocked} attempts=${Math.min(attempts + 1, 3)}${broke ? " (orbit lock broken first)" : ""}`);
+        `dist=${dist.toFixed(2)} locked=${stillLocked} attempts=${Math.min(attempts + 1, 3)}${tries.length ? ` [${tries.join("; ")}]` : ""}${broke ? " (orbit lock broken first)" : ""}`);
     };
 
     // An active crystal at least 100 units clear of every planet and destination
@@ -144,10 +146,14 @@ export default async function run() {
       document.querySelector('[data-testid="hud-fuel-label"]')?.textContent);
     checks.check("HUD reads DRY", /DRY/.test(hudLabel ?? ""), `label="${hudLabel}"`);
 
-    // Teleport zeroes the ship's velocity but not the warp coast it was in, so the
-    // ship drifts ~40 units (its stopping distance) before it settles. 60 still
-    // fails loudly for a frozen scene, where the ship stays ~400 units away.
-    await teleportTo(-230, -210, -230, "dry-tank spot", 60);
+    // The warp drain leaves the ship coasting through ruangrapi's zone, so an
+    // orbit capture can land in the same frames as this teleport. The debug
+    // teleport zeroes velocity (Spaceship.tsx), so the ~40-unit offsets seen
+    // here were not momentum: a lock engaging around the teleport leaves the ship
+    // short of the target (or the teleport lost while the scene is frozen), and
+    // teleportTo's retry (break the lock, teleport again, now far from any zone)
+    // is what lands it exactly. The attempt log in the check detail shows it.
+    await teleportTo(-230, -210, -230, "dry-tank spot");
     await settle(page, 1200);
     await hold(page, ["KeyW", "ShiftLeft"], 1500);
     // ONE measurement, two assertions on it. Reading flight.speed twice with no
@@ -282,10 +288,14 @@ export default async function run() {
     // wall-clock headless), landing uniformly at random: if that happens after
     // the far-position search below it can land in radar range. Wait for the
     // field to be full so the search sees every crystal that will exist.
-    const fieldFull = await pollUntil(async () => (await activeCrystals()) === 40,
-      { timeoutMs: 60_000, intervalMs: 500 });
+    // A capture while parked here would freeze the scene and stop respawns, so
+    // break any lock while waiting.
+    const fieldFull = await pollUntil(async () => {
+      if (await locked()) await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+      return (await activeCrystals()) === 40;
+    }, { timeoutMs: 60_000, intervalMs: 500 });
     checks.check("crystal field refilled to 40 before the far-position search",
-      fieldFull.ok, `active=${await activeCrystals()}`);
+      fieldFull.ok, `active=${await activeCrystals()} locked=${await locked()}`);
 
     const farSetup = await page.evaluate(async () => {
       const { COSMIC_BOUNDS } = await import("/src/constants.ts");

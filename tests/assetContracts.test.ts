@@ -4,6 +4,7 @@ import { NodeIO, getBounds, type Document } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
 import { STATION_RADII } from "../src/data/careerTrail";
+import { PLAYER_SHIP_SCALE } from "../src/constants";
 
 /**
  * Contracts between the generated models in public/models and the code that
@@ -293,11 +294,10 @@ describe("career station (career_station.glb)", () => {
 
   it("parks a jump with the whole ship clear of the hull, not just its centre", async () => {
     // The ship's origin is what sits at jumpR; its nose or tail reaches half a
-    // ship length further toward the station. SHIP_RENDER_SCALE is the scale
-    // Spaceship.tsx renders spaceship.glb at (<primitive ... scale={0.35}>).
-    const SHIP_RENDER_SCALE = 0.35;
+    // ship length further toward the station. PLAYER_SHIP_SCALE is the scale
+    // Spaceship.tsx renders spaceship.glb at.
     const ship = bounds(await load("spaceship"));
-    const SHIP_HALF_LENGTH = Math.max(Math.abs(ship.min[2]), Math.abs(ship.max[2])) * SHIP_RENDER_SCALE;
+    const SHIP_HALF_LENGTH = Math.max(Math.abs(ship.min[2]), Math.abs(ship.max[2])) * PLAYER_SHIP_SCALE;
     const stationMaxRadius = maxRadius(await load("career_station"));
     expect(STATION_RADII.jumpR).toBeGreaterThanOrEqual(stationMaxRadius + SHIP_HALF_LENGTH);
   });

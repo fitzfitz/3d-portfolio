@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil, chatterText } from "./harness.mjs";
+import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText } from "./harness.mjs";
 
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md):
@@ -33,10 +33,14 @@ const dockedAt = (page, zone) => pollUntil(async () => {
 export default async function run() {
   return withPage({ label: "career" }, async (page, checks) => {
     await page.evaluate(() => ["fitz-logbook", "fitz-dossiers"].forEach((k) => localStorage.removeItem(k)));
+    // The reload rebuilds the store with lowPerfManual false; pin full fidelity
+    // first so a load-induced tier decline cannot recompile every material.
+    await page.evaluateOnNewDocument(lockFullFidelity);
     await page.reload();
     await ready(page);
     await settle(page, 3000);
     const programsBefore = await page.evaluate(() => window.__fitz.gl.info.programs.length);
+    const lowPerfBefore = await page.evaluate(() => window.__fitz.store.getState().isLowPerf);
     const trail = await page.evaluate(async () => {
       const m = await import("/src/data/careerTrail.ts");
       return m.BUOYS.map((b) => ({ id: b.id, pos: [...b.pos], company: b.entry.company }));
@@ -68,10 +72,15 @@ export default async function run() {
     // The hint is content, not flavour: zone entry / ambient chatter must not
     // overwrite it for 8 s (src/utils/radioHold.ts). Check the line itself ~5 s
     // after the last dossier closed, not just while the dock releases.
-    await settle(page, Math.max(0, 5000 - (Date.now() - lastClosedAt)));
+    // Under load the polls above can run long; past 7 s the 8 s hold is nearly
+    // over and the check below would measure the probe's lateness, not the hold.
+    const sinceClose = Date.now() - lastClosedAt;
+    checks.check("precondition: the announcement arrived in time to test the hold", sinceClose <= 7000,
+      `announcement arrived too late (${sinceClose}ms after Esc)`);
+    await settle(page, Math.max(0, 5000 - sinceClose));
     const heldLine = (await chatterText(page)) ?? "";
     checks.check("the next-stop hint is still on the radio ~5 s after the dossier closes",
-      /CAREER STATION/.test(heldLine) && /PRESS 4/.test(heldLine), heldLine);
+      /CAREER STATION/.test(heldLine) && /PRESS 4/.test(heldLine), `${Date.now() - lastClosedAt}ms after Esc: ${heldLine}`);
 
     // [4] Career: jump, dock, dossier, essential.
     await page.evaluate(() => document.activeElement?.blur?.());
@@ -148,6 +157,6 @@ export default async function run() {
 
     const programsAfter = await page.evaluate(() => window.__fitz.gl.info.programs.length);
     checks.check("the career landmarks compile no new shader program", programsAfter === programsBefore,
-      `before=${programsBefore} after=${programsAfter}`);
+      `before=${programsBefore} after=${programsAfter} isLowPerf before=${lowPerfBefore} after=${await page.evaluate(() => window.__fitz.store.getState().isLowPerf)}`);
   });
 }

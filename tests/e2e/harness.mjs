@@ -396,3 +396,17 @@ export async function toDeepSpace(page) {
   if (!ok) throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
   await settle(page, 1500);
 }
+
+/**
+ * Page-side script for page.evaluateOnNewDocument (register it BEFORE any
+ * reload/navigation): pins full fidelity (low-perf off, manual) as soon as the
+ * store exists, as on a real GPU. A reload rebuilds the store with lowPerfManual
+ * false, so without this PerformanceMonitor.onDecline can switch tier mid-run
+ * under load and every material recompiles (srgb vs srgb-linear).
+ */
+export function lockFullFidelity() {
+  const lock = setInterval(() => {
+    const store = window.__fitz?.store;
+    if (store) { store.getState().setLowPerf(false, true); clearInterval(lock); }
+  }, 5);
+}
