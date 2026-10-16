@@ -10,8 +10,8 @@ export interface Shard {
  * many have been collected, since visitors find them in any order.
  */
 export const SHARDS: Shard[] = [
-  // Near spawn — easy first find
-  { pos: [8, 1, 22], fact: "WELCOME, PILOT. THIS PORTFOLIO IS ALSO A FLIGHT SIM. NO REFUNDS" },
+  // Beside the spawn pad (SPAWN, src/data/spawn.ts), ~11 units out: the easy first find
+  { pos: [-42, 64, 77], fact: "WELCOME, PILOT. THIS PORTFOLIO IS ALSO A FLIGHT SIM. NO REFUNDS" },
   // Just inside the first planet's orbit, clear of the sphere it sweeps
   // (tests/planetClearance.test.ts)
   { pos: [53, -18, 50], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
@@ -31,7 +31,7 @@ export const SHARDS: Shard[] = [
   { pos: [190, 90, -160], fact: "YOU HAVE TRAVELED FAR FOR A JPEG OF A RESUME. RESPECT" },
   // Second near-spawn shard. Often the second one found, so its fact must not
   // claim completion — that message lives in SHARDS_COMPLETE_MESSAGE.
-  { pos: [-8, 1, 20], fact: "TWO SHARDS THIS CLOSE TO SPAWN. THE PILOT CALLS THAT ONBOARDING" },
+  { pos: [-58, 60, 62], fact: "TWO SHARDS THIS CLOSE TO SPAWN. THE PILOT CALLS THAT ONBOARDING" },
 ];
 
 /** Prefixes a fact with the visitor's running count, e.g. "DATA_SHARD 2/10 // …". */

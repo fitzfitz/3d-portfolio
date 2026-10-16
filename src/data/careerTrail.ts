@@ -3,7 +3,7 @@ import { career, type CareerEntry } from "./career";
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1):
  * the station you dock at for the Career dossier, and five buoys, one per job,
- * oldest first, on a trail from the spawn area down to it. The scene and
+ * oldest first, on a trail from the spawn pad down to it. The scene and
  * tests/careerTrail.test.ts read these same numbers.
  */
 export type Vec3 = readonly [number, number, number];
@@ -32,12 +32,13 @@ export const BUOY_CARD_R = 6;
 
 /**
  * The trail is the circular arc from TRAIL_START through TRAIL_BEND to
- * TRAIL_END. It dives first, under the ruangrapi and portfolio orbits, then
- * runs out to the station. The buoys sit at equal angles along it.
+ * TRAIL_END. It runs from about 40 units off the spawn pad, down
+ * through the orbital plane between the planet orbits, then out to the
+ * station. The buoys sit at equal angles along it.
  */
-export const TRAIL_START: Vec3 = [-10, -32, 18];
-export const TRAIL_BEND: Vec3 = [10, -98, 65];
-export const TRAIL_END: Vec3 = [10, -126, 144];
+export const TRAIL_START: Vec3 = [-58, 101, 74];
+export const TRAIL_BEND: Vec3 = [26, -15, -7];
+export const TRAIL_END: Vec3 = [7, -129, 167];
 
 /** A circular arc: angle 0 at centre + radius·u, turning toward v, for `span` radians. n = u × v. */
 export interface Arc { centre: Vec3; radius: number; u: Vec3; v: Vec3; n: Vec3; span: number }

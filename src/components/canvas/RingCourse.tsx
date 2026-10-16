@@ -51,7 +51,7 @@ function ringColor(race: RaceState, i: number): THREE.Color {
 }
 
 /**
- * Time-trial course: a loop of rings from the spawn pad out through the belt
+ * Time-trial course: a loop of rings from the inner belt near the sun out through the belt
  * and back. Flying through ring 0 starts the clock; the rings must be flown in
  * order; ring 0 again finishes. The best lap is replayed as a ghost ship.
  *

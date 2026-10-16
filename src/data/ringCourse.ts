@@ -2,7 +2,7 @@ import { buildGates } from "../utils/race";
 
 /**
  * The time-trial course: a closed loop of rings, flown in order, starting and
- * finishing through ring 0 beside the spawn pad.
+ * finishing through ring 0 in the inner belt, near the sun.
  *
  * Out through the asteroid belt (r 40-70), a climbing turn up to y≈70, then a
  * dive home. Every ring sits inside the innermost planet orbit, so no planet
@@ -13,7 +13,7 @@ import { buildGates } from "../utils/race";
  * hold), ~45s at cruise.
  */
 export const RING_GATES: [number, number, number][] = [
-  [-12, 3, 34],   // 0 start / finish, beside spawn
+  [-12, 3, 34],   // 0 start / finish, inner belt near the sun
   [-45, 0, 40],   // into the belt
   [-62, -8, -5],
   [-26, -2, -52], // past the boulder at (-40, -5, -60)
