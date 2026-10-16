@@ -14,13 +14,19 @@ import * as THREE from "three";
  * the sense of thrust.
  */
 const VERT = /* glsl */ `
+  uniform float uSpread;  // extra radius at the tip, as a multiple of the tube radius (0 = a plain tube)
   varying float vAlong;
+  varying float vWiden;
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
     // CylinderGeometry uv.y: 1 at the top (nozzle end), 0 at the tip.
     vAlong = 1.0 - uv.y;
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    // Widen radially with distance from the nozzle (law L31): the cone's
+    // world-space half-angle is set by uSpread, whatever the tube's length.
+    vWiden = 1.0 + uSpread * vAlong;
+    vec3 p = vec3(position.x * vWiden, position.y, position.z * vWiden);
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
     vNormal = normalize(normalMatrix * normal);
     vView = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
@@ -33,6 +39,7 @@ const FRAG = /* glsl */ `
   uniform float uSeed;
   uniform vec3 uColor;   // the plume's cool end (engine cyan by default)
   varying float vAlong;
+  varying float vWiden;
   varying vec3 vNormal;
   varying vec3 vView;
   void main() {
@@ -46,7 +53,9 @@ const FRAG = /* glsl */ `
     vec3 hot = vec3(0.92, 1.0, 1.0);
     vec3 cool = uColor;
     vec3 col = mix(hot, cool, smoothstep(0.0, 0.45, t));
-    float a = core * fall * flicker * (0.25 + 0.55 * min(uPower, 1.6));
+    // The same exhaust over a wider cross-section is thinner: fade with the widening.
+    float thin = 1.0 / pow(vWiden, 0.6);
+    float a = core * fall * thin * flicker * (0.25 + 0.55 * min(uPower, 1.6));
     gl_FragColor = vec4(col * (1.0 + 0.6 * uPower), a);
   }
 `;
@@ -67,24 +76,35 @@ export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL
       uPower: { value: 0.3 },
       uSeed: { value: seed },
       uColor: { value: color.clone() },
+      uSpread: { value: 0 },
     },
   });
 }
 
-/** Tip radius ÷ nozzle radius. A vacuum plume fans out (L31), so the tip is wider than the nozzle. */
-export const PLUME_TIP_SPREAD = 3.2;
+/** Half-angle of the exhaust cone, degrees (spec F7: about 25-40). */
+export const PLUME_HALF_ANGLE_DEG = 30;
 
-/** Unit-length open tube along +Y (top = nozzle), fanning out to the tip (L31). */
+/**
+ * The plume material's uSpread for a tube of the given length scale: the tip
+ * grows by this multiple of the nozzle radius, so the world-space half-angle
+ * is halfAngleDeg whatever the length (the tube is only stretched along Y).
+ */
+export function plumeSpreadFor(lengthScale: number, nozzleRadius: number, halfAngleDeg: number): number {
+  return (lengthScale * Math.tan((halfAngleDeg * Math.PI) / 180)) / nozzleRadius;
+}
+
+/** Unit-length open tube along +Y (top = nozzle). The shader fans it out (L31, uSpread). */
 export function makePlumeGeometry(nozzleRadius: number): THREE.BufferGeometry {
-  return new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * PLUME_TIP_SPREAD, 1, 20, 12, true);
+  return new THREE.CylinderGeometry(nozzleRadius, nozzleRadius, 1, 20, 12, true);
 }
 
 /**
  * The tractor beam's cone, drawn with the plume material: an open tube that
  * is a point at the nose (top, y = 0, the plume shader's bright end) and the
  * full unit radius at y = -1, so scaling it by (r, range, r) matches the catch
- * cone in utils/tractorBeam.ts. The plume tube tapers the other way; reusing
- * it put a 22u-wide bright mouth around the chase camera.
+ * cone in utils/tractorBeam.ts. The plume tube is a straight tube that the shader
+ * fans out from the nozzle; reusing it would put a wide bright mouth around the
+ * chase camera, so the beam keeps its own point-to-wide shape (uSpread = 0).
  */
 export function makeBeamGeometry(): THREE.BufferGeometry {
   const g = new THREE.CylinderGeometry(0.02, 1, 1, 20, 12, true);

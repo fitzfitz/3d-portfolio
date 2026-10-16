@@ -29,7 +29,7 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
-import { makePlumeGeometry, makePlumeMaterial, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
+import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -102,6 +102,8 @@ const slingshotLines = new ChatterScheduler(chatterPools);
  * non-stock plume must not capture the tint as "stock".
  */
 const stockEmissive = new WeakMap<THREE.Material, THREE.Color>();
+const PLUME_NOZZLE_R = 0.07;
+
 /** Spark base colour for the current plume (written on plume change, read by the spark loop). */
 const sparkRGB: [number, number, number] = [0.55, 1, 1];
 /** SlingshotWatch result scratch. */
@@ -297,7 +299,7 @@ export default function Spaceship() {
   }, []);
 
   // Engine plumes (enginePlume.ts), one per nozzle.
-  const plumeGeometry = useMemo(() => makePlumeGeometry(0.07), []);
+  const plumeGeometry = useMemo(() => makePlumeGeometry(PLUME_NOZZLE_R), []);
   const plumeMaterials = useMemo(() => NOZZLE_X.map((_, i) => makePlumeMaterial(i * 1.7)), []);
   useEffect(() => () => { plumeGeometry.dispose(); plumeMaterials.forEach((m) => m.dispose()); },
     [plumeGeometry, plumeMaterials]);
@@ -317,6 +319,7 @@ export default function Spaceship() {
       }
       plumeMaterials[i].uniforms.uTime.value = t;
       plumeMaterials[i].uniforms.uPower.value = plumePower.current;
+      plumeMaterials[i].uniforms.uSpread.value = plumeSpreadFor(plumeLen.current, PLUME_NOZZLE_R, PLUME_HALF_ANGLE_DEG);
     }
   };
   const particlesRef = useRef<THREE.Points>(null);
