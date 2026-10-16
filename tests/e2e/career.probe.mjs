@@ -101,9 +101,9 @@ export default async function run() {
     await settle(page, 2500);
     checks.check("Esc closes the Career dialog", !(await readStore(page)).isOrbitLocked);
 
-    // [5] Contact still works.
-    await page.keyboard.press("Digit5");
-    checks.check("key 5 jumps to the contact portal and docks", (await dockedAt(page, "contact")).ok);
+    // [6] Contact still works (the shipyard took 5).
+    await page.keyboard.press("Digit6");
+    checks.check("key 6 jumps to the contact portal and docks", (await dockedAt(page, "contact")).ok);
     await settle(page, 800);
     checks.check("the contact portal still opens the contact form",
       await page.evaluate(() => !!document.querySelector('[role="dialog"][aria-label="Contact"]')));

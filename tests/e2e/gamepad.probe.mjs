@@ -83,8 +83,7 @@ export default async function run() {
     checks.check("right stick up pitches up (ascend)", input.ascend === true);
     await setAxis(page, 3, 0); await frames(page);
 
-    // D-pad jumps mirror the number keys: up = 1st target, left = 4th (the
-    // career station); Menu = 5th (the contact portal).
+    // D-pad jumps mirror keys 1–4; Menu = the contact portal, View = the shipyard.
     await press(page, 12);
     s = await readStore(page);
     const firstId = s.jumpRequest?.id;
@@ -110,6 +109,13 @@ export default async function run() {
     s = await readStore(page);
     checks.check("Menu requests the contact portal", s.jumpRequest?.id === "contact",
       `jump=${s.jumpRequest?.id}`);
+    // Let Menu's jump dock and close it, so View's request is a fresh one.
+    const atPortal = await pollUntil(async () => (await readStore(page)).isOrbitLocked,
+      { timeoutMs: 15_000, intervalMs: 300 });
+    if (atPortal.ok) await press(page, 1);
+    await press(page, 8);
+    s = await readStore(page);
+    checks.check("View requests the shipyard", s.jumpRequest?.id === "shipyard", `jump=${s.jumpRequest?.id}`);
 
     await press(page, 3);
     s = await readStore(page);

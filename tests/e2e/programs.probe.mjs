@@ -1,6 +1,7 @@
 import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
+// (tour stops include the shipyard and the dormant gate)
 // system must not compile any more. Before ShaderWarmup compiled for the
 // PostFX render target, a tour of the landmarks below climbed 79 → 91
 // (srgb-linear variants of anything not on screen at load). After that, the
@@ -22,6 +23,8 @@ export default async function run() {
     const before = await keys();
     const stops = await page.evaluate(async () => {
       const { STATION_POS, BUOYS } = await import("/src/data/careerTrail.ts");
+      const { SHIPYARD_POS } = await import("/src/data/shipyard.ts");
+      const { GATE_POS, GATE_NORMAL } = await import("/src/data/dormantGate.ts");
       const mid = BUOYS[2].pos;
       return [
         ...Object.entries(window.__fitz.bodies).map(([name, b]) => [name, b.x, b.y, b.z + 30]),
@@ -29,6 +32,10 @@ export default async function run() {
         // 14 out: outside the station's 8.5 zone, so the tour never docks.
         ["career station", STATION_POS[0], STATION_POS[1], STATION_POS[2] + 14],
         ["career trail", mid[0] + 10, mid[1], mid[2]],
+        // 14 out: outside the shipyard's 8.5 zone, so the tour never docks.
+        ["shipyard", SHIPYARD_POS[0], SHIPYARD_POS[1], SHIPYARD_POS[2] + 14],
+        // 40 out along the axis: inside the sense radius, so the seams flicker.
+        ["dormant gate", GATE_POS[0] + GATE_NORMAL[0] * 40, GATE_POS[1] + GATE_NORMAL[1] * 40, GATE_POS[2] + GATE_NORMAL[2] * 40],
         ["sun", 0, 0, 40],
         ["deep space", -230, -210, -230],
         ["world edge", 240, 200, 240],
