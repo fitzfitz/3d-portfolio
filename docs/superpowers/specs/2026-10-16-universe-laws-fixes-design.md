@@ -214,6 +214,8 @@ What any good planetarium does:
 - The catalogue's Units table is the single source; a test checks the
   readouts against it.
 
+Deviation: the note is not on a sun scan. The ship spawns at (0, 0, 18), 10 units from the sun's surface and inside SCAN_RANGE 22, so a scannable sun would capture the first scan of every visit. The note lives in the logbook, the HUD and planet scans instead.
+
 ## Order
 
 Each phase is its own PR with its own changelog entry, smallest risk first.
