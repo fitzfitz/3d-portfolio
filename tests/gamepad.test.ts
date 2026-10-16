@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  deadzone, readPadFlight, padFlightChanges, padActions, PAD_NEUTRAL, type PadLike,
+  deadzone, readPadFlight, padFlightChanges, padActions, PAD_JUMPS, PAD_NEUTRAL, type PadLike,
 } from "../src/utils/gamepad";
 import { planets } from "../src/constants";
+import { JUMP_TARGETS } from "../src/data/destinations";
 
 /** A standard-mapping pad at rest: 4 axes, 17 buttons. */
 function pad(over: { axes?: Record<number, number>; buttons?: Record<number, number> } = {}): PadLike {
@@ -117,5 +118,12 @@ describe("logbook on the pad", () => {
     const press = (...i: number[]) => Array.from({ length: 16 }, (_, k) => i.includes(k));
     expect(padActions(press(), press(2))).toEqual([{ kind: "logbook" }]);
     expect(padActions(press(2), press(2))).toEqual([]);
+  });
+});
+
+describe("PAD_JUMPS", () => {
+  it("only names ids that exist in JUMP_TARGETS", () => {
+    const ids = new Set(JUMP_TARGETS.map((t) => t.id));
+    for (const [, id] of PAD_JUMPS) expect(ids.has(id)).toBe(true);
   });
 });

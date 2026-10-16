@@ -90,8 +90,8 @@ def bake_color_ao(objects, image_name, size=1024, ao_samples=32):
 
 
 def merge_material_slots(ob):
-    """Point every face at the first slot holding its material, then drop the
-    emptied slots, so the glTF export writes one primitive per material
+    """Point every face at the first slot holding its material, then drop every
+    unused slot (material_slot_remove_unused), so the glTF export writes one primitive per material
     instead of one per original slot (seven HullBaked primitives per
     freighter before 2026-10-16)."""
     first = {}

@@ -1,12 +1,12 @@
 import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
-// (tour stops include the shipyard and the dormant gate)
 // system must not compile any more. Before ShaderWarmup compiled for the
 // PostFX render target, a tour of the landmarks below climbed 79 → 91
 // (srgb-linear variants of anything not on screen at load). After that, the
 // sun still compiled one more about one run in four: GodRaysEffect forced its
 // material transparent after warm-up whenever PostFX mounted late (godRays.ts).
+// The tour stops include the shipyard and the dormant gate.
 //
 // Low-perf is locked off before load, as on a real GPU: headless SwiftShader
 // otherwise declines to low-perf while assets load, warm-up then rightly

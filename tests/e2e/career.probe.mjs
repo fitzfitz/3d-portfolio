@@ -2,7 +2,7 @@ import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText }
 
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md):
- * key 4 docks at the career station and opens the Career dossier, key 5 still
+ * key 4 docks at the career station and opens the Career dossier, key 6 still
  * reaches the contact portal, the habitat ring turns, flying to a buoy shows
  * its card, scanning one reports it, and none of it compiles a new shader
  * program. Physics waits use pollUntil: each read pumps frames under headless

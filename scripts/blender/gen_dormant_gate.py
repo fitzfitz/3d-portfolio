@@ -394,7 +394,6 @@ body.data.name = "DormantGate"
 deps = bpy.context.evaluated_depsgraph_get()
 m = body.evaluated_get(deps).data
 m.calc_loop_triangles()
-print("TRIS", body.name, len(m.loop_triangles))
 vs = [v.co for v in body.data.vertices]
 print("TRIS_TOTAL", len(m.loop_triangles))
 print("MAX_RADIUS", round(max(v.length for v in vs), 3))

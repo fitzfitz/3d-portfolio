@@ -61,7 +61,7 @@ async function desktop(page, checks) {
   checks.check("the open panel's header is not covered by the HUD", onTop);
   await page.keyboard.press("KeyL");
   await settle(page, 300);
-  checks.check("after picking a plume, L still closes the panel", !(await readStore(page)).logbookOpen);
+  checks.check("L still closes the panel", !(await readStore(page)).logbookOpen);
   // A sheet that closes itself on docking leaves focus in the dossier (review #5).
   await page.click('[data-testid="logbook-button"]');
   await settle(page, 300);

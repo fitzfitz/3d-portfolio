@@ -292,9 +292,9 @@ for ob, _ in MATTE:
     ob.select_set(True)
 bpy.context.view_layer.objects.active = MATTE[0][0]
 bpy.ops.object.join()
-station = bpy.context.object
+hull = bpy.context.object
 
-activate(station)
+activate(hull)
 bpy.ops.object.mode_set(mode="EDIT")
 bpy.ops.mesh.select_all(action="SELECT")
 bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.004, area_weight=0.0, scale_to_bounds=False)
@@ -304,7 +304,7 @@ bpy.ops.object.mode_set(mode="OBJECT")
 # ------------------------------------------------------------------- bake ---
 world = bpy.data.worlds.new("bake_world")
 SCENE.world = world
-world.light_settings.distance = 0.8  # AO reach (station units)
+world.light_settings.distance = 0.8  # AO reach (shipyard units)
 SCENE.render.engine = "CYCLES"
 SCENE.cycles.device = "CPU"
 SCENE.cycles.seed = 0
@@ -319,11 +319,11 @@ def new_img(name, noncolor=False):
 
 
 def bake(kind, img, samples, **kw):
-    bake_utils._attach_bake_target([station], img)
+    bake_utils._attach_bake_target([hull], img)
     SCENE.cycles.samples = samples
-    activate(station)
+    activate(hull)
     bpy.ops.object.bake(type=kind, use_clear=True, **kw)
-    bake_utils._detach_bake_targets([station])
+    bake_utils._detach_bake_targets([hull])
 
 
 col_img = new_img("shipyard_color_raw")
@@ -358,7 +358,7 @@ _tex.image = albedo
 HULL.node_tree.links.new(_tex.outputs["Color"], _hb.inputs["Base Color"])
 bake_utils.attach_normal_map(HULL, nrm_img)
 
-me = station.data
+me = hull.data
 me.materials.clear()
 me.materials.append(HULL)
 me.polygons.foreach_set("material_index", np.zeros(len(me.polygons), dtype=np.int32))
@@ -393,7 +393,7 @@ keep_part(trolley_me, TROLLEY)
 # each work light joins the node it belongs to (one primitive per material);
 # grouped first, because a join frees the objects joined in
 groups = {part: [ob for ob in LIGHTS if LIGHT_PARTS[ob.name] == part] for part in (BODY, TROLLEY)}
-for target, part in ((station, BODY), (trolley, TROLLEY)):
+for target, part in ((hull, BODY), (trolley, TROLLEY)):
     bpy.ops.object.select_all(action="DESELECT")
     for ob in groups[part]:
         ob.select_set(True)
@@ -406,7 +406,7 @@ SCENE.cursor.location = (0.0, 0.0, 2.0)
 activate(trolley)
 bpy.ops.object.origin_set(type="ORIGIN_CURSOR")
 
-body = station
+body = hull
 body.name = "Shipyard"
 body.data.name = "Shipyard"
 

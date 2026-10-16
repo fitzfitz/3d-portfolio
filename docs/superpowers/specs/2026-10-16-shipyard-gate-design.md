@@ -1,7 +1,7 @@
 # Shipyard and Dormant Gate (B2) — Design
 
 **Date:** 2026-10-16
-**Status:** Approved in conversation, pending written-spec review
+**Status:** Approved; implemented on feat/landmarks-b2 (PR #28)
 **Goal:** Build the homes for two of the three big features still to come. The **shipyard** is a dock whose Hangar dialog becomes the one place you change your ship's look: it takes over the engine-plume picker now, and hull paint joins it later. The **dormant gate** is a huge alien arch far out in the system that does nothing yet except be found, flicker and refuse to explain itself; the secret sector will go through it.
 
 ## Context and decisions
