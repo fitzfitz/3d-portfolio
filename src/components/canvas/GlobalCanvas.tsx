@@ -37,6 +37,9 @@ import WaypointDriver from "./WaypointDriver";
 import SkyBackdrop from "./SkyBackdrop";
 import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../../store/spaceStore";
 import { flareLevel } from "../../utils/worldEvents";
+import {
+  SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
+} from "../../utils/sunLight";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
@@ -382,13 +385,43 @@ function ShaderWarmup() {
 const BEACONS_ENABLED = !!beaconApiUrl();
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
-/** The scene's one sun light; a world-event flare lifts it 2.1 → 3.2 (no new light). */
+/**
+ * The scene's one sun light, falling off with distance squared (L19): 2.1 at
+ * 1 AU (sunLight.ts). A world-event flare swells it by the same fraction as
+ * before, 2.1 → 3.2 at 1 AU (no new light). Decay is a uniform, so changing it
+ * compiled nothing new.
+ */
 function SunLight() {
   const ref = useRef<THREE.PointLight>(null);
   useFrame(() => {
-    if (ref.current) ref.current.intensity = 2.1 + 1.1 * flareLevel(worldEventElapsed("flare"));
+    if (ref.current) {
+      ref.current.intensity = SUN_LIGHT_INTENSITY * (1 + SUN_FLARE_SWELL * flareLevel(worldEventElapsed("flare")));
+    }
   });
-  return <pointLight ref={ref} position={[0, 0, 0]} intensity={2.1} decay={0} color="#fff4e0" />;
+  return <pointLight ref={ref} position={[0, 0, 0]} intensity={SUN_LIGHT_INTENSITY} decay={2} color="#fff4e0" />;
+}
+
+/**
+ * The camera's exposure (F3): eases toward targetExposure(distance from the
+ * sun) with a 1.5 s half-life, snapping under reduced motion and on the first
+ * frame (so the load does not fade in). It drives `gl.toneMappingExposure`,
+ * which both tiers read: the composer's ToneMapping pass in the full tier,
+ * the renderer's own tone mapping of built-in materials in low-perf. Then it
+ * sets the sun's and the overlays' compensation (sunLight.ts) for the tier
+ * actually rendering. Mounted in both tiers; allocates nothing per frame.
+ */
+function ExposureDriver() {
+  const gl = useThree((s) => s.gl);
+  const first = useRef(true);
+  useFrame(({ camera }, delta) => {
+    const s = useSpaceStore.getState();
+    const target = targetExposure(camera.position.length());
+    const e = stepExposure(gl.toneMappingExposure, target, delta, s.reducedMotion || first.current);
+    first.current = false;
+    gl.toneMappingExposure = e;
+    setExposureCompensation(e, !s.isLowPerf);
+  });
+  return null;
 }
 
 function GlobalCanvas() {
@@ -479,10 +512,13 @@ function GlobalCanvas() {
           <ambientLight intensity={0.15} />
           {/* The sun: single dominant light at the origin — gives every body a
               real day side and terminator (realistic-planets spec G2) */}
-          {/* 2.1, up from 2.0: absorbs Sun.tsx's second light at the origin
-              (4.8, decay 0.8), which added only ~5% at planet distance and
-              cost a full light in every lit fragment. */}
+          {/* 2.1 at 1 AU, up from 2.0: absorbs Sun.tsx's second light at the
+              origin (4.8, decay 0.8), which added only ~5% at planet distance
+              and cost a full light in every lit fragment. Falls off as 1/d²
+              since F3 (sunLight.ts). */}
           <SunLight />
+          {/* The camera's exposure and the sun/overlay compensation (F3) */}
+          <ExposureDriver />
 
           {/* Painted galactic sky (scene.background, rendered once) */}
           <SkyBackdrop />

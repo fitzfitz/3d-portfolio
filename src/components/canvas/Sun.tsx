@@ -7,6 +7,7 @@ import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { glareLevels } from "../../utils/sunGlare";
+import { exposureCompensation } from "../../utils/sunLight";
 
 // Photosphere: boiling granulation cells and limb darkening, in HDR so
 // bloom keeps its punch. Replaces a flat
@@ -35,6 +36,7 @@ const NOISE = /* glsl */ `
 const surfaceFragment = /* glsl */ `
   uniform float uTime;
   uniform float uHeat;   // 0 cool .. 1 hot (the breathing pulse)
+  uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying vec3 vPos;
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -54,7 +56,7 @@ const surfaceFragment = /* glsl */ `
     vec3 col = mix(edge, mid, limb);
     col = mix(col, hot, limb * limb * (0.55 + 0.45 * g));
     col *= 0.75 + 0.5 * g;
-    gl_FragColor = vec4(col * (2.6 + 2.2 * uHeat), 1.0);
+    gl_FragColor = vec4(col * (2.6 + 2.2 * uHeat) * uExposureComp, 1.0);
   }
 `;
 
@@ -71,6 +73,7 @@ const coronaVertex = /* glsl */ `
 const coronaFragment = /* glsl */ `
   uniform float uTime;
   uniform float uDisc;     // disc radius as a fraction of the billboard half-size
+  uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying vec2 vUv;
   ${NOISE}
   void main() {
@@ -85,7 +88,7 @@ const coronaFragment = /* glsl */ `
     float glow = exp(-x * 7.0) * 0.9 + exp(-x * 2.6) * 0.25;
     float corona = glow * (0.45 + 1.4 * rays * exp(-x * 1.4));
     vec3 col = mix(vec3(1.0, 0.45, 0.12), vec3(1.0, 0.85, 0.6), exp(-x * 4.0));
-    gl_FragColor = vec4(col * corona, corona * (1.0 - smoothstep(0.85, 1.0, r)));
+    gl_FragColor = vec4(col * corona * uExposureComp, corona * (1.0 - smoothstep(0.85, 1.0, r)));
   }
 `;
 
@@ -99,7 +102,9 @@ export default function Sun() {
 
   const surfaceMaterial = useMemo(
     () => new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uHeat: { value: 1 } },
+      // Self-luminous (F3): compensated so the disc looks the same at every
+      // exposure. The shared uniform object, so ExposureDriver's write lands here.
+      uniforms: { uTime: { value: 0 }, uHeat: { value: 1 }, uExposureComp: exposureCompensation },
       vertexShader: surfaceVertex,
       fragmentShader: surfaceFragment,
       // The corona billboard blends across the disc, so the core draws in the
@@ -111,7 +116,7 @@ export default function Sun() {
   );
   const coronaMaterial = useMemo(
     () => new THREE.ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uDisc: { value: (CORE_R * 2) / CORONA_SIZE } },
+      uniforms: { uTime: { value: 0 }, uDisc: { value: (CORE_R * 2) / CORONA_SIZE }, uExposureComp: exposureCompensation },
       vertexShader: coronaVertex,
       fragmentShader: coronaFragment,
       transparent: true,
@@ -216,6 +221,15 @@ const FLARE_DEPTH = 4; // world units in front of the camera
 /** The spikes are faint (spec F5): glareLevels peaks at 1.5 with a flare, so scale that to ~0.55. */
 const SPIKE_OPACITY_SCALE = 0.55 / 1.5;
 const GLARE_OUT = { spikes: 0, veil: 0 };
+/**
+ * The sprites' own colours. Each frame their material colour is this times
+ * 1 / exposure (F3): a SpriteMaterial is tone-mapped, so it is exposed in both
+ * tiers (by the ToneMapping pass, or by the renderer in low-perf), and the
+ * glare must look the same at every exposure, like the disc.
+ */
+const SPIKE_COLOR = new THREE.Color("#fff4e0");
+const VEIL_COLOR = new THREE.Color("#ffd9a0");
+const GHOST_COLORS = FLARE_GHOSTS.map((gh) => new THREE.Color(gh.color));
 
 function SunFlare() {
   const groupRef = useRef<THREE.Group>(null);
@@ -226,9 +240,10 @@ function SunFlare() {
   const textures = useMemo(() => ({ soft: flareTexture("soft"), hex: flareTexture("hex"), ring: flareTexture("ring"), spikes: flareTexture("spikes") }), []);
   useEffect(() => () => Object.values(textures).forEach((t) => t.dispose()), [textures]);
 
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, gl }, delta) => {
     const g = groupRef.current;
     if (!g) return;
+    const comp = 1 / gl.toneMappingExposure;
     const cam = camera as THREE.PerspectiveCamera;
     _sun.set(0, 0, 0);
     _ndc.copy(_sun).project(cam);
@@ -256,11 +271,13 @@ function SunFlare() {
       sp.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
       sp.scale.set(0.45 * halfH * 2, 0.45 * halfH * 2, 1);
       (sp.material as THREE.SpriteMaterial).opacity = glare.spikes * SPIKE_OPACITY_SCALE;
+      (sp.material as THREE.SpriteMaterial).color.copy(SPIKE_COLOR).multiplyScalar(comp);
     }
     if (vl) {
       vl.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
       vl.scale.set(1.2 * halfH * 2, 1.2 * halfH * 2, 1);
       (vl.material as THREE.SpriteMaterial).opacity = glare.veil;
+      (vl.material as THREE.SpriteMaterial).color.copy(VEIL_COLOR).multiplyScalar(comp);
     }
     for (let i = 0; i < FLARE_GHOSTS.length; i++) {
       const gh = FLARE_GHOSTS[i];
@@ -272,6 +289,7 @@ function SunFlare() {
       const size = gh.size * halfH * 2;
       s.scale.set(size, size, 1);
       (s.material as THREE.SpriteMaterial).opacity = vis.current * 0.3;
+      (s.material as THREE.SpriteMaterial).color.copy(GHOST_COLORS[i]).multiplyScalar(comp);
     }
   });
 
