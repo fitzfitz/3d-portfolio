@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { makePlumeMaterial, makeBeamGeometry } from "../src/components/canvas/enginePlume";
+import { makePlumeMaterial, makeBeamGeometry, makePlumeGeometry, PLUME_TIP_SPREAD } from "../src/components/canvas/enginePlume";
 
 describe("makePlumeMaterial", () => {
   it("defaults to the engine's cyan and accepts a tint without changing the shader source", () => {
@@ -27,5 +27,27 @@ describe("makeBeamGeometry", () => {
     }
     expect(nose).toBeLessThan(0.05);
     expect(far).toBeCloseTo(1, 5);
+  });
+});
+
+describe("vacuum plume (L31)", () => {
+  const radiusAt = (g: THREE.BufferGeometry, y: number) => {
+    const p = g.attributes.position; let r = 0;
+    for (let i = 0; i < p.count; i++) if (Math.abs(p.getY(i) - y) < 1e-6) r = Math.max(r, Math.hypot(p.getX(i), p.getZ(i)));
+    return r;
+  };
+  it("spreads toward the tip instead of tapering (no ambient pressure to hold it in)", () => {
+    const g = makePlumeGeometry(0.07);
+    expect(radiusAt(g, 0.5)).toBeCloseTo(0.07, 6);            // nozzle (top)
+    expect(radiusAt(g, -0.5)).toBeCloseTo(0.07 * PLUME_TIP_SPREAD, 6); // tip
+    expect(PLUME_TIP_SPREAD).toBeGreaterThanOrEqual(2);
+  });
+  it("keeps the same triangle count", () => {
+    expect(makePlumeGeometry(0.07).index!.count).toBe(20 * 12 * 6);
+  });
+  it("has no shock diamonds (they need an atmosphere)", () => {
+    const f = makePlumeMaterial(0).fragmentShader;
+    expect(f).not.toMatch(/diamond/i);
+    expect(f).not.toMatch(/sin\(t \*/);
   });
 });

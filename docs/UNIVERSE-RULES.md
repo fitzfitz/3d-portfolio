@@ -94,7 +94,7 @@ The system is pinned to real units by two anchors: Ruangrapi orbits at
 | # | Law | Status |
 |---|---|---|
 | L30 | **Sound needs a medium.** Vacuum carries none. | Follows. Every sound is heard inside the ship: engine hum through the hull, contact on impact, instruments, radio. Nothing is heard from outside; there is no positional audio. The slingshot "whoosh" is an instrument tone. Keep it that way. |
-| L31 | **Vacuum plumes spread.** With no air pressure an exhaust plume fans out wide and fades; shock diamonds need an atmosphere. | **Breaks → F7.** Our plumes are tapered and show shock diamonds. |
+| L31 | **Vacuum plumes spread.** With no air pressure an exhaust plume fans out wide and fades; shock diamonds need an atmosphere. | Follows: the plume widens to 3.2× its nozzle radius and fades; no shock diamonds in the shader. Shock diamonds in air (none yet) would be a separate, air-only effect. |
 | L32 | **Comets.** Ice sublimates near the star; radiation pressure pushes dust into a curved tail; the solar wind pushes gas into a straight tail away from the star. | Follows (realistic-comet spec). |
 | L33 | **Only hot or excited matter glows.** | Follows: the sun, volcanic fissures, night-side city lights, the C2 coma, aurora-like rims. |
 
