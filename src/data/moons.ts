@@ -4,7 +4,7 @@ import { MOON_TINTS } from "./moonTints";
 
 /**
  * Every moon in the scene, drawn by OrbitingMoon in SpacePlanets.tsx
- * (docs/UNIVERSE-RULES.md R3). A moon's speed is not stored: it follows
+ * (docs/UNIVERSE-RULES.md L11). A moon's speed is not stored: it follows
  * Kepler's third law around its planet (GM_PLANET), turning with the planet's
  * spin unless `captured` — a moon caught from outside orbits backwards, as
  * Neptune's Triton does. Moons are tidally locked: they never spin on their own.

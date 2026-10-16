@@ -24,7 +24,7 @@ export const PLAYER_SHIP_SCALE = 0.35;
 /**
  * Sun core radius: the solid sphere, smaller than a planet (16). The corona
  * disc (52 wide in Sun.tsx) is what reads as the sun's size, and it is larger.
- * A deliberate break from real proportions (docs/UNIVERSE-RULES.md B2).
+ * A deliberate break from real proportions (docs/UNIVERSE-RULES.md L35, fix F12).
  */
 export const SUN_RADIUS = 8;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
@@ -62,7 +62,7 @@ export const projects: Project[] = projectsData;
 const PLANET_SIZE = 16;
 
 /**
- * The sun's pull, GM (docs/UNIVERSE-RULES.md R1). Every orbit around the sun
+ * The sun's pull, GM (docs/UNIVERSE-RULES.md L7). Every orbit around the sun
  * (planets, belt, halo, comets) takes its speed from this one value through
  * Kepler's third law, anchored so Ruangrapi (r 115) keeps its 420 s year.
  */
@@ -72,14 +72,15 @@ export const sunOmega = (r: number): number => keplerOmega(r, GM_SUN);
 
 /**
  * One planet's pull, GM, shared by all three because they share PLANET_SIZE
- * (docs/UNIVERSE-RULES.md R3). Anchored so Ruangrapi's moon (1.7 × size)
- * keeps its 0.4 rad/s.
+ * (docs/UNIVERSE-RULES.md L11). Anchored so Ruangrapi's moon (1.7 × size)
+ * keeps its 0.4 rad/s. Moon systems are magnified insets on their own clock
+ * (principle P3, law L13), so this is not comparable with GM_SUN.
  */
 export const GM_PLANET = keplerGM(PLANET_SIZE * 1.7, (Math.PI * 2) / 0.4);
 
 /**
  * Sign of a `rotation.y` rate that turns the same way the planets orbit
- * (docs/UNIVERSE-RULES.md R2). `orbitPosition` with a positive angularSpeed
+ * (docs/UNIVERSE-RULES.md L9). `orbitPosition` with a positive angularSpeed
  * runs clockwise seen from +Y, which is a negative rotation about Y.
  * tests/universeRules.test.ts measures this rather than trusting it.
  */

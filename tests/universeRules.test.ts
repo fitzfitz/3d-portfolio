@@ -56,7 +56,7 @@ describe("Kepler helpers", () => {
   });
 });
 
-describe("R1 one sun: every heliocentric orbit obeys Kepler's third law with GM_SUN", () => {
+describe("L7 one sun: every heliocentric orbit obeys Kepler's third law with GM_SUN", () => {
   it("Ruangrapi keeps its 420 s year (the anchor)", () => {
     expect((Math.PI * 2) / planets[0].orbit.angularSpeed).toBeCloseTo(420, 6);
   });
@@ -72,7 +72,7 @@ describe("R1 one sun: every heliocentric orbit obeys Kepler's third law with GM_
   });
 });
 
-describe("R2 everything orbits the sun the same way (prograde)", () => {
+describe("L9 everything orbits the sun the same way (prograde)", () => {
   it.each(planets.map((p) => [p.name, p] as const))("planet %s", (_, p) => {
     expect(dot(turnAxis((t) => orbitPosition(p.orbit, t)), reference)).toBeGreaterThan(0);
   });
@@ -85,7 +85,7 @@ describe("R2 everything orbits the sun the same way (prograde)", () => {
   });
 });
 
-describe("R3 moons: Kepler around their planet, prograde unless captured, tidally locked", () => {
+describe("L11–L12 moons: Kepler around their planet, prograde unless captured, tidally locked", () => {
   it.each(MOONS.map((m) => [m.id, m] as const))("moon %s obeys Kepler's third law with GM_PLANET", (_, m) => {
     const r = m.distance * planets[m.planet].size;
     expect(Math.abs(moonOrbitSpeed(m))).toBeCloseTo(keplerOmega(r, GM_PLANET), 12);

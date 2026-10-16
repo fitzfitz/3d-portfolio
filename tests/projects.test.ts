@@ -74,7 +74,7 @@ describe("refactor is behaviour-preserving", () => {
   // deliberately — it must not be edited to make an accidental drift pass.
   // 2026-10-12: size 4.8 -> 16, deliberately (the scale pass; see PLANET_SIZE).
   // 2026-10-16: periods 510/600 s -> ~625.7/857.0 s, deliberately: Kepler's third
-  // law with one sun (docs/UNIVERSE-RULES.md R1). Ruangrapi keeps 420 s.
+  // law with one sun (docs/UNIVERSE-RULES.md L7). Ruangrapi keeps 420 s.
   it("keeps the orbital elements the engine was tuned against", () => {
     expect(planets).toEqual([
       {

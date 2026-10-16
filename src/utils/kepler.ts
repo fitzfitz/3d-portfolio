@@ -15,7 +15,7 @@ export interface CometOrbit {
 }
 
 /**
- * Kepler's third law, T² = 4π²a³/GM (docs/UNIVERSE-RULES.md R1). Every orbit
+ * Kepler's third law, T² = 4π²a³/GM (docs/UNIVERSE-RULES.md L7). Every orbit
  * around one body shares that body's GM, so one known orbit fixes the rest.
  */
 export const keplerGM = (a: number, periodSeconds: number): number =>

@@ -208,7 +208,7 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
 }
 
 /**
- * One moon from data/moons.ts. Tidally locked (docs/UNIVERSE-RULES.md R3): the
+ * One moon from data/moons.ts. Tidally locked (docs/UNIVERSE-RULES.md L11): the
  * mesh has no spin of its own, so riding the orbit group keeps one face toward
  * the planet, as every large moon in the solar system does.
  */
@@ -396,7 +396,7 @@ export default function SpacePlanets() {
     }
 
     // 1. Slowly rotate planets
-    // Prograde, like their orbits (docs/UNIVERSE-RULES.md R2). They spun
+    // Prograde, like their orbits (docs/UNIVERSE-RULES.md L9). They spun
     // backwards before, the way only Venus and Uranus do.
     if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = PROGRADE * time * 0.1;
     if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = PROGRADE * time * 0.3;
