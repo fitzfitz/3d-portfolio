@@ -98,8 +98,8 @@ describe("padActions", () => {
     expect(padActions(press(), press(13))).toEqual([{ kind: "jump", index: 2 }]);
     expect(padActions(press(), press(14))).toEqual([{ kind: "jump", index: 3 }]);
   });
-  it("maps Menu to the fifth jump target (the contact portal once the career station is fourth)", () => {
-    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", index: 4 }]);
+  it("maps Menu to the sixth jump target (the contact portal, after career and the shipyard)", () => {
+    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", index: 5 }]);
   });
 });
 

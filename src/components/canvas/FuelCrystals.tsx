@@ -4,12 +4,11 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { planets, COSMIC_BOUNDS } from "../../constants";
-import { DESTINATIONS } from "../../data/destinations";
 import { toroidalDistance3 } from "../../utils/toroidal";
 import { ambientTime } from "../../utils/ambientTime";
 import { refuel, refuelOutcome, FUEL_MAX } from "../../utils/fuel";
 import {
-  CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, crystalAvoidPoints, randomCrystalPos, respawnTick,
+  CRYSTAL_LANDMARKS, CRYSTAL_MAX, CRYSTAL_PICKUP_RADIUS, crystalAvoidPoints, randomCrystalPos, respawnTick,
 } from "../../utils/crystalField";
 import { soundManager } from "../../audio/soundManager";
 import { beamState } from "../../store/beamState";
@@ -71,7 +70,7 @@ export default function FuelCrystals() {
   /** Places to keep clear of, rebuilt per spawn from live positions. */
   const avoidFor = () => crystalAvoidPoints(
     planets.map((p) => ({ ...bodies[p.name], size: p.size })),
-    DESTINATIONS.map((d) => d.pos),
+    CRYSTAL_LANDMARKS,
     flight,
   );
 

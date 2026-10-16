@@ -73,10 +73,10 @@ export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook
 
 /**
  * D-pad clockwise from up → jump targets 1–4, matching the number keys. Menu
- * → target 5: the contact portal once the career station is target 4.
+ * → target 6: the contact portal, after career (4) and the shipyard (5).
  */
 const DPAD_JUMPS = [DPAD_UP, DPAD_RIGHT, DPAD_DOWN, DPAD_LEFT];
-const MENU_JUMP = 4;
+const MENU_JUMP = 5;
 
 /** One-shot actions, fired on the press edge only so a held button acts once. */
 export function padActions(prev: readonly boolean[], next: readonly boolean[]): PadAction[] {
