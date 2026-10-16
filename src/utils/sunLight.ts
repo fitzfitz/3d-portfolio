@@ -47,20 +47,33 @@ export function stepExposure(current: number, target: number, dt: number, snap: 
 }
 
 /**
- * Shared uniform for self-luminous bodies and instrument overlays (the sun's
- * core, corona and glare; orbit rings, zone circles, guide lines, planet
- * rings). They multiply their output by it so they look the same at every
- * exposure. Materials reference this object directly, so one write a frame
+ * Sunlight at `d` as a fraction of what Ruangrapi gets at 1 AU: (AU / d)².
+ * Scales lit effects drawn by custom shaders that the point light never
+ * reaches, such as the atmosphere rims (Rayleigh scattering, L27).
+ */
+export function irradianceVsAU(d: number): number {
+  return sunIrradiance(d) / SUN_IRRADIANCE_AT_AU;
+}
+
+/**
+ * Shared uniform for the sun's self-luminous parts and the instrument
+ * overlays: the sun's core and corona, and the orbit rings, zone circles and
+ * guide lines (guideLine.ts). They multiply their output by it, so they look
+ * the same at every exposure. Lit matter, such as Ruangrapi's planetary ring,
+ * is NOT compensated: it follows exposure like its planet. The sun's glare
+ * sprites and the ring-course gates are compensated too, but through their
+ * colour each frame (Sun.tsx, RingCourse.tsx), since they are built-in
+ * materials. Materials reference this object directly, so one write a frame
  * reaches all of them with no allocation and no recompile.
  */
 export const exposureCompensation = { value: 1 };
 
 /**
- * Sets the compensation for the custom ShaderMaterials above. None of them
- * includes `<tonemapping_fragment>`, so the renderer never applies exposure to
- * them; only the composer's ToneMapping pass does, and that pass exposes every
- * pixel. So they need 1 / exposure exactly when that pass runs (PostFX
- * enabled, i.e. not low-perf), and 1 otherwise.
+ * Sets the compensation. Its users are never exposed by the renderer: the
+ * custom ShaderMaterials include no `<tonemapping_fragment>`, and the course
+ * gates are `toneMapped: false`. Only the composer's ToneMapping pass exposes
+ * them, and it exposes every pixel. So they need 1 / exposure exactly when that
+ * pass runs (PostFX enabled, i.e. not low-perf), and 1 otherwise.
  */
 export function setExposureCompensation(exposure: number, postPassExposes: boolean): void {
   exposureCompensation.value = postPassExposes ? 1 / exposure : 1;

@@ -517,7 +517,7 @@ export default function SpacePlanets() {
             emissiveMap={ruangrapiGlow} emissive="#ffd9a0" emissiveIntensity={1.4}
             onBeforeCompile={cityLights} />
         </mesh>
-        <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} intensity={1.1} />
+        <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} />
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
@@ -540,7 +540,7 @@ export default function SpacePlanets() {
           <meshStandardMaterial map={portfolioTex} roughness={0.95} metalness={0.0} />
         </mesh>
         <LimbDarkening radius={planets[1].size} strength={0.8} />
-        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} intensity={0.55} thickness={1.06} />
+        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} orbitRadius={planets[1].orbit.radius} intensity={0.55} thickness={1.06} />
         {MOONS.filter((m) => m.planet === 1).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
         {/* Proximity gravity-field circle: dashed, shown only on approach */}
@@ -557,7 +557,7 @@ export default function SpacePlanets() {
           <meshStandardMaterial map={fuxxTex} roughness={0.9} metalness={0.0}
             emissiveMap={fuxxGlow} emissive="#e070ff" emissiveIntensity={1.2} />
         </mesh>
-        <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} intensity={0.5} thickness={1.05} />
+        <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} orbitRadius={planets[2].orbit.radius} intensity={0.5} thickness={1.05} />
         {MOONS.filter((m) => m.planet === 2).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
         {/* Proximity gravity-field circle: dashed, shown only on approach */}

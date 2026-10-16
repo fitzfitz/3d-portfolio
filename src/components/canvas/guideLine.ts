@@ -96,7 +96,6 @@ const RING_FRAG = /* glsl */ `
   uniform float uInner;
   uniform float uOuter;
   uniform float uOpacity;
-  uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying float vR;
   float hash(float n) { return fract(sin(n) * 43758.5453); }
   float bands(float t) {
@@ -112,8 +111,8 @@ const RING_FRAG = /* glsl */ `
     float division = 1.0 - 0.85 * exp(-dv * dv);
     float a = uOpacity * bands(t) * edge * division;
     vec3 col = mix(uColor, vec3(0.92, 1.0, 0.95), 0.35 * bands(t + 0.3));
-    // Compensated like the guides (F3), so the ring reads as it does today.
-    gl_FragColor = vec4(col * uExposureComp, a);
+    // Lit matter, not an instrument: it follows exposure like its planet (F3).
+    gl_FragColor = vec4(col, a);
   }
 `;
 
@@ -129,7 +128,6 @@ export function makePlanetRingMaterial(color: THREE.ColorRepresentation, inner: 
       uInner: { value: inner },
       uOuter: { value: outer },
       uOpacity: { value: 0.55 },
-      uExposureComp: exposureCompensation,
     },
   });
 }

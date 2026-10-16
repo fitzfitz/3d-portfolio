@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AU } from "../src/constants";
+import { AU, PLANET_ORBITS } from "../src/constants";
 import {
   sunIrradiance,
   targetExposure,
@@ -7,6 +7,7 @@ import {
   exposureCompensation,
   setExposureCompensation,
   SUN_LIGHT_INTENSITY,
+  irradianceVsAU,
 } from "../src/utils/sunLight";
 
 describe("sunlight falls with distance squared; the camera's exposure follows (F3, L19)", () => {
@@ -41,5 +42,10 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(exposureCompensation.value).toBe(1);
     setExposureCompensation(1, true);
     expect(exposureCompensation.value).toBe(1);
+  });
+  it("atmosphere rims scale with the sunlight at each planet's orbit (L27 under L19)", () => {
+    expect(irradianceVsAU(PLANET_ORBITS.ruangrapi.radius)).toBeCloseTo(1, 12);
+    expect(irradianceVsAU(PLANET_ORBITS.portfolio.radius)).toBeCloseTo(0.588, 3);
+    expect(irradianceVsAU(PLANET_ORBITS.fuxx.radius)).toBeCloseTo(0.386, 3);
   });
 });

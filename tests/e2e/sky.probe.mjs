@@ -126,21 +126,31 @@ async function sunDisc(page, shot) {
     const ctx = c.getContext("2d");
     ctx.drawImage(img, 0, 0);
     const scale = img.width / window.innerWidth;
-    const cx = g.x * scale, cy = g.y * scale, r = 0.6 * g.rpx * scale;
-    const x0 = Math.max(0, Math.floor(cx - r)), y0 = Math.max(0, Math.floor(cy - r));
-    const x1 = Math.min(c.width, Math.ceil(cx + r)), y1 = Math.min(c.height, Math.ceil(cy + r));
+    const R = g.rpx * scale;
+    const cx = g.x * scale, cy = g.y * scale, r = 0.6 * R;
+    // Corona annulus 1.2-1.6 R, upper half only: the ship sits below the sun.
+    const a0 = 1.2 * R, a1 = 1.6 * R;
+    const x0 = Math.max(0, Math.floor(cx - a1)), y0 = Math.max(0, Math.floor(cy - a1));
+    const x1 = Math.min(c.width, Math.ceil(cx + a1)), y1 = Math.min(c.height, Math.ceil(cy + r));
     const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
-    let max = 0, sum = 0, n = 0;
+    let max = 0, sum = 0, n = 0, aSum = 0, aN = 0;
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
-        if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > r) continue;
+        const rr = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        const inDisc = rr <= r;
+        const inAnnulus = rr >= a0 && rr <= a1 && y + 0.5 < cy;
+        if (!inDisc && !inAnnulus) continue;
         const i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
         const l = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-        if (l > max) max = l;
-        sum += l; n++;
+        if (inDisc) {
+          if (l > max) max = l;
+          sum += l; n++;
+        } else {
+          aSum += l; aN++;
+        }
       }
     }
-    return { max, mean: n ? sum / n : 0, n };
+    return { max, mean: n ? sum / n : 0, n, corona: aN ? aSum / aN : 0, coronaN: aN };
   }, b64, geom);
   return { ...geom, ...stats };
 }
@@ -191,6 +201,31 @@ async function exposureChecks(page, checks, tier) {
     discsOk && near(disc115.max, disc230.max, 0.1) && near(disc115.mean, disc230.mean, 0.03)
       && near(disc115.max, disc40.max, 0.1) && near(disc115.mean, disc40.mean, 0.03),
     `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; d40 ${fmt(disc40)}`);
+
+  // The corona is not saturated, so it catches a wrong compensation either
+  // way: too little at d=40 (exposure 0.2) dims it, too much at d=230
+  // (exposure 2.5) washes it out. Composer tier only: low-perf has no corona.
+  // Calibrated (annulus mean luma / the d=115 value), compensated vs forced to 1:
+  //   d=40:  0.98 vs 0.47, so the bound is ±5%.
+  //   d=230: 1.13 vs 1.48. Even compensated, the far disc is small next to
+  //   the screen-sized veil sprite and bloom kernel, and the sky behind the
+  //   annulus is exposed 2.5×, so the bound is [0.9, 1.25]: ~12 points from
+  //   either reading.
+  if (!lowPerf) {
+    const cfmt = (d) => `${d.corona.toFixed(1)} (${d.coronaN}px)`;
+    const k40 = disc40.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
+    checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
+      discsOk && [disc115, disc40, disc230].every((d) => d.coronaN > 200)
+        && Math.abs(k40 - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
+      `corona annulus 1.2-1.6R mean luma: d115 ${cfmt(disc115)}; d40 ${cfmt(disc40)} (x${k40.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
+  }
+
+  // The ring-course gates are a navigation projection (toneMapped: false):
+  // their material colour carries the same compensation as the guides.
+  const ringComp = await page.evaluate(() => window.__fitz.scene.getObjectByName("RaceRings")?.material.color.r ?? null);
+  checks.check(`[${tier}] the course gates carry the compensation`,
+    ringComp !== null && Math.abs(ringComp - (lowPerf ? 1 : 1 / at230.exposure)) < 1e-6,
+    `ring colour=${ringComp} exposure=${at230.exposure}`);
 }
 
 export default async function run() {

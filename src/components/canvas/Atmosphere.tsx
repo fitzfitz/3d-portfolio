@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { irradianceVsAU } from "../../utils/sunLight";
 
 const vertexShader = /* glsl */ `
   varying vec3 vNormal;
@@ -56,14 +57,20 @@ interface AtmosphereProps {
    * gradient keeps pointing at the origin as the planet moves.
    */
   planetPos?: { x: number; y: number; z: number };
-  /** overall strength; earth-like ~1, thin mars haze ~0.4 */
+  /** overall strength at 1 AU; earth-like ~1, thin mars haze ~0.4 */
   intensity?: number;
+  /**
+   * The planet's orbit radius. The rim is scattered sunlight (L27), so it is
+   * scaled by the sunlight there, (AU / r)² (L19). Orbits are circles, so this
+   * is fixed per planet: a uniform value, set once. Omit for 1 AU.
+   */
+  orbitRadius?: number;
   /** shell thickness multiplier (1.12 = earth-like, 1.05 = thin haze) */
   thickness?: number;
 }
 
 /** Sun-aware fresnel scattering shell. Place inside a planet group. */
-export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12 }: AtmosphereProps) {
+export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius }: AtmosphereProps) {
   const material = useMemo(() => {
     const sunDir = planetPos
       ? new THREE.Vector3(-planetPos.x, -planetPos.y, -planetPos.z).normalize()
@@ -72,7 +79,7 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
       uniforms: {
         uColor: { value: new THREE.Color(color) },
         uSunDir: { value: sunDir },
-        uIntensity: { value: intensity },
+        uIntensity: { value: intensity * (orbitRadius ? irradianceVsAU(orbitRadius) : 1) },
         // facing (|N·V|) of the shell's back face where it passes the
         // planet's limb: sqrt(1 - (r/R)²) for shell radius R = r·thickness.
         uLimbFacing: { value: Math.sqrt(1 - 1 / (thickness * thickness)) },
@@ -87,7 +94,7 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- planetPos is a
     // stable mutated-in-place object; only its identity (not its contents)
     // should retrigger material creation.
-  }, [color, intensity, thickness]);
+  }, [color, intensity, thickness, orbitRadius]);
 
   // Planet moves every frame (SpacePlanets writes into the same object) — the
   // sun-facing gradient must track it live rather than freeze at mount time.
