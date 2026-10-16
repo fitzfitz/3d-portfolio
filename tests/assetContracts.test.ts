@@ -134,8 +134,12 @@ describe("hero ship (spaceship.glb)", () => {
 
   it("keeps the v1 footprint (within 5%)", async () => {
     const b = bounds(await load("spaceship"));
-    expect(close(b.min, [-2.704, -0.58, -3.5], 0.14)).toBe(true);
-    expect(close(b.max, [2.704, 0.646, 3.5], 0.14)).toBe(true);
+    const V1_MIN = [-2.704, -0.58, -3.5], V1_MAX = [2.704, 0.646, 3.5];
+    for (let i = 0; i < 3; i++) {
+      const extent = V1_MAX[i] - V1_MIN[i];
+      expect(Math.abs(b.min[i] - V1_MIN[i]), `min[${i}]`).toBeLessThanOrEqual(0.05 * extent);
+      expect(Math.abs(b.max[i] - V1_MAX[i]), `max[${i}]`).toBeLessThanOrEqual(0.05 * extent);
+    }
   });
 
   it("keeps the nozzles where the plumes are drawn", async () => {
@@ -200,17 +204,22 @@ describe("cargo ship (cargo_ship.glb)", () => {
     expect(length).toBeLessThanOrEqual(3.2);
   });
 
-  it("stays inside its triangle and download budget", async () => {
-    expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(12000);
-    expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
-  });
-
   it("stays light enough for five on screen at once", async () => {
     // Up to five freighters fly at once, so each triangle counts five times
     // against the deep-space and modal-open ceilings (docs/PERF-BUDGETS.md);
     // a 10.5k build (bevel segments 3) broke both. Detail comes from parts
     // (truss, ribbed racks, radiators), not from rounder bevels.
     expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(8500);
+    expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
+  });
+
+  it("draws its hull in one primitive per material", async () => {
+    // Up to five freighters fly at once: seven HullBaked primitives each
+    // cost 30 extra draw calls against the modal-open ceiling.
+    const prims = (await load("cargo_ship")).getRoot().listMeshes().flatMap((m) => m.listPrimitives());
+    const names = prims.map((p) => p.getMaterial()?.getName());
+    expect(names.filter((n) => n === "HullBaked")).toHaveLength(1);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("keeps the nav lights on opposite sides, red to port", async () => {
@@ -250,7 +259,7 @@ describe("fuel crystal (space_crystal.glb)", () => {
   });
 
   it("is a full cluster, not five plain prisms", async () => {
-    // v1 was 366 triangles; seven shards with stepped tips land around 500-650.
+    // v1 was 366 triangles; six shards with stepped tips land around 500-650.
     expect(triangles(await load("space_crystal"))).toBeGreaterThanOrEqual(450);
   });
 });
