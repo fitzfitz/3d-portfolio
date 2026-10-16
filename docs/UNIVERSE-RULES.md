@@ -79,8 +79,8 @@ The system is pinned to real units by two anchors: Ruangrapi orbits at
 |---|---|---|
 | L19 | **Inverse-square law.** Light weakens with distance squared (Mars gets 43% of Earth's sunlight). | **Breaks → F3.** The sun light has `decay={0}`. |
 | L20 | **Shadows and eclipses.** A body in another's shadow goes dark; moons cast shadows on planets. | **Breaks → F4.** Nothing casts a shadow. |
-| L21 | **Light is invisible in flight.** Beams show only where dust or air scatters them, and vacuum has none. | **Breaks → F5.** God rays draw shafts through empty space. |
-| L22 | **Camera optics are real.** Bloom, glare, lens flare, diffraction and exposure are effects of the lens and eye, so they are lawful. | Follows: bloom. F3 and F5 lean on this. |
+| L21 | **Light is invisible in flight.** Beams show only where dust or air scatters them, and vacuum has none. | Follows. The god-ray pass is gone; nothing draws beams through empty space. |
+| L22 | **Camera optics are real.** Bloom, glare, lens flare, diffraction and exposure are effects of the lens and eye, so they are lawful. | Follows: bloom, and the sun's glare, diffraction spikes and flare ghosts are the lens. F3 and F5 lean on this. |
 | L23 | **Stars don't twinkle in space.** Twinkling comes from Earth's air; Hubble sees steady points. | Follows. The star shaders have no time input; the stars hold steady. |
 | L24 | **Fixed stars.** At these distances stars show no parallax and do not move. | Follows *(tested)*: the three star shells ride with the ship and never rotate; they show no parallax. |
 | L25 | **Wien's law.** Colour shows temperature: hot is blue-white, cool is orange-red. | Follows: the sun is about 5,800 K white (`#fff4e0`); background stars are mostly white with some blue-white and orange. |

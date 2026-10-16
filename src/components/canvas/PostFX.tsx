@@ -1,13 +1,9 @@
-import { EffectComposer, Bloom, Vignette, ChromaticAberration, GodRays, ToneMapping, SMAA } from "@react-three/postprocessing";
+import { EffectComposer, Bloom, Vignette, ChromaticAberration, ToneMapping, SMAA } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect } from "react";
 import * as THREE from "three";
-import type { GodRaysEffect } from "postprocessing";
-import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
-import { flareLevel } from "../../utils/worldEvents";
-import { planets, SUN_RADIUS } from "../../constants";
-import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
+import { useSpaceStore } from "../../store/spaceStore";
 
 /**
  * Stable offset instance, mutated in place rather than replaced. Passing a
@@ -36,43 +32,17 @@ function WarpAberration() {
   return null;
 }
 
-const GODRAYS_EXPOSURE = 0.18;
-/** Reused every frame: planet occluders, positions refreshed from `bodies`. */
-const OCCLUDERS: Occluder[] = planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size }));
-
-/**
- * Fades the god rays by how much of the sun the planets cover. GodRays' own
- * depth test let the sun's disc show through a planet in front of it, so the
- * occlusion is computed here instead (utils/sunOcclusion.ts).
- */
-function useGodRaysOcclusion(effect: RefObject<GodRaysEffect | null>) {
-  useFrame(({ camera }) => {
-    const e = effect.current;
-    if (!e) return;
-    planets.forEach((p, i) => {
-      const b = bodies[p.name];
-      OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
-    });
-    const flare = flareLevel(worldEventElapsed("flare"));
-    e.godRaysMaterial.exposure = GODRAYS_EXPOSURE * (1 + 0.5 * flare) * sunVisibility(camera.position, OCCLUDERS, SUN_RADIUS);
-  });
-}
-
 interface PostFXProps {
-  sunMesh: THREE.Mesh | null;
   /** False in the low-perf tier: the chain stays mounted but stops rendering. */
   enabled: boolean;
 }
 
 /**
- * multisampling=0: the GodRays depth passes' buffer formats are incompatible
- * with the MSAA resolve blit (GL_INVALID_OPERATION every frame -> white
- * canvas). Bloom smooths edges anyway, so MSAA here bought nothing.
+ * multisampling=0: the composer renders into an offscreen target, so the
+ * canvas's MSAA never applied here; SMAA (last pass) handles edges.
  */
-export default function PostFX({ sunMesh, enabled }: PostFXProps) {
+export default function PostFX({ enabled }: PostFXProps) {
   const gl = useThree((s) => s.gl);
-  const godRays = useRef<GodRaysEffect>(null);
-  useGodRaysOcclusion(godRays);
   // Low-perf disables the composer instead of unmounting it. Unmounting threw
   // away Bloom's and SMAA's programs, and postprocessing bakes a fresh id into
   // each pass's cache key, so every remount recompiled them from scratch
@@ -91,13 +61,6 @@ export default function PostFX({ sunMesh, enabled }: PostFXProps) {
         <Bloom intensity={1.2} luminanceThreshold={0.2} luminanceSmoothing={0.9} mipmapBlur={true} />
         <Vignette eskil={false} offset={0.28} darkness={0.72} />
         <ChromaticAberration offset={CA_OFFSET} />
-        {/* Accumulator budget: HDR sun (emissive 3.2) x weight x decay-series(~10)
-            x exposure must stay well under 1.0 or the clamp saturates to a white
-            wash. 3.2 x 0.08 x 10 x 0.18 = 0.46 peak. */}
-        {sunMesh ? (
-          <GodRays ref={godRays} sun={sunMesh} samples={60} density={0.8} decay={0.9}
-            weight={0.08} exposure={GODRAYS_EXPOSURE} clampMax={0.8} blur={true} />
-        ) : <></>}
         {/* EffectComposer forces the renderer's own tone mapping off while it
             is mounted, so without this pass HDR emissives (sun 7.6, engine
             4.5, plasma 3.6) clipped to flat white — and the image changed

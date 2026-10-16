@@ -82,13 +82,18 @@ compiled its real variant mid-play, the first time it appeared. Warm-up now
 binds a 1×1 render target when PostFX is on. A full run read deep space 56,
 close approach 57, modal 57, 40 anomalies 56 (from 78/83/83/78).
 
+**Programs and calls measured 2026-10-16 (god-ray pass removed).** A full run
+read deep space 35 calls / 241916 triangles / 51 programs, close approach
+65 / 349702 / 51, modal 109 / 418492 / 51, 40 anomalies 37 / 243964 / 52
+(programs were 56 / 57 / 57 / 56 the day before). The EffectPass loses the
+GodRays effect, and the new glare sprites reuse the flare ghosts' sprite
+program. The tour adds 0 programs. The ceilings are unchanged.
+
 That also explains the old note that programs "reach 90 after crossing the
 whole system": a tour of every landmark climbed 79 → 91 on the old warm-up,
-all srgb-linear variants, not light-count variants. One straggler remained:
-GodRaysEffect forces its light source (the sun's core) transparent with no
-depth write, and when PostFX mounted after warm-up the sun compiled a second
-program on first draw (about one run in four). The sun is now built in that
-state (`godRays.ts`). `tests/e2e/programs.probe.mjs` flies the tour and
+all srgb-linear variants, not light-count variants. The god-ray
+pass is gone (L21), and the sun keeps no-depth-write so the corona blends over
+its disc. `tests/e2e/programs.probe.mjs` flies the tour and
 asserts no program is added.
 
 The ceilings above are deliberately **not** lowered to match. Under headless

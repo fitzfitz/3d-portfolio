@@ -194,14 +194,14 @@ export default async function run() {
     checks.check("a shooting star appears within 30s", meteorResult.ok,
       meteorResult.error ? `evaluate failed repeatedly: ${meteorResult.error.message}` : "");
 
-    // God rays: capture-only. Proving "the sun dims when a planet crosses it"
+    // Sun glare: capture-only. Proving "the glare dims when a planet crosses the sun"
     // needs a contrived pose and luminance thresholds that would be flaky;
     // the plan downgraded this to a human-judged capture (QA checklist §2).
     try {
-      await page.screenshot({ path: `${OUT}/sky-godrays-open.png` });
-      checks.note("god-ray occlusion", `captured ${OUT}/sky-godrays-open.png — judge in QA checklist`);
+      await page.screenshot({ path: `${OUT}/sky-glare-open.png` });
+      checks.note("sun glare", `captured ${OUT}/sky-glare-open.png — judge in QA checklist`);
     } catch (e) {
-      checks.check("god-ray occlusion capture", false, `screenshot failed: ${e.message}`);
+      checks.check("sun glare capture", false, `screenshot failed: ${e.message}`);
     }
   });
 }

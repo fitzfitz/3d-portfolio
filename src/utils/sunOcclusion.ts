@@ -7,10 +7,9 @@ export interface Occluder extends Point { r: number }
  * Fraction of the sun's disc left uncovered by `bodies`, as seen from `cam`:
  * 1 is a clear sun, 0 fully hidden.
  *
- * PostFX scales the god rays by this. GodRays' own depth-tested light pass let
- * the sun's disc show straight through a planet in front of it (it did on main
- * before planets grew, too), so occlusion is decided analytically here — the
- * same approach the lens flare already takes in Sun.tsx.
+ * Sun.tsx scales the lens glare and flare ghosts by this. Occlusion is decided
+ * analytically here rather than by a depth test, which would let the sun's
+ * disc show straight through a planet in front of it.
  *
  * Works in angles: each body covers a disc of angular radius asin(r/d). Partial
  * cover is a linear ramp across the sun's width, and a body smaller than the

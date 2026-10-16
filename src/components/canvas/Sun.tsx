@@ -1,14 +1,15 @@
-import { useRef, useMemo, useCallback, useEffect } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
 import { flareLevel } from "../../utils/worldEvents";
 import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
-import { GOD_RAYS_SOURCE_FLAGS } from "./godRays";
+import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
+import { glareLevels } from "../../utils/sunGlare";
 
 // Photosphere: boiling granulation cells and limb darkening, in HDR so
-// bloom and the god-ray pass keep their punch. Replaces a flat
+// bloom keeps its punch. Replaces a flat
 // MeshStandardMaterial ball.
 const surfaceVertex = /* glsl */ `
   varying vec3 vPos;
@@ -88,15 +89,11 @@ const coronaFragment = /* glsl */ `
   }
 `;
 
-interface SunProps {
-  onSunReady: (mesh: THREE.Mesh) => void;
-}
-
-/** SUN_COLLIDER (data/asteroids.ts) and PostFX's god-ray occlusion track it. */
+/** SUN_COLLIDER (data/asteroids.ts) and the glare's occlusion test track it. */
 const CORE_R = SUN_RADIUS;
 const CORONA_SIZE = 52;
 
-export default function Sun({ onSunReady }: SunProps) {
+export default function Sun() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const coronaRef = useRef<THREE.Mesh>(null);
 
@@ -105,9 +102,10 @@ export default function Sun({ onSunReady }: SunProps) {
       uniforms: { uTime: { value: 0 }, uHeat: { value: 1 } },
       vertexShader: surfaceVertex,
       fragmentShader: surfaceFragment,
-      // The GodRays pass would set these on mount; set them here so warm-up
-      // compiles the variant that is drawn (godRays.ts).
-      ...GOD_RAYS_SOURCE_FLAGS,
+      // The corona billboard blends across the disc, so the core draws in the
+      // transparent pass without writing depth.
+      transparent: true,
+      depthWrite: false,
     }),
     []
   );
@@ -124,17 +122,10 @@ export default function Sun({ onSunReady }: SunProps) {
   );
   useEffect(() => () => { surfaceMaterial.dispose(); coronaMaterial.dispose(); }, [surfaceMaterial, coronaMaterial]);
 
-  // Callback ref: fires once when the core mesh mounts (feeds the GodRays pass).
-  const coreRef = useCallback(
-    (mesh: THREE.Mesh | null) => { if (mesh) onSunReady(mesh); },
-    [onSunReady]
-  );
-
   useFrame((state) => {
     const t = ambientTime(state.clock.getElapsedTime());
-    // Breathing: hotter/cooler over ~7s. Drives brightness, not scale — the
-    // GodRays pass samples this mesh's silhouette, so a pulsing silhouette
-    // would make the rays throb.
+    // Breathing: hotter/cooler over ~7s. Drives brightness, not scale, so the
+    // disc's silhouette stays fixed.
     surfaceMaterial.uniforms.uTime.value = t;
     // A world-event flare swells the heat and the corona (spec: slow, two peaks 6s apart).
     const flare = flareLevel(worldEventElapsed("flare"));
@@ -146,8 +137,7 @@ export default function Sun({ onSunReady }: SunProps) {
 
   return (
     <group position={[0, 0, 0]}>
-      {/* Core (this mesh feeds the GodRays pass) */}
-      <mesh ref={coreRef} material={surfaceMaterial}>
+      <mesh material={surfaceMaterial}>
         <sphereGeometry args={[CORE_R, 64, 64]} />
       </mesh>
 
@@ -163,10 +153,12 @@ export default function Sun({ onSunReady }: SunProps) {
 }
 
 /**
- * Lens flare: a few soft ghosts and a hex iris along the line from the sun
- * through the screen centre, in camera space so they stay screen-locked.
- * Hidden when the sun is behind the camera or off screen, and when a planet
- * disc covers it (analytic ray-sphere test against the live bodies).
+ * Lens effects (L22): a veiling glare and diffraction spikes at the sun's
+ * screen point, plus a few soft ghosts and a hex iris along the line through
+ * the screen centre, in camera space so they stay screen-locked. Hidden when
+ * the sun is behind the camera, and faded by how much of it the planets cover
+ * (sunVisibility, one occlusion model for all of them). No volumetric beams:
+ * vacuum has nothing to scatter light into (L21).
  */
 // Kept small and faint: ghosts land wherever the sun's mirror line crosses
 // the screen, which from a chase camera is usually right over the ship, so
@@ -177,7 +169,7 @@ const FLARE_GHOSTS = [
   { t: 1.0, size: 0.07, color: "#c9a8ff", tex: "ring" as const },
   { t: 1.35, size: 0.035, color: "#8fffe0", tex: "hex" as const },
 ];
-function flareTexture(kind: "soft" | "hex" | "ring"): THREE.CanvasTexture {
+function flareTexture(kind: "soft" | "hex" | "ring" | "spikes"): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const ctx = c.getContext("2d");
@@ -194,6 +186,19 @@ function flareTexture(kind: "soft" | "hex" | "ring"): THREE.CanvasTexture {
       const g = ctx.createRadialGradient(0, 0, 30, 0, 0, 62);
       g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.7, "rgba(255,255,255,0.35)"); g.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = g; ctx.fillRect(-64, -64, 128, 128);
+    } else if (kind === "spikes") {
+      // Six thin rays (three lines through the centre) fading outward.
+      for (let i = 0; i < 3; i++) {
+        ctx.save();
+        ctx.rotate((i / 3) * Math.PI + Math.PI / 6);
+        const g = ctx.createLinearGradient(-62, 0, 62, 0);
+        g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.5, "rgba(255,255,255,0.9)"); g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g; ctx.fillRect(-62, -1.2, 124, 2.4);
+        ctx.restore();
+      }
+      const core = ctx.createRadialGradient(0, 0, 0, 0, 0, 14);
+      core.addColorStop(0, "rgba(255,255,255,0.6)"); core.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = core; ctx.fillRect(-64, -64, 128, 128);
     } else {
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 62);
       g.addColorStop(0, "rgba(255,255,255,0.45)"); g.addColorStop(1, "rgba(255,255,255,0)");
@@ -205,15 +210,17 @@ function flareTexture(kind: "soft" | "hex" | "ring"): THREE.CanvasTexture {
 
 const _sun = new THREE.Vector3();
 const _ndc = new THREE.Vector3();
-const _dir = new THREE.Vector3();
-const _toBody = new THREE.Vector3();
+/** Reused every frame: planet occluders, positions refreshed from `bodies`. */
+const OCCLUDERS: Occluder[] = planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size }));
 const FLARE_DEPTH = 4; // world units in front of the camera
 
 function SunFlare() {
   const groupRef = useRef<THREE.Group>(null);
   const sprites = useRef<(THREE.Sprite | null)[]>([]);
+  const spikesRef = useRef<THREE.Sprite>(null);
+  const veilRef = useRef<THREE.Sprite>(null);
   const vis = useRef(0);
-  const textures = useMemo(() => ({ soft: flareTexture("soft"), hex: flareTexture("hex"), ring: flareTexture("ring") }), []);
+  const textures = useMemo(() => ({ soft: flareTexture("soft"), hex: flareTexture("hex"), ring: flareTexture("ring"), spikes: flareTexture("spikes") }), []);
   useEffect(() => () => Object.values(textures).forEach((t) => t.dispose()), [textures]);
 
   useFrame(({ camera }, delta) => {
@@ -224,30 +231,29 @@ function SunFlare() {
     _ndc.copy(_sun).project(cam);
     const inFront = _ndc.z < 1;
     const onScreen = inFront && Math.abs(_ndc.x) < 1.1 && Math.abs(_ndc.y) < 1.1;
-    // Occlusion by planets: ray from camera toward the sun vs each body sphere.
-    let occluded = false;
-    if (onScreen) {
-      _dir.subVectors(_sun, cam.position);
-      const sunDist = _dir.length();
-      _dir.divideScalar(sunDist);
-      for (const p of planets) {
-        const b = bodies[p.name];
-        _toBody.set(b.x - cam.position.x, b.y - cam.position.y, b.z - cam.position.z);
-        const along = _toBody.dot(_dir);
-        if (along <= 0 || along >= sunDist) continue;
-        const perp2 = _toBody.lengthSq() - along * along;
-        if (perp2 < p.size * p.size) { occluded = true; break; }
-      }
-    }
-    const target = onScreen && !occluded ? 1 - Math.min(1, Math.hypot(_ndc.x, _ndc.y) / 1.4) * 0.6 : 0;
+    // Occlusion by planets: fraction of the sun left uncovered (0..1).
+    planets.forEach((p, i) => {
+      const b = bodies[p.name];
+      OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
+    });
+    const visibility = inFront ? sunVisibility(cam.position, OCCLUDERS, SUN_RADIUS) : 0;
+    const flare = flareLevel(worldEventElapsed("flare"));
+    const glare = glareLevels(_ndc.x, _ndc.y, inFront, visibility, flare);
+    const target = onScreen ? visibility * (1 - Math.min(1, Math.hypot(_ndc.x, _ndc.y) / 1.4) * 0.6) : 0;
     vis.current += (target - vis.current) * (1 - Math.pow(0.001, Math.min(delta, 0.05)));
-    g.visible = vis.current > 0.01;
+    g.visible = vis.current > 0.01 || glare.spikes > 0.005;
     if (!g.visible) return;
     // Place ghosts along the line sun -> centre -> beyond, at FLARE_DEPTH.
     const halfH = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * FLARE_DEPTH;
     const halfW = halfH * cam.aspect;
     g.position.copy(cam.position);
     g.quaternion.copy(cam.quaternion);
+    for (const [sp, size, op] of [[spikesRef.current, 0.45, glare.spikes], [veilRef.current, 1.2, glare.veil]] as const) {
+      if (!sp) continue;
+      sp.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
+      sp.scale.set(size * halfH * 2, size * halfH * 2, 1);
+      (sp.material as THREE.SpriteMaterial).opacity = op;
+    }
     FLARE_GHOSTS.forEach((gh, i) => {
       const s = sprites.current[i];
       if (!s) return;
@@ -262,6 +268,14 @@ function SunFlare() {
 
   return (
     <group ref={groupRef} visible={false}>
+      <sprite ref={spikesRef} renderOrder={10}>
+        <spriteMaterial map={textures.spikes} color="#fff4e0" transparent depthTest={false} depthWrite={false}
+          blending={THREE.AdditiveBlending} />
+      </sprite>
+      <sprite ref={veilRef} renderOrder={10}>
+        <spriteMaterial map={textures.soft} color="#ffd9a0" transparent depthTest={false} depthWrite={false}
+          blending={THREE.AdditiveBlending} />
+      </sprite>
       {FLARE_GHOSTS.map((gh, i) => (
         <sprite key={i} ref={(s) => { sprites.current[i] = s; }} renderOrder={10}>
           <spriteMaterial map={textures[gh.tex]} color={gh.color} transparent depthTest={false} depthWrite={false}

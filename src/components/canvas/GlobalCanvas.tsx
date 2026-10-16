@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useState, useEffect, useLayoutEffect, memo } from "react";
+import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
 import { makeStarMaterial } from "./starLayer";
 import { softSprite } from "./softSprite";
@@ -398,7 +398,6 @@ function GlobalCanvas() {
   // A dossier freezes the loop; so does the shader warm-up (ShaderWarmup).
   const sceneFrozen = useSpaceStore((s) => selectSceneFrozen(s) || s.warmingUp);
   const anomaliesRef = useRef<AnomaliesRef>(null);
-  const [sunMesh, setSunMesh] = useState<THREE.Mesh | null>(null);
   // frameloop="never" means R3F stops driving rAF entirely; the first frame
   // after unfreezing has to be requested explicitly or the canvas holds the
   // stale frame until something else invalidates it.
@@ -504,7 +503,7 @@ function GlobalCanvas() {
           <SpacePlanets />
 
           {/* Central sun core + corona/flare shell */}
-          <Sun onSunReady={setSunMesh} />
+          <Sun />
 
           {/* Scattered Deep Space Asteroids */}
           <Asteroids />
@@ -578,7 +577,7 @@ function GlobalCanvas() {
         {/* Always mounted; low-perf disables it (see PostFX) rather than
             unmounting, which recompiled Bloom/SMAA on every round trip. */}
         <SafeErrorBoundary>
-          <PostFX sunMesh={sunMesh} enabled={!isLowPerf} />
+          <PostFX enabled={!isLowPerf} />
         </SafeErrorBoundary>
       </Canvas>
     </div>
