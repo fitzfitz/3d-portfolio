@@ -47,7 +47,7 @@ const TEXTURE_OPTS = {
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
-const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head", "career_station", "buoy"];
+const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head", "career_station", "buoy", "shipyard"];
 for (const k of MODELS) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }

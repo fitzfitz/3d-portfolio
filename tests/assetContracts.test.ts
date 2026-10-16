@@ -5,11 +5,12 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
 import { STATION_RADII } from "../src/data/careerTrail";
 import { PLAYER_SHIP_SCALE } from "../src/constants";
+import { SHIPYARD_RADII } from "../src/data/shipyard";
 
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -323,6 +324,59 @@ describe("career station (career_station.glb)", () => {
     expect(t).toBeGreaterThanOrEqual(2000);
     expect(t).toBeLessThanOrEqual(6000);
     expect(kb("career_station")).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("shipyard (shipyard.glb)", () => {
+  it("has the two nodes Shipyard.tsx uses and two materials", async () => {
+    const doc = await load("shipyard");
+    expect(nodeNames(doc)).toEqual(["CraneTrolley", "Shipyard"]);
+    expect(materialNames(doc)).toEqual(["HullBaked", "WorkLight"]);
+  });
+
+  it("keeps the crane trolley a separate, unrotated node on the gantry", async () => {
+    // Shipyard.tsx slides the trolley by writing position.x on this node.
+    const t = node(await load("shipyard"), "CraneTrolley");
+    const [x, y, z] = t.getTranslation();
+    expect(Math.abs(x)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(z)).toBeLessThanOrEqual(0.02);
+    expect(y).toBeGreaterThan(1.6);
+    expect(y).toBeLessThan(2.4);
+    expect(t.getRotation()).toEqual([0, 0, 0, 1]);
+  });
+
+  it("parks a jump with the whole ship clear of the hull", async () => {
+    const ship = bounds(await load("spaceship"));
+    const SHIP_HALF_LENGTH = Math.max(Math.abs(ship.min[2]), Math.abs(ship.max[2])) * PLAYER_SHIP_SCALE;
+    const r = maxRadius(await load("shipyard"));
+    expect(r).toBeLessThanOrEqual(5.0);
+    expect(r).toBeGreaterThanOrEqual(4.0);
+    expect(SHIPYARD_RADII.jumpR).toBeGreaterThanOrEqual(r + SHIP_HALF_LENGTH);
+  });
+
+  it("reuses the freighter's material configurations, so it adds no shader program", async () => {
+    const [yard, cargo] = [await load("shipyard"), await load("cargo_ship")];
+    expect(textureSet(yard, "HullBaked")).toEqual(textureSet(cargo, "HullBaked"));
+    expect(textureSet(yard, "WorkLight")).toEqual(textureSet(cargo, "NavRed"));
+    expect(semantics(yard)).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+  });
+
+  it("glows cool white-blue at the work lights", async () => {
+    const m = (await load("shipyard")).getRoot().listMaterials().find((x) => x.getName() === "WorkLight")!;
+    const [r, g, b] = m.getEmissiveFactor();
+    expect(b).toBeGreaterThan(0.9);
+    expect(r).toBeGreaterThan(0.55);
+    expect(r).toBeLessThan(0.9);
+    expect(g).toBeGreaterThan(r);
+  });
+
+  it("costs four draw calls and stays inside its triangle and download budget", async () => {
+    const doc = await load("shipyard");
+    expect(doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())).toHaveLength(4);
+    const t = triangles(doc);
+    expect(t).toBeGreaterThanOrEqual(1500);
+    expect(t).toBeLessThanOrEqual(5000);
+    expect(kb("shipyard")).toBeLessThanOrEqual(600);
   });
 });
 
