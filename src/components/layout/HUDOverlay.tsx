@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
+import { speedKmS, distanceAU } from "../../utils/realUnits";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { DESTINATIONS, afterPlanets, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
@@ -95,7 +96,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (locRef.current)
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       if (velRef.current)
-        velRef.current.textContent = `VELOCITY: ${(flight.speed * 3.7 + Math.random() * 2).toFixed(1)} KM/S`;
+        velRef.current.textContent = `VELOCITY: ${speedKmS(flight.speed).toFixed(0)} KM/S · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
       // Accent while a gravity assist carries the ship past cruise speed.
       if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
@@ -187,7 +188,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {/* Flavour readouts fold away once the pilot is flying (data-quiet). */}
         <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {(COSMIC_BOUNDS * 2 * 100).toLocaleString()} KM</div>
-        <div ref={velRef}>VELOCITY: 0.0 KM/S</div>
+        <div ref={velRef} data-testid="hud-velocity">VELOCITY: 0 KM/S · SUN 0.00 AU</div>
         <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
           DOSSIERS: {visitedDossiers.length}/{planets.length}

@@ -66,7 +66,11 @@ const PLANET_SIZE = 16;
  * (planets, belt, halo, comets) takes its speed from this one value through
  * Kepler's third law, anchored so Ruangrapi (r 115) keeps its 420 s year.
  */
-export const GM_SUN = keplerGM(115, 420);
+/** Scene units per AU: Ruangrapi's orbit radius (docs/UNIVERSE-RULES.md "Units"). */
+export const AU = 115;
+/** Game seconds per Earth year: Ruangrapi's period. */
+export const YEAR_S = 420;
+export const GM_SUN = keplerGM(AU, YEAR_S);
 /** Angular speed (rad/s) of a circular orbit of radius `r` around the sun. */
 export const sunOmega = (r: number): number => keplerOmega(r, GM_SUN);
 

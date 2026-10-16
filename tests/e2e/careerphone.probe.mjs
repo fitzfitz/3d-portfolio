@@ -26,6 +26,17 @@ export default async function run() {
       return op === "1" && m.scan ? m : null;
     }, { timeoutMs: 15_000, intervalMs: 200 });
     checks.check("a buoy card and the touch SCAN button are both up at a phone viewport", shown.ok, JSON.stringify(shown.value));
+    // Fly for a second so the readout shows a live speed, then the (longest) velocity line must fit.
+    await page.keyboard.down("w");
+    await settle(page, 1000);
+    const vel = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="hud-velocity"]');
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return { text: el.textContent, right: b.right, width: window.innerWidth };
+    });
+    await page.keyboard.up("w");
+    checks.check("the HUD velocity line fits the phone screen", !!vel && vel.right <= vel.width, JSON.stringify(vel));
     for (const vp of [{ width: 375, height: 667 }, { width: 390, height: 844 }]) {
       await page.setViewport({ ...page.viewport(), ...vp });
       await settle(page, 600);

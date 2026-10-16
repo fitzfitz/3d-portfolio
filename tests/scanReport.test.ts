@@ -29,3 +29,8 @@ describe("generateScanReport", () => {
     expect(generateScanReport("asteroid_1")).toMatch(/^SCAN\[/);
   });
 });
+
+it("planet scans end with the orbit in real units", () => {
+  expect(generateScanReport("portfolio")).toMatch(/ \/\/ ORBIT 1\.30 AU · YEAR 1\.49 EARTH-YR$/);
+  expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
+});

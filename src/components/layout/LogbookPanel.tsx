@@ -5,6 +5,7 @@ import { LOGBOOK, entryDone, logbookCount, type LogbookProgress } from "../../ut
 import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
+import { ORRERY_NOTE } from "../../utils/realUnits";
 
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
@@ -107,6 +108,8 @@ export default function LogbookPanel() {
           <p id="livesky-desc" className="mt-1 text-white/40">See other pilots flying now. They see your ship, plume and country.</p>
         </>
       )}
+      <div className="text-white/40 mt-3 mb-1">THE UNIVERSE</div>
+      <p className="mt-1 text-white/40" data-testid="logbook-universe-note">{ORRERY_NOTE}</p>
       <div className="mt-3 text-white/30">CLOSE: L / ESC</div>
     </div>
   );
