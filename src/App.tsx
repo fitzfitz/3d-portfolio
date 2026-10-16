@@ -48,8 +48,6 @@ function EngineLoading() {
   );
 }
 
-/** Jump targets in key order (src/data/destinations.ts): each planet's project, then the destination table. */
-const JUMP_IDS = JUMP_TARGETS.map((t) => t.id);
 /** Beacons exist only when an API is configured; read once per page load. */
 const BEACONS_ENABLED = !!beaconApiUrl();
 
@@ -58,7 +56,7 @@ const CAN_FLY = WEBGL_AVAILABLE;
 
 export default function App() {
   useKeyboardInput();
-  useGamepadInput(JUMP_IDS);
+  useGamepadInput();
   useSound();
   useReducedMotion();
   const activeZone = useSpaceStore((s) => s.activeZone);

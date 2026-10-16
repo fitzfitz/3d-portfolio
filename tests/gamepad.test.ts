@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   deadzone, readPadFlight, padFlightChanges, padActions, PAD_NEUTRAL, type PadLike,
 } from "../src/utils/gamepad";
+import { planets } from "../src/constants";
 
 /** A standard-mapping pad at rest: 4 axes, 17 buttons. */
 function pad(over: { axes?: Record<number, number>; buttons?: Record<number, number> } = {}): PadLike {
@@ -92,14 +93,15 @@ describe("padActions", () => {
   it("maps B to close", () => {
     expect(padActions(press(), press(1))).toEqual([{ kind: "close" }]);
   });
-  it("maps the d-pad clockwise from up to the four jump targets", () => {
-    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", index: 0 }]);
-    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", index: 1 }]);
-    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", index: 2 }]);
-    expect(padActions(press(), press(14))).toEqual([{ kind: "jump", index: 3 }]);
+  it("maps the d-pad clockwise from up to the three planets, then the career station, by id", () => {
+    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", id: planets[0].name }]);
+    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", id: planets[1].name }]);
+    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", id: planets[2].name }]);
+    expect(padActions(press(), press(14))).toEqual([{ kind: "jump", id: "career" }]);
   });
-  it("maps Menu to the sixth jump target (the contact portal, after career and the shipyard)", () => {
-    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", index: 5 }]);
+  it("maps Menu to the contact portal and View to the shipyard", () => {
+    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", id: "contact" }]);
+    expect(padActions(press(), press(8))).toEqual([{ kind: "jump", id: "shipyard" }]);
   });
 });
 
