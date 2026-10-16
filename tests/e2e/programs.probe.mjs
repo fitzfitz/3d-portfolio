@@ -1,4 +1,4 @@
-import { withPage, settle, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
 // system must not compile any more. Before ShaderWarmup compiled for the
@@ -11,13 +11,6 @@ import { withPage, settle, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 // otherwise declines to low-perf while assets load, warm-up then rightly
 // compiles for the screen, and the harness's later switch back to PostFX
 // recompiles on top (docs/PERF-BUDGETS.md).
-function lockFullFidelity() {
-  const lock = setInterval(() => {
-    const store = window.__fitz?.store;
-    if (store) { store.getState().setLowPerf(false, true); clearInterval(lock); }
-  }, 5);
-}
-
 export default async function run() {
   return withPage({ label: "programs" }, async (page, checks) => {
     await page.evaluateOnNewDocument(lockFullFidelity);

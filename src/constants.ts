@@ -17,6 +17,9 @@ export interface PlanetData {
 }
 
 export const COSMIC_BOUNDS = 250;
+
+/** The scale the player ship (spaceship.glb) is rendered at; tests/assetContracts.test.ts sizes the career dock standoff from it. */
+export const PLAYER_SHIP_SCALE = 0.35;
 /** Sun core radius, larger than the planets as a star should be. */
 export const SUN_RADIUS = 8;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).

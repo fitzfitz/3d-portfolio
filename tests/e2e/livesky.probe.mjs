@@ -1,19 +1,11 @@
 import {
-  withPage, settle, readStore, sceneQuery, pollUntil, chatterText, toDeepSpace, hold,
+  withPage, settle, lockFullFidelity, readStore, sceneQuery, pollUntil, chatterText, toDeepSpace, hold,
   SCENE_READY_TIMEOUT_MS,
 } from "./harness.mjs";
 
 // Runs in the page before any script (evaluateOnNewDocument). Fakes only
 // fake:// sockets; everything else (Vite's HMR) gets the real WebSocket.
 function installFakeSky() {
-  // Keep the full-fidelity (PostFX) path from the start, as on a real GPU:
-  // headless SwiftShader otherwise declines to low-perf during loading, so
-  // ShaderWarmup rightly compiles for the screen, and the harness's later
-  // switch back to PostFX recompiles anything hidden at load.
-  const lock = setInterval(() => {
-    const store = window.__fitz?.store;
-    if (store) { store.getState().setLowPerf(false, true); clearInterval(lock); }
-  }, 5);
   const sky = { created: 0, sent: [], sockets: [] };
   window.__fakeSky = sky;
   class FakeSocket {
@@ -48,6 +40,8 @@ export default async function run() {
     const absent = await sceneQuery(page, "LiveGhost_0");
     checks.check("without a live sky URL the scene has no ghosts", !absent.found);
 
+    // Full fidelity from the start, as on a real GPU (see lockFullFidelity).
+    await page.evaluateOnNewDocument(lockFullFidelity);
     await page.evaluateOnNewDocument(installFakeSky);
     await page.evaluate(() => {
       localStorage.setItem("fitz-live-sky-dev", "fake://sky");

@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR } from "../../constants";
+import { COSMIC_BOUNDS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -772,7 +772,7 @@ export default function Spaceship() {
 
   return (
     <group ref={shipRef}>
-      <primitive object={scene} scale={0.35} rotation={[0, Math.PI, 0]} position={[0, -0.05, 0]} />
+      <primitive object={scene} scale={PLAYER_SHIP_SCALE} rotation={[0, Math.PI, 0]} position={[0, -0.05, 0]} />
       {/* Positions derived from the GLB's Engine_Emissive clusters: nozzles at
           (±0.582, -0.05, 3.25) in model space -> (±0.204, -0.068, -1.14) here,
           exhaust exit plane at z ≈ -1.23. */}

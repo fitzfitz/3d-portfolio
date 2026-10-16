@@ -221,6 +221,10 @@ export default async function run() {
       return mod.chatterPools.zones[name] ?? [];
     }, orbit.name);
 
+    // The scan report above is a content broadcast: it holds the radio line for
+    // 8 s (src/utils/radioHold.ts) and zone chatter is skipped meanwhile, so
+    // let the hold lapse before testing that a zone entry types its line.
+    await settle(page, 8500);
     await page.evaluate(() => window.__fitz.store.getState().setActiveZone(null));
     await settle(page, 300);
     const beforeChatter = ((await chatterText(page)) ?? "").replace(/^>\s?/, "");

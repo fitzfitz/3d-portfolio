@@ -47,7 +47,7 @@ export const DESTINATIONS: readonly Destination[];
 ```
 
 - `contact` keeps its current position, radii, labels and colour exactly (behaviour unchanged).
-- `career` is the station. The station model has a bounding radius of about 5 units (about 4× the portal), so its radii keep the portal's ratios scaled by 3.85: `zoneR` 8.5, `lockR` 5.8, `retainR` 13, `orbitR` 10. This keeps `orbitR` inside `retainR` as `tests/orbitInvariant.test.ts` requires.
+- `career` is the station. The station model has a bounding radius of about 5 units (about 4× the portal), so its radii keep the portal's ratios scaled by 3.85: `zoneR` 8.5, `lockR` 7.2, `retainR` 13, `orbitR` 10, `jumpR` 6.7 (model radius 5.3 plus the ship's half length 1.2, so a jump parks the whole ship clear of the hull; the original 5.8 / 5.4 left the nose inside it). This keeps `orbitR` inside `retainR` as `tests/orbitInvariant.test.ts` requires.
 - Every consumer that special-cases `"contact"` reads the table instead: zone detection and lock in `SpacePlanets.tsx`, the lock geometry in `Spaceship.tsx`, jump validation in `spaceStore.ts`, `RadarMap.tsx`, `WaypointDriver.tsx`, the HUD sector list, App's `JUMP_TARGETS`, and scannable registration.
 - `RESERVED_ZONE_IDS` becomes the table's ids, so no project can claim `career` either.
 - The contact form modal and the career dossier stay separate components; App picks the modal by `activeZone`.
