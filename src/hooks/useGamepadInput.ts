@@ -5,7 +5,7 @@ import {
   type PadAction, type PadFlight,
 } from "../utils/gamepad";
 
-const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · D-PAD JUMP · MENU CONTACT";
+const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · D-PAD JUMP · VIEW SHIPYARD · MENU CONTACT";
 
 /**
  * First pad reporting the W3C standard layout. Flight sticks, wheels and some
@@ -25,25 +25,20 @@ type PadStore = Pick<SpaceState,
  * One pad button press. Same guards as the keyboard: nothing while the
  * classic résumé or the beacon picker is up (the picker owns its own keys).
  */
-export function runPadAction(a: PadAction, s: PadStore, jumpIds: readonly string[]): void {
+export function runPadAction(a: PadAction, s: PadStore): void {
   if (s.showClassicCV || s.beaconPickerOpen) return;
   if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
   else if (a.kind === "close") { if (s.isOrbitLocked) s.breakOrbit(); }
   else if (a.kind === "logbook") { if (!s.photoMode && !s.isOrbitLocked) s.setLogbookOpen(!s.logbookOpen); }
-  else if (!s.photoMode) {
-    const id = jumpIds[a.index];
-    if (id) s.requestJump(id);
-  }
+  else if (!s.photoMode) s.requestJump(a.id);
 }
 
 /**
  * Polls the first connected gamepad into flight.input — zero React re-renders,
  * like the keyboard. The Gamepad API has no input events, so it is read once
  * per animation frame, and only while a pad is connected.
- *
- * `jumpIds` is the jump-target order the number keys use; the d-pad mirrors it.
  */
-export function useGamepadInput(jumpIds: readonly string[]) {
+export function useGamepadInput() {
   useEffect(() => {
     if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return;
     let raf = 0;
@@ -81,7 +76,7 @@ export function useGamepadInput(jumpIds: readonly string[]) {
         write({ ...PAD_NEUTRAL });
       } else {
         write(readPadFlight(pad));
-        if (buttons) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState(), jumpIds);
+        if (buttons) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState());
       }
       buttons = next;
       raf = requestAnimationFrame(tick);
@@ -117,5 +112,5 @@ export function useGamepadInput(jumpIds: readonly string[]) {
       window.removeEventListener("gamepadconnected", onConnect);
       window.removeEventListener("gamepaddisconnected", onDisconnect);
     };
-  }, [jumpIds]);
+  }, []);
 }

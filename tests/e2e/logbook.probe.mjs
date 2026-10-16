@@ -44,28 +44,14 @@ async function desktop(page, checks) {
   await settle(page, 300);
   checks.check("the HUD button opens the panel", (await readStore(page)).logbookOpen);
 
-  // Plume: gold changes uColor and adds no shader program; a locked one is disabled.
-  const before = await page.evaluate(() => window.__fitz.gl.info.programs.length);
-  await page.click('[data-testid="plume-slingshot"]');
-  await settle(page, 600);
-  const after = await page.evaluate(() => {
-    let hex = null;
-    window.__fitz.scene.traverse((o) => {
-      const u = o.material?.uniforms;
-      if (!hex && u?.uColor && u?.uPower && o.name !== "TractorBeamCone") hex = u.uColor.value.getHexString();
-    });
-    return { hex, programs: window.__fitz.gl.info.programs.length, plume: window.__fitz.store.getState().plumeColor };
-  });
-  checks.check("picking gold sets the plume colour", after.plume === "slingshot" && after.hex === "ffc23d", JSON.stringify(after));
-  checks.check("a plume colour adds no shader program", after.programs === before, `before=${before} after=${after.programs}`);
-  checks.check("a locked plume cannot be picked",
-    await page.evaluate(() => document.querySelector('[data-testid="plume-ring"]')?.disabled === true));
-  // Clicking a swatch must not trap the keyboard (review #4): W still flies, L still closes.
-  await page.keyboard.down("KeyW");
-  await settle(page, 300);
-  const flying = await page.evaluate(() => window.__fitz.flight.input.forward);
-  await page.keyboard.up("KeyW");
-  checks.check("after picking a plume, W still flies the ship", flying === true);
+  // The plume picker moved to the shipyard's Hangar (B2): the logbook points there.
+  const pointer = await page.evaluate(() => ({
+    text: document.querySelector('[data-testid="logbook-plume-pointer"]')?.textContent ?? "",
+    swatches: document.querySelectorAll('[data-testid^="plume-"]').length,
+  }));
+  checks.check("the logbook points to the shipyard for plumes",
+    /ENGINE PLUME: CYAN · CHANGE IT AT THE SHIPYARD \[5\]/.test(pointer.text), pointer.text);
+  checks.check("the logbook no longer holds the plume picker", pointer.swatches === 0, `swatches=${pointer.swatches}`);
   // The sheet header sits above the HUD readouts (review #3).
   const onTop = await page.evaluate(() => {
     const r = document.querySelector('[data-testid="logbook-panel"]').getBoundingClientRect();
@@ -75,7 +61,7 @@ async function desktop(page, checks) {
   checks.check("the open panel's header is not covered by the HUD", onTop);
   await page.keyboard.press("KeyL");
   await settle(page, 300);
-  checks.check("after picking a plume, L still closes the panel", !(await readStore(page)).logbookOpen);
+  checks.check("L still closes the panel", !(await readStore(page)).logbookOpen);
   // A sheet that closes itself on docking leaves focus in the dossier (review #5).
   await page.click('[data-testid="logbook-button"]');
   await settle(page, 300);

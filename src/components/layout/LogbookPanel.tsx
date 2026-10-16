@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Lock, Check, X } from "lucide-react";
 import { useSpaceStore } from "../../store/spaceStore";
-import { LOGBOOK, entryDone, logbookCount, plumeAllowed, type LogbookProgress } from "../../utils/logbook";
-import { PLUME_COLORS, hasPlumeColour } from "../../data/plumeColors";
+import { LOGBOOK, entryDone, logbookCount, type LogbookProgress } from "../../utils/logbook";
+import { PLUME_COLORS } from "../../data/plumeColors";
+import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
 
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
- * listing essentials and flight badges, with the plume picker. Esc closes it;
+ * listing essentials and flight badges, with a pointer to the shipyard's plume picker. Esc closes it;
  * focus moves to its heading on open and back to the opener on close. It
  * closes itself when a dossier opens, photo mode starts or the résumé opens.
  */
@@ -90,25 +91,8 @@ export default function LogbookPanel() {
       <ul className="mb-3">{list("essential")}</ul>
       <div className="text-white/40 mb-1">FLIGHT BADGES</div>
       <ul className="mb-3">{list("badge")}</ul>
-      {/* Buttons, not radio inputs: a focused <input> counts as a text field to
-          the flight keys, so W/A/S/D and L would stop working after a click. */}
-      <div className="text-white/40 mb-1" id="plume-label">ENGINE PLUME</div>
-      <div role="radiogroup" aria-labelledby="plume-label" className="flex flex-wrap gap-2">
-        {Object.entries(PLUME_COLORS).map(([id, c]) => {
-          const allowed = plumeAllowed(id, progress, hasPlumeColour);
-          const badge = LOGBOOK.find((e) => e.id === id);
-          return (
-            <button key={id} type="button" role="radio" aria-checked={plumeColor === id} disabled={!allowed}
-              data-testid={`plume-${id}`}
-              aria-label={allowed ? `${c.name} plume` : `${c.name} plume, locked: earn ${badge?.title ?? id}`}
-              title={allowed ? c.name : `Earn ${badge?.title ?? id} to unlock`}
-              onClick={() => useSpaceStore.getState().setPlumeColor(id)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border outline-none focus-visible:ring-1 focus-visible:ring-primary ${plumeColor === id ? "border-primary/60" : "border-white/10"} ${allowed ? "cursor-pointer" : "opacity-40 cursor-not-allowed"}`}>
-              <span aria-hidden="true" className="w-3 h-3 rounded-full" style={{ backgroundColor: c.hex }} />
-              <span aria-hidden="true">{c.name}</span>
-            </button>
-          );
-        })}
+      <div className="text-white/40" data-testid="logbook-plume-pointer">
+        ENGINE PLUME: {PLUME_COLORS[plumeColor]?.name ?? PLUME_COLORS.stock.name} · CHANGE IT AT THE SHIPYARD [{jumpKey("shipyard")}]
       </div>
       {LIVE_SKY_ENABLED && (
         <>

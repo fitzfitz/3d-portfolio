@@ -201,3 +201,12 @@ which would have dropped compile from the measurement entirely. Measured:
 **10.6-11.8s**. The ceiling is **20,000ms**: ~1.7x the slowest run, under 2x,
 so a doubling fails red. Same caveat as every other number in this file:
 a real-GPU-irrelevant, CI-only guard.
+
+**B2 landmarks measured 2026-10-16 (shipyard, dormant gate, freighter rebake).**
+`shipyard.glb` (4,332 tris, 4 draw calls) and `dormant_gate.glb` (2,440 tris, 2 draw
+calls) joined the scene; both reuse the freighter's HullBaked / NavRed
+configurations, so programs did not move. The freighter rebake (one HullBaked
+primitive instead of seven) removed up to 30 calls with five freighters on
+screen. Measured: deep space 35 / 241,916, close approach 67 / 362,628, modal open
+107 / 418,488, 40 anomalies 36 / 242,940 (calls / triangles; programs 56 and
+lights 4 in every state). Ceilings changed: none.

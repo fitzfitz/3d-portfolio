@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, LANDMARK_KEEP_OUT, crystalAvoidPoints, isRejectedSpawn, randomCrystalPos, respawnTick,
+  CRYSTAL_LANDMARKS, CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, LANDMARK_KEEP_OUT, crystalAvoidPoints, isRejectedSpawn, randomCrystalPos, respawnTick,
 } from "../src/utils/crystalField";
 import { COSMIC_BOUNDS } from "../src/constants";
+import { DESTINATIONS } from "../src/data/destinations";
+import { GATE_POS } from "../src/data/dormantGate";
 
 describe("isRejectedSpawn", () => {
   it("rejects inside the asteroid belt band", () => {
@@ -118,5 +120,17 @@ describe("crystalAvoidPoints", () => {
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT - 1, 156, avoid)).toBe(true);
     expect(isRejectedSpawn(0, 95, -150 + LANDMARK_KEEP_OUT - 1, avoid)).toBe(true);
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT + 1, 156, avoid)).toBe(false);
+  });
+});
+
+describe("CRYSTAL_LANDMARKS", () => {
+  it("covers every destination and the dormant gate", () => {
+    for (const d of DESTINATIONS) expect(CRYSTAL_LANDMARKS).toContain(d.pos);
+    expect(CRYSTAL_LANDMARKS).toContain(GATE_POS);
+  });
+  it("rejects a crystal spawn inside the gate's frame", () => {
+    const avoid = crystalAvoidPoints([], CRYSTAL_LANDMARKS, { x: 0, y: 0, z: 0 });
+    expect(isRejectedSpawn(GATE_POS[0], GATE_POS[1], GATE_POS[2], avoid)).toBe(true);
+    expect(isRejectedSpawn(GATE_POS[0] + 14, GATE_POS[1], GATE_POS[2], avoid)).toBe(true);
   });
 });

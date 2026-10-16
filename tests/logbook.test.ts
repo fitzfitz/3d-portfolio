@@ -65,7 +65,10 @@ describe("isRecordable", () => {
 
 describe("badgeLine", () => {
   it("names the badge and its plume", () => {
-    expect(badgeLine("slingshot", "GOLD")).toBe("LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. PRESS L");
+    expect(badgeLine("slingshot", "GOLD")).toBe("LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]");
+  });
+  it("keeps PRESS L for a badge with no plume", () => {
+    expect(badgeLine("slingshot", null)).toBe("LOGBOOK // SLINGSHOT EARNED. PRESS L");
   });
   it("uses the portal line for the contact essential", () => {
     expect(badgeLine("contact", null)).toBe("LOGBOOK // CONTACT PORTAL REACHED");

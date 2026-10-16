@@ -89,6 +89,29 @@ def bake_color_ao(objects, image_name, size=1024, ao_samples=32):
     return combined
 
 
+def merge_material_slots(ob):
+    """Point every face at the first slot holding its material, then drop every
+    unused slot (material_slot_remove_unused), so the glTF export writes one primitive per material
+    instead of one per original slot (seven HullBaked primitives per
+    freighter before 2026-10-16)."""
+    first = {}
+    remap = {}
+    for i, slot in enumerate(ob.material_slots):
+        if slot.material is None:
+            continue
+        remap[i] = first.setdefault(slot.material.name, i)
+    if all(remap[i] == i for i in remap):
+        return
+    idx = [0] * len(ob.data.polygons)
+    ob.data.polygons.foreach_get("material_index", idx)
+    ob.data.polygons.foreach_set("material_index", [remap.get(i, i) for i in idx])
+    ob.data.update()
+    bpy.ops.object.select_all(action="DESELECT")
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.material_slot_remove_unused()
+
+
 def apply_baked_material(objects, image, name, metallic=0.55, roughness=0.45):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
@@ -110,6 +133,8 @@ def apply_baked_material(objects, image, name, metallic=0.55, roughness=0.45):
                 emissive = m.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value > 0.0
             if not emissive:
                 slot.material = mat
+    for ob in objects:
+        merge_material_slots(ob)
     return mat
 
 

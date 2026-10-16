@@ -24,6 +24,8 @@ import Comets from "./Comets";
 import DataShards from "./DataShards";
 import CareerStation from "./CareerStation";
 import CareerTrail from "./CareerTrail";
+import Shipyard from "./Shipyard";
+import DormantGate from "./DormantGate";
 import RingCourse from "./RingCourse";
 import Beacons from "./Beacons";
 import Ghosts from "./Ghosts";
@@ -598,6 +600,8 @@ function GlobalCanvas() {
           {/* Career station (dock for the Career dossier) and its buoy trail */}
           <CareerStation />
           <CareerTrail />
+          <Shipyard />
+          <DormantGate />
 
           {/* Time-trial ring course from the spawn pad, with a ghost of the best lap */}
           <RingCourse />

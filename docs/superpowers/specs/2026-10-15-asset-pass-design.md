@@ -45,7 +45,7 @@ The v1 generator is already substantial (~930 lines: part categories, seam bump,
 - **Kept names:** materials `HullBaked`, `NavRed`, `NavGreen`, `EngineGlow`; the node `RadarDish` stays a separate, unjoined object (`CargoTraffic.tsx` spins it and pulses the nav and engine materials by name).
 - Same pipeline as v2: colour × AO bake into `HullBaked` at 1024 px; emissive parts are never baked.
 - Nose-to-tail length stays within ±10% of v2, so traffic lanes and swerve radii stay valid.
-- **Budget:** ≤ 12k triangles (v2: 8.4k), GLB ≤ 600 KB (v2: 374 KB).
+- **Budget:** ≤ 8.5k triangles (five fly at once; v2: 8.4k), GLB ≤ 600 KB (v2: 374 KB).
 
 ### 3. Ice moon (`scripts/blender/gen_moon.py`, `Moon_Ice` only)
 

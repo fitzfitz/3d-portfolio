@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
-import { DESTINATIONS, JUMP_TARGETS, afterPlanets, destinationById } from "../../data/destinations";
+import { DESTINATIONS, afterPlanets, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
@@ -154,7 +154,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     completionAnnounced = true;
     const next = destinationById(afterPlanets(useSpaceStore.getState().badges));
     if (!next) return;
-    const key = JUMP_TARGETS.findIndex((t) => t.id === next.id) + 1;
+    const key = jumpKey(next.id);
     useSpaceStore.getState().sendBroadcast(
       `ALL ${planets.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );

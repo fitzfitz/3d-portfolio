@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  deadzone, readPadFlight, padFlightChanges, padActions, PAD_NEUTRAL, type PadLike,
+  deadzone, readPadFlight, padFlightChanges, padActions, PAD_JUMPS, PAD_NEUTRAL, type PadLike,
 } from "../src/utils/gamepad";
+import { planets } from "../src/constants";
+import { JUMP_TARGETS } from "../src/data/destinations";
 
 /** A standard-mapping pad at rest: 4 axes, 17 buttons. */
 function pad(over: { axes?: Record<number, number>; buttons?: Record<number, number> } = {}): PadLike {
@@ -92,14 +94,15 @@ describe("padActions", () => {
   it("maps B to close", () => {
     expect(padActions(press(), press(1))).toEqual([{ kind: "close" }]);
   });
-  it("maps the d-pad clockwise from up to the four jump targets", () => {
-    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", index: 0 }]);
-    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", index: 1 }]);
-    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", index: 2 }]);
-    expect(padActions(press(), press(14))).toEqual([{ kind: "jump", index: 3 }]);
+  it("maps the d-pad clockwise from up to the three planets, then the career station, by id", () => {
+    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", id: planets[0].name }]);
+    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", id: planets[1].name }]);
+    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", id: planets[2].name }]);
+    expect(padActions(press(), press(14))).toEqual([{ kind: "jump", id: "career" }]);
   });
-  it("maps Menu to the fifth jump target (the contact portal once the career station is fourth)", () => {
-    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", index: 4 }]);
+  it("maps Menu to the contact portal and View to the shipyard", () => {
+    expect(padActions(press(), press(9))).toEqual([{ kind: "jump", id: "contact" }]);
+    expect(padActions(press(), press(8))).toEqual([{ kind: "jump", id: "shipyard" }]);
   });
 });
 
@@ -115,5 +118,12 @@ describe("logbook on the pad", () => {
     const press = (...i: number[]) => Array.from({ length: 16 }, (_, k) => i.includes(k));
     expect(padActions(press(), press(2))).toEqual([{ kind: "logbook" }]);
     expect(padActions(press(2), press(2))).toEqual([]);
+  });
+});
+
+describe("PAD_JUMPS", () => {
+  it("only names ids that exist in JUMP_TARGETS", () => {
+    const ids = new Set(JUMP_TARGETS.map((t) => t.id));
+    for (const [, id] of PAD_JUMPS) expect(ids.has(id)).toBe(true);
   });
 });

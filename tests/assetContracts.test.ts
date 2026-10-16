@@ -5,11 +5,13 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
 import { STATION_RADII } from "../src/data/careerTrail";
 import { PLAYER_SHIP_SCALE } from "../src/constants";
+import { SHIPYARD_RADII } from "../src/data/shipyard";
+import { GATE_RADIUS, GATE_OPENING_R } from "../src/data/dormantGate";
 
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -132,8 +134,12 @@ describe("hero ship (spaceship.glb)", () => {
 
   it("keeps the v1 footprint (within 5%)", async () => {
     const b = bounds(await load("spaceship"));
-    expect(close(b.min, [-2.704, -0.58, -3.5], 0.14)).toBe(true);
-    expect(close(b.max, [2.704, 0.646, 3.5], 0.14)).toBe(true);
+    const V1_MIN = [-2.704, -0.58, -3.5], V1_MAX = [2.704, 0.646, 3.5];
+    for (let i = 0; i < 3; i++) {
+      const extent = V1_MAX[i] - V1_MIN[i];
+      expect(Math.abs(b.min[i] - V1_MIN[i]), `min[${i}]`).toBeLessThanOrEqual(0.05 * extent);
+      expect(Math.abs(b.max[i] - V1_MAX[i]), `max[${i}]`).toBeLessThanOrEqual(0.05 * extent);
+    }
   });
 
   it("keeps the nozzles where the plumes are drawn", async () => {
@@ -198,17 +204,22 @@ describe("cargo ship (cargo_ship.glb)", () => {
     expect(length).toBeLessThanOrEqual(3.2);
   });
 
-  it("stays inside its triangle and download budget", async () => {
-    expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(12000);
-    expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
-  });
-
   it("stays light enough for five on screen at once", async () => {
     // Up to five freighters fly at once, so each triangle counts five times
     // against the deep-space and modal-open ceilings (docs/PERF-BUDGETS.md);
     // a 10.5k build (bevel segments 3) broke both. Detail comes from parts
     // (truss, ribbed racks, radiators), not from rounder bevels.
     expect(triangles(await load("cargo_ship"))).toBeLessThanOrEqual(8500);
+    expect(kb("cargo_ship")).toBeLessThanOrEqual(600);
+  });
+
+  it("draws its hull in one primitive per material", async () => {
+    // Up to five freighters fly at once: seven HullBaked primitives each
+    // cost 30 extra draw calls against the modal-open ceiling.
+    const prims = (await load("cargo_ship")).getRoot().listMeshes().flatMap((m) => m.listPrimitives());
+    const names = prims.map((p) => p.getMaterial()?.getName());
+    expect(names.filter((n) => n === "HullBaked")).toHaveLength(1);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("keeps the nav lights on opposite sides, red to port", async () => {
@@ -248,7 +259,7 @@ describe("fuel crystal (space_crystal.glb)", () => {
   });
 
   it("is a full cluster, not five plain prisms", async () => {
-    // v1 was 366 triangles; seven shards with stepped tips land around 500-650.
+    // v1 was 366 triangles; six shards with stepped tips land around 500-650.
     expect(triangles(await load("space_crystal"))).toBeGreaterThanOrEqual(450);
   });
 });
@@ -326,6 +337,59 @@ describe("career station (career_station.glb)", () => {
   });
 });
 
+describe("shipyard (shipyard.glb)", () => {
+  it("has the two nodes Shipyard.tsx uses and two materials", async () => {
+    const doc = await load("shipyard");
+    expect(nodeNames(doc)).toEqual(["CraneTrolley", "Shipyard"]);
+    expect(materialNames(doc)).toEqual(["HullBaked", "WorkLight"]);
+  });
+
+  it("keeps the crane trolley a separate, unrotated node on the gantry", async () => {
+    // Shipyard.tsx slides the trolley by writing position.x on this node.
+    const t = node(await load("shipyard"), "CraneTrolley");
+    const [x, y, z] = t.getTranslation();
+    expect(Math.abs(x)).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(z)).toBeLessThanOrEqual(0.02);
+    expect(y).toBeGreaterThan(1.6);
+    expect(y).toBeLessThan(2.4);
+    expect(t.getRotation()).toEqual([0, 0, 0, 1]);
+  });
+
+  it("parks a jump with the whole ship clear of the hull", async () => {
+    const ship = bounds(await load("spaceship"));
+    const SHIP_HALF_LENGTH = Math.max(Math.abs(ship.min[2]), Math.abs(ship.max[2])) * PLAYER_SHIP_SCALE;
+    const r = maxRadius(await load("shipyard"));
+    expect(r).toBeLessThanOrEqual(5.0);
+    expect(r).toBeGreaterThanOrEqual(4.0);
+    expect(SHIPYARD_RADII.jumpR).toBeGreaterThanOrEqual(r + SHIP_HALF_LENGTH);
+  });
+
+  it("reuses the freighter's material configurations, so it adds no shader program", async () => {
+    const [yard, cargo] = [await load("shipyard"), await load("cargo_ship")];
+    expect(textureSet(yard, "HullBaked")).toEqual(textureSet(cargo, "HullBaked"));
+    expect(textureSet(yard, "WorkLight")).toEqual(textureSet(cargo, "NavRed"));
+    expect(semantics(yard)).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+  });
+
+  it("glows cool white-blue at the work lights", async () => {
+    const m = (await load("shipyard")).getRoot().listMaterials().find((x) => x.getName() === "WorkLight")!;
+    const [r, g, b] = m.getEmissiveFactor();
+    expect(b).toBeGreaterThan(0.9);
+    expect(r).toBeGreaterThan(0.55);
+    expect(r).toBeLessThan(0.9);
+    expect(g).toBeGreaterThan(r);
+  });
+
+  it("costs four draw calls and stays inside its triangle and download budget", async () => {
+    const doc = await load("shipyard");
+    expect(doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())).toHaveLength(4);
+    const t = triangles(doc);
+    expect(t).toBeGreaterThanOrEqual(1500);
+    expect(t).toBeLessThanOrEqual(5000);
+    expect(kb("shipyard")).toBeLessThanOrEqual(600);
+  });
+});
+
 describe("career buoy (buoy.glb)", () => {
   it("is one node, one mesh, one primitive, one BuoyGlow material", async () => {
     const root = (await load("buoy")).getRoot();
@@ -359,6 +423,70 @@ describe("career buoy (buoy.glb)", () => {
     expect(t).toBeGreaterThanOrEqual(200);
     expect(t).toBeLessThanOrEqual(400);
     expect(kb("buoy")).toBeLessThanOrEqual(40);
+  });
+});
+
+describe("dormant gate (dormant_gate.glb)", () => {
+  it("is one node with a stone and a seam material: two draw calls", async () => {
+    const doc = await load("dormant_gate");
+    expect(nodeNames(doc)).toEqual(["DormantGate"]);
+    expect(materialNames(doc)).toEqual(["GateStone", "GlyphSeam"]);
+    expect(doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())).toHaveLength(2);
+  });
+
+  it("is a frame about GATE_RADIUS across, thin along its axis (+Z)", async () => {
+    const doc = await load("dormant_gate");
+    const r = maxRadius(doc);
+    expect(r).toBeGreaterThanOrEqual(GATE_RADIUS - 1);
+    expect(r).toBeLessThanOrEqual(GATE_RADIUS + 0.5);
+    const b = bounds(doc);
+    expect(b.max[2] - b.min[2]).toBeLessThanOrEqual(2.8);
+    expect(b.max[0] - b.min[0]).toBeGreaterThan(24);
+    expect(b.max[1] - b.min[1]).toBeGreaterThan(24);
+  });
+
+  it("leaves the opening clear out to GATE_OPENING_R", async () => {
+    // No vertex lies within the opening's pass radius of the axis.
+    const doc = await load("dormant_gate");
+    const el: number[] = [];
+    let minAxial = Infinity;
+    for (const n of doc.getRoot().listNodes()) {
+      const mesh = n.getMesh();
+      if (!mesh) continue;
+      const m = n.getWorldMatrix();
+      for (const p of mesh.listPrimitives()) {
+        const pos = p.getAttribute("POSITION")!;
+        for (let i = 0; i < pos.getCount(); i++) {
+          pos.getElement(i, el);
+          const x = m[0] * el[0] + m[4] * el[1] + m[8] * el[2] + m[12];
+          const y = m[1] * el[0] + m[5] * el[1] + m[9] * el[2] + m[13];
+          minAxial = Math.min(minAxial, Math.hypot(x, y));
+        }
+      }
+    }
+    expect(minAxial).toBeGreaterThan(GATE_OPENING_R);
+  });
+
+  it("reuses the freighter's material configurations, so it adds no shader program", async () => {
+    const [gate, cargo] = [await load("dormant_gate"), await load("cargo_ship")];
+    expect(textureSet(gate, "GateStone")).toEqual(textureSet(cargo, "HullBaked"));
+    expect(textureSet(gate, "GlyphSeam")).toEqual(textureSet(cargo, "NavRed"));
+    expect(semantics(gate)).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+  });
+
+  it("glows teal at the seams", async () => {
+    const m = (await load("dormant_gate")).getRoot().listMaterials().find((x) => x.getName() === "GlyphSeam")!;
+    const [r, g, b] = m.getEmissiveFactor();
+    expect(r).toBeLessThan(0.35);
+    expect(g).toBeGreaterThan(0.75);
+    expect(b).toBeGreaterThan(0.6);
+  });
+
+  it("stays inside its triangle and download budget", async () => {
+    const t = triangles(await load("dormant_gate"));
+    expect(t).toBeGreaterThanOrEqual(600);
+    expect(t).toBeLessThanOrEqual(3000);
+    expect(kb("dormant_gate")).toBeLessThanOrEqual(600);
   });
 });
 

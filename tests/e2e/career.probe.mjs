@@ -2,7 +2,7 @@ import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText }
 
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md):
- * key 4 docks at the career station and opens the Career dossier, key 5 still
+ * key 4 docks at the career station and opens the Career dossier, key 6 still
  * reaches the contact portal, the habitat ring turns, flying to a buoy shows
  * its card, scanning one reports it, and none of it compiles a new shader
  * program. Physics waits use pollUntil: each read pumps frames under headless
@@ -101,9 +101,9 @@ export default async function run() {
     await settle(page, 2500);
     checks.check("Esc closes the Career dialog", !(await readStore(page)).isOrbitLocked);
 
-    // [5] Contact still works.
-    await page.keyboard.press("Digit5");
-    checks.check("key 5 jumps to the contact portal and docks", (await dockedAt(page, "contact")).ok);
+    // [6] Contact still works (the shipyard took 5).
+    await page.keyboard.press("Digit6");
+    checks.check("key 6 jumps to the contact portal and docks", (await dockedAt(page, "contact")).ok);
     await settle(page, 800);
     checks.check("the contact portal still opens the contact form",
       await page.evaluate(() => !!document.querySelector('[role="dialog"][aria-label="Contact"]')));

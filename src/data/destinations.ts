@@ -2,6 +2,7 @@ import {
   PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById,
 } from "../constants";
 import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
+import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
 
 /**
  * Places you can jump to and dock at that are not project planets
@@ -12,7 +13,7 @@ import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
  * the waypoint, the HUD sector list, the jump keys and scannables. A new
  * landmark is one row. Table order is key order, after the planets.
  */
-export type DestinationId = "contact" | "career";
+export type DestinationId = "contact" | "career" | "shipyard";
 
 export interface Destination {
   id: DestinationId;
@@ -34,17 +35,29 @@ export interface Destination {
   orbitR: number;
   /** A jump parks the ship this far out: inside lockR so it docks on arrival, outside the model. */
   jumpR: number;
+  /**
+   * Whether the guided waypoint may point here (afterPlanets). The shipyard is
+   * a place to visit, not a step of the recruiter path, and has no logbook
+   * entry, so without this it would capture the waypoint forever.
+   */
+  waypoint: boolean;
 }
 
 export const DESTINATIONS: readonly Destination[] = [
   // Key 4. Radii in careerTrail.ts, next to the placement they were tested with.
   {
     id: "career", label: "CAREER STATION", jumpLabel: "Career", scanLabel: "STATION_CAREER", pos: STATION_POS,
-    color: CAREER_AMBER, ...STATION_RADII,
+    color: CAREER_AMBER, waypoint: true, ...STATION_RADII,
   },
-  // Key 5.
+  // Key 5. Docking opens the Hangar (App.tsx).
+  {
+    id: "shipyard", label: "SHIPYARD", jumpLabel: "Shipyard", scanLabel: "DRYDOCK_01", pos: SHIPYARD_POS,
+    color: SHIPYARD_BLUE, waypoint: false, ...SHIPYARD_RADII,
+  },
+  // Key 6.
   {
     id: "contact", label: "CONTACT PORTAL", jumpLabel: "Contact", scanLabel: "PORTAL_SUN", pos: PORTAL_POS, color: "#ec4899",
+    waypoint: true,
     zoneR: PORTAL_ZONE_R, lockR: PORTAL_LOCK_R, retainR: PORTAL_RETAIN_R, orbitR: PORTAL_ORBIT_R, jumpR: PORTAL_LOCK_R * 0.8,
   },
 ];
@@ -79,12 +92,20 @@ export const JUMP_TARGETS: readonly JumpTarget[] = [
   ...DESTINATIONS.map((d) => ({ id: d.id, label: d.jumpLabel, color: d.color })),
 ];
 
+/** The number key (1-based) that jumps to `id`; 0 if nothing does. */
+export function jumpKey(id: string): number {
+  return JUMP_TARGETS.findIndex((t) => t.id === id) + 1;
+}
+
+const WAYPOINT_ROWS = DESTINATIONS.filter((d) => d.waypoint);
+
 /**
  * Where the waypoint points once every planet dossier is read: the first
- * destination (table order) whose logbook badge is not recorded yet, and the
- * last one (the contact portal) once all are, as it always did.
+ * waypoint destination (table order) whose logbook badge is not recorded
+ * yet, and the last one (the contact portal) once all are. Rows with
+ * `waypoint: false` (the shipyard) are never returned.
  */
 export function afterPlanets(badges: readonly { id: string }[]): DestinationId {
-  const open = DESTINATIONS.find((d) => !badges.some((b) => b.id === d.id));
-  return (open ?? DESTINATIONS[DESTINATIONS.length - 1]).id;
+  const open = WAYPOINT_ROWS.find((d) => !badges.some((b) => b.id === d.id));
+  return (open ?? WAYPOINT_ROWS[WAYPOINT_ROWS.length - 1]).id;
 }

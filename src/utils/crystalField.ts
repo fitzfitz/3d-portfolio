@@ -1,4 +1,6 @@
 import { COSMIC_BOUNDS, LOCK_RETAIN_FACTOR } from "../constants";
+import { DESTINATIONS } from "../data/destinations";
+import { GATE_POS } from "../data/dormantGate";
 
 /** A sphere spawns must stay clear of — a planet, a landmark, or the ship. */
 export interface AvoidPoint { x: number; y: number; z: number; r: number }
@@ -46,11 +48,14 @@ export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoi
 }
 
 /**
- * Keep-out around each landmark (the contact portal, the career station),
+ * Keep-out around each landmark (every destination and the dormant gate, CRYSTAL_LANDMARKS),
  * well outside their lock radii, so collecting a crystal never docks you;
  * and around the ship, so crystals never pop into view.
  */
 export const LANDMARK_KEEP_OUT = 20;
+
+/** Fixed landmarks a crystal spawn keeps LANDMARK_KEEP_OUT from: every destination, and the gate's frame (radius 15). */
+export const CRYSTAL_LANDMARKS: readonly (readonly [number, number, number])[] = [...DESTINATIONS.map((d) => d.pos), GATE_POS];
 const SHIP_KEEP_OUT = 30;
 
 /**

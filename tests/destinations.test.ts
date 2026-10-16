@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterPlanets,
+  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterPlanets, jumpKey,
 } from "../src/data/destinations";
 import { STATION_POS } from "../src/data/careerTrail";
+import { SHIPYARD_POS } from "../src/data/shipyard";
 import { nextWaypoint } from "../src/utils/navigation";
 import { PORTAL_POS, PORTAL_LOCK_R, projects, planets } from "../src/constants";
 
@@ -47,13 +48,51 @@ describe("jump order", () => {
 });
 
 describe("afterPlanets", () => {
-  it("points at the first destination whose essential is not done, then at the last one", () => {
-    expect(DESTINATIONS.length).toBeGreaterThan(1);
-    expect(afterPlanets([])).toBe(DESTINATIONS[0].id);
-    expect(afterPlanets([{ id: "slingshot" }])).toBe(DESTINATIONS[0].id);
-    expect(afterPlanets([{ id: DESTINATIONS[0].id }])).toBe(DESTINATIONS[1].id);
-    expect(afterPlanets([{ id: DESTINATIONS[1].id }])).toBe(DESTINATIONS[0].id);
-    expect(afterPlanets(DESTINATIONS.map((d) => ({ id: d.id })))).toBe(DESTINATIONS[DESTINATIONS.length - 1].id);
+  const WAYPOINT = DESTINATIONS.filter((d) => d.waypoint).map((d) => d.id);
+
+  it("walks the waypoint rows only: career, then contact", () => {
+    expect(WAYPOINT).toEqual(["career", "contact"]);
+    expect(afterPlanets([])).toBe("career");
+    expect(afterPlanets([{ id: "slingshot" }])).toBe("career");
+    expect(afterPlanets([{ id: "career" }])).toBe("contact");
+    expect(afterPlanets([{ id: "contact" }])).toBe("career");
+    expect(afterPlanets([{ id: "career" }, { id: "contact" }])).toBe("contact");
+  });
+
+  it("never points at the shipyard, whatever has been earned", () => {
+    const ids = ["career", "contact", "shipyard", "slingshot", "comet", "ring", "ore", "convoy"];
+    for (let mask = 0; mask < 1 << ids.length; mask++) {
+      const badges = ids.filter((_, i) => mask & (1 << i)).map((id) => ({ id }));
+      expect(afterPlanets(badges)).not.toBe("shipyard");
+    }
+  });
+});
+
+describe("shipyard row", () => {
+  it("sits at the shipyard with the station's dock radii and stays out of the waypoint chain", () => {
+    const s = destinationById("shipyard")!;
+    expect(s).toMatchObject({
+      id: "shipyard", label: "SHIPYARD", jumpLabel: "Shipyard", scanLabel: "DRYDOCK_01",
+      color: "#5b8cff", waypoint: false, zoneR: 8.5, lockR: 7.2, retainR: 13, orbitR: 10, jumpR: 6.7,
+    });
+    expect(s.pos).toBe(SHIPYARD_POS);
+    expect(s.jumpR).toBeLessThan(s.lockR);
+  });
+
+  it("keeps career and contact on the waypoint chain", () => {
+    expect(destinationById("career")!.waypoint).toBe(true);
+    expect(destinationById("contact")!.waypoint).toBe(true);
+  });
+});
+
+describe("jump keys", () => {
+  it("are planets 1-3, career 4, shipyard 5, contact 6", () => {
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...planets.map((p) => p.name), "career", "shipyard", "contact"]);
+    expect(jumpKey("career")).toBe(4);
+    expect(jumpKey("shipyard")).toBe(5);
+    expect(jumpKey("contact")).toBe(6);
+    expect(jumpKey(planets[0].name)).toBe(1);
+    expect(jumpKey("dormant_gate")).toBe(0);
   });
 });
 
@@ -65,12 +104,6 @@ describe("career station row", () => {
       color: "#ffb547", zoneR: 8.5, lockR: 7.2, retainR: 13, orbitR: 10, jumpR: 6.7,
     });
     expect(c.pos).toBe(STATION_POS);
-  });
-
-  it("comes before the contact portal: keys 4 and 5, d-pad left and Menu", () => {
-    const ids = JUMP_TARGETS.map((t) => t.id);
-    expect(ids.indexOf("career")).toBe(3);
-    expect(ids.indexOf("contact")).toBe(4);
   });
 
   it("orders the waypoint: unread planets, then the career station, then the contact portal", () => {

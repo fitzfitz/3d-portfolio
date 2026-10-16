@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { COSMIC_BOUNDS, planets } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
+import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
@@ -167,6 +168,23 @@ export default function RadarMap() {
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+
+      // The dormant gate: an unlabelled grey dot, in range only and never
+      // rim-clamped, so it is found by flying (spec §2). No name, no ring.
+      {
+        const dx = wrapDelta(flight.x, GATE_POS[0], COSMIC_BOUNDS);
+        const dz = wrapDelta(flight.z, GATE_POS[2], COSMIC_BOUNDS);
+        const dy = wrapDelta(flight.y, GATE_POS[1], COSMIC_BOUNDS);
+        if (Math.hypot(dx, dz, dy) <= RANGE) {
+          const { x: sx, up } = worldToRadar(dx, dz, a);
+          ctx.globalAlpha = 0.8;
+          ctx.fillStyle = GATE_RADAR_GREY;
+          ctx.beginPath();
+          ctx.arc(c + sx * scale, c - up * scale, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
 
       // Live pilots (live sky): a hollow diamond in the pilot's plume colour,
       // so it never reads as a planet dot. Rim-clamped and dimmed like distant

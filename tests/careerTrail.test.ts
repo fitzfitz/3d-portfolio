@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { planets, PORTAL_POS, PORTAL_ZONE_R } from "../src/constants";
-import { orbitPosition } from "../src/utils/orbits";
 import { career } from "../src/data/career";
 import { SHARDS } from "../src/data/shards";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../src/data/asteroids";
@@ -8,44 +7,10 @@ import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
+import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
 
 /** Spawn pad (Spaceship.tsx SPAWN, beacons.ts SPAWN). */
 const SPAWN: Vec3 = [0, 0, 18];
-const SAMPLES = 2000;
-/**
- * A planet's reach: its farthest moon is fuxx's ice moon, orbiting at 2.1 ×
- * size with radius 0.0625 × size (SpacePlanets.tsx), so 2.2 × size covers
- * the planet, its proximity zone (1.8 ×) and every moon.
- */
-const MOON_REACH_FACTOR = 2.2;
-const MARGIN = 4;
-
-const d3 = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-
-/** Closest approach of a planet's centre, over a full orbit, to a fixed point (as planetClearance.test.ts). */
-function closestApproach(planet: (typeof planets)[number], p: readonly number[]): number {
-  let min = Infinity;
-  const period = (Math.PI * 2) / planet.orbit.angularSpeed;
-  for (let k = 0; k < SAMPLES; k++) {
-    const q = orbitPosition(planet.orbit, (k / SAMPLES) * period);
-    min = Math.min(min, Math.hypot(q.x - p[0], q.y - p[1], q.z - p[2]));
-  }
-  return min;
-}
-
-/**
- * Distance above or below a tilted asteroid ring (AsteroidBelt.tsx: tilt about
- * X, ring radius rMin..rMax, rocks within ±halfThickness of its plane), or
- * Infinity when the point is outside the ring's radial band.
- */
-function beltClearance(p: readonly number[], tilt: number, rMin: number, rMax: number, halfThickness: number): number {
-  const c = Math.cos(tilt), s = Math.sin(tilt);
-  const ly = c * p[1] + s * p[2];
-  const lz = -s * p[1] + c * p[2];
-  const r = Math.hypot(p[0], lz);
-  return r < rMin - MARGIN || r > rMax + MARGIN ? Infinity : Math.abs(ly) - halfThickness;
-}
-
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
 const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
   { name: "station", pos: STATION_POS, keepOut: STATION_RADII.zoneR },

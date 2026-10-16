@@ -1,6 +1,7 @@
 import { COSMIC_BOUNDS } from "../constants";
 import { toroidalDistance3 } from "./toroidal";
 import type { Vec3 } from "./reactions";
+import { jumpKey } from "../data/destinations";
 
 /**
  * The pilot logbook (docs/superpowers/specs/2026-10-13-pilot-logbook-design.md):
@@ -74,7 +75,7 @@ export function badgeLine(id: string, plumeName: string | null): string {
   const e = LOGBOOK.find((x) => x.id === id);
   const title = (e?.title ?? id).toUpperCase();
   return plumeName
-    ? `LOGBOOK // ${title} EARNED — ${plumeName} PLUME UNLOCKED. PRESS L`
+    ? `LOGBOOK // ${title} EARNED — ${plumeName} PLUME UNLOCKED. DOCK AT THE SHIPYARD [${jumpKey("shipyard")}]`
     : `LOGBOOK // ${title} EARNED. PRESS L`;
 }
 
