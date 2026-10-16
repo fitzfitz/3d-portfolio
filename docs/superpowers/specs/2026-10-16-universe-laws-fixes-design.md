@@ -108,7 +108,7 @@ what Ruangrapi gets. No exposure keeps both the ship and the planets
 readable from there. The owner chose to **move the spawn out**.
 
 - **New spawn: (−50, 62, 69)** (my call, from a numeric search). It sits
-  106 units (0.92 AU) from the sun, so the light is 1.18× Ruangrapi's. It
+  105.4 units (0.92 AU) from the sun, so the light is 1.19× Ruangrapi's. It
   clears every planet's swept orbit by 95 units (the old spawn cleared
   Ruangrapi's by 98), so the first flight is as long as before and nothing
   orbit-locks at load. It is clear of the belt and halo bands, and the
