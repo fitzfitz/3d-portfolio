@@ -78,6 +78,15 @@ describe("seam glow", () => {
     expect(near).toBeGreaterThan(far);
     expect(near).toBeLessThanOrEqual(SEAM_SENSED);
   });
+  it("flickers smoothly and slowly, never a strobe", () => {
+    let lo = Infinity, hi = -Infinity, prev = seamIntensity(0, 5, false);
+    for (let i = 1; i <= 600; i++) {
+      const v = seamIntensity(i / 60, 5, false);
+      expect(Math.abs(v - prev)).toBeLessThanOrEqual(0.05);
+      lo = Math.min(lo, v); hi = Math.max(hi, v); prev = v;
+    }
+    expect(hi - lo).toBeGreaterThan(0.2);
+  });
   it("is deterministic", () => {
     expect(seamIntensity(3.21, 20, false)).toBe(seamIntensity(3.21, 20, false));
   });

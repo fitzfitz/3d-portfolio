@@ -49,10 +49,17 @@ export function gateLine(state: GateRadio, prev: Point, next: Point): string | n
 export const SEAM_IDLE = 0.6;
 export const SEAM_SENSED = 2.4;
 const PULSE_PERIOD_S = 6;
-const FLICKER_HZ = 12;
+/** Slow on purpose: the seams are bright teal on near-black with bloom, so anything near 3 Hz or faster is a strobe. */
+const FLICKER_HZ = 2.5;
 
 /** Cheap deterministic hash in [0, 1). */
 const noise = (n: number) => { const s = Math.sin(n * 12.9898) * 43758.5453; return s - Math.floor(s); };
+
+/** Value noise: hashed lattice values, smoothstep-interpolated, so it is continuous in x. Range [0, 1). */
+const smoothNoise = (x: number) => {
+  const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f);
+  return noise(i) + (noise(i + 1) - noise(i)) * u;
+};
 
 /**
  * The glyph seams' emissive intensity (spec §2): a faint pulse far away, and
@@ -65,6 +72,6 @@ export function seamIntensity(t: number, distance: number, reduced: boolean): nu
   const pulse = SEAM_IDLE * (0.75 + 0.25 * Math.sin((2 * Math.PI * t) / PULSE_PERIOD_S));
   if (distance >= GATE_SENSE_R) return pulse;
   const k = 1 - distance / GATE_SENSE_R;
-  const flicker = 0.6 + 0.4 * noise(Math.floor(t * FLICKER_HZ));
+  const flicker = 0.65 + 0.35 * smoothNoise(t * FLICKER_HZ);
   return Math.min(SEAM_SENSED, pulse + k * (SEAM_SENSED - SEAM_IDLE) * flicker);
 }

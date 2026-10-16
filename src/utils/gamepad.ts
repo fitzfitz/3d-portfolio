@@ -78,7 +78,7 @@ export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook
  * then the career station (keys 1–4). Menu: the contact portal. View: the
  * shipyard.
  */
-const PAD_JUMPS: readonly (readonly [number, string])[] = [
+export const PAD_JUMPS: readonly (readonly [number, string])[] = [
   [DPAD_UP, planets[0].name], [DPAD_RIGHT, planets[1].name], [DPAD_DOWN, planets[2].name], [DPAD_LEFT, "career"],
   [MENU, "contact"], [VIEW, "shipyard"],
 ];

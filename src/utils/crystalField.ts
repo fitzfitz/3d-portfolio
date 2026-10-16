@@ -48,7 +48,7 @@ export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoi
 }
 
 /**
- * Keep-out around each landmark (the contact portal, the career station),
+ * Keep-out around each landmark (every destination and the dormant gate, CRYSTAL_LANDMARKS),
  * well outside their lock radii, so collecting a crystal never docks you;
  * and around the ship, so crystals never pop into view.
  */
