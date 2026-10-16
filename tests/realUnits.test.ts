@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { planets, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/constants";
+import { readFileSync } from "node:fs";
+import { planets, COSMIC_BOUNDS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/constants";
 import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND, speedKmS, distanceAU, earthYears, formatOrbit, SIZE_ENLARGEMENT, ORRERY_NOTE } from "../src/utils/realUnits";
 
 // These are the numbers in docs/UNIVERSE-RULES.md "Units". Change both together.
@@ -29,6 +30,29 @@ describe("real units", () => {
   });
   it("the orrery note states the real enlargement and clock", () => {
     expect(SIZE_ENLARGEMENT).toBe(290);
-    expect(ORRERY_NOTE).toBe("REAL PHYSICS, TWO ORRERY CONVENTIONS: BODIES DRAWN ~290× TRUE SIZE · 1 S ≈ 21 H · MOON SYSTEMS SHOWN AS INSETS");
+    expect(ORRERY_NOTE).toBe("TWO ORRERY CONVENTIONS: PLANETS DRAWN ~290× JUPITER'S SIZE · 1 S ≈ 21 H, MOON SYSTEMS ON THEIR OWN SLOWER CLOCK");
+  });
+});
+
+describe("sector range readout", () => {
+  it("the sector is 4.35 AU across", () => {
+    expect(distanceAU(COSMIC_BOUNDS * 2).toFixed(2)).toBe("4.35");
+  });
+});
+
+describe("docs/UNIVERSE-RULES.md Units table (spec F13)", () => {
+  const doc = readFileSync(new URL("../docs/UNIVERSE-RULES.md", import.meta.url), "utf8");
+  const row = (needle: string) => {
+    const line = doc.split("\n").find((l) => l.startsWith("|") && l.includes(needle));
+    expect(line, `Units table row containing "${needle}"`).toBeDefined();
+    return line!;
+  };
+  it("lists the readouts the code produces", () => {
+    expect(row("20.9 hours")).toContain((SECONDS_PER_GAME_SECOND / 3600).toFixed(1) + " hours");
+    const o = planets[0].orbit;
+    expect(row("29.8 km/s")).toContain(speedKmS(o.radius * o.angularSpeed).toFixed(1) + " km/s");
+    expect(row("187 km/s")).toContain(speedKmS(SHIP_MAX_SPEED).toFixed(0) + " km/s");
+    expect(row("675 km/s")).toContain(speedKmS(SHIP_WARP_SPEED).toFixed(0) + " km/s");
+    expect(row("0.23%")).toContain(((speedKmS(SHIP_WARP_SPEED) / 299_792.458) * 100).toFixed(2) + "%");
   });
 });
