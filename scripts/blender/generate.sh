@@ -22,6 +22,7 @@ mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_buoy.py
 # Shipyard and dormant gate (2026-10-16).
 "$BLENDER" --background --python scripts/blender/gen_shipyard.py
+"$BLENDER" --background --python scripts/blender/gen_dormant_gate.py
 # Planet colour + glow maps (pure Node + sharp, no Blender).
 node scripts/textures/gen_planets.mjs
 npm run assets:optimize
