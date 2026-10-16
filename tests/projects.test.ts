@@ -73,19 +73,21 @@ describe("refactor is behaviour-preserving", () => {
   // here changes, the change was intentional and this test should be updated
   // deliberately — it must not be edited to make an accidental drift pass.
   // 2026-10-12: size 4.8 -> 16, deliberately (the scale pass; see PLANET_SIZE).
+  // 2026-10-16: periods 510/600 s -> ~625.7/857.0 s, deliberately: Kepler's third
+  // law with one sun (docs/UNIVERSE-RULES.md R1). Ruangrapi keeps 420 s.
   it("keeps the orbital elements the engine was tuned against", () => {
     expect(planets).toEqual([
       {
         name: "ruangrapi", color: "#00ff87", size: 16,
-        orbit: { radius: 115, angularSpeed: (Math.PI * 2) / 420, inclination: 0.3491, node: 0, phase: 0 },
+        orbit: { radius: 115, angularSpeed: expect.closeTo((Math.PI * 2) / 420, 12), inclination: 0.3491, node: 0, phase: 0 },
       },
       {
         name: "portfolio", color: "#00f0ff", size: 16,
-        orbit: { radius: 150, angularSpeed: (Math.PI * 2) / 510, inclination: -0.6981, node: 2.0944, phase: 2.1 },
+        orbit: { radius: 150, angularSpeed: expect.closeTo((Math.PI * 2) / 625.6615, 6), inclination: -0.6981, node: 2.0944, phase: 2.1 },
       },
       {
         name: "fuxx", color: "#bd00ff", size: 16,
-        orbit: { radius: 185, angularSpeed: (Math.PI * 2) / 600, inclination: 1.0472, node: 4.1888, phase: 4.2 },
+        orbit: { radius: 185, angularSpeed: expect.closeTo((Math.PI * 2) / 856.9592, 6), inclination: 1.0472, node: 4.1888, phase: 4.2 },
       },
     ]);
   });

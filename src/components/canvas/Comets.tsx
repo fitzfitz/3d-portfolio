@@ -6,6 +6,7 @@ import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt, type CometPass } from "../../utils/worldEvents";
 import { keplerPosition } from "../../utils/kepler";
+import { COMETS } from "../../data/comets";
 import { dustEmitBack } from "../../utils/cometDust";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
@@ -15,10 +16,6 @@ import { assetUrl } from "../../utils/assetUrl";
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
 // tail, curved white dust tail, all activity scaled by heliocentric distance.
-const COMETS = [
-  { a: 140, e: 0.62, periodSeconds: 170, phase: 0, inclination: 0.9, node: 0.6 },   // ~52° diver
-  { a: 155, e: 0.65, periodSeconds: 260, phase: 2.1, inclination: -1.15, node: 2.4 }, // ~66° retrograde-feel
-];
 
 /** Slot COMETS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
 const VISITOR = COMETS.length;
