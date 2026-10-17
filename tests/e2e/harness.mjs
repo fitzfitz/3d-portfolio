@@ -167,7 +167,7 @@ export class Checks {
  * reduce` OS preference before navigation, so the app's own media-query
  * detection sees it on its very first render.
  */
-export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false, expectedErrors = [] }, fn) {
+export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false, expectedErrors = [], initScript = null }, fn) {
   await startServer();
   const browser = await puppeteer.launch({
     executablePath: CHROME,
@@ -183,6 +183,7 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     if (emulateReducedMotion) {
       await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
     }
+    if (initScript) await page.evaluateOnNewDocument(initScript);
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
       if (m.type() !== "error") return;

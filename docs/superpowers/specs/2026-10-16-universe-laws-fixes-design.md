@@ -100,6 +100,47 @@ ship's velocity.
 - Emissive light (city lights, volcanic fissures, the portal) is unaffected,
   since it is the body's own light (L33).
 
+#### F3 revision: the spawn moves out (decided 2026-10-16)
+
+Planning F3 showed that inverse-square light cannot work with the spawn
+where it was: (0, 0, 18) is 0.16 AU from the sun, so the light there is 41×
+what Ruangrapi gets. No exposure keeps both the ship and the planets
+readable from there. The owner chose to **move the spawn out**.
+
+- **New spawn: (−50, 62, 69)** (my call, from a numeric search). It sits
+  105.4 units (0.92 AU) from the sun, so the light is 1.19× Ruangrapi's. It
+  clears every planet's swept orbit by 95 units (the old spawn cleared
+  Ruangrapi's by 98), so the first flight is as long as before and nothing
+  orbit-locks at load. It is clear of the belt and halo bands, and the
+  shipyard is 45 away.
+- **One `SPAWN` constant** replaces the four copies of (0, 0, 18): the
+  ship, the `flight` telemetry mirror, the `isNearSpawn` test and the beacon
+  keep-out. The camera snaps to the ship on the first frame instead of
+  sweeping in from the old pad.
+- **The career buoy trail** is re-laid from the new spawn to the career
+  station. Its first buoy keeps today's 30–45 distance from the spawn.
+- **The ring course stays** in the inner system. Its copy changes from
+  "beside the spawn pad" to the inner belt.
+- **The beacon keep-out** moves with the spawn. The Cloudflare Worker shares
+  `validateDrop`. Until the Worker is redeployed, the server still refuses
+  drops near the old pad (0, 0, 18), which is now inner-belt space: a visitor
+  dropping a beacon within 15 of it gets a server refusal shown as "TOO CLOSE
+  TO THE SPAWN PAD". The client already refuses drops near the new pad
+  itself. Redeploying beacon-api is a post-merge step.
+- **The exposure law** (my call): exposure = clamp((d / AU)^1.5, 0.15, 2.5),
+  where d is the camera's distance from the sun, eased with a half-life of
+  1.5 s and snapped under reduced motion. It is exactly 1 at 1 AU. At Fuxx
+  the net brightness is 0.79 of Ruangrapi's (dimmer but readable). At the
+  edge of the system it is 0.53. In the inner belt near the sun, lit
+  surfaces run brighter, as they should.
+- **Self-luminous bodies.** The sun is so bright that any real exposure
+  leaves it saturated, so its core, corona and glare are compensated by
+  1 / exposure and look as they do today. **Instrument overlays** (orbit
+  rings, zone circles, guide lines) are projections, not light, so they are
+  compensated the same way. Stars, plumes, city lights and other emissives
+  follow exposure. Near the sun the stars fade, as in photographs taken
+  close to the Sun.
+
 ### F4. Shadows and eclipses (L20)
 
 Analytic sphere shadows rather than shadow maps: every lit body is a sphere,

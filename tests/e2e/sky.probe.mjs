@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { withPage, hold, settle, sceneQuery, retryEval, pollUntil } from "./harness.mjs";
 
 const OUT = process.env.SCRATCH ?? "/tmp";
@@ -11,6 +12,221 @@ const nebulaHue = (page) => page.evaluate(() => {
   pts.material.color.getHSL(hsl);
   return hsl.h * 360;
 });
+
+
+// ---- F3 exposure (L19) ----
+// Distances below are the CAMERA's distance from the sun, which is what the
+// exposure follows. The ship faces the sun from direction u, so the chase
+// camera sits behind it along u (4.6 at rest) and 1.8 above in world y.
+const CAM_BACK = 4.6;
+const CAM_UP = 1.8;
+const SUN_R = 8; // Sun.tsx CORE_R (SUN_RADIUS)
+
+/**
+ * A direction from the sun clear of every planet, landmark and their lines of
+ * sight to the sun at all three sample distances. Computed live, since the
+ * planets move.
+ */
+const clearDirection = (page) => page.evaluate(async (dists) => {
+  const { STATION_POS } = await import("/src/data/careerTrail.ts");
+  const { SHIPYARD_POS } = await import("/src/data/shipyard.ts");
+  const { GATE_POS } = await import("/src/data/dormantGate.ts");
+  const obstacles = [
+    ...Object.values(window.__fitz.bodies).map((b) => [b.x, b.y, b.z, 75]),
+    [...STATION_POS, 30], [...SHIPYARD_POS, 30], [...GATE_POS, 30],
+  ];
+  // Distance from p to the segment 0..q.
+  const segDist = (p, q) => {
+    const qq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+    const t = Math.max(0, Math.min(1, (p[0] * q[0] + p[1] * q[1] + p[2] * q[2]) / qq));
+    return Math.hypot(p[0] - q[0] * t, p[1] - q[1] * t, p[2] - q[2] * t);
+  };
+  for (const elev of [0.6, -0.6, 0.45, -0.45]) {
+    for (let k = 0; k < 16; k++) {
+      const az = (k / 16) * Math.PI * 2;
+      const u = [Math.cos(elev) * Math.sin(az), Math.sin(elev), Math.cos(elev) * Math.cos(az)];
+      const ok = dists.every((d) => obstacles.every(([x, y, z, r]) => segDist([x, y, z], [u[0] * (d + 10), u[1] * (d + 10), u[2] * (d + 10)]) > r));
+      if (ok) return u;
+    }
+  }
+  return null;
+}, [40, 115, 230]);
+
+/**
+ * Parks the ship nose-on to the sun so the camera ends `camDist` from it,
+ * puts the camera there directly (the chase camera would otherwise ease in
+ * over many slow SwiftShader frames), then waits until it has settled.
+ * Returns { camDist, exposure, comp, guideComp } read on the same frame.
+ */
+async function parkFacingSun(page, u, camDist) {
+  // Solve |s·u + o| = camDist for the ship's radius s, o = u·CAM_BACK + (0, CAM_UP, 0).
+  const o = [u[0] * CAM_BACK, u[1] * CAM_BACK + CAM_UP, u[2] * CAM_BACK];
+  const uo = u[0] * o[0] + u[1] * o[1] + u[2] * o[2];
+  const oo = o[0] * o[0] + o[1] * o[1] + o[2] * o[2];
+  const s = -uo + Math.sqrt(uo * uo - oo + camDist * camDist);
+  await page.evaluate((u, s, o) => {
+    const d = window.__fitz;
+    d.teleport(u[0] * s, u[1] * s, u[2] * s);
+    d.setAttitude(Math.atan2(-u[0], -u[2]), Math.asin(-u[1]));
+    d.camera.position.set(u[0] * s + o[0], u[1] * s + o[1], u[2] * s + o[2]);
+  }, u, s, o);
+  const read = () => page.evaluate(() => {
+    const d = window.__fitz;
+    let comp = null, guideComp = null;
+    d.scene.traverse((ob) => {
+      const un = ob.material?.uniforms;
+      if (!un?.uExposureComp) return;
+      if (un.uHeat && comp === null) comp = un.uExposureComp.value;
+      if (un.uFadeIn && guideComp === null) guideComp = un.uExposureComp.value;
+    });
+    return { camDist: d.camera.position.length(), exposure: d.gl.toneMappingExposure, comp, guideComp };
+  });
+  // Settled: the camera holds the distance and the (snapped) exposure has caught up.
+  const r = await pollUntil(async () => {
+    const a = await read();
+    if (Math.abs(a.camDist - camDist) > 0.5) return null;
+    await settle(page, 600);
+    const b = await read();
+    return Math.abs(b.camDist - camDist) <= 0.5 && Math.abs(b.exposure - a.exposure) < 1e-3 ? b : null;
+  }, { timeoutMs: 40_000, intervalMs: 400 });
+  return r.value ?? (await read());
+}
+
+/**
+ * Screenshots the canvas with every DOM overlay hidden and measures the sun's
+ * disc: the brightest pixel's luma and the mean luma over the inner 60% of
+ * the projected radius (clear of the limb's anti-aliasing). Decoded in the
+ * page from the PNG, so there is no PNG decoder to maintain here.
+ */
+async function sunDisc(page, shot) {
+  const geom = await page.evaluate((sunR) => {
+    const cam = window.__fitz.camera;
+    const v = new cam.position.constructor(0, 0, 0).project(cam);
+    const H = window.innerHeight, W = window.innerWidth;
+    const dist = cam.position.length();
+    const rpx = (sunR / dist) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
+    return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, rpx, onScreen: v.z < 1 && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 };
+  }, SUN_R);
+  await page.evaluate(() => {
+    const st = document.createElement("style");
+    st.dataset.probe = "hide-hud";
+    st.textContent = "body * { visibility: hidden !important; } canvas { visibility: visible !important; }";
+    document.head.appendChild(st);
+  });
+  await settle(page, 800);
+  const b64 = await page.screenshot({ encoding: "base64" });
+  if (shot) await writeFile(`${OUT}/${shot}.png`, Buffer.from(b64, "base64")).catch(() => {});
+  await page.evaluate(() => document.querySelector('style[data-probe="hide-hud"]')?.remove());
+  const stats = await page.evaluate(async (b64, g) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const scale = img.width / window.innerWidth;
+    const R = g.rpx * scale;
+    const cx = g.x * scale, cy = g.y * scale, r = 0.6 * R;
+    // Corona annulus 1.2-1.6 R, upper half only: the ship sits below the sun.
+    const a0 = 1.2 * R, a1 = 1.6 * R;
+    const x0 = Math.max(0, Math.floor(cx - a1)), y0 = Math.max(0, Math.floor(cy - a1));
+    const x1 = Math.min(c.width, Math.ceil(cx + a1)), y1 = Math.min(c.height, Math.ceil(cy + r));
+    const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+    let max = 0, sum = 0, n = 0, aSum = 0, aN = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const rr = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        const inDisc = rr <= r;
+        const inAnnulus = rr >= a0 && rr <= a1 && y + 0.5 < cy;
+        if (!inDisc && !inAnnulus) continue;
+        const i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
+        const l = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        if (inDisc) {
+          if (l > max) max = l;
+          sum += l; n++;
+        } else {
+          aSum += l; aN++;
+        }
+      }
+    }
+    return { max, mean: n ? sum / n : 0, n, corona: aN ? aSum / aN : 0, coronaN: aN };
+  }, b64, geom);
+  return { ...geom, ...stats };
+}
+
+const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(a, b);
+
+/**
+ * F3 exposure checks for the tier currently rendering. Reduced motion is on,
+ * so the exposure snaps to its target every frame.
+ */
+async function exposureChecks(page, checks, tier) {
+  const lowPerf = tier === "low-perf";
+  const ur = await retryEval(() => clearDirection(page));
+  const u = ur.value;
+  checks.check(`[${tier}] found a view of the sun clear of planets and landmarks`, !!u, u ? `u=${u.map((c) => c.toFixed(2)).join(",")}` : String(ur.error?.message ?? "none clear"));
+  if (!u) return;
+
+  const at115 = await parkFacingSun(page, u, 115);
+  const disc115 = await sunDisc(page, `sky-exposure-${tier}-115`);
+  checks.check(`[${tier}] exposure is 1 at Ruangrapi's distance`, Math.abs(at115.exposure - 1) <= 0.02,
+    `camera ${at115.camDist.toFixed(2)} from the sun, exposure=${at115.exposure.toFixed(4)}`);
+  // The compensation follows the tier: the post pass exposes the sun and the
+  // guides (1 / exposure); in low-perf nothing exposes them (1).
+  const wantComp = (e) => (lowPerf ? 1 : 1 / e);
+  checks.check(`[${tier}] sun and guide compensation is ${lowPerf ? "1" : "1 / exposure"}`,
+    at115.comp !== null && Math.abs(at115.comp - wantComp(at115.exposure)) < 1e-6
+      && at115.guideComp !== null && Math.abs(at115.guideComp - at115.comp) < 1e-12,
+    `comp=${at115.comp} guide=${at115.guideComp} exposure=${at115.exposure}`);
+
+  const at40 = await parkFacingSun(page, u, 40);
+  const disc40 = await sunDisc(page, `sky-exposure-${tier}-40`);
+  const at230 = await parkFacingSun(page, u, 230);
+  const disc230 = await sunDisc(page, `sky-exposure-${tier}-230`);
+  checks.check(`[${tier}] exposure falls near the sun and rises far out`,
+    at40.exposure < 0.3 && at230.exposure > 2,
+    `d=${at40.camDist.toFixed(1)} exposure=${at40.exposure.toFixed(3)}; d=${at230.camDist.toFixed(1)} exposure=${at230.exposure.toFixed(3)}`);
+  checks.check(`[${tier}] sun and guide compensation tracks the exposure far out`,
+    at230.comp !== null && Math.abs(at230.comp - wantComp(at230.exposure)) < 1e-6,
+    `comp=${at230.comp} exposure=${at230.exposure}`);
+
+  // The brightest pixel within 10% (the spec's bar). The disc saturates, so
+  // that alone barely moves without compensation; the mean over the inner
+  // disc is held to 3%. Measured: compensated, the means agree within 1%;
+  // with the compensation forced to 1, the d=40 mean fell 6% (243 -> 228).
+  const fmt = (d) => `max=${d.max.toFixed(1)} mean=${d.mean.toFixed(1)} (${d.n}px, r=${d.rpx.toFixed(0)}px)`;
+  const discsOk = [disc115, disc40, disc230].every((d) => d.onScreen && d.n > 50);
+  checks.check(`[${tier}] the sun's disc looks the same at every exposure`,
+    discsOk && near(disc115.max, disc230.max, 0.1) && near(disc115.mean, disc230.mean, 0.03)
+      && near(disc115.max, disc40.max, 0.1) && near(disc115.mean, disc40.mean, 0.03),
+    `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; d40 ${fmt(disc40)}`);
+
+  // The corona is not saturated, so it catches a wrong compensation either
+  // way: too little at d=40 (exposure 0.2) dims it, too much at d=230
+  // (exposure 2.5) washes it out. Composer tier only: low-perf has no corona.
+  // Calibrated (annulus mean luma / the d=115 value), compensated vs forced to 1:
+  //   d=40:  0.98 vs 0.47, so the bound is ±5%.
+  //   d=230: 1.13 vs 1.48. Even compensated, the far disc is small next to
+  //   the screen-sized veil sprite and bloom kernel, and the sky behind the
+  //   annulus is exposed 2.5×, so the bound is [0.9, 1.25]: ~12 points from
+  //   either reading.
+  if (!lowPerf) {
+    const cfmt = (d) => `${d.corona.toFixed(1)} (${d.coronaN}px)`;
+    const k40 = disc40.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
+    checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
+      discsOk && [disc115, disc40, disc230].every((d) => d.coronaN > 200)
+        && Math.abs(k40 - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
+      `corona annulus 1.2-1.6R mean luma: d115 ${cfmt(disc115)}; d40 ${cfmt(disc40)} (x${k40.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
+  }
+
+  // The ring-course gates are a navigation projection (toneMapped: false):
+  // their material colour carries the same compensation as the guides.
+  const ringComp = await page.evaluate(() => window.__fitz.scene.getObjectByName("RaceRings")?.material.color.r ?? null);
+  checks.check(`[${tier}] the course gates carry the compensation`,
+    ringComp !== null && Math.abs(ringComp - (lowPerf ? 1 : 1 / at230.exposure)) < 1e-6,
+    `ring colour=${ringComp} exposure=${at230.exposure}`);
+}
 
 export default async function run() {
   return withPage({ label: "sky" }, async (page, checks) => {
@@ -202,6 +418,64 @@ export default async function run() {
       checks.note("sun glare", `captured ${OUT}/sky-glare-open.png — judge in QA checklist`);
     } catch (e) {
       checks.check("sun glare capture", false, `screenshot failed: ${e.message}`);
+    }
+
+    // F3 (L19): the camera's exposure, and the sun looking the same at every
+    // exposure, in both tiers. Reduced motion so the exposure snaps.
+    await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(true, true));
+    await settle(page, 1000);
+    await exposureChecks(page, checks, "composer");
+    await page.evaluate(() => window.__fitz.store.getState().setLowPerf(true, true));
+    // The low tier's tone-mapped variants compile on the switch (slow in SwiftShader).
+    await settle(page, 4000);
+    await exposureChecks(page, checks, "low-perf");
+
+    // I2: a jump snaps the camera, and the exposure must be re-metered on that
+    // same frame. Reduced motion is OFF here, so without the re-meter the
+    // exposure would ease from the sun-glare value (~0.2) for seconds after
+    // the cut. Every gl.render records (exposure, camera distance); the first
+    // render with the camera far out must already carry the far-out exposure.
+    {
+      await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(false, true));
+      const ur = await retryEval(() => clearDirection(page));
+      const u = ur.value;
+      checks.check("[cut] found a clear view of the sun", !!u);
+      if (u) {
+        await page.evaluate((u) => window.__fitz.teleport(u[0] * 36, u[1] * 36, u[2] * 36), u);
+        // The chase camera eases to the teleport; wait for exposure to adapt to the glare.
+        const adapted = await pollUntil(async () => {
+          const e = await page.evaluate(() => {
+            const d = window.__fitz;
+            return d.camera.position.length() < 60 ? d.gl.toneMappingExposure : 9;
+          });
+          return e < 0.3 ? e : null;
+        }, { timeoutMs: 60_000, intervalMs: 400 });
+        checks.check("[cut] exposure adapted to the sun's glare before the cut", adapted.ok,
+          `exposure=${adapted.value?.toFixed?.(3)}`);
+        const cut = await page.evaluate(async () => {
+          const d = window.__fitz;
+          const { targetExposure } = await import("/src/utils/sunLight.ts");
+          // The farthest planet from the sun is a real jump target ~185+ out.
+          const far = Object.entries(d.bodies).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
+          const log = [];
+          const orig = d.gl.render.bind(d.gl);
+          d.gl.render = (...a) => {
+            log.push({ e: d.gl.toneMappingExposure, c: d.camera.position.length() });
+            return orig(...a);
+          };
+          d.store.getState().requestJump(far);
+          const t0 = performance.now();
+          while (performance.now() - t0 < 20_000 && !log.some((r) => r.c > 120)) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          d.gl.render = orig;
+          const first = log.find((r) => r.c > 120);
+          return first ? { e: first.e, c: first.c, want: targetExposure(first.c), far } : null;
+        });
+        checks.check("[cut] the first frame after a jump far from the sun is already exposed for it",
+          !!cut && Math.abs(cut.e - cut.want) <= 0.05,
+          cut ? `jump to ${cut.far}: camera ${cut.c.toFixed(1)} from the sun, exposure=${cut.e.toFixed(3)} want ${cut.want.toFixed(3)}` : "no render with the camera far out");
+      }
     }
   });
 }

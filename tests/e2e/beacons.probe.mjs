@@ -108,8 +108,8 @@ export default async function run() {
       { timeoutMs: 8_000, intervalMs: 150 });
     checks.check("a second drop inside the window reports the rate limit", limited.ok);
 
-    // The spawn pad is a keep-out zone, refused before anything is sent.
-    await page.evaluate(() => window.__fitz.teleport(2, 0, 20)); await frames(page, 3);
+    // The spawn pad (src/data/spawn.ts SPAWN = -50, 62, 69) is a keep-out zone, refused before anything is sent.
+    await page.evaluate(() => window.__fitz.teleport(-50 + 2, 62, 69 + 2)); await frames(page, 3);
     await page.keyboard.press("KeyB"); await frames(page, 2);
     await page.keyboard.press("Digit1");
     const refused = await pollUntil(async () => /TOO CLOSE TO THE SPAWN PAD/.test((await readStore(page)).broadcast?.text ?? ""),

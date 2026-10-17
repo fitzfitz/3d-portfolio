@@ -12,6 +12,7 @@ import { raceClock } from "../../utils/raceClock";
 import { soundManager } from "../../audio/soundManager";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { assetUrl } from "../../utils/assetUrl";
+import { exposureCompensation } from "../../utils/sunLight";
 
 const N = RACE_GATES.length;
 const GHOST_KEY = "fitz-race-ghost";
@@ -22,6 +23,10 @@ const FINISH_HOLD_SECONDS = 8;
 
 // Additive and untone-mapped: brightness is the colour's magnitude, and the
 // lit ring clears the bloom threshold while the course outline stays faint.
+// The rings are a navigation projection, like the guide lines (F3): the
+// material colour carries the shared exposure compensation each frame, so
+// the course reads the same near the sun (exposure ~0.2) as at 1 AU. The
+// ghost ship is not compensated; it follows exposure.
 const AMBER = new THREE.Color("#ffb020");
 const SKY = new THREE.Color("#7dd3fc");
 const C_LIT = AMBER.clone().multiplyScalar(2.2);
@@ -51,7 +56,7 @@ function ringColor(race: RaceState, i: number): THREE.Color {
 }
 
 /**
- * Time-trial course: a loop of rings from the spawn pad out through the belt
+ * Time-trial course: a loop of rings from the inner belt near the sun out through the belt
  * and back. Flying through ring 0 starts the clock; the rings must be flown in
  * order; ring 0 again finishes. The best lap is replayed as a ghost ship.
  *
@@ -213,6 +218,13 @@ export default function RingCourse() {
       rings.setMatrixAt(i, dummy.matrix);
     }
     rings.instanceMatrix.needsUpdate = true;
+    // toneMapped: false, so only the composer's pass exposes the rings; the
+    // shared value is 1 / exposure there and 1 in low-perf (sunLight.ts).
+    // A uniform write: no recompile, no allocation.
+    (rings.material as THREE.MeshBasicMaterial).color.setScalar(exposureCompensation.value);
+    // The race ghost is toneMapped: false and additive too: same compensation,
+    // on top of its 0.55 sky wash (allocation-free: SKY is read, not cloned).
+    ghostMaterial.color.copy(SKY).multiplyScalar(0.55 * exposureCompensation.value);
   });
 
   return (

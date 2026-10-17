@@ -34,7 +34,7 @@ export default function DataShards() {
   // Original data-core model (scripts/blender/gen_shard.py): dark faceted
   // crystal in two machined collars with glowing cyan data traces. Replaces
   // a code-drawn octahedron — the last placeholder shape in the scene, and
-  // the first thing a visitor saw beside the ship at spawn.
+  // the first thing a visitor sees beside the spawn pad.
   const { scene } = useGLTF(assetUrl("/models/data_shard.glb"));
   const { geometry, material } = useMemo(() => {
     let src: THREE.Mesh | undefined;

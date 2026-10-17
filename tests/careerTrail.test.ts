@@ -7,10 +7,10 @@ import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
+import { SPAWN } from "../src/data/spawn";
 import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
 
-/** Spawn pad (Spaceship.tsx SPAWN, beacons.ts SPAWN). */
-const SPAWN: Vec3 = [0, 0, 18];
+const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
 const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
   { name: "station", pos: STATION_POS, keepOut: STATION_RADII.zoneR },
@@ -61,12 +61,19 @@ describe("career trail shape", () => {
     }
   });
   it("starts 30-45 units from the spawn point and ends 15-25 from the station", () => {
-    const first = d3(BUOYS[0].pos, SPAWN);
+    const first = d3(BUOYS[0].pos, SPAWN_V);
     const last = d3(BUOYS[BUOYS.length - 1].pos, STATION_POS);
     expect(first).toBeGreaterThanOrEqual(30);
     expect(first).toBeLessThanOrEqual(45);
     expect(last).toBeGreaterThanOrEqual(15);
     expect(last).toBeLessThanOrEqual(25);
+  });
+  it("keeps the whole arc 60+ from the sun and the buoys no more than 50 apart", () => {
+    for (let k = 0; k <= 400; k++) {
+      const p = arcPoint(TRAIL_ARC, k / 400);
+      expect(d3(p, [SUN_COLLIDER.x, SUN_COLLIDER.y, SUN_COLLIDER.z]), `arc t=${k / 400}`).toBeGreaterThanOrEqual(60);
+    }
+    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(50);
   });
   it("puts the station below the orbital plane, as the portal is above it", () => {
     expect(STATION_POS[1]).toBeLessThan(-80);

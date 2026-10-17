@@ -38,3 +38,18 @@ export function moonOrbitSpeed(m: MoonSpec): number {
   const omega = keplerOmega(m.distance * planets[m.planet].size, GM_PLANET);
   return (m.captured ? -PROGRADE : PROGRADE) * omega;
 }
+
+/**
+ * The moon's centre relative to its planet's, at orbit angle `angle` (the
+ * orbit group's `rotation.y`): (distance, 0, 0) turned about Y, then tilted
+ * about X by the inclination, as OrbitingMoon's two groups do. Written into
+ * `out` so frame loops allocate nothing.
+ */
+export function moonOffset<T extends { x: number; y: number; z: number }>(m: MoonSpec, angle: number, out: T): T {
+  const d = m.distance * planets[m.planet].size;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  out.x = d * c;
+  out.y = d * s * Math.sin(m.inclination);
+  out.z = -d * s * Math.cos(m.inclination);
+  return out;
+}

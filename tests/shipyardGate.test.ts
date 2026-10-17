@@ -9,9 +9,10 @@ import {
   GATE_POS, GATE_RADIUS, GATE_OPENING_R, GATE_SENSE_R, GATE_KEEP_OUT, GATE_NORMAL, GATE_LINES,
 } from "../src/data/dormantGate";
 import { HAZE_START } from "../src/utils/edgeHaze";
+import { SPAWN } from "../src/data/spawn";
 import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
 
-const SPAWN: Vec3 = [0, 0, 18];
+const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
   { name: "shipyard", pos: SHIPYARD_POS, keepOut: SHIPYARD_RADII.zoneR },
   { name: "gate", pos: GATE_POS, keepOut: GATE_KEEP_OUT },
@@ -57,7 +58,7 @@ describe("shipyard placement", () => {
   it("sits above the plane, inside the innermost orbit, a short trip from spawn", () => {
     expect(SHIPYARD_POS[1]).toBeGreaterThan(0);
     expect(Math.hypot(...SHIPYARD_POS)).toBeLessThan(Math.min(...planets.map((p) => p.orbit.radius)) - 20);
-    expect(d3(SHIPYARD_POS, SPAWN)).toBeLessThan(100);
+    expect(d3(SHIPYARD_POS, SPAWN_V)).toBeLessThan(100);
   });
   it("docks like the career station (same model radius budget) and is steel blue", () => {
     expect(SHIPYARD_RADII).toEqual({ zoneR: 8.5, lockR: 7.2, retainR: 13, orbitR: 10, jumpR: 6.7 });

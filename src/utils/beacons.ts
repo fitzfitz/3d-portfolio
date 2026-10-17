@@ -1,5 +1,6 @@
 import { BEACON_PHRASES } from "../data/beaconPhrases";
 import { COSMIC_BOUNDS } from "../constants";
+import { SPAWN } from "../data/spawn";
 
 /** A visitor's beacon as the API serves it. */
 export interface Beacon {
@@ -19,11 +20,10 @@ export interface BeaconDrop { x: number; y: number; z: number; phrase: number }
 export const beaconRegistry = new Map<string, Beacon>();
 
 /**
- * No beacons within this distance of the spawn pad (0, 0, 18): every visitor
+ * No beacons within this distance of the spawn pad (src/data/spawn.ts): every visitor
  * starts there, so a pile of them would be the first thing a recruiter sees.
  */
 export const SPAWN_KEEP_OUT = 15;
-const SPAWN = { x: 0, y: 0, z: 18 };
 
 /** Most beacons the scene renders, and the most the API serves. */
 export const BEACON_LIMIT = 40;

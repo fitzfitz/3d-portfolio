@@ -32,7 +32,7 @@ sector list (bottom right) jumps on click, and a waypoint marks the next unread
 dossier. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
-**Time trial.** The amber ring beside the spawn pad starts a lap of nine rings
+**Time trial.** The amber ring in the inner belt, near the sun, starts a lap of nine rings
 out through the asteroid belt and back. Fly them in order and finish through
 the start ring. Par is 0:35, and one tank of warp won't quite cover the loop.
 Your best time is saved in this browser, and later laps race a ghost of that

@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
+import { patchSunShadow } from "./sunShadow";
 
 // One shared wispy alpha texture for all planets, generated once at module load.
 // Stacked soft radial blobs (same trick as the nebula sprite) read as cloud bands.
@@ -41,25 +42,38 @@ interface CloudLayerProps {
   tint?: string;
   /** rotation in rad/s (planet surface speeds are ~0.08-0.16; pass ~1.4x that) */
   speed?: number;
+  /**
+   * The planet's eclipse occluder slot (sunShadow.ts). When set, the clouds
+   * darken in a moon's shadow like the surface under them; without it, lit
+   * clouds drawn over the shadow wash it out. The slot is skipped, as the
+   * surface skips it.
+   */
+  shadowSlot?: number;
 }
 
-export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17 }: CloudLayerProps) {
+export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, shadowSlot }: CloudLayerProps) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((state) => {
     if (ref.current) ref.current.rotation.y = ambientTime(state.clock.getElapsedTime()) * speed;
   });
+  // Built here, not as JSX, so a re-render cannot drop the shadow patch.
+  const material = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(tint),
+      alphaMap: cloudTexture,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+      roughness: 1,
+      metalness: 0,
+    });
+    if (shadowSlot !== undefined) patchSunShadow(m, "fragment", { selfIndex: shadowSlot });
+    return m;
+  }, [tint, shadowSlot]);
+  useEffect(() => () => material.dispose(), [material]);
   return (
-    <mesh name="CloudLayer" ref={ref}>
+    <mesh name="CloudLayer" ref={ref} material={material}>
       <sphereGeometry args={[radius * 1.03, 32, 32]} />
-      <meshStandardMaterial
-        color={tint}
-        alphaMap={cloudTexture}
-        transparent={true}
-        opacity={0.35}
-        depthWrite={false}
-        roughness={1}
-        metalness={0}
-      />
     </mesh>
   );
 }

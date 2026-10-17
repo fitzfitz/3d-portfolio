@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { exposureCompensation } from "../../utils/sunLight";
+import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
 
 /**
  * Material for flat navigation guides drawn on a RingGeometry (orbit paths,
@@ -40,6 +42,7 @@ const FRAG = /* glsl */ `
   uniform float uDashes;
   uniform vec2 uFadeIn;
   uniform vec2 uFadeOut;
+  uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying vec3 vWorld;
   varying float vAngle;
   void main() {
@@ -52,7 +55,8 @@ const FRAG = /* glsl */ `
     }
     float a = uOpacity * fade * dash;
     if (a < 0.003) discard;
-    gl_FragColor = vec4(uColor, a);
+    // An instrument projection, not light (F3): the same at every exposure.
+    gl_FragColor = vec4(uColor * uExposureComp, a);
   }
 `;
 
@@ -70,6 +74,8 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
       uDashes: { value: o.dashes },
       uFadeIn: { value: new THREE.Vector2(...o.fadeIn) },
       uFadeOut: { value: new THREE.Vector2(...(o.fadeOut ?? [1e6, 2e6])) },
+      // The shared object (not a copy), so ExposureDriver's one write reaches it.
+      uExposureComp: exposureCompensation,
     },
   });
 }
@@ -78,15 +84,27 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * Planetary ring: many thin translucent bands with gaps (a Cassini-style
  * division and finer ringlets), brighter toward the middle, faint at both
  * edges. Replaces a single flat emissive band that read as a neon hoop.
+ *
+ * With a shadow slot (F4, docs/UNIVERSE-RULES.md L20) the part of the ring in
+ * its planet's shadow darkens: the shared disc-coverage maths of sunShadow.ts
+ * against that one occluder slot, from 1 in full sun down to RING_NIGHT_FLOOR
+ * in the umbra.
  */
 const RING_VERT = /* glsl */ `
   varying float vR;
+  varying vec3 vWorld;
   void main() {
     vR = length(position.xy);
+    vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const RING_FRAG = /* glsl */ `
+  #ifdef SUN_SHADOW_RING_SLOT
+  ${SUN_SHADOW_CORE_GLSL}
+  uniform float uNightFloor;
+  varying vec3 vWorld;
+  #endif
   uniform vec3 uColor;
   uniform float uInner;
   uniform float uOuter;
@@ -106,22 +124,51 @@ const RING_FRAG = /* glsl */ `
     float division = 1.0 - 0.85 * exp(-dv * dv);
     float a = uOpacity * bands(t) * edge * division;
     vec3 col = mix(uColor, vec3(0.92, 1.0, 0.95), 0.35 * bands(t + 0.3));
+    #ifdef SUN_SHADOW_RING_SLOT
+    // In the planet's shadow only what the planet's surface keeps from
+    // ambient light is left (F4).
+    col *= mix( uNightFloor, 1.0, sunShadowVisibility( vWorld, uOccluders[ SUN_SHADOW_RING_SLOT ] ) );
+    #endif
+    // Lit matter, not an instrument: it follows exposure like its planet (F3).
     gl_FragColor = vec4(col, a);
   }
 `;
 
-export function makePlanetRingMaterial(color: THREE.ColorRepresentation, inner: number, outer: number): THREE.ShaderMaterial {
+/**
+ * How bright the ring stays in its planet's umbra, as a fraction of full sun:
+ * what the planet's own surface keeps there (ambient and emissive light).
+ * Measured, not picked, by reading the same pixels of Ruangrapi's surface with
+ * its moon's umbra on and off (Apple M5, 2026-10-17): 0.087 in the PostFX
+ * tier, whose buffer is linear, and 0.267 in the low-perf tier, which draws
+ * tone-mapped sRGB straight to the screen. The ring's shader writes its colour
+ * raw in both, so it needs the floor of the space it lands in;
+ * SpacePlanets switches it with the tier.
+ */
+export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
+
+/**
+ * `shadowSlot`: the planet's eclipse occluder slot (sunShadow.ts). It is a
+ * compile-time define, so each slot is its own program, compiled at warm-up.
+ */
+export function makePlanetRingMaterial(
+  color: THREE.ColorRepresentation, inner: number, outer: number, shadowSlot?: number,
+): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: RING_VERT,
     fragmentShader: RING_FRAG,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+    defines: shadowSlot === undefined ? {} : { SUN_SHADOW_RING_SLOT: shadowSlot },
     uniforms: {
       uColor: { value: new THREE.Color(color) },
       uInner: { value: inner },
       uOuter: { value: outer },
       uOpacity: { value: 0.55 },
+      // The shared objects, so SpacePlanets' one write per frame reaches the ring.
+      uOccluders: sunShadowUniforms.uOccluders,
+      uOccluderCount: sunShadowUniforms.uOccluderCount,
+      uNightFloor: { value: RING_NIGHT_FLOOR.linear },
     },
   });
 }

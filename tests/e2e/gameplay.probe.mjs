@@ -15,7 +15,7 @@ const warpTo = (page, x, y, z) => page.evaluate((p) => {
 export default async function run() {
   return withPage({ label: "gameplay" }, async (page, checks) => {
     // ---- shard pickup ----
-    // SHARDS[0] sits at [8, 1, 22]; park one unit away and let proximity fire.
+    // SHARDS[0] sits beside the spawn pad (src/data/shards.ts); park one unit away and let proximity fire.
     await page.evaluate(() => localStorage.removeItem("fitz-shards"));
     await page.reload({ waitUntil: "domcontentloaded" });
     // See harness.mjs's SCENE_READY_TIMEOUT_MS: this reload pays the same
@@ -23,15 +23,16 @@ export default async function run() {
     await page.waitForFunction(() => !!window.__fitz?.scene, { timeout: SCENE_READY_TIMEOUT_MS });
     await settle(page, 3500);
 
-    await warpTo(page, 8, 1, 23);
+    const [sx, sy, sz] = await page.evaluate(async () => (await import("/src/data/shards.ts")).SHARDS[0].pos);
+    await warpTo(page, sx, sy, sz + 1);
     await settle(page, 1500);
 
     // Prove the precondition (actually within DataShards.tsx's dist<3 pickup
     // radius) before trusting the pickup outcome below.
-    const distToShard = await page.evaluate(() => {
+    const distToShard = await page.evaluate(([sx, sy, sz]) => {
       const f = window.__fitz.flight;
-      return Math.hypot(f.x - 8, f.y - 1, f.z - 22);
-    });
+      return Math.hypot(f.x - sx, f.y - sy, f.z - sz);
+    }, [sx, sy, sz]);
     checks.check("ship is within the shard pickup radius (precondition)", distToShard < 3,
       `dist=${distToShard.toFixed(2)}`);
 
