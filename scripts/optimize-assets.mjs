@@ -83,4 +83,20 @@ for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
     console.log(`${file}_4k.webp  ${mb(hi)} -> ${mb(`${OUT}/${file}_4k.webp`)}`);
   }
 }
+
+// The new worlds' maps (scripts/textures/gen_worlds.mjs, scripts/blender/gen_world_rock.py),
+// at their authored sizes. `-- w-rock` also takes w-rock_normal. The ring strip
+// is lossless and keeps the colour under transparent texels: its alpha is the
+// rings' optical depth, which lossy alpha would smear.
+for (const file of ["w-rock", "w-rock_normal", "w-ringed", "w-ringed_ring", "w-tilted", "w-blue", "w-dwarf"]) {
+  if (!wanted(file) && !wanted(file.split("_")[0])) continue;
+  const src = [`${SRC}/${file}.jpg`, `${SRC}/${file}.png`].find((p) => existsSync(p));
+  if (!src) {
+    console.log(`skip ${file} (not in assets-src)`);
+    continue;
+  }
+  const opts = file === "w-ringed_ring" ? { lossless: true, exact: true } : { quality: 88 };
+  await sharp(src).webp(opts).toFile(`${OUT}/${file}.webp`);
+  console.log(`${file}.webp  ${mb(src)} -> ${mb(`${OUT}/${file}.webp`)}`);
+}
 console.log("Done.");

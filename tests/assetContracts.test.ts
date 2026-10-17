@@ -491,8 +491,10 @@ describe("dormant gate (dormant_gate.glb)", () => {
 });
 
 describe("public/models", () => {
-  it("stays under 8 MB in total", () => {
+  // 8 → 9 MiB on purpose (2026-10-17): the five new worlds' maps add ~0.6–0.8
+  // MiB and the old cap was 665 KiB from full (spec "Assets", Budget).
+  it("stays under 9 MiB in total", () => {
     const total = readdirSync("public/models").reduce((s, f) => s + statSync(`public/models/${f}`).size, 0);
-    expect(total / 1024 / 1024).toBeLessThan(8);
+    expect(total / 1024 / 1024).toBeLessThan(9);
   });
 });
