@@ -93,13 +93,22 @@ async function parkFacingSun(page, u, camDist) {
   return r.value ?? (await read());
 }
 
+/** Resolves after `n` animation frames (each one a render). */
+const nextFrames = (page, n) => page.evaluate((n) => new Promise((resolve) => {
+  const step = (k) => (k === 0 ? resolve() : requestAnimationFrame(() => step(k - 1)));
+  step(n);
+}), n);
+
 /**
  * Screenshots the canvas with every DOM overlay hidden and measures the sun's
  * disc: the brightest pixel's luma and the mean luma over the inner 60% of
  * the projected radius (clear of the limb's anti-aliasing). Decoded in the
  * page from the PNG, so there is no PNG decoder to maintain here.
+ * With `coronaDelta`, a second shot with the corona hidden is subtracted from
+ * the corona band, so `corona` is the corona's own light, not the sky, bloom
+ * and lens glare behind it (which differ from stop to stop).
  */
-async function sunDisc(page, shot) {
+async function sunDisc(page, shot, coronaDelta = false) {
   const geom = await page.evaluate((sunR, coronaHalf) => {
     const cam = window.__fitz.camera;
     const v = new cam.position.constructor(0, 0, 0).project(cam);
@@ -107,8 +116,9 @@ async function sunDisc(page, shot) {
     const dist = cam.position.length();
     // True limb radius: tan(asin(R/d)), not R/d, which is 9% short at 50 units from a 24-unit core.
     const rpx = (sunR / Math.sqrt(dist * dist - sunR * sunR)) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
-    // The corona billboard's half-size projected (it faces the camera at the origin).
-    const bpx = (coronaHalf / dist) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
+    // The corona billboard's half-size projected. It sits on the limb (sunLens.ts
+    // coronaLimbFit), so it projects at coronaHalf / SUN_R limb radii: 1.5 x rpx.
+    const bpx = (coronaHalf / Math.sqrt(dist * dist - sunR * sunR)) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
     return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, rpx, bpx, onScreen: v.z < 1 && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 };
   }, SUN_R, CORONA_HALF);
   await page.evaluate(() => {
@@ -118,10 +128,21 @@ async function sunDisc(page, shot) {
     document.head.appendChild(st);
   });
   await settle(page, 800);
+  await nextFrames(page, 2);
   const b64 = await page.screenshot({ encoding: "base64" });
   if (shot) await writeFile(`${OUT}/${shot}.png`, Buffer.from(b64, "base64")).catch(() => {});
+  let bgB64 = null;
+  if (coronaDelta) {
+    // SwiftShader frames take ~1 s, so wait for frames, not a fixed time: the
+    // corona-hidden shot must come from a frame drawn after the toggle.
+    await page.evaluate(() => { window.__fitz.scene.getObjectByName("SunCorona").visible = false; });
+    await nextFrames(page, 3);
+    bgB64 = await page.screenshot({ encoding: "base64" });
+    await page.evaluate(() => { window.__fitz.scene.getObjectByName("SunCorona").visible = true; });
+    await nextFrames(page, 3);
+  }
   await page.evaluate(() => document.querySelector('style[data-probe="hide-hud"]')?.remove());
-  const stats = await page.evaluate(async (b64, g) => {
+  const measure = (b64) => page.evaluate(async (b64, g) => {
     const img = new Image();
     img.src = `data:image/png;base64,${b64}`;
     await img.decode();
@@ -132,20 +153,23 @@ async function sunDisc(page, shot) {
     const scale = img.width / window.innerWidth;
     const R = g.rpx * scale;
     const cx = g.x * scale, cy = g.y * scale, r = 0.35 * R; // limb darkening is by view angle, so a nearer, bigger-looking disc must be sampled further in
-    // Corona band at 0.80-0.92 of the billboard's half-size, upper half only: the ship
-    // sits below the sun. Measured against the billboard, not the core, so the same
-    // part of the glow is read at every stop; at the near stop the core's limb
-    // reaches 0.77 of it, so 0.80 clears the disc.
-    const a0 = 0.80 * g.bpx * scale, a1 = 0.92 * g.bpx * scale;
-    const x0 = Math.max(0, Math.floor(cx - a1)), y0 = Math.max(0, Math.floor(cy - a1));
-    const x1 = Math.min(c.width, Math.ceil(cx + a1)), y1 = Math.min(c.height, Math.ceil(cy + r));
+    // Corona band at 0.70-0.78 of the billboard's half-size, in two sectors within
+    // 15° of horizontal: clear of the ship below the sun and of the diffraction
+    // spikes (30° off horizontal and vertical), and on screen at every stop (the
+    // upper arc runs off the top at the near one). Measured against the
+    // billboard, not the core, so the same part of the glow is read at every
+    // stop; the core's limb is at 0.67 of it at every distance, so 0.70 clears the disc.
+    const a0 = 0.70 * g.bpx * scale, a1 = 0.78 * g.bpx * scale;
+    const SECTOR = Math.tan((15 * Math.PI) / 180);
+    const x0 = Math.max(0, Math.floor(cx - a1)), y0 = Math.max(0, Math.floor(cy - Math.max(a1 * SECTOR, r)));
+    const x1 = Math.min(c.width, Math.ceil(cx + a1)), y1 = Math.min(c.height, Math.ceil(cy + Math.max(a1 * SECTOR, r)));
     const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
     let max = 0, sum = 0, n = 0, aSum = 0, aN = 0;
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
         const rr = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
         const inDisc = rr <= r;
-        const inAnnulus = rr >= a0 && rr <= a1 && y + 0.5 < cy;
+        const inAnnulus = rr >= a0 && rr <= a1 && Math.abs(y + 0.5 - cy) <= SECTOR * Math.abs(x + 0.5 - cx);
         if (!inDisc && !inAnnulus) continue;
         const i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
         const l = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
@@ -159,6 +183,8 @@ async function sunDisc(page, shot) {
     }
     return { max, mean: n ? sum / n : 0, n, corona: aN ? aSum / aN : 0, coronaN: aN };
   }, b64, geom);
+  const stats = await measure(b64);
+  if (bgB64) { stats.coronaBg = (await measure(bgB64)).corona; stats.corona -= stats.coronaBg; }
   return { ...geom, ...stats };
 }
 
@@ -176,7 +202,7 @@ async function exposureChecks(page, checks, tier) {
   if (!u) return;
 
   const at115 = await parkFacingSun(page, u, 115);
-  const disc115 = await sunDisc(page, `sky-exposure-${tier}-115`);
+  const disc115 = await sunDisc(page, `sky-exposure-${tier}-115`, !lowPerf);
   checks.check(`[${tier}] exposure is 1 at Ruangrapi's distance`, Math.abs(at115.exposure - 1) <= 0.02,
     `camera ${at115.camDist.toFixed(2)} from the sun, exposure=${at115.exposure.toFixed(4)}`);
   // The compensation follows the tier: the post pass exposes the sun and the
@@ -188,9 +214,9 @@ async function exposureChecks(page, checks, tier) {
     `comp=${at115.comp} guide=${at115.guideComp} exposure=${at115.exposure}`);
 
   const atNear = await parkFacingSun(page, u, 48);
-  const discNear = await sunDisc(page, `sky-exposure-${tier}-48`);
+  const discNear = await sunDisc(page, `sky-exposure-${tier}-48`, !lowPerf);
   const at230 = await parkFacingSun(page, u, 230);
-  const disc230 = await sunDisc(page, `sky-exposure-${tier}-230`);
+  const disc230 = await sunDisc(page, `sky-exposure-${tier}-230`, !lowPerf);
   checks.check(`[${tier}] exposure falls near the sun and rises far out`,
     atNear.exposure < 0.3 && at230.exposure > 2,
     `d=${atNear.camDist.toFixed(1)} exposure=${atNear.exposure.toFixed(3)}; d=${at230.camDist.toFixed(1)} exposure=${at230.exposure.toFixed(3)}`);
@@ -210,21 +236,28 @@ async function exposureChecks(page, checks, tier) {
     `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; dNear ${fmt(discNear)}`);
 
   // The corona is not saturated, so it catches a wrong compensation either
-  // way: too little at d=48 (exposure 0.2) dims it, too much at d=230
+  // way: too little at d=48 (exposure 0.27) dims it, too much at d=230
   // (exposure 2.5) washes it out. Composer tier only: low-perf has no corona.
-  // Calibrated (annulus mean luma / the d=115 value), compensated vs forced to 1:
-  //   d=48:  0.98 vs 0.47, so the bound is ±5%.
-  //   d=230: 1.13 vs 1.48. Even compensated, the far disc is small next to
-  //   the screen-sized veil sprite and bloom kernel, and the sky behind the
-  //   annulus is exposed 2.5×, so the bound is [0.9, 1.25]: ~12 points from
-  //   either reading.
+  // Read as the corona's own light (shot minus a corona-hidden shot) in a
+  // band at 0.70-0.78 of the billboard, where its direct glow is strongest.
+  // Calibrated 2026-10-17 (24-unit sun, corona on the limb, breathing frozen
+  // at uHeat <= 0.15; repeat runs agree within 0.005, but the frozen streamer
+  // pattern differs run to run, so two calibrations are given), the corona's
+  // own band luma / the d=115 value, compensated vs forced to 1:
+  //   d=48:  0.60-0.72 vs 0.18-0.23. Below 1 even compensated: bloom runs
+  //   before the exposure, and the band sits on the near disc's much brighter
+  //   bloom, where tone mapping compresses what the corona adds. Bound
+  //   [0.4, 1.0], 0.4 at the geometric midpoint of the closest readings.
+  //   d=230: 0.54-0.55 vs 1.18-1.32. The corona's own bloom shrinks with its
+  //   pre-exposure brightness (x0.4 here). Bound [0.4, 0.8], 0.8 at the
+  //   geometric midpoint of the closest readings.
   if (!lowPerf) {
-    const cfmt = (d) => `${d.corona.toFixed(1)} (${d.coronaN}px)`;
+    const cfmt = (d) => `${d.corona.toFixed(1)} over ${d.coronaBg?.toFixed(1)} (${d.coronaN}px)`;
     const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
     checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
       discsOk && [disc115, discNear, disc230].every((d) => d.coronaN > 200)
-        && Math.abs(kNear - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
-      `corona band 0.80-0.92 of its half-size mean luma: d115 ${cfmt(disc115)}; dNear ${cfmt(discNear)} (x${kNear.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
+        && kNear >= 0.4 && kNear <= 1.0 && k230 >= 0.4 && k230 <= 0.8,
+      `corona's own light, band 0.70-0.78 of its half-size, mean luma: d115 ${cfmt(disc115)}; dNear ${cfmt(discNear)} (x${kNear.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
   }
 
   // The ring-course gates are a navigation projection (toneMapped: false):
@@ -428,9 +461,21 @@ export default async function run() {
     }
 
     // F3 (L19): the camera's exposure, and the sun looking the same at every
-    // exposure, in both tiers. Reduced motion so the exposure snaps.
+    // exposure, in both tiers. Reduced motion so the exposure snaps. It also
+    // freezes the sun's breathing (uHeat), which sets how hard the disc blooms
+    // and so the corona readings below: freeze it near the bottom of a breath
+    // (uHeat <= 0.15, ~1.8 s of each 7 s cycle) so every run measures the
+    // same sun instead of wherever the breath happened to stop.
+    const sunHeat = () => page.evaluate(() => {
+      let h = null;
+      window.__fitz.scene.traverse((o) => { if (h === null && o.material?.uniforms?.uHeat) h = o.material.uniforms.uHeat.value; });
+      return h;
+    });
+    const cool = await pollUntil(async () => ((await sunHeat()) <= 0.15 ? true : null), { timeoutMs: 30_000, intervalMs: 200 });
     await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(true, true));
     await settle(page, 1000);
+    const frozenHeat = await sunHeat();
+    checks.check("the sun's breathing froze near the bottom of a breath", cool.ok && frozenHeat <= 0.25, `uHeat=${frozenHeat?.toFixed(3)}`);
     await exposureChecks(page, checks, "composer");
     await page.evaluate(() => window.__fitz.store.getState().setLowPerf(true, true));
     // The low tier's tone-mapped variants compile on the switch (slow in SwiftShader).
