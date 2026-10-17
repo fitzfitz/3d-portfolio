@@ -411,3 +411,34 @@ export function lockFullFidelity() {
     if (store) { store.getState().setLowPerf(false, true); clearInterval(lock); }
   }, 5);
 }
+
+/**
+ * Installs an in-page recorder for the edge tests so nothing depends on poll
+ * timing: every animation frame it tracks the radius, the first crossing past
+ * `edge` and the first return inside it (performance.now ms), the maximum
+ * radius with the haze overlay opacity read in that same frame, and whether any
+ * broadcast ever contained "RETURN BURN" (store subscription, so a later
+ * broadcast replacing it cannot hide it). Read it back with readEdgeRecorder.
+ */
+export function installEdgeRecorder(page, edge = 400) {
+  return page.evaluate((E) => {
+    const rec = { maxR: 0, opAtMax: 0, tCross: null, tBack: null, burn: false, stop: false };
+    window.__edgeRec = rec;
+    window.__fitz.store.subscribe((s) => { if (s.broadcast?.text?.includes("RETURN BURN")) rec.burn = true; });
+    const step = () => {
+      const f = window.__fitz.flight;
+      const r = Math.hypot(f.x, f.y, f.z);
+      const now = performance.now();
+      if (r > rec.maxR) {
+        rec.maxR = r;
+        rec.opAtMax = Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0");
+      }
+      if (r > E && rec.tCross === null) rec.tCross = now;
+      if (rec.tCross !== null && rec.tBack === null && r < E) rec.tBack = now;
+      if (!rec.stop) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, edge);
+}
+
+export const readEdgeRecorder = (page) => page.evaluate(() => ({ ...window.__edgeRec }));

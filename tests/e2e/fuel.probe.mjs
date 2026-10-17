@@ -71,8 +71,14 @@ export default async function run() {
       const { DESTINATIONS } = await import("/src/data/destinations.ts");
       const anchors = [...Object.values(window.__fitz.bodies), ...DESTINATIONS.map((d) => ({ x: d.pos[0], y: d.pos[1], z: d.pos[2] }))];
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
-      const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s));
-      return cr ? { x: cr.x, y: cr.y, z: cr.z + dzv } : null;
+      const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s) && Math.hypot(s.x, s.y, s.z) <= 370);
+      if (!cr) return null;
+      // Keep the teleport target inside the system (SYSTEM_RADIUS 400 minus 10),
+      // so it can never land in the edge burn: offset toward the centre if needed.
+      let z = cr.z + dzv;
+      const r = Math.hypot(cr.x, cr.y, z);
+      if (r > 390) z = cr.z - dzv; // |crystal| <= 370 so one of the two offsets is inside 390
+      return { x: cr.x, y: cr.y, z };
     }, dz);
 
     checks.check("tank starts full", (await fuel()) === 100, `fuel=${await fuel()}`);

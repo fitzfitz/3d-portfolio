@@ -1,4 +1,4 @@
-import { withPage, hold, settle, sceneQuery } from "./harness.mjs";
+import { withPage, hold, settle, sceneQuery, installEdgeRecorder, readEdgeRecorder } from "./harness.mjs";
 
 const SYSTEM_RADIUS = 400; // src/constants.ts
 const VALIDATION_RADIUS = 440; // the beacon-api bounds; the burn must never let the ship out this far
@@ -99,44 +99,36 @@ export default async function run() {
       window.__fitz.teleport(380, 0, 0);
       window.__fitz.setAttitude(Math.PI / 2, 0);
     });
-    const radius = () => page.evaluate(() => {
-      const f = window.__fitz.flight;
-      return Math.hypot(f.x, f.y, f.z);
-    });
-    const radioSeen = async () => {
-      const st = await page.evaluate(() => window.__fitz.store.getState().broadcast?.text ?? "");
-      const dom = (await page.evaluate(() => document.querySelector('[data-testid="radio-chatter"]')?.textContent ?? ""));
-      return st.includes("RETURN BURN") || dom.includes("RETURN BURN");
-    };
-    let maxR = 0, burnLine = false, crossed = false;
+    // The in-page recorder (harness.mjs) timestamps the crossing and the return
+    // per animation frame and remembers any "RETURN BURN" broadcast, so none of
+    // this depends on poll timing. No sim clock is exposed, so the spec's
+    // "back inside within 6 simulated seconds" is asserted as <= 18 s wall
+    // (headless runs ~3x slow); the poll ceilings below are only hang guards.
+    await installEdgeRecorder(page, SYSTEM_RADIUS);
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
+    let rec = await readEdgeRecorder(page);
     const t0 = Date.now();
-    while (Date.now() - t0 < 90_000) {
+    while (rec.tCross === null && Date.now() - t0 < 90_000) {
       await settle(page, 200);
-      const r = await radius();
-      maxR = Math.max(maxR, r);
-      burnLine = burnLine || (await radioSeen());
-      if (r > SYSTEM_RADIUS) { crossed = true; break; }
+      rec = await readEdgeRecorder(page);
     }
     await page.keyboard.up("ShiftLeft");
     await page.keyboard.up("KeyW");
-    checks.check("flying out at warp crosses the edge", crossed, `max |p|=${maxR.toFixed(1)}`);
-    const tCross = Date.now();
-    let back = false;
-    while (Date.now() - tCross < 60_000) {
+    checks.check("flying out at warp crosses the edge", rec.tCross !== null, `max |p|=${rec.maxR.toFixed(1)}`);
+    const tWait = Date.now();
+    while (rec.tBack === null && Date.now() - tWait < 60_000) {
       await settle(page, 150);
-      const r = await radius();
-      maxR = Math.max(maxR, r);
-      burnLine = burnLine || (await radioSeen());
-      if (r < SYSTEM_RADIUS && crossed) { back = true; break; }
+      rec = await readEdgeRecorder(page);
     }
-    const backMs = Date.now() - tCross;
-    checks.check("the ship never gets near the beacon-api bounds", maxR < VALIDATION_RADIUS,
-      `max |p|=${maxR.toFixed(1)} < ${VALIDATION_RADIUS}`);
-    checks.check("the ship is returned inside the system", back,
-      back ? `back inside ${SYSTEM_RADIUS} after ${(backMs / 1000).toFixed(1)}s wall` : `still at |p|=${(await radius()).toFixed(1)}`);
-    checks.check("the return-burn radio line was broadcast", burnLine);
+    const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
+    checks.check("the ship never gets near the beacon-api bounds", rec.maxR < VALIDATION_RADIUS,
+      `max |p|=${rec.maxR.toFixed(1)} < ${VALIDATION_RADIUS}`);
+    checks.check("the ship is returned inside the system", rec.tBack !== null,
+      rec.tBack !== null ? `back inside ${SYSTEM_RADIUS}` : "never came back inside");
+    checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18,
+      `${backS.toFixed(1)}s wall`);
+    checks.check("the return-burn radio line was broadcast", rec.burn);
 
     // Radar transform after the burn: bodies telemetry still lands inside the rim.
     const after = await expectedBlips(page);
