@@ -294,7 +294,6 @@ export interface SpaceState {
   isTeleporting: boolean;
   isMuted: boolean;
   cometNear: boolean;
-  altitudeWarn: boolean;
   shardsCollected: number[];
   /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
   broadcast: { id: number; text: string; silent: boolean; at: number } | null;
@@ -341,7 +340,6 @@ export interface SpaceState {
   triggerTeleportFlash: () => void;
   setMuted: (v: boolean) => void;
   setCometNear: (v: boolean) => void;
-  setAltitudeWarn: (v: boolean) => void;
   collectShard: (i: number) => void;
   /**
    * Shows a line on the radio. `silent` lines (cargo hails, flavour such as
@@ -491,7 +489,6 @@ export const useSpaceStore = create<SpaceState>()(
     liveSky: safeGetFlag("fitz-live-sky", true),
     liveSkySeen: safeGetFlag("fitz-live-seen", false),
     cometNear: false,
-    altitudeWarn: false,
     shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
     impactCount: 0,
@@ -600,7 +597,6 @@ export const useSpaceStore = create<SpaceState>()(
       set({ isTeleporting: true });
       teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
     },
-    setAltitudeWarn: (v) => { if (get().altitudeWarn !== v) set({ altitudeWarn: v }); },
     collectShard: (i) => {
       const cur = get().shardsCollected;
       if (cur.includes(i)) return;

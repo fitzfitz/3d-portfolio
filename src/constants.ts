@@ -17,6 +17,11 @@ export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;
 }
 
+/** The playable system: past this radius a return burn pushes the ship back (utils/edgeHaze.ts). */
+export const SYSTEM_RADIUS = 400;
+/** Content (landmarks, beacons) may sit this far out and still validate. */
+export const VALIDATION_RADIUS = SYSTEM_RADIUS + 40;
+/** @deprecated temporary re-export for the toroidal helpers; Task 3 removes it. */
 export const COSMIC_BOUNDS = 250;
 
 /** The scale the player ship (spaceship.glb) is rendered at; tests/assetContracts.test.ts sizes the career dock standoff from it. */

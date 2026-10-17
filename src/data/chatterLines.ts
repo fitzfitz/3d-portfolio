@@ -121,3 +121,6 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Record<stri
     "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",
   ],
 };
+
+/** Broadcast (via ReturnBurnLineGate) while the return burn is pushing the ship back in. */
+export const RETURN_BURN_LINE = "FLIGHT COMPUTER // RETURN BURN — EDGE OF THE SYSTEM";

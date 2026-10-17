@@ -1,6 +1,5 @@
 import { COSMIC_BOUNDS } from "../constants";
 import { wrapDelta } from "./toroidal";
-import { wrapCoord } from "./edgeHaze";
 import type { Vec3 } from "./reactions";
 
 /**
@@ -82,8 +81,7 @@ export function pullStep(p: Vec3, ship: Vec3, shipVel: Vec3, speed: number, dt: 
   const d = Math.hypot(dx, dy, dz);
   if (d < 1e-6) return 0;
   const step = Math.min(d, speed * dt);
-  // Re-wrapped: a pull across the seam must leave the item inside the universe.
-  p.x = wrapCoord(p.x + (dx / d) * step); p.y = wrapCoord(p.y + (dy / d) * step); p.z = wrapCoord(p.z + (dz / d) * step);
+  p.x += (dx / d) * step; p.y += (dy / d) * step; p.z += (dz / d) * step; // no wrap (Task 2 owns the rest)
   return d - step;
 }
 

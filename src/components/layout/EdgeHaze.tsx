@@ -1,14 +1,15 @@
 import { useEffect, useRef } from "react";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { edgeDepth, HAZE_MAX_OPACITY, HazeLineGate } from "../../utils/edgeHaze";
+import { edgeDepth, HAZE_MAX_OPACITY, HazeLineGate, ReturnBurnLineGate } from "../../utils/edgeHaze";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
-import { chatterPools } from "../../data/chatterLines";
+import { chatterPools, RETURN_BURN_LINE } from "../../data/chatterLines";
+import { SYSTEM_RADIUS } from "../../constants";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 
 /**
- * Nebula haze at the edge of the universe (spec §4). The wrap still happens at
- * ±COSMIC_BOUNDS, but by then this is ~92% opaque, and the far side is just as
- * deep, so the jump is never seen: the view clears as the pilot flies inward.
+ * Nebula haze at the edge of the system: thickens radially from HAZE_START to
+ * SYSTEM_RADIUS (~92% opaque there), where the return burn takes over. Also
+ * plays the return-burn radio line.
  *
  * A DOM layer, not a scene object: it costs no shader program, and the rAF
  * loop writes its opacity straight to the element, so flight never renders
@@ -21,6 +22,7 @@ export default function EdgeHaze() {
   useEffect(() => {
     const scheduler = new ChatterScheduler(chatterPools);
     const gate = new HazeLineGate();
+    const burnGate = new ReturnBurnLineGate();
     const lastBroadcast = { id: 0, at: -Infinity };
     let raf = 0;
     const tick = () => {
@@ -32,6 +34,10 @@ export default function EdgeHaze() {
       if (bid !== lastBroadcast.id) { lastBroadcast.id = bid; lastBroadcast.at = now; }
       if (gate.update(depth, now - lastBroadcast.at < RADIO_BUSY_S, s.race.phase === "running")) {
         s.sendBroadcast(scheduler.pick("haze"), { silent: true });
+      }
+      const radioBusy = now - lastBroadcast.at < RADIO_BUSY_S;
+      if (burnGate.update(Math.hypot(flight.x, flight.y, flight.z) > SYSTEM_RADIUS, now, radioBusy)) {
+        s.sendBroadcast(RETURN_BURN_LINE, { silent: true });
       }
       raf = requestAnimationFrame(tick);
     };

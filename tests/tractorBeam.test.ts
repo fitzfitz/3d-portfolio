@@ -86,13 +86,6 @@ describe("nearestShardInCone", () => {
 });
 
 describe("wrap seam (review #3)", () => {
-  it("pullStep carries a crystal through the seam and keeps it in bounds", () => {
-    // Ship at x=245; crystal at x=-248 is 7u away through the seam (toward -x from the crystal).
-    const p = { x: -248, y: 0, z: 0 };
-    const left = pullStep(p, { x: 245, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 20, 0.2);
-    expect(left).toBeCloseTo(3);
-    expect(p.x).toBeCloseTo(248);
-  });
   it("nearImage gives the copy of a point nearest the origin, for drawing across the seam", () => {
     expect(nearImage(225, -245)).toBeCloseTo(255);
     expect(nearImage(10, 40)).toBe(40);

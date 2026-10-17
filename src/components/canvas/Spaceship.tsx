@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
+import { COSMIC_BOUNDS, SYSTEM_RADIUS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -16,7 +16,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
-import { wrapCoord } from "../../utils/edgeHaze";
+import { edgeReturn } from "../../utils/edgeHaze";
 import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
@@ -584,7 +584,8 @@ export default function Spaceship() {
     // Running dry is a graceful coast, not a stop: the warp branch below assigns
     // velocity directly, so when it stops running the ship keeps its 39 u/s and
     // decays through the existing SPACE_DRAG.
-    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0;
+    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0
+      && Math.hypot(pos.current.x, pos.current.y, pos.current.z) <= SYSTEM_RADIUS;
     flight.fuel = stepFuel(flight.fuel, dt, input.boost || fuelDebug.holdRegen, warpActive);
     store.setFuelEmpty(flight.fuel <= 0);
     store.setWarping(warpActive);
@@ -637,14 +638,13 @@ export default function Spaceship() {
     sunDst.x = SUN_WELL.x; sunDst.y = SUN_WELL.y; sunDst.z = SUN_WELL.z;
     sunDst.g = SUN_WELL.g; sunDst.radius = SUN_WELL.radius; sunDst.rMin = SUN_WELL.rMin;
     const g = gravity.current;
+    // The edge: after the caps (so it overrides warp and thrust), before integration.
+    edgeReturn(pos.current, vel.current, dt);
     stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
 
     pos.current.x += (vel.current.x + g.x) * dt;
     pos.current.y += (vel.current.y + g.y) * dt;
     pos.current.z += (vel.current.z + g.z) * dt;
-
-    // Ecliptic-departure advisory (flavor only — nothing pulls the ship back)
-    store.setAltitudeWarn(Math.abs(pos.current.y) > 180);
 
     // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
     for (const c of COLLIDERS) {
@@ -685,17 +685,6 @@ export default function Spaceship() {
     if (sling.whoosh) soundManager.whoosh();
     if (sling.whoosh) store.recordBadge("slingshot"); // logbook: Slingshot
     if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
-
-    // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so
-    // it agrees with utils/toroidal.ts, and silent: it happens inside the edge
-    // haze (EdgeHaze.tsx), so there is no flash, zap or radio line any more.
-    const wx = wrapCoord(pos.current.x), wy = wrapCoord(pos.current.y), wz = wrapCoord(pos.current.z);
-    if (wx !== pos.current.x || wy !== pos.current.y || wz !== pos.current.z) {
-      state.camera.position.x += wx - pos.current.x;
-      state.camera.position.y += wy - pos.current.y;
-      state.camera.position.z += wz - pos.current.z;
-      pos.current.set(wx, wy, wz);
-    }
 
     shipRef.current.position.copy(pos.current);
     // Idle bob. Photo mode (:184) and orbit lock (:241) already bobbed, but free
