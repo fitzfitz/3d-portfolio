@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   flareEnvelope, flareLevel, planCometPass, cometPassAt, convoyOffsetAt, convoyShipOffsetAt, planConvoy,
   COMET_PASS_DIST, COMET_ENTRY_DIST, COMET_SPEED,
-  CONVOY_ORBIT_FACTOR, CONVOY_APPROACH_S, CONVOY_ORBIT_S, CONVOY_HIDE_DIST, CONVOY_SPACING,
+  CONVOY_ORBIT_FACTOR, convoyRadius, CONVOY_APPROACH_S, CONVOY_ORBIT_S, CONVOY_HIDE_DIST, CONVOY_SPACING,
   type CometPass, type ConvoyPlan,
 } from "../src/utils/worldEvents";
-import { LOCK_RETAIN_FACTOR } from "../src/constants";
+import { LOCK_RETAIN_FACTOR, planets } from "../src/constants";
 import { eventLines } from "../src/data/chatterLines";
 
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
@@ -90,27 +90,32 @@ describe("comet pass", () => {
 });
 
 describe("convoy path", () => {
+  for (const planet of planets) {
+    const size = planet.size;
+    const plan = planConvoy(v(130, 0, 0), size, () => true)!;
+    const R = convoyRadius(size);
+
+    it(`${planet.name} (size ${size}): every convoy slot stays outside lock-retain, with a 2u margin, for the whole event`, () => {
+      const floor = size * LOCK_RETAIN_FACTOR + 2;
+      for (const slot of [0, 1, 2] as const) {
+        let min = Infinity;
+        for (let t = 0; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S + 5; t += 0.01) {
+          min = Math.min(min, len(convoyShipOffsetAt(v(), plan, t, slot)));
+        }
+        expect(min, `slot ${slot}`).toBeGreaterThan(floor);
+      }
+    });
+    it(`${planet.name} (size ${size}): orbits at convoyRadius, at least CONVOY_ORBIT_FACTOR x size and outside lock-retain`, () => {
+      expect(plan.R).toBeCloseTo(R);
+      expect(plan.R).toBeGreaterThanOrEqual(CONVOY_ORBIT_FACTOR * size);
+      expect(plan.R).toBeGreaterThan(size * LOCK_RETAIN_FACTOR);
+      for (let t = CONVOY_APPROACH_S; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S; t += 0.5) {
+        expect(len(convoyOffsetAt(v(), plan, t))).toBeCloseTo(R, 6);
+      }
+    });
+  }
   const size = 16;
   const plan = planConvoy(v(130, 0, 0), size, () => true)!;
-  const R = CONVOY_ORBIT_FACTOR * size;
-
-  it("keeps every convoy slot outside lock-retain, with a 2u margin, for the whole event", () => {
-    const floor = size * LOCK_RETAIN_FACTOR + 2;
-    for (const slot of [0, 1, 2] as const) {
-      let min = Infinity;
-      for (let t = 0; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S + 5; t += 0.01) {
-        min = Math.min(min, len(convoyShipOffsetAt(v(), plan, t, slot)));
-      }
-      expect(min, `slot ${slot}`).toBeGreaterThan(floor);
-    }
-  });
-  it("orbits at CONVOY_ORBIT_FACTOR x size, outside the lock-retain radius", () => {
-    expect(plan.R).toBeCloseTo(R);
-    expect(plan.R).toBeGreaterThan(size * LOCK_RETAIN_FACTOR);
-    for (let t = CONVOY_APPROACH_S; t <= CONVOY_APPROACH_S + CONVOY_ORBIT_S; t += 0.5) {
-      expect(len(convoyOffsetAt(v(), plan, t))).toBeCloseTo(R, 6);
-    }
-  });
   it("approaches from the side away from the sun", () => {
     expect(convoyOffsetAt(v(), plan, 0).x).toBeGreaterThan(150); // planet at +x: start further out on +x
   });

@@ -39,8 +39,13 @@ export default async function run() {
     }
     // Run after the viewport loop: the 1 s hold below moves the ship off the buoy.
     // Teleport into a planet's gravity zone so the warning shows in the right column.
+    // 1.5x the planet's size out: inside the zone (1.8x), outside the lock (1.3x).
     const name = await page.evaluate(async () => (await import("/src/constants.ts")).planets[0].name);
-    await page.evaluate((n) => { const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - 27, b.y + 5, b.z); window.__fitz.setAttitude(0, 0); }, name);
+    await page.evaluate(async (n) => {
+      const { planets } = await import("/src/constants.ts");
+      const d = planets.find((p) => p.name === n).size * 1.5;
+      const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - d, b.y + 2, b.z); window.__fitz.setAttitude(0, 0);
+    }, name);
     const zone = await pollUntil(() => page.evaluate(() => !!window.__fitz.store.getState().activeZone), { timeoutMs: 10_000, intervalMs: 200 });
     checks.check("the ship is inside a planet's gravity zone (warning shown)", zone.ok);
     let vel = null;

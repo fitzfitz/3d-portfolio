@@ -48,15 +48,18 @@ async function events(page, checks) {
   const ev = (await readStore(page)).worldEvent;
   checks.check("the convoy targets a planet", ev?.kind === "convoy" && !!ev.convoy?.planet, `planet=${ev?.convoy?.planet}`);
   const orbiting = (await pollUntil(async () => {
-    const r = await page.evaluate((name) => {
+    const r = await page.evaluate(async (name) => {
+      const { planets } = await import("/src/constants.ts");
+      const { convoyRadius } = await import("/src/utils/worldEvents.ts");
+      const want = convoyRadius(planets.find((p) => p.name === name).size);
       const g = window.__fitz.scene.getObjectByName("ConvoyShip0");
       const b = window.__fitz.bodies[name];
       if (!g || !g.visible) return null;
-      return Math.hypot(g.position.x - b.x, g.position.y - b.y, g.position.z - b.z);
+      return { r: Math.hypot(g.position.x - b.x, g.position.y - b.y, g.position.z - b.z), want };
     }, ev.convoy.planet);
-    return r !== null && Math.abs(r - 16 * 2.5) < 3 ? r : null;
+    return r !== null && Math.abs(r.r - r.want) < 3 ? r.r : null;
   }, { timeoutMs: 30_000 })).value;
-  checks.check("the convoy settles into orbit at ~2.5x the planet's size", !!orbiting,
+  checks.check("the convoy settles into orbit at convoyRadius(its planet's size)", !!orbiting,
     orbiting ? `radius=${orbiting.toFixed(1)}` : "never reached orbit");
 
   // ---- budgets while an event runs (spec: Testing) ----

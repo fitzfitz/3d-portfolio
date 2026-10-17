@@ -187,13 +187,13 @@ async function exposureChecks(page, checks, tier) {
       && at115.guideComp !== null && Math.abs(at115.guideComp - at115.comp) < 1e-12,
     `comp=${at115.comp} guide=${at115.guideComp} exposure=${at115.exposure}`);
 
-  const at40 = await parkFacingSun(page, u, 50);
-  const disc40 = await sunDisc(page, `sky-exposure-${tier}-40`);
+  const atNear = await parkFacingSun(page, u, 48);
+  const discNear = await sunDisc(page, `sky-exposure-${tier}-48`);
   const at230 = await parkFacingSun(page, u, 230);
   const disc230 = await sunDisc(page, `sky-exposure-${tier}-230`);
   checks.check(`[${tier}] exposure falls near the sun and rises far out`,
-    at40.exposure < 0.3 && at230.exposure > 2,
-    `d=${at40.camDist.toFixed(1)} exposure=${at40.exposure.toFixed(3)}; d=${at230.camDist.toFixed(1)} exposure=${at230.exposure.toFixed(3)}`);
+    atNear.exposure < 0.3 && at230.exposure > 2,
+    `d=${atNear.camDist.toFixed(1)} exposure=${atNear.exposure.toFixed(3)}; d=${at230.camDist.toFixed(1)} exposure=${at230.exposure.toFixed(3)}`);
   checks.check(`[${tier}] sun and guide compensation tracks the exposure far out`,
     at230.comp !== null && Math.abs(at230.comp - wantComp(at230.exposure)) < 1e-6,
     `comp=${at230.comp} exposure=${at230.exposure}`);
@@ -201,30 +201,30 @@ async function exposureChecks(page, checks, tier) {
   // The brightest pixel within 10% (the spec's bar). The disc saturates, so
   // that alone barely moves without compensation; the mean over the inner
   // disc is held to 3%. Measured: compensated, the means agree within 1%;
-  // with the compensation forced to 1, the d=40 mean fell 6% (243 -> 228).
+  // with the compensation forced to 1, the d=48 mean fell 6% (243 -> 228).
   const fmt = (d) => `max=${d.max.toFixed(1)} mean=${d.mean.toFixed(1)} (${d.n}px, r=${d.rpx.toFixed(0)}px)`;
-  const discsOk = [disc115, disc40, disc230].every((d) => d.onScreen && d.n > 50);
+  const discsOk = [disc115, discNear, disc230].every((d) => d.onScreen && d.n > 50);
   checks.check(`[${tier}] the sun's disc looks the same at every exposure`,
     discsOk && near(disc115.max, disc230.max, 0.1) && near(disc115.mean, disc230.mean, 0.03)
-      && near(disc115.max, disc40.max, 0.1) && near(disc115.mean, disc40.mean, 0.03),
-    `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; d40 ${fmt(disc40)}`);
+      && near(disc115.max, discNear.max, 0.1) && near(disc115.mean, discNear.mean, 0.03),
+    `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; dNear ${fmt(discNear)}`);
 
   // The corona is not saturated, so it catches a wrong compensation either
-  // way: too little at d=40 (exposure 0.2) dims it, too much at d=230
+  // way: too little at d=48 (exposure 0.2) dims it, too much at d=230
   // (exposure 2.5) washes it out. Composer tier only: low-perf has no corona.
   // Calibrated (annulus mean luma / the d=115 value), compensated vs forced to 1:
-  //   d=40:  0.98 vs 0.47, so the bound is ±5%.
+  //   d=48:  0.98 vs 0.47, so the bound is ±5%.
   //   d=230: 1.13 vs 1.48. Even compensated, the far disc is small next to
   //   the screen-sized veil sprite and bloom kernel, and the sky behind the
   //   annulus is exposed 2.5×, so the bound is [0.9, 1.25]: ~12 points from
   //   either reading.
   if (!lowPerf) {
     const cfmt = (d) => `${d.corona.toFixed(1)} (${d.coronaN}px)`;
-    const k40 = disc40.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
+    const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
     checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
-      discsOk && [disc115, disc40, disc230].every((d) => d.coronaN > 200)
-        && Math.abs(k40 - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
-      `corona band 0.80-0.92 of its half-size mean luma: d115 ${cfmt(disc115)}; d40 ${cfmt(disc40)} (x${k40.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
+      discsOk && [disc115, discNear, disc230].every((d) => d.coronaN > 200)
+        && Math.abs(kNear - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
+      `corona band 0.80-0.92 of its half-size mean luma: d115 ${cfmt(disc115)}; dNear ${cfmt(discNear)} (x${kNear.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
   }
 
   // The ring-course gates are a navigation projection (toneMapped: false):

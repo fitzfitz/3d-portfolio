@@ -472,3 +472,10 @@ export function stopEdgeRecorder(page) {
 }
 
 export const readEdgeRecorder = (page) => page.evaluate(() => ({ ...window.__edgeRec }));
+
+/**
+ * Probe standoff from a planet's centre, x its size: outside the lock-retain
+ * radius (1.9x), inside scan range of the surface. Fixed offsets sat inside the
+ * lock once planets changed size.
+ */
+export const PLANET_STANDOFF = 2.5;

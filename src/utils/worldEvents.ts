@@ -1,5 +1,6 @@
 import type { Vec3 } from "./reactions";
 import { EVENT_DURATION } from "./eventDirector";
+import { LOCK_RETAIN_FACTOR } from "../constants";
 
 /**
  * Pure geometry for the world events (docs/superpowers/specs/2026-10-12-world-events-design.md).
@@ -87,17 +88,25 @@ export function cometPassAt(out: Vec3, p: CometPass, t: number): Vec3 {
 /** Convoy frame: u away from the sun through the planet, v the orbit-entry side, w = u × v. */
 export interface ConvoyPlan { ux: number; uy: number; uz: number; vx: number; vy: number; vz: number; wx: number; wy: number; wz: number; R: number }
 
-/**
- * Lead orbit radius, × planet size. 2.5, not 2.2: wingmen fly 6u back and 6u
- * to the side, so during the orbit the inner one sits ~6u inside the lead. At
- * 2.2 that was 29.2u, inside lock-retain (1.9 × 16 = 30.4u); at 2.5 every slot
- * clears it by 3.6u (tests/worldEvents.test.ts).
- */
+/** Lead orbit radius, × planet size (the floor; see convoyRadius). */
 export const CONVOY_ORBIT_FACTOR = 2.5;
 export const CONVOY_APPROACH_S = 20;
 export const CONVOY_ORBIT_S = 15;
 export const CONVOY_HIDE_DIST = 250;
 export const CONVOY_SPACING = 6;
+/** Slack beyond the inner wingman's reach, so every slot clears lock-retain. */
+const CONVOY_RETAIN_MARGIN = 4;
+/**
+ * Lead orbit radius for a planet of `size`. Wingmen fly CONVOY_SPACING back and
+ * CONVOY_SPACING to the side, so the inner one sits ~CONVOY_SPACING inside the
+ * lead. 2.5 x size alone clears lock-retain (1.9 x size) only for big planets
+ * (size 16: by 3.6u); around an 8-unit Fuxx the inner wingman sat at ~14 < 15.2.
+ * So the radius is the larger of that factor and the retain radius plus the
+ * wingman reach plus a margin: 25.2u at size 8, 30u at 12, 40u at 16.
+ */
+export function convoyRadius(size: number): number {
+  return Math.max(CONVOY_ORBIT_FACTOR * size, LOCK_RETAIN_FACTOR * size + CONVOY_SPACING + CONVOY_RETAIN_MARGIN);
+}
 /**
  * Orbit angular speed, matched to the approach: the Bezier arrives at speed
  * 3|P3 - P2| / T = 6R / T, so ω = 6 / T keeps the speed continuous at orbit
@@ -175,7 +184,7 @@ export function planConvoy(planetPos: Vec3, planetSize: number, isClear: (plan: 
     const ang = (k * Math.PI) / 4, c = Math.cos(ang), s = Math.sin(ang);
     const vx = ax * c + bx * s, vy = ay * c + by * s, vz = az * c + bz * s;
     const wx = uy * vz - uz * vy, wy = uz * vx - ux * vz, wz = ux * vy - uy * vx;
-    const plan = { ux, uy, uz, vx, vy, vz, wx, wy, wz, R: CONVOY_ORBIT_FACTOR * planetSize };
+    const plan = { ux, uy, uz, vx, vy, vz, wx, wy, wz, R: convoyRadius(planetSize) };
     if (isClear(plan)) return plan;
   }
   return null;

@@ -259,3 +259,12 @@ overlay that already existed. Measured in a full e2e run: deep space 35 /
 418,492, 40 anomalies 36 / 242,940; programs 54 in the three static states and
 55 with anomalies; the tour in `programs.probe.mjs` adds 0. Startup read 10.2-11.7 s.
 Ceilings changed: none.
+
+**True proportions measured 2026-10-17 (planets 16 / 12 / 8, sun core 24, corona 72).**
+No geometry, material or shader was added: the sun's sphere keeps its 64x64 tessellation
+at a larger radius, the corona billboard is one quad at a new scale, and the planet
+sizes are table values. Measured in a full e2e run: deep space 35 / 241,916 (calls /
+triangles), close approach 59 / 349,372, modal open 108 / 418,494, 40 anomalies
+39 / 244,990 (+2,050 on the last run, a view-dependent count; the 250,580 ceiling holds with about 2% to spare);
+programs 54 in the three static states and 55 with anomalies; the tour in
+`programs.probe.mjs` adds 0. Startup read 8.3-12.3 s. Ceilings changed: none.

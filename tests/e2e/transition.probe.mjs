@@ -64,7 +64,7 @@ const readPerfCounters = (page) => page.evaluate(() => {
  * 1.3x. The ship is placed 1.45x out along the planet's outward radial —
  * inside the well, outside the lock, outside the planet's own surface (see the
  * comment in the body for why radial). Size is read from the live module, so
- * the probe follows PLANET_SIZE instead of pinning it. A measured
+ * the probe follows the planet table instead of pinning a size. A measured
  * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
  * at all, so activeZone stayed null and the check silently proved nothing.
  */
