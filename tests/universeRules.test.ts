@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { planets, GM_SUN, gmOf, PROGRADE } from "../src/constants";
+import { planets, SUN_RADIUS, GM_SUN, gmOf, PROGRADE } from "../src/constants";
 import { orbitPosition } from "../src/utils/orbits";
 import { keplerGM, keplerOmega, keplerPeriod, keplerPosition } from "../src/utils/kepler";
 import { COMETS } from "../src/data/comets";
@@ -110,8 +110,9 @@ describe("L35–L36 planets sized and weighed by type", () => {
     const by = (t: string) => planets.find((p) => p.type === t)!.size;
     expect(by("gas-giant")).toBe(16); expect(by("earth")).toBe(12); expect(by("mars")).toBe(8);
   });
-  // Task 2 (the sun's core grows to 24) enables this.
-  it.todo("L35: the sun outsizes every planet");
+  it("L35: the sun outsizes every planet", () => {
+    for (const p of planets) expect(SUN_RADIUS).toBeGreaterThan(p.size);
+  });
   it("masses are ordered gas giant > earth > mars", () => {
     const m = (t: string) => planets.find((p) => p.type === t)!.mass;
     expect(m("gas-giant")).toBeGreaterThan(m("earth")); expect(m("earth")).toBeGreaterThan(m("mars"));

@@ -7,11 +7,10 @@ import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { glareLevels } from "../../utils/sunGlare";
-import { makeSunSurfaceMaterial, makeSunCoronaMaterial } from "./sunMaterials";
+import { makeSunSurfaceMaterial, makeSunCoronaMaterial, CORONA_SIZE } from "./sunMaterials";
 
 /** SUN_COLLIDER (data/asteroids.ts) and the glare's occlusion test track it. */
 const CORE_R = SUN_RADIUS;
-const CORONA_SIZE = 52;
 
 export default function Sun() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);

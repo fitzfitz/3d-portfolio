@@ -20,7 +20,8 @@ const nebulaHue = (page) => page.evaluate(() => {
 // camera sits behind it along u (4.6 at rest) and 1.8 above in world y.
 const CAM_BACK = 4.6;
 const CAM_UP = 1.8;
-const SUN_R = 8; // Sun.tsx CORE_R (SUN_RADIUS)
+const CORONA_HALF = 36; // CORONA_SIZE / 2 (sunMaterials.ts)
+const SUN_R = 24; // Sun.tsx CORE_R (SUN_RADIUS)
 
 /**
  * A direction from the sun clear of every planet, landmark and their lines of
@@ -50,7 +51,7 @@ const clearDirection = (page) => page.evaluate(async (dists) => {
     }
   }
   return null;
-}, [40, 115, 230]);
+}, [50, 115, 230]);
 
 /**
  * Parks the ship nose-on to the sun so the camera ends `camDist` from it,
@@ -99,14 +100,17 @@ async function parkFacingSun(page, u, camDist) {
  * page from the PNG, so there is no PNG decoder to maintain here.
  */
 async function sunDisc(page, shot) {
-  const geom = await page.evaluate((sunR) => {
+  const geom = await page.evaluate((sunR, coronaHalf) => {
     const cam = window.__fitz.camera;
     const v = new cam.position.constructor(0, 0, 0).project(cam);
     const H = window.innerHeight, W = window.innerWidth;
     const dist = cam.position.length();
-    const rpx = (sunR / dist) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
-    return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, rpx, onScreen: v.z < 1 && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 };
-  }, SUN_R);
+    // True limb radius: tan(asin(R/d)), not R/d, which is 9% short at 50 units from a 24-unit core.
+    const rpx = (sunR / Math.sqrt(dist * dist - sunR * sunR)) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
+    // The corona billboard's half-size projected (it faces the camera at the origin).
+    const bpx = (coronaHalf / dist) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
+    return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H, rpx, bpx, onScreen: v.z < 1 && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 };
+  }, SUN_R, CORONA_HALF);
   await page.evaluate(() => {
     const st = document.createElement("style");
     st.dataset.probe = "hide-hud";
@@ -127,9 +131,12 @@ async function sunDisc(page, shot) {
     ctx.drawImage(img, 0, 0);
     const scale = img.width / window.innerWidth;
     const R = g.rpx * scale;
-    const cx = g.x * scale, cy = g.y * scale, r = 0.6 * R;
-    // Corona annulus 1.2-1.6 R, upper half only: the ship sits below the sun.
-    const a0 = 1.2 * R, a1 = 1.6 * R;
+    const cx = g.x * scale, cy = g.y * scale, r = 0.35 * R; // limb darkening is by view angle, so a nearer, bigger-looking disc must be sampled further in
+    // Corona band at 0.80-0.92 of the billboard's half-size, upper half only: the ship
+    // sits below the sun. Measured against the billboard, not the core, so the same
+    // part of the glow is read at every stop; at the near stop the core's limb
+    // reaches 0.77 of it, so 0.80 clears the disc.
+    const a0 = 0.80 * g.bpx * scale, a1 = 0.92 * g.bpx * scale;
     const x0 = Math.max(0, Math.floor(cx - a1)), y0 = Math.max(0, Math.floor(cy - a1));
     const x1 = Math.min(c.width, Math.ceil(cx + a1)), y1 = Math.min(c.height, Math.ceil(cy + r));
     const data = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
@@ -180,7 +187,7 @@ async function exposureChecks(page, checks, tier) {
       && at115.guideComp !== null && Math.abs(at115.guideComp - at115.comp) < 1e-12,
     `comp=${at115.comp} guide=${at115.guideComp} exposure=${at115.exposure}`);
 
-  const at40 = await parkFacingSun(page, u, 40);
+  const at40 = await parkFacingSun(page, u, 50);
   const disc40 = await sunDisc(page, `sky-exposure-${tier}-40`);
   const at230 = await parkFacingSun(page, u, 230);
   const disc230 = await sunDisc(page, `sky-exposure-${tier}-230`);
@@ -217,7 +224,7 @@ async function exposureChecks(page, checks, tier) {
     checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
       discsOk && [disc115, disc40, disc230].every((d) => d.coronaN > 200)
         && Math.abs(k40 - 1) <= 0.05 && k230 >= 0.9 && k230 <= 1.25,
-      `corona annulus 1.2-1.6R mean luma: d115 ${cfmt(disc115)}; d40 ${cfmt(disc40)} (x${k40.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
+      `corona band 0.80-0.92 of its half-size mean luma: d115 ${cfmt(disc115)}; d40 ${cfmt(disc40)} (x${k40.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
   }
 
   // The ring-course gates are a navigation projection (toneMapped: false):

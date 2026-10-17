@@ -23,8 +23,8 @@ export const SHARDS: Shard[] = [
   { pos: [6, -140, -10], fact: "DOWN HERE IT'S DARK, COLD, AND FULL OF UNIT TESTS" },
   // Deep cluster, far side
   { pos: [-110, -135, -90], fact: "3 AI CODE REVIEWERS APPROVED THIS UNIVERSE. A FOURTH IS STILL THINKING" },
-  // Near the sun
-  { pos: [4, 4, 8], fact: "FUXX RUNS A FLEET OF AI CODING AGENTS IN ONE TERMINAL. THE PILOT RUNS ONE SPACESHIP. FOR NOW" },
+  // Near the sun: just outside its 24-unit core and 4-unit margin, inside the belt band
+  { pos: [-22, 6, -28], fact: "FUXX RUNS A FLEET OF AI CODING AGENTS IN ONE TERMINAL. THE PILOT RUNS ONE SPACESHIP. FOR NOW" },
   // Beside the portal — reward for the climb
   { pos: [10, 98, -140], fact: "ASTEROIDS DO NOT HAVE STANDUPS. THE PILOT ENVIES THIS" },
   // Far corner, high

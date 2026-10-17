@@ -32,11 +32,11 @@ export const VALIDATION_RADIUS = 520;
 /** The scale the player ship (spaceship.glb) is rendered at; tests/assetContracts.test.ts sizes the career dock standoff from it. */
 export const PLAYER_SHIP_SCALE = 0.35;
 /**
- * Sun core radius: the solid sphere, smaller than a planet (16). The corona
- * disc (52 wide in Sun.tsx) is what reads as the sun's size, and it is larger.
- * A deliberate break from real proportions (docs/UNIVERSE-RULES.md L35, fix F12).
+ * Sun core radius: the solid sphere, bigger than any planet (16 at most), so
+ * the star outsizes its planets (docs/UNIVERSE-RULES.md L35, fix F12). The
+ * corona billboard (72 wide, sunMaterials.ts) ends inside the belt's r 40.
  */
-export const SUN_RADIUS = 8;
+export const SUN_RADIUS = 24;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).
 export const PORTAL_POS: [number, number, number] = [0, 95, -150];
 export const SHIP_MAX_SPEED = 10.8;

@@ -106,7 +106,7 @@ The code source of these numbers is `src/utils/realUnits.ts`; `tests/realUnits.t
 | # | Law | Status |
 |---|---|---|
 | L34 | **Real sizes and distances.** Planets are specks across vast gaps. | Convention, disclosed in the logbook; the HUD and planet scans read in real units (F13). |
-| L35 | **Stars outsize their planets.** The smallest star is about Jupiter's size; the Sun is 10× Jupiter. | **Breaks → F12.** The solid sun (radius 8) is half a planet (16); only its 52-wide corona reads larger. |
+| L35 | **Stars outsize their planets.** The smallest star is about Jupiter's size; the Sun is 10× Jupiter. | **Held → F12.** The solid sun (radius 24) outsizes every planet (16 at most), though not 10× Jupiter. |
 | L36 | **Planet size follows type.** Gas giants are many times larger than rocky worlds (Jupiter 11× Earth, Mars half of Earth). | **Breaks → F12.** All three planets share `PLANET_SIZE` 16. |
 | L37 | **Asteroid belts are mostly empty.** | Follows. In our units, rocks sit about 5 units (6.6 million km) apart, against roughly 0.2–0.7 units for real asteroids larger than 1 km. Each rock is drawn enlarged (P3). |
 | L38 | **Hubble–Lemaître law.** Galaxies recede, but too slowly to see in a lifetime. | Follows: the galaxies are static. |
