@@ -9,8 +9,8 @@ import { buildGates } from "../utils/race";
  * ever drifts through the course, and clear of colliders and shards —
  * tests/race.test.ts checks all of that, so edit positions freely.
  *
- * The loop is ~486 units: ~12.5s at pure warp (which one tank cannot quite
- * hold), ~45s at cruise.
+ * The loop is ~486 units: ~12.5s at pure warp, ~45s at cruise. Since the
+ * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
  */
 export const RING_GATES: [number, number, number][] = [
   [-12, 3, 34],   // 0 start / finish, inner belt near the sun
@@ -29,8 +29,9 @@ export const RING_GATES: [number, number, number][] = [
 export const RING_RADIUS = 6;
 
 /**
- * Target time. Not a recorded human run; set between pure warp (~12.5s, out of
- * reach on one tank) and pure cruise (~45s), so beating it means rationing warp.
+ * Target time. Not a recorded human run; set between pure warp (~12.5s) and
+ * pure cruise (~45s). It was tuned when one tank could not warp a whole lap;
+ * with the 62.5 s tank it is easy to beat and due a retune.
  */
 export const PAR_SECONDS = 35;
 

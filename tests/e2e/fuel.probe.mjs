@@ -99,9 +99,9 @@ export default async function run() {
       cruiseDisplacement > 0.5, `displacement=${cruiseDisplacement.toFixed(2)}`);
 
     // Warping must drain the tank at all, and the Shift+W path must actually
-    // route through the drain. The exact 8/sec rate is already pinned
+    // route through the drain. The exact 1.6/sec rate is already pinned
     // deterministically and frame-rate-independently in tests/fuel.test.ts
-    // (drainFuel(100,1)===92, drainFuel(100,0.5)===96) — a wall-clock-driven
+    // (drainFuel(100,1)===98.4, drainFuel(100,0.5)===99.2) — a wall-clock-driven
     // e2e probe cannot add a real rate assertion on top of that without
     // exposing a simulated-time accumulator on the debug bridge purely for
     // this test, which is unnecessary given that unit coverage. So this
@@ -109,20 +109,20 @@ export default async function run() {
     // reader should NOT "restore" a rate assertion on `burned` — the harness
     // cannot support one.
     //
-    // Poll for the outcome (burned reaching ~16, what 2 simulated seconds at
-    // the configured 8/sec would produce) rather than holding for a fixed
+    // Poll for the outcome (burned reaching ~3.2, what 2 simulated seconds at
+    // the configured 1.6/sec would produce) rather than holding for a fixed
     // wall-clock duration: this environment's headless-SwiftShader frame rate
     // runs well under real-time — measured directly, ~13 rAF ticks fire over
     // ~2.5s of wall-clock regardless of polling interval (tried 0/20/50/200ms,
     // all identical) — so a fixed-duration hold under-drains reproducibly
-    // (measured burned=5.6-6.4 over a nominal 2s hold). pollUntil's own {ok}
+    // (measured burned=5.6-6.4 over a nominal 2s hold at the old 8/sec). pollUntil's own {ok}
     // is asserted explicitly below: a timeout must fail loudly rather than
     // pass silently on whatever partial burn happened to accumulate — the
-    // poll's exit condition (burned>=16) is not re-asserted afterward, since
+    // poll's exit condition (burned>=3.2) is not re-asserted afterward, since
     // that would just restate what the loop already guarantees on a true exit.
     const beforeWarp = await fuel();
     for (const c of ["KeyW", "ShiftLeft"]) await page.keyboard.down(c);
-    const drainPoll = await pollUntil(async () => (beforeWarp - (await fuel())) >= 16,
+    const drainPoll = await pollUntil(async () => (beforeWarp - (await fuel())) >= 3.2,
       { timeoutMs: 30_000, intervalMs: 300 });
     const afterWarp = await fuel();
     for (const c of ["KeyW", "ShiftLeft"]) await page.keyboard.up(c);
@@ -130,14 +130,16 @@ export default async function run() {
     checks.check("warping drains the tank toward empty", drainPoll.ok && burned > 0,
       `ok=${drainPoll.ok} burned=${burned.toFixed(1)}`);
     // Sanity bound only, not a rate assertion: this bounds how far a single
-    // 300ms poll interval can overshoot the ~16 target once burned crosses
-    // it, nothing more. It is not evidence of the 8/sec rate — that is pinned
+    // 300ms poll interval can overshoot the ~3.2 target once burned crosses
+    // it, nothing more. It is not evidence of the 1.6/sec rate — that is pinned
     // in tests/fuel.test.ts, referenced above.
-    checks.check("drain overshoot past the target stays small", burned < 24,
+    checks.check("drain overshoot past the target stays small", burned < 4.8,
       `burned=${burned.toFixed(1)}`);
 
-    // Burn it dry, then prove warp is dead and cruise is not.
-    await page.evaluate(() => { window.__fitz.flight.fuel = 0; });
+    // Burn it dry, then prove warp is dead and cruise is not. The tank now
+    // refills on its own whenever warp is released (stepFuel, 2026-10-17), so
+    // the dev hook holds the refill off for this section.
+    await page.evaluate(() => { window.__fitz.fuelDebug.holdRegen = true; window.__fitz.flight.fuel = 0; });
     await settle(page, 300);
     const s = await readStore(page);
     checks.check("store registers the empty tank", s.fuelEmpty === true, `fuelEmpty=${s.fuelEmpty}`);
@@ -179,8 +181,9 @@ export default async function run() {
       await teleportTo(target.x, target.y, target.z + 1, "refuel crystal");
       await settle(page, 1500);
       const refuelled = await fuel();
-      // Fuel was exactly 0 beforehand and FUEL_PER_CRYSTAL is 25, so the
-      // exact value is available and strictly stronger than a one-sided bound.
+      // Fuel was exactly 0 beforehand and FUEL_PER_CRYSTAL is 25 (refill held
+      // off), so the exact value is available and strictly stronger than a
+      // one-sided bound.
       checks.check("touching a crystal refuels", refuelled === 25, `fuel=${refuelled}`);
 
       // The tank was at exactly 0 before this pickup, so it is a `restored`
@@ -209,6 +212,13 @@ export default async function run() {
         storeAfterPickup.broadcast?.text === "WARP CORE RECHARGED // 25% — WARP ONLINE",
         `text="${storeAfterPickup.broadcast?.text}"`);
     }
+
+    // Let go of the hook: the drive refills the tank on its own, empty to full in
+    // 20 simulated seconds (FUEL_REGEN_PER_SEC = 5). Headless runs at roughly a
+    // third of real time, hence the generous timeout.
+    await page.evaluate(() => { window.__fitz.flight.fuel = 0; window.__fitz.fuelDebug.holdRegen = false; });
+    const refill = await pollUntil(async () => (await fuel()) >= 99.9, { timeoutMs: 120_000, intervalMs: 1000 });
+    checks.check("releasing warp refills the tank on its own", refill.ok, `fuel=${(await fuel()).toFixed(1)}`);
 
     // Cap is respected as the field refills.
     await settle(page, 6000);

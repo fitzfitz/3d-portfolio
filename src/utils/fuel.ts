@@ -1,15 +1,17 @@
 /**
  * Warp fuel. Pure transforms so the tuning is testable without a scene.
  *
- * Numbers derive from the flight model rather than taste: SHIP_WARP_SPEED is
- * 39 u/s in a 500-unit-wide world (COSMIC_BOUNDS 250), so a 100 tank draining
- * 8/s gives 12.5s of warp ≈ 488 units — one full crossing per tank.
- * That makes warp a decision rather than something you hold down by default.
+ * Tuning (2026-10-17, owner's call): the tank lasts five times the original
+ * 12.5 s of warp, so 62.5 s (about 2,400 units at 39 u/s), and the drive's
+ * reactor refills an empty tank in 20 s, but only while the pilot is not
+ * holding warp. Crystals still top it up at once.
  */
 export const FUEL_MAX = 100;
 
-/** Units per second while warp is active. 100/8 = 12.5s of warp. */
-export const FUEL_DRAIN_PER_SEC = 8;
+/** Units per second while warp is active. 100/1.6 = 62.5 s of warp. */
+export const FUEL_DRAIN_PER_SEC = 1.6;
+/** Units per second refilled while warp is not held. 100/5 = 20 s from empty. */
+export const FUEL_REGEN_PER_SEC = 5;
 
 /** Restored per crystal. Four fill an empty tank; one buys ~122 units of warp. */
 export const FUEL_PER_CRYSTAL = 25;
@@ -17,6 +19,28 @@ export const FUEL_PER_CRYSTAL = 25;
 /** Drains for `dt` seconds, clamped at empty. */
 export function drainFuel(fuel: number, dt: number): number {
   return Math.max(0, fuel - FUEL_DRAIN_PER_SEC * dt);
+}
+
+/**
+ * Dev-only test hook (e2e fuel probe): `holdRegen` pauses the auto-refill so a
+ * probe can hold the tank at an exact level without holding Shift. Always
+ * false in production; registered on the debug bridge by Spaceship in dev.
+ */
+export const fuelDebug = { holdRegen: false };
+
+/** Refills for `dt` seconds, clamped at full. */
+export function regenFuel(fuel: number, dt: number): number {
+  return Math.min(FUEL_MAX, fuel + FUEL_REGEN_PER_SEC * dt);
+}
+
+/**
+ * One frame of fuel. Warp running drains; otherwise the tank refills, but
+ * only while the pilot is not holding warp. If holding warp on an empty tank
+ * refilled it, warp would switch back on the next frame and flicker.
+ */
+export function stepFuel(fuel: number, dt: number, boostHeld: boolean, warpActive: boolean): number {
+  if (warpActive) return drainFuel(fuel, dt);
+  return boostHeld ? fuel : regenFuel(fuel, dt);
 }
 
 /** Adds one crystal, clamped at full. */

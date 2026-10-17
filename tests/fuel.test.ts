@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, refuel, refuelOutcome } from "../src/utils/fuel";
+import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_REGEN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, regenFuel, stepFuel, refuel, refuelOutcome } from "../src/utils/fuel";
 import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
 
 describe("drainFuel", () => {
@@ -11,7 +11,7 @@ describe("drainFuel", () => {
   });
 
   it("clamps at zero rather than going negative", () => {
-    expect(drainFuel(2, 1)).toBe(0);
+    expect(drainFuel(1, 1)).toBe(0);
     // A tab-switch dt spike must not produce a negative tank.
     expect(drainFuel(100, 999)).toBe(0);
   });
@@ -20,18 +20,13 @@ describe("drainFuel", () => {
     expect(drainFuel(50, 0)).toBe(50);
   });
 
-  it("gives one full crossing of the map on a full tank", () => {
-    // The design's central tuning claim: FUEL_MAX / drain = seconds of warp,
-    // times warp speed should be about the width of the world.
-    //
-    // Both sides read the real constants rather than literals, so retuning
-    // SHIP_WARP_SPEED or COSMIC_BOUNDS moves the assertion with them instead of
-    // leaving a stale 39 here that would keep passing while the intent broke.
+  it("lasts five times the original 12.5 s of warp: 62.5 s, about 2,400 units", () => {
+    // 2026-10-17: the owner asked for 5x the endurance (the tank drained too
+    // fast at 8/s). The old tuning claim was "one crossing of the map per tank".
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
-    const reach = seconds * SHIP_WARP_SPEED; // 12.5s x 39 u/s = 487.5 units
-    const crossing = COSMIC_BOUNDS * 2; // 500 units, edge to edge
-    expect(reach).toBeGreaterThan(crossing * 0.9);
-    expect(reach).toBeLessThan(crossing * 1.1);
+    expect(seconds).toBeCloseTo(5 * 12.5, 9);
+    expect(seconds * SHIP_WARP_SPEED).toBeCloseTo(2437.5, 6);
+    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(COSMIC_BOUNDS * 2 * 4);
   });
 });
 
@@ -164,5 +159,32 @@ describe("FuelCrystals broadcast strings — source scan", () => {
     const match = src.match(/case "quiet":([\s\S]*?)break;/);
     expect(match).not.toBeNull();
     expect(match![1]).not.toMatch(/sendBroadcast/);
+  });
+});
+
+describe("auto-refill", () => {
+  it("fills an empty tank in 20 seconds", () => {
+    expect(FUEL_MAX / FUEL_REGEN_PER_SEC).toBeCloseTo(20, 9);
+    expect(regenFuel(0, 20)).toBe(FUEL_MAX);
+    expect(regenFuel(0, 10)).toBeCloseTo(FUEL_MAX / 2, 9);
+  });
+  it("clamps at a full tank", () => {
+    expect(regenFuel(99, 5)).toBe(FUEL_MAX);
+    expect(regenFuel(FUEL_MAX, 1)).toBe(FUEL_MAX);
+  });
+});
+
+describe("stepFuel", () => {
+  it("drains while warp is running", () => {
+    expect(stepFuel(50, 1, true, true)).toBeCloseTo(50 - FUEL_DRAIN_PER_SEC, 9);
+  });
+  it("refills only while the pilot is not holding warp", () => {
+    expect(stepFuel(50, 1, false, false)).toBeCloseTo(50 + FUEL_REGEN_PER_SEC, 9);
+  });
+  it("holding warp on an empty tank neither warps nor refills, so warp cannot flicker on and off", () => {
+    expect(stepFuel(0, 1, true, false)).toBe(0);
+  });
+  it("holding warp while it is briefly suppressed does not refill either", () => {
+    expect(stepFuel(40, 1, true, false)).toBe(40);
   });
 });

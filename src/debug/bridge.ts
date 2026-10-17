@@ -101,6 +101,8 @@ export interface FitzDebug {
    * Registered by SpacePlanets in dev.
    */
   sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
+  /** Set `holdRegen` to pause the fuel auto-refill (e2e fuel probe). Registered by Spaceship in dev. */
+  fuelDebug: typeof import("../utils/fuel").fuelDebug | null;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -130,4 +132,5 @@ export const fitzDebug: FitzDebug = {
   sunShadow: null,
   shipShadow: null,
   sunShadowDebug: null,
+  fuelDebug: null,
 };

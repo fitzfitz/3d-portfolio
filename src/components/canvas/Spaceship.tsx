@@ -15,7 +15,7 @@ import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
-import { drainFuel } from "../../utils/fuel";
+import { stepFuel, fuelDebug } from "../../utils/fuel";
 import { wrapCoord } from "../../utils/edgeHaze";
 import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
@@ -197,7 +197,8 @@ export default function Spaceship() {
     };
     fitzDebug.gravity = gravity.current;
     fitzDebug.beam = beamState;
-    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; };
+    fitzDebug.fuelDebug = fuelDebug;
+    return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; fitzDebug.fuelDebug = null; };
   }, []);
 
   // Spawn nose-on to the first planet, so the first W press flies toward a
@@ -577,13 +578,14 @@ export default function Spaceship() {
     // Warp needs fuel. Ordering is deliberate: the drain is conditioned on the
     // same `warpActive` the velocity branch uses, so the gate and the drain can
     // never disagree about whether warp happened this frame. Holding Shift on an
-    // empty tank drains nothing and simply cruises.
+    // empty tank drains nothing and simply cruises; the tank refills only while
+    // Shift is released (stepFuel).
     //
     // Running dry is a graceful coast, not a stop: the warp branch below assigns
     // velocity directly, so when it stops running the ship keeps its 39 u/s and
     // decays through the existing SPACE_DRAG.
     const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0;
-    if (warpActive) flight.fuel = drainFuel(flight.fuel, dt);
+    flight.fuel = stepFuel(flight.fuel, dt, input.boost || fuelDebug.holdRegen, warpActive);
     store.setFuelEmpty(flight.fuel <= 0);
     store.setWarping(warpActive);
     const thrustInput = input.forward ? 1 : Math.max(0, input.thrust);
