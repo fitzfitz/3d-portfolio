@@ -5,6 +5,7 @@ import { orbitPosition } from "../src/utils/orbits";
 import { keplerGM, keplerOmega, keplerPeriod, keplerPosition } from "../src/utils/kepler";
 import { COMETS } from "../src/data/comets";
 import { MOONS, moonOrbitSpeed } from "../src/data/moons";
+import { WORLDS } from "../src/data/worlds";
 
 // docs/UNIVERSE-RULES.md: every orbit around the sun obeys one Kepler law
 // (T² = 4π²a³/GM with a single GM_SUN), everything turns the same way, and
@@ -63,8 +64,11 @@ describe("L7 one sun: every heliocentric orbit obeys Kepler's third law with GM_
   it.each(planets.map((p) => [p.name, p] as const))("planet %s", (_, p) => {
     expect(p.orbit.angularSpeed).toBeCloseTo(keplerOmega(p.orbit.radius, GM_SUN), 12);
   });
-  it("outer planets are slower: periods strictly increase with radius", () => {
-    const byR = [...planets].sort((a, b) => a.orbit.radius - b.orbit.radius);
+  it.each(WORLDS.map((w) => [w.id, w] as const))("world %s", (_, w) => {
+    expect(w.orbit.angularSpeed).toBeCloseTo(keplerOmega(w.orbit.radius, GM_SUN), 12);
+  });
+  it("outer bodies are slower: periods strictly increase with radius", () => {
+    const byR = [...planets, ...WORLDS].sort((a, b) => a.orbit.radius - b.orbit.radius);
     for (let i = 1; i < byR.length; i++) expect(byR[i].orbit.angularSpeed).toBeLessThan(byR[i - 1].orbit.angularSpeed);
   });
   it.each(COMETS.map((c, i) => [i + 1, c] as const))("comet %i", (_, c) => {
@@ -78,6 +82,15 @@ describe("L9 everything orbits the sun the same way (prograde)", () => {
   });
   it.each(COMETS.map((c, i) => [i + 1, c] as const))("comet %i", (_, c) => {
     expect(dot(turnAxis((t) => keplerPosition(t, c)), reference)).toBeGreaterThan(0);
+  });
+  it.each(WORLDS.map((w) => [w.id, w] as const))("world %s", (_, w) => {
+    expect(dot(turnAxis((t) => orbitPosition(w.orbit, t)), reference)).toBeGreaterThan(0);
+  });
+  it.each(WORLDS.map((w) => [w.id, w] as const))("world %s spins with PROGRADE (its axial tilt sets the pole)", (_, w) => {
+    expect(Math.sign(w.spin)).toBe(PROGRADE);
+  });
+  it("L9: only the tilted ice giant is retrograde-tipped (axial tilt > 90°), a named exception", () => {
+    expect(WORLDS.filter((w) => w.axialTiltDeg > 90).map((w) => w.id)).toEqual(["w-tilted"]);
   });
   it("PROGRADE rotation.y turns the same way as the planets' orbits", () => {
     expect(dot(spinAxis(PROGRADE), reference)).toBeGreaterThan(0);
@@ -110,8 +123,18 @@ describe("L35–L36 planets sized and weighed by type", () => {
     const by = (t: string) => planets.find((p) => p.type === t)!.size;
     expect(by("gas-giant")).toBe(16); expect(by("earth")).toBe(12); expect(by("mars")).toBe(8);
   });
-  it("L35: the sun outsizes every planet", () => {
-    for (const p of planets) expect(SUN_RADIUS).toBeGreaterThan(p.size);
+  it("L36: the size ladder runs gas giant > ringed > ice giants > earth > mars > rock > dwarf", () => {
+    const planet = (t: string) => planets.find((p) => p.type === t)!.size;
+    const world = (id: string) => WORLDS.find((w) => w.id === id)!.size;
+    const ladder = [
+      planet("gas-giant"), world("w-ringed"), world("w-tilted"), world("w-blue"),
+      planet("earth"), planet("mars"), world("w-rock"), world("w-dwarf"),
+    ];
+    expect(ladder).toEqual([16, 15, 13.5, 13, 12, 8, 5.7, 3.5]);
+    for (let i = 1; i < ladder.length; i++) expect(ladder[i]).toBeLessThan(ladder[i - 1]);
+  });
+  it("L35: the sun outsizes every planet and world", () => {
+    for (const p of [...planets, ...WORLDS]) expect(SUN_RADIUS).toBeGreaterThan(p.size);
   });
   it("masses are ordered gas giant > earth > mars", () => {
     const m = (t: string) => planets.find((p) => p.type === t)!.mass;
