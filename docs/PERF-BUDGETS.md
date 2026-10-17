@@ -275,4 +275,4 @@ bloom, 1 in low-perf); still no new geometry, material or program. Full run: dee
 programs 54 (tour adds 0), startup 7.7-11.6 s. One earlier run read deep space 41 calls (+6
 calls, +12 triangles: the six lens sprites, with the sun inside the glare cone from the
 deep-space point at that hour); a re-run read 35. The 40 ceiling has 5 to spare without the
-sun in view and none with it.
+sun in view and is one short with it (not raised here; flagged for the owner).
