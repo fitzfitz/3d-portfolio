@@ -67,6 +67,8 @@ export const projects: Project[] = projectsData;
  * every planet (L35/L36). Masses are compressed but correctly ordered (P3).
  * Size was a uniform 16 (4.8 before 2026-10-12); every lock radius scales off
  * it, and tests/planetClearance.test.ts guards what is placed around the orbits.
+ * Keyed like PLANET_ORBITS: a planet added there needs an entry here too
+ * (tests/projects.test.ts checks the two key sets match).
  */
 export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number }> = {
   ruangrapi: { type: "earth", size: 12, mass: 1 },

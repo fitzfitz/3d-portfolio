@@ -102,7 +102,9 @@ const CONVOY_RETAIN_MARGIN = 4;
  * lead. 2.5 x size alone clears lock-retain (1.9 x size) only for big planets
  * (size 16: by 3.6u); around an 8-unit Fuxx the inner wingman sat at ~14 < 15.2.
  * So the radius is the larger of that factor and the retain radius plus the
- * wingman reach plus a margin: 25.2u at size 8, 30u at 12, 40u at 16.
+ * wingman reach plus a margin: 25.2u at size 8, 32.8u at 12, 40.4u at 16. The
+ * second term wins for every size up to 16.7, so the 2.5x floor only binds for
+ * planets bigger than any we have.
  */
 export function convoyRadius(size: number): number {
   return Math.max(CONVOY_ORBIT_FACTOR * size, LOCK_RETAIN_FACTOR * size + CONVOY_SPACING + CONVOY_RETAIN_MARGIN);

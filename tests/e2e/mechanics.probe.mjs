@@ -183,8 +183,9 @@ async function reducedMotion(page, checks) {
 
 /**
  * Eclipses (docs/UNIVERSE-RULES.md L20, F4), with the planets and moons frozen
- * by reduced motion. Ruangrapi (16 across, the sun 8) is bigger than the sun,
- * so its umbra never closes: 2.5 sizes out on the far side is full night.
+ * by reduced motion. Ruangrapi (radius 12) is smaller than the sun (24), so its
+ * umbra closes, but only ~115 out (12 x 115 / (24 - 12)); the test point 2.5
+ * sizes (30u) out on the far side is deep inside it: full night.
  */
 async function eclipses(page, checks) {
   await page.keyboard.press("KeyW");

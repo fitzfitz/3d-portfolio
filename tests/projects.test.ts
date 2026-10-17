@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { projects, planets, projectById, PLANET_ORBITS } from "../src/constants";
+import { projects, planets, projectById, PLANET_ORBITS, PLANET_PROPS } from "../src/constants";
 import { RESERVED_ZONE_IDS } from "../src/data/destinations";
 
 /**
@@ -49,6 +49,15 @@ describe("project <-> planet mapping", () => {
     const known = new Set(projects.map((p) => p.id));
     const orphans = Object.keys(PLANET_ORBITS).filter((id) => !known.has(id));
     expect(orphans, "orbits with no project").toEqual([]);
+  });
+
+  it("gives every planet a type, size and mass (PLANET_PROPS), and nothing else", () => {
+    expect(Object.keys(PLANET_PROPS).sort(), "PLANET_PROPS keys vs PLANET_ORBITS keys").toEqual(Object.keys(PLANET_ORBITS).sort());
+    for (const p of planets) {
+      expect(p.type, `${p.name}.type`).toBeTruthy();
+      expect(p.size, `${p.name}.size`).toBeGreaterThan(0);
+      expect(p.mass, `${p.name}.mass`).toBeGreaterThan(0);
+    }
   });
 
   it("derives one planet per project, in project order", () => {
