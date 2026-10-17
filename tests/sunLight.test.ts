@@ -8,6 +8,9 @@ import {
   setExposureCompensation,
   SUN_LIGHT_INTENSITY,
   irradianceVsAU,
+  cutExposure,
+  FUXX_ALBEDO_LIFT,
+  FUXX_TEXEL_P90_LINEAR,
 } from "../src/utils/sunLight";
 
 describe("sunlight falls with distance squared; the camera's exposure follows (F3, L19)", () => {
@@ -47,5 +50,18 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(irradianceVsAU(PLANET_ORBITS.ruangrapi.radius)).toBeCloseTo(1, 12);
     expect(irradianceVsAU(PLANET_ORBITS.portfolio.radius)).toBeCloseTo(0.588, 3);
     expect(irradianceVsAU(PLANET_ORBITS.fuxx.radius)).toBeCloseTo(0.386, 3);
+  });
+  it("a camera cut re-meters the exposure on the spot, tier-correct (I2)", () => {
+    const gl = { toneMappingExposure: 0.15 }; // adapted to the sun's glare
+    cutExposure(gl, 230, true);
+    expect(gl.toneMappingExposure).toBeCloseTo(targetExposure(230), 12);
+    expect(exposureCompensation.value).toBeCloseTo(1 / targetExposure(230), 12);
+    cutExposure(gl, 40, false);
+    expect(gl.toneMappingExposure).toBeCloseTo(targetExposure(40), 12);
+    expect(exposureCompensation.value).toBe(1);
+  });
+  it("Fuxx's albedo lift brings its texel p90 to about 0.07 linear, a C-type ~4% median (I1, L29/L36)", () => {
+    expect(FUXX_TEXEL_P90_LINEAR * FUXX_ALBEDO_LIFT).toBeGreaterThan(0.06);
+    expect(FUXX_TEXEL_P90_LINEAR * FUXX_ALBEDO_LIFT).toBeLessThan(0.08);
   });
 });

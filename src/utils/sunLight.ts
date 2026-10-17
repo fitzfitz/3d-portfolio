@@ -78,3 +78,29 @@ export const exposureCompensation = { value: 1 };
 export function setExposureCompensation(exposure: number, postPassExposes: boolean): void {
   exposureCompensation.value = postPassExposes ? 1 / exposure : 1;
 }
+
+/**
+ * A camera cut (first frame, jump, teleport): the camera is somewhere new, so
+ * the exposure is re-metered there at once instead of easing from the old
+ * place's value (which would blow out or black out the first seconds).
+ * Spaceship calls it on the very frame it snaps the camera, after
+ * ExposureDriver has already run, so the frame renders correctly exposed.
+ * Allocation-free; `gl` is anything with a toneMappingExposure.
+ */
+export function cutExposure(gl: { toneMappingExposure: number }, cameraDistance: number, postPassExposes: boolean): void {
+  const e = targetExposure(cameraDistance);
+  gl.toneMappingExposure = e;
+  setExposureCompensation(e, postPassExposes);
+}
+
+/**
+ * Fuxx's surface albedo lift (I1). Its baked texture is far darker than any
+ * solar-system body: median linear luminance 0.014, p90 0.024 (Ruangrapi 0.053,
+ * Portfolio 0.095), so its lit side read near-black. A C-type asteroid reflects
+ * about 4%, which is the lawful target (L29 one light source, L36 no unlit
+ * matter): the material colour multiplies the map so the p90 reaches ~0.07 and
+ * the median ~0.04. Emissive rifts are untouched. Baking it into
+ * gen_planets.mjs is a follow-up (docs/FOLLOW-UPS.md).
+ */
+export const FUXX_TEXEL_P90_LINEAR = 0.0243;
+export const FUXX_ALBEDO_LIFT = 3;

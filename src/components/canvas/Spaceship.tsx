@@ -9,6 +9,7 @@ import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
+import { cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -185,6 +186,7 @@ export default function Spaceship() {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
       zeroGravity();
+      snapCamera.current = true; // a teleport is a cut, like a jump
     };
     fitzDebug.setAttitude = (yaw: number, nosePitch: number) => {
       angle.current = yaw;
@@ -445,9 +447,13 @@ export default function Spaceship() {
       );
       // A jump snaps the camera with the ship: easing across ~150u would swing
       // it through the sun, and is exactly the motion reduced motion avoids.
-      const f = snapCamera.current ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
+      const cut = snapCamera.current;
+      const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
+      // The exposure is re-metered with the camera (I2): ExposureDriver ran
+      // earlier this frame, so without this the cut frame is mis-exposed.
+      if (cut) cutExposure(state.gl, state.camera.position.length(), !store.isLowPerf);
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,
         pos.current.y + nose.y * 1.5 + 0.2,

@@ -25,6 +25,7 @@ import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moo
 import { MAX_OCCLUDERS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
+import { FUXX_ALBEDO_LIFT } from "../../utils/sunLight";
 
 /**
  * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20), fixed so a
@@ -389,6 +390,8 @@ export default function SpacePlanets() {
       map: fuxxTex, roughness: 0.9, metalness: 0,
       emissiveMap: fuxxGlow, emissive: new THREE.Color("#e070ff"), emissiveIntensity: 1.2,
     });
+    // Albedo lift (I1, sunLight.ts): the baked map is ~1.4% median, far darker than any body.
+    fuxx.color.setScalar(FUXX_ALBEDO_LIFT);
     const mats = [ruangrapi, portfolio, fuxx];
     mats.forEach((m, i) => patchSunShadow(m, "fragment", { selfIndex: i }));
     return mats;
