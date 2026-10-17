@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -57,11 +57,15 @@ describe("world maps: shape, seam and poles", () => {
       if (m.median !== undefined) {
         expect(seam).toBeLessThan(2);
       } else {
-        // The normal map's seam is continuous at the source, but WebP's 4:2:0
-        // chroma error (~4 levels a texel) lands independently on the two edge
-        // columns. So: under 6 levels (~2.7° of normal tilt) and no
-        // systematic step in any channel.
-        expect(seam).toBeLessThan(6);
+        // PENDING CONTROLLER RULING (task-2-report.md, fix round 1): the brief
+        // asks < 2 for every map. The normal map cannot meet that at its
+        // shipped relief: the lossless source already measures 2.24 here,
+        // which is just its interior column-to-column step (2.12), and lossy
+        // WebP adds independent block error on the two edge columns. Only a
+        // σ ≥ 2.5-texel blur gets under 2, which erases the small craters.
+        // So: under 5 levels (~2.2° of tilt; shipped 4.56) and, the part a
+        // visible line needs, no systematic step in any channel.
+        expect(seam).toBeLessThan(5);
         for (let c = 0; c < 3; c++) {
           let signed = 0;
           for (let y = 0; y < h; y++) signed += data[(y * w) * ch + c] - data[(y * w + w - 1) * ch + c];
@@ -88,6 +92,24 @@ describe("world maps: shape, seam and poles", () => {
       expect(statSync(file(m.name)).size).toBeLessThanOrEqual(BYTE_CAP[m.width]);
     });
   }
+});
+
+describe("w-rock_normal: codec fidelity", () => {
+  // R and G are independent vector components: plain 4:2:0 chroma subsampling
+  // tilts every texel (3.35 levels RMS against the source), sharp-YUV at q90
+  // keeps it at 2.49. Needs the generator output, which lives in the private
+  // assets-src repo (absent in CI), where maps are regenerated.
+  const SRC = "assets-src/w-rock_normal.png";
+  it.skipIf(!existsSync(SRC))("stays within 2.6 levels RMS of its source", async () => {
+    const { data, w, h, ch } = await raw("w-rock_normal");
+    const src = await sharp(SRC).raw().toBuffer({ resolveWithObject: true });
+    expect([src.info.width, src.info.height]).toEqual([w, h]);
+    let err = 0;
+    for (let k = 0; k < w * h; k++) {
+      for (let c = 0; c < 3; c++) err += (data[k * ch + c] - src.data[k * src.info.channels + c]) ** 2;
+    }
+    expect(Math.sqrt(err / (w * h * 3))).toBeLessThan(2.6);
+  });
 });
 
 describe("world maps: honest albedo", () => {
