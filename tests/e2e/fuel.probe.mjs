@@ -68,9 +68,9 @@ export default async function run() {
     // captured, which freezes the scene: pickups and crystal respawns stop and
     // the checks that follow run against a frozen world.
     const pickCrystal = (dz) => page.evaluate(async (dzv) => {
-      const { COSMIC_BOUNDS } = await import("/src/constants.ts");
+      const TORUS_HALF = 250; // legacy torus half-width: this probe predates the radial edge and is not run in CI
       const { DESTINATIONS } = await import("/src/data/destinations.ts");
-      const wrapCoord = (v) => (((v + COSMIC_BOUNDS) % (2 * COSMIC_BOUNDS) + 2 * COSMIC_BOUNDS) % (2 * COSMIC_BOUNDS)) - COSMIC_BOUNDS;
+      const wrapCoord = (v) => (((v + TORUS_HALF) % (2 * TORUS_HALF) + 2 * TORUS_HALF) % (2 * TORUS_HALF)) - TORUS_HALF;
       const anchors = [...Object.values(window.__fitz.bodies), ...DESTINATIONS.map((d) => ({ x: d.pos[0], y: d.pos[1], z: d.pos[2] }))];
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
       const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s));
@@ -281,7 +281,7 @@ export default async function run() {
     // then relocate — via the same live-reference debug bridge every other
     // crystal check in this file already mutates through — just the handful
     // of crystals still within RANGE of it, to their antipodal point on the
-    // 3-torus (COSMIC_BOUNDS away on every axis by construction, so ~433
+    // 3-torus (TORUS_HALF away on every axis by construction, so ~433
     // units, comfortably clear of RANGE=160). In the common case that list is
     // empty and nothing is touched; this only kicks in for the rare dense
     // field. It still exercises RadarMap's real gate/draw against the real
@@ -308,7 +308,7 @@ export default async function run() {
       fieldFull.ok, `active=${await activeCrystals()} locked=${await locked()}`);
 
     const farSetup = await page.evaluate(async () => {
-      const { COSMIC_BOUNDS } = await import("/src/constants.ts");
+      const TORUS_HALF = 250; // legacy torus half-width: this probe predates the radial edge and is not run in CI
       const RANGE = 160;
       const wrapDelta = (from, to, bounds) => {
         const span = bounds * 2;
@@ -326,9 +326,9 @@ export default async function run() {
         for (let iy = 0; iy < STEPS; iy++) {
           for (let iz = 0; iz < STEPS; iz++) {
             candidates.push([
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * ix) / (STEPS - 1),
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * iy) / (STEPS - 1),
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * iz) / (STEPS - 1),
+              -TORUS_HALF + (2 * TORUS_HALF * ix) / (STEPS - 1),
+              -TORUS_HALF + (2 * TORUS_HALF * iy) / (STEPS - 1),
+              -TORUS_HALF + (2 * TORUS_HALF * iz) / (STEPS - 1),
             ]);
           }
         }
@@ -336,18 +336,18 @@ export default async function run() {
       // ...plus random samples to cover what the grid's resolution might miss.
       for (let i = 0; i < 4000; i++) {
         candidates.push([
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
+          Math.random() * 2 * TORUS_HALF - TORUS_HALF,
+          Math.random() * 2 * TORUS_HALF - TORUS_HALF,
+          Math.random() * 2 * TORUS_HALF - TORUS_HALF,
         ]);
       }
       let best = null, bestMinDist = -1;
       for (const [x, y, z] of candidates) {
         let minDist = Infinity;
         for (const cr of crystals) {
-          const dx = wrapDelta(x, cr.x, COSMIC_BOUNDS);
-          const dy = wrapDelta(y, cr.y, COSMIC_BOUNDS);
-          const dz = wrapDelta(z, cr.z, COSMIC_BOUNDS);
+          const dx = wrapDelta(x, cr.x, TORUS_HALF);
+          const dy = wrapDelta(y, cr.y, TORUS_HALF);
+          const dz = wrapDelta(z, cr.z, TORUS_HALF);
           const d = Math.hypot(dx, dy, dz);
           if (d < minDist) minDist = d;
         }
@@ -357,13 +357,13 @@ export default async function run() {
       let relocated = 0;
       if (!naturallyClear) {
         for (const cr of crystals) {
-          const dx = wrapDelta(best.x, cr.x, COSMIC_BOUNDS);
-          const dy = wrapDelta(best.y, cr.y, COSMIC_BOUNDS);
-          const dz = wrapDelta(best.z, cr.z, COSMIC_BOUNDS);
+          const dx = wrapDelta(best.x, cr.x, TORUS_HALF);
+          const dy = wrapDelta(best.y, cr.y, TORUS_HALF);
+          const dz = wrapDelta(best.z, cr.z, TORUS_HALF);
           if (Math.hypot(dx, dy, dz) <= RANGE) {
-            cr.x = wrapCoord(best.x + COSMIC_BOUNDS, COSMIC_BOUNDS);
-            cr.y = wrapCoord(best.y + COSMIC_BOUNDS, COSMIC_BOUNDS);
-            cr.z = wrapCoord(best.z + COSMIC_BOUNDS, COSMIC_BOUNDS);
+            cr.x = wrapCoord(best.x + TORUS_HALF, TORUS_HALF);
+            cr.y = wrapCoord(best.y + TORUS_HALF, TORUS_HALF);
+            cr.z = wrapCoord(best.z + TORUS_HALF, TORUS_HALF);
             relocated++;
           }
         }

@@ -1,4 +1,4 @@
-import { COSMIC_BOUNDS } from "../constants";
+import { VALIDATION_RADIUS } from "../constants";
 import { hasPlumeColour } from "../data/plumeColors";
 
 /**
@@ -29,9 +29,6 @@ export const SNAP_INTERVAL_MS = 250;
 export const STALE_MS = 60_000;
 /** More messages than this in one second closes the socket. A good client sends 5. */
 export const FLOOD_PER_SECOND = 10;
-/** A ship mid-wrap can sit a hair past ±COSMIC_BOUNDS. */
-const EDGE_SLACK = 1;
-
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** q scaled to unit length, or null unless it is close to unit already (|q|² in 0.9–1.1). */
@@ -45,7 +42,7 @@ export function normQuat(q: unknown): Quat | null {
 }
 
 function inWorld(p: unknown): p is Vec3 {
-  return Array.isArray(p) && p.length === 3 && p.every((v) => finite(v) && Math.abs(v) <= COSMIC_BOUNDS + EDGE_SLACK);
+  return Array.isArray(p) && p.length === 3 && p.every(finite) && Math.hypot(p[0], p[1], p[2]) <= VALIDATION_RADIUS;
 }
 
 /** A client's `me` message, as the room sees it. Null for anything invalid. */

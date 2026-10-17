@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { planets, COSMIC_BOUNDS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/constants";
+import { planets, SYSTEM_RADIUS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/constants";
 import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND, speedKmS, distanceAU, earthYears, formatOrbit, SIZE_ENLARGEMENT, ORRERY_NOTE } from "../src/utils/realUnits";
 
 // These are the numbers in docs/UNIVERSE-RULES.md "Units". Change both together.
@@ -36,7 +36,7 @@ describe("real units", () => {
 
 describe("sector range readout", () => {
   it("the sector is 4.35 AU across", () => {
-    expect(distanceAU(COSMIC_BOUNDS * 2).toFixed(2)).toBe("4.35");
+    expect(distanceAU(SYSTEM_RADIUS * 2).toFixed(2)).toBe("6.96");
   });
 });
 

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { COSMIC_BOUNDS } from "../constants";
+import { VALIDATION_RADIUS } from "../constants";
 import { hasPlumeColour, PLUME_COLORS } from "../data/plumeColors";
 import {
   normQuat, publicCountry, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
@@ -42,7 +42,12 @@ export function liveSkyUrl(): string {
 }
 
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= SKY_CAP;
-const clamp = (v: number) => Math.max(-COSMIC_BOUNDS, Math.min(COSMIC_BOUNDS, v));
+/** Pulls a position onto the VALIDATION_RADIUS sphere, keeping its direction. */
+function clampToSphere(p: number[]): [number, number, number] {
+  const r = Math.hypot(p[0], p[1], p[2]);
+  const k = r > VALIDATION_RADIUS ? VALIDATION_RADIUS / r : 1;
+  return [p[0] * k, p[1] * k, p[2] * k];
+}
 
 function parseShip(row: unknown): SnapShip | null {
   if (!row || typeof row !== "object") return null;
@@ -53,7 +58,7 @@ function parseShip(row: unknown): SnapShip | null {
   if (!nq) return null;
   return {
     id,
-    p: [clamp(p[0]), clamp(p[1]), clamp(p[2])],
+    p: clampToSphere(p),
     q: nq,
     plume: typeof plume === "string" && hasPlumeColour(plume) ? plume : "stock",
     cc: typeof cc === "string" ? publicCountry(cc) : null,

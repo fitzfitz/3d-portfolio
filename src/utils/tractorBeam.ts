@@ -3,7 +3,7 @@ import type { Vec3 } from "./reactions";
 /**
  * Tractor beam (spec §6). One rule: the lighter object moves. Crystals and
  * belt pebbles come to the ship; data shards are anchored, so the beam reels
- * the ship toward them. Pure and allocation-free; wrap-aware throughout.
+ * the ship toward them. Pure and allocation-free.
  */
 export const BEAM_MAX_TARGETS = 3;
 export const BEAM_HALF_ANGLE = (20 * Math.PI) / 180;

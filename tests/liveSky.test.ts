@@ -6,7 +6,8 @@ import {
   liveRadar, writeRadarBlips,
 } from "../src/utils/liveSky";
 import { generateScanReport } from "../src/utils/scanReport";
-import { COSMIC_BOUNDS } from "../src/constants";
+import { VALIDATION_RADIUS } from "../src/constants";
+const EDGE = 400;
 import type { ShipState, SnapShip } from "../src/utils/liveSkyProtocol";
 
 afterEach(() => { vi.unstubAllEnvs(); ghostRegistry.clear(); });
@@ -43,10 +44,14 @@ describe("parseServerMessage", () => {
       { id: "d", p: [1, 2, 3], q: [0, 0, 0, 0] },
       "garbage",
     ] }));
-    expect(m).toEqual({ t: "snap", ships: [
-      { id: "a", p: [COSMIC_BOUNDS, 0, -COSMIC_BOUNDS], q: [0, 0, 0, 1], plume: "stock", cc: null, ago: 0 },
-      { id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 },
-    ] });
+    // A wild position is pulled onto the validation sphere, direction kept.
+    const a = (m as { ships: { id: string; p: number[] }[] }).ships[0];
+    expect(a.id).toBe("a");
+    expect(Math.hypot(...a.p)).toBeCloseTo(VALIDATION_RADIUS, 6);
+    expect(a.p[0]).toBeCloseTo(-a.p[2], 6);
+    expect(a.p[1]).toBeCloseTo(0, 6);
+    expect((m as { ships: unknown[] }).ships[1]).toEqual({ id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 });
+    expect((m as { ships: unknown[] }).ships).toHaveLength(2);
   });
   it("reads a row's ago, treating anything odd as 0 and capping it", () => {
     const m = parseServerMessage(j({ t: "snap", ships: [
@@ -103,8 +108,8 @@ describe("GhostBuffer", () => {
   });
   it("blends in a straight line, with no seam", () => {
     const b = new GhostBuffer();
-    b.push([ship("a", COSMIC_BOUNDS - 1)], 0);
-    b.push([ship("a", -COSMIC_BOUNDS + 1)], 250);
+    b.push([ship("a", EDGE - 1)], 0);
+    b.push([ship("a", -EDGE + 1)], 250);
     const x = b.sample(125 + RENDER_DELAY_MS)[0].p[0];
     expect(Math.abs(x)).toBeLessThan(1);
   });
@@ -148,8 +153,8 @@ describe("GhostBuffer", () => {
 describe("nearestGhosts", () => {
   const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
   it("sorts by plain distance and keeps n", () => {
-    const at = { x: -COSMIC_BOUNDS + 5, y: 0, z: 0 };
-    const list = [pose("mid", 0), pose("far", COSMIC_BOUNDS - 5), pose("near", -COSMIC_BOUNDS + 8)];
+    const at = { x: -EDGE + 5, y: 0, z: 0 };
+    const list = [pose("mid", 0), pose("far", EDGE - 5), pose("near", -EDGE + 8)];
     const out = nearestGhosts(at, list, 2);
     expect(out.map((g) => g.id)).toEqual(["near", "mid"]);
     expect(out).toBe(list); // sorted and trimmed in place: no per-frame allocation

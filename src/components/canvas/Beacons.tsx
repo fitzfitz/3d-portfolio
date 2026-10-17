@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSpaceStore } from "../../store/spaceStore";
-import { BEACON_LIMIT, beaconRegistry, type Beacon } from "../../utils/beacons";
+import { BEACON_LIMIT, beaconRegistry, beaconVisible, type Beacon } from "../../utils/beacons";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 
@@ -42,17 +42,19 @@ export default function Beacons() {
   }, [mesh]);
 
   useEffect(() => {
-    listRef.current = beacons;
-    beacons.forEach((b, i) => {
+    // Past the system radius the return burn is already pushing pilots back: no buoys out there.
+    const shown = beacons.filter(beaconVisible);
+    listRef.current = shown;
+    shown.forEach((b, i) => {
       const id = `beacon_${b.id}`;
       beaconRegistry.set(id, b);
       setScannable(id, b.x, b.y, b.z, own.includes(b.id) ? "YOUR BEACON" : "PILOT BEACON");
       mesh.setColorAt(i, own.includes(b.id) ? MINE : OTHERS);
     });
-    mesh.count = beacons.length;
+    mesh.count = shown.length;
     mesh.instanceColor!.needsUpdate = true;
     return () => {
-      for (const b of beacons) {
+      for (const b of shown) {
         beaconRegistry.delete(`beacon_${b.id}`);
         removeScannable(`beacon_${b.id}`);
       }

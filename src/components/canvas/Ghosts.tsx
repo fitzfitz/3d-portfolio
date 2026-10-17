@@ -150,11 +150,7 @@ export default function Ghosts() {
         continue;
       }
       slot.group.visible = true;
-      slot.group.position.set(
-        flight.x + (g.p[0] - flight.x),
-        flight.y + (g.p[1] - flight.y),
-        flight.z + (g.p[2] - flight.z),
-      );
+      slot.group.position.set(g.p[0], g.p[1], g.p[2]);
       slot.group.quaternion.set(g.q[0], g.q[1], g.q[2], g.q[3]);
       if (slot.plume !== g.plume) {
         slot.plume = g.plume;

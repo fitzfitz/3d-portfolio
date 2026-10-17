@@ -8,7 +8,7 @@ import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
-const RANGE = 160; // world units mapped to radar radius
+const RANGE = 220; // world units mapped to radar radius
 const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 /** Destinations are fixed: one blip each, in the table's colour. */
 const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
@@ -91,7 +91,7 @@ export default function RadarMap() {
           ctx.arc(c + px, c + py, 5, 0, Math.PI * 2);
           ctx.stroke();
         }
-        // Relative-altitude chevron: ▲ target above, ▼ below (Y-wrap aware)
+        // Relative-altitude chevron: ▲ target above, ▼ below
         const dy = (t.y - flight.y);
         const cue = altitudeCue(dy);
         if (cue.dir !== 0) {
@@ -107,10 +107,10 @@ export default function RadarMap() {
         ctx.globalAlpha = 1;
       }
 
-      // Fuel crystals: in-range only (3D, wrap-aware gate — a horizontal-only
+      // Fuel crystals: in-range only (3D gate — a horizontal-only
       // gate here used to draw ~57% of blips farther than RANGE with no
       // altitude cue at all), never rim-clamped. 40 crystals at ~146 units
-      // mean spacing puts ~5.5 within a correct 160-unit 3D gate at once —
+      // mean spacing puts a handful within a correct 3D gate at once —
       // the "where is my nearest fuel" cue without swamping the display.
       {
         for (const s of crystalSlots) {
