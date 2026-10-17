@@ -80,7 +80,7 @@ export function setExposureCompensation(exposure: number, postPassExposes: boole
 }
 
 /**
- * A camera cut (first frame, jump, teleport): the camera is somewhere new, so
+ * A camera cut (first frame, jump): the camera is somewhere new, so
  * the exposure is re-metered there at once instead of easing from the old
  * place's value (which would blow out or black out the first seconds).
  * Spaceship calls it on the very frame it snaps the camera, after
