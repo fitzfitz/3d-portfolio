@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { edgeDepth, edgeReturn, HazeLineGate, ReturnBurnLineGate, HAZE_START, EDGE_RETURN_SPEED, EdgeRadioClock } from "../src/utils/edgeHaze";
+import { edgeDepth, edgeReturn, HazeLineGate, ReturnBurnLineGate, HAZE_START, EDGE_RETURN_SPEED, EdgeRadioClock, edgeLatch } from "../src/utils/edgeHaze";
 import { SYSTEM_RADIUS } from "../src/constants";
 
 // p, v along +X for clarity; also run one case along (1,1,1)/sqrt3.
@@ -89,5 +89,32 @@ describe("HazeLineGate", () => {
     expect(g.update(0.5, true, false)).toBe(false);
     expect(g.update(0.5, false, true)).toBe(false);
     expect(g.update(0.5, false, false)).toBe(true);
+  });
+});
+
+describe("edge latch (no warp re-engage at the edge)", () => {
+  it("sets past SYSTEM_RADIUS, holds while boosting through the burn's return, clears on release or deep inside", () => {
+    expect(edgeLatch(false, SYSTEM_RADIUS + 0.1, true)).toBe(true);
+    expect(edgeLatch(true, SYSTEM_RADIUS - 5, true)).toBe(true); // burn brought it back to ~400: still latched
+    expect(edgeLatch(true, SYSTEM_RADIUS - 5, false)).toBe(false); // boost released
+    expect(edgeLatch(true, HAZE_START - 1, true)).toBe(false); // well inside the haze start
+    expect(edgeLatch(false, SYSTEM_RADIUS - 5, true)).toBe(false); // never crossed
+  });
+  it("a held-Shift outward run never re-warps after the cut", () => {
+    let latched = false, warpedAfterCut = false, cut = false;
+    const p = 399, dt = 1 / 60;
+    const pos = { x: p, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 0 };
+    for (let t = 0; t < 20; t += dt) {
+      const r = Math.hypot(pos.x, pos.y, pos.z);
+      latched = edgeLatch(latched, r, true);
+      const warp = !latched;
+      if (latched) cut = true;
+      if (cut && warp) warpedAfterCut = true;
+      if (warp) { vel.x = 130; } // outward warp along +x
+      edgeReturn(pos, vel, dt);
+      pos.x += vel.x * dt;
+    }
+    expect(cut).toBe(true);
+    expect(warpedAfterCut).toBe(false);
   });
 });

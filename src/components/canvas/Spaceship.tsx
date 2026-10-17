@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { SYSTEM_RADIUS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
+import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -16,7 +16,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
-import { edgeReturn } from "../../utils/edgeHaze";
+import { edgeReturn, edgeLatch } from "../../utils/edgeHaze";
 import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
@@ -214,6 +214,7 @@ export default function Spaceship() {
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
+  const edgeCut = useRef(false);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on an intercept course, so the first W press flies into a planet.
   const hasFlown = useRef(false);
@@ -410,6 +411,7 @@ export default function Spaceship() {
       shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
       drivePlumes(0.35, 0.25, time, dt);
       store.setWarping(false);
+      flight.edgeBurn = false;
       beamState.active = false; beamState.reel.active = false;
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.pitch = pitch.current;
@@ -496,6 +498,7 @@ export default function Spaceship() {
 
       zeroGravity();
       _total.set(0, 0, 0);
+      flight.edgeBurn = false;
       beamState.active = false; beamState.reel.active = false;
       applyChaseCam(false, true);
       return;
@@ -583,8 +586,10 @@ export default function Spaceship() {
     // Running dry is a graceful coast, not a stop: the warp branch below assigns
     // velocity directly, so when it stops running the ship keeps its 39 u/s and
     // decays through the existing SPACE_DRAG.
-    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0
-      && Math.hypot(pos.current.x, pos.current.y, pos.current.z) <= SYSTEM_RADIUS;
+    // The edge cut is latched (see edgeLatch): the burn returning the ship to the
+    // radius must not re-engage warp and point it outward again.
+    edgeCut.current = edgeLatch(edgeCut.current, Math.hypot(pos.current.x, pos.current.y, pos.current.z), input.boost);
+    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0 && !edgeCut.current;
     flight.fuel = stepFuel(flight.fuel, dt, input.boost || fuelDebug.holdRegen, warpActive);
     store.setFuelEmpty(flight.fuel <= 0);
     store.setWarping(warpActive);
@@ -638,7 +643,7 @@ export default function Spaceship() {
     sunDst.g = SUN_WELL.g; sunDst.radius = SUN_WELL.radius; sunDst.rMin = SUN_WELL.rMin;
     const g = gravity.current;
     // The edge: after the caps (so it overrides warp and thrust), before integration.
-    edgeReturn(pos.current, vel.current, dt);
+    flight.edgeBurn = edgeReturn(pos.current, vel.current, dt);
     stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
 
     pos.current.x += (vel.current.x + g.x) * dt;

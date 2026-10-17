@@ -239,6 +239,8 @@ export const flight = {
    * Starts full — fuel is session state, not persisted progress.
    */
   fuel: FUEL_MAX,
+  /** The return burn is running this frame (Spaceship writes it; EdgeHaze reads it for the radio line). */
+  edgeBurn: false,
 };
 
 /**

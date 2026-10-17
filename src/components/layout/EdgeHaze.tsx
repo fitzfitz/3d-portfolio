@@ -3,7 +3,6 @@ import { flight, useSpaceStore } from "../../store/spaceStore";
 import { edgeDepth, HAZE_MAX_OPACITY, HazeLineGate, ReturnBurnLineGate, EdgeRadioClock } from "../../utils/edgeHaze";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools, RETURN_BURN_LINE } from "../../data/chatterLines";
-import { SYSTEM_RADIUS } from "../../constants";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 
 /** Stable predicate (no per-frame closure): is the current broadcast a haze or return-burn line? */
@@ -41,8 +40,9 @@ export default function EdgeHaze() {
         s.sendBroadcast(scheduler.pick("haze"), { silent: true });
       }
       // The burn preempts the haze line: only other broadcasts hold it back.
-      if (burnGate.update(Math.hypot(flight.x, flight.y, flight.z) > SYSTEM_RADIUS, now, clock.busyIgnoringEdge(now, RADIO_BUSY_S))) {
-        s.sendBroadcast(RETURN_BURN_LINE, { silent: true });
+      if (burnGate.update(flight.edgeBurn, now, clock.busyIgnoringEdge(now, RADIO_BUSY_S))) {
+        // Not silent: it explains an involuntary control change (a11y). Still once per 20 s.
+        s.sendBroadcast(RETURN_BURN_LINE);
       }
       raf = requestAnimationFrame(tick);
     };

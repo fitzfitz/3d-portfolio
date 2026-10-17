@@ -45,6 +45,18 @@ export function edgeReturn(p: Vec3, v: Vec3, dt: number): boolean {
   return true;
 }
 
+/**
+ * The edge cut latch. Set once the ship is past SYSTEM_RADIUS; while set, warp
+ * is refused, so the burn bringing the ship back to 400 cannot re-engage warp
+ * (which would point outward again and bounce). Cleared when boost is released
+ * or the ship is back inside HAZE_START.
+ */
+export function edgeLatch(latched: boolean, r: number, boost: boolean): boolean {
+  if (r > SYSTEM_RADIUS) return true;
+  if (!boost || r < HAZE_START) return false;
+  return latched;
+}
+
 const BURN_LINE_COOLDOWN_S = 20;
 
 /** The return-burn radio line: at most once per 20 s while the burn is active, held while the radio is busy. */
