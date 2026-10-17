@@ -30,9 +30,10 @@ export async function fetchBeacons(): Promise<Beacon[]> {
   }
 }
 
+/** `invalid` is a local validation failure (spawn pad); `refused` is a server 400. */
 export type DropResult =
   | { ok: true; beacon: Beacon }
-  | { ok: false; reason: "rate" | "offline" | "invalid" };
+  | { ok: false; reason: "rate" | "offline" | "invalid" | "refused" };
 
 export async function postBeacon(drop: BeaconDrop): Promise<DropResult> {
   const base = beaconApiUrl();
@@ -45,7 +46,7 @@ export async function postBeacon(drop: BeaconDrop): Promise<DropResult> {
       body: JSON.stringify(v.drop),
     });
     if (res.status === 429) return { ok: false, reason: "rate" };
-    if (!res.ok) return { ok: false, reason: res.status === 400 ? "invalid" : "offline" };
+    if (!res.ok) return { ok: false, reason: res.status === 400 ? "refused" : "offline" };
     const [beacon] = parseBeacons({ beacons: [(await res.json())?.beacon] });
     return beacon ? { ok: true, beacon } : { ok: false, reason: "offline" };
   } catch {

@@ -17,7 +17,7 @@ describe("validateDrop", () => {
     }
   });
   it("rejects positions outside the system or not finite", () => {
-    for (const x of [451, -451, Number.NaN, Infinity, "3"]) expect(validateDrop({ ...good, x }).ok).toBe(false);
+    for (const x of [525, -525, Number.NaN, Infinity, "3"]) expect(validateDrop({ ...good, x }).ok).toBe(false);
   });
   // Every visitor starts at the spawn pad (src/data/spawn.ts): a pile of beacons there
   // would be the first thing a recruiter sees.
@@ -32,9 +32,9 @@ describe("validateDrop", () => {
 
 describe("sphere bounds", () => {
   it("validates within the sphere, not a cube", () => {
-    expect(validateDrop({ ...good, x: 430, y: 0, z: 0 }).ok).toBe(true);
-    expect(validateDrop({ ...good, x: 450, y: 0, z: 0 }).ok).toBe(false);
-    expect(validateDrop({ ...good, x: 300, y: 300, z: 300 }).ok).toBe(false);
+    expect(validateDrop({ ...good, x: 515, y: 0, z: 0 }).ok).toBe(true);
+    expect(validateDrop({ ...good, x: 525, y: 0, z: 0 }).ok).toBe(false);
+    expect(validateDrop({ ...good, x: 320, y: 320, z: 320 }).ok).toBe(false);
   });
   it("draws a beacon only inside the system radius", () => {
     expect(beaconVisible({ x: 250, y: 250, z: 250 })).toBe(false);

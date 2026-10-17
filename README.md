@@ -161,11 +161,15 @@ resolve relative `og:image`, and Vite's HTML rewriting covers `og:image` but not
 `twitter:image`. A custom domain later means updating `og:url`, `canonical`,
 `og:image` and `twitter:image` by hand.
 
-### Redeploy `beacon-api` before merging the bigger universe
+### `beacon-api` shares bounds with the client
 
-The system grew from a 250-unit torus to a 400-unit sphere, and `beacon-api`
-validates positions against the new bounds (`VALIDATION_RADIUS` 440). Redeploy
-`beacon-api` **before** this change merges, or beacons and live-sky positions
+`beacon-api` imports its validation (position bound `VALIDATION_RADIUS`, phrases,
+spawn keep-out) from the client source, so the two must agree. When those bounds
+change, deploy the Worker first, then merge the client.
+
+For the bigger-universe change (system grew from a 250-unit torus to a 400-unit
+sphere; `VALIDATION_RADIUS` is now a fixed 520): deploy `beacon-api`, verify it
+accepts a position near 500, then merge. Otherwise beacons and live-sky positions
 beyond the old bounds are rejected.
 
 ## Docs

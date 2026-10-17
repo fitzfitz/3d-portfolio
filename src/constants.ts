@@ -19,8 +19,13 @@ export interface PlanetData {
 
 /** The playable system: past this radius a return burn pushes the ship back (utils/edgeHaze.ts). */
 export const SYSTEM_RADIUS = 400;
-/** Content (landmarks, beacons) may sit this far out and still validate. */
-export const VALIDATION_RADIUS = SYSTEM_RADIUS + 40;
+/**
+ * The Worker-shared acceptance bound (beacon-api validates positions against it).
+ * Deliberately generous and fixed, not derived from SYSTEM_RADIUS: the playable
+ * edge can move out later without a Worker redeploy. Raising THIS value means
+ * deploying beacon-api first.
+ */
+export const VALIDATION_RADIUS = 520;
 
 /** The scale the player ship (spaceship.glb) is rendered at; tests/assetContracts.test.ts sizes the career dock standoff from it. */
 export const PLAYER_SHIP_SCALE = 0.35;
