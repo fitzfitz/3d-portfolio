@@ -268,3 +268,11 @@ triangles), close approach 59 / 349,372, modal open 108 / 418,494, 40 anomalies
 39 / 244,990 (+2,050 on the last run, a view-dependent count; the 250,580 ceiling holds with about 2% to spare);
 programs 54 in the three static states and 55 with anomalies; the tour in
 `programs.probe.mjs` adds 0. Startup read 8.3-12.3 s. Ceilings changed: none.
+Review fixes (same day): the corona quad moves onto the limb each frame, the spike and veil
+sprites rescale with the disc, and the photosphere gained one `uGain` uniform (x0.15 with
+bloom, 1 in low-perf); still no new geometry, material or program. Full run: deep space
+35 / 241,916, close approach 57 / 338,124, modal open 108 / 418,494, 40 anomalies 39 / 244,990,
+programs 54 (tour adds 0), startup 7.7-11.6 s. One earlier run read deep space 41 calls (+6
+calls, +12 triangles: the six lens sprites, with the sun inside the glare cone from the
+deep-space point at that hour); a re-run read 35. The 40 ceiling has 5 to spare without the
+sun in view and none with it.
