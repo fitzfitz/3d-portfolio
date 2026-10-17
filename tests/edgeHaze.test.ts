@@ -1,17 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { edgeDepth, edgeReturn, HazeLineGate, ReturnBurnLineGate, HAZE_START, EDGE_RETURN_SPEED } from "../src/utils/edgeHaze";
+import { edgeDepth, edgeReturn, HazeLineGate, ReturnBurnLineGate, HAZE_START, EDGE_RETURN_SPEED, EdgeRadioClock } from "../src/utils/edgeHaze";
 import { SYSTEM_RADIUS } from "../src/constants";
 
 // p, v along +X for clarity; also run one case along (1,1,1)/sqrt3.
-function fly(p0: number, v0: number, pilotOut: number, seconds: number) {
-  const p = { x: p0, y: 0, z: 0 }, v = { x: v0, y: 0, z: 0 };
+function fly(p0: number, v0: number, pilotOut: number, seconds: number, dir = [1, 0, 0]) {
+  const L = Math.hypot(dir[0], dir[1], dir[2]), n = dir.map((c) => c / L);
+  const p = { x: p0 * n[0], y: p0 * n[1], z: p0 * n[2] }, v = { x: v0 * n[0], y: v0 * n[1], z: v0 * n[2] };
   let maxR = p0, backInsideAt = -1, maxInward = 0;
   for (let t = 0; t < seconds; t += 1 / 60) {
-    v.x += pilotOut / 60;
+    v.x += (pilotOut * n[0]) / 60; v.y += (pilotOut * n[1]) / 60; v.z += (pilotOut * n[2]) / 60;
     edgeReturn(p, v, 1 / 60);
-    p.x += v.x / 60;
-    maxR = Math.max(maxR, p.x); maxInward = Math.max(maxInward, -v.x);
-    if (backInsideAt < 0 && p.x < SYSTEM_RADIUS) backInsideAt = t;
+    p.x += v.x / 60; p.y += v.y / 60; p.z += v.z / 60;
+    const r = Math.hypot(p.x, p.y, p.z);
+    maxR = Math.max(maxR, r); maxInward = Math.max(maxInward, -(v.x * n[0] + v.y * n[1] + v.z * n[2]));
+    if (backInsideAt < 0 && r < SYSTEM_RADIUS) backInsideAt = t;
   }
   return { maxR, backInsideAt, maxInward };
 }
@@ -31,6 +33,25 @@ describe("return burn", () => {
   it("does nothing inside the system", () => {
     const v = { x: 39, y: 0, z: 0 };
     expect(edgeReturn({ x: 399, y: 0, z: 0 }, v, 1 / 60)).toBe(false); expect(v.x).toBe(39);
+  });
+  it("bounds hold along (1,1,1)/sqrt3 as well", () => {
+    const a = fly(400.01, 39, 0, 10, [1, 1, 1]);
+    expect(a.maxR).toBeLessThan(440); expect(a.backInsideAt).toBeGreaterThan(0); expect(a.backInsideAt).toBeLessThan(6);
+    const b = fly(400.01, 10.8, 25.2, 15, [1, 1, 1]);
+    expect(b.maxR).toBeLessThan(440); expect(b.backInsideAt).toBeGreaterThan(0);
+  });
+  it("the burn line preempts the haze line but waits for any other broadcast", () => {
+    const W = 6;
+    const hazeFirst = new EdgeRadioClock();
+    hazeFirst.observe(1, 0, () => true);
+    expect(hazeFirst.busy(1, W)).toBe(true);
+    expect(hazeFirst.busyIgnoringEdge(1, W)).toBe(false);
+    const burn = new ReturnBurnLineGate();
+    expect(burn.update(true, 1, hazeFirst.busyIgnoringEdge(1, W))).toBe(true);
+    const other = new EdgeRadioClock();
+    other.observe(1, 0, () => false);
+    expect(other.busyIgnoringEdge(1, W)).toBe(true);
+    expect(new ReturnBurnLineGate().update(true, 1, other.busyIgnoringEdge(1, W))).toBe(false);
   });
   it("works along a diagonal too", () => {
     const k = 400.5 / Math.sqrt(3), p = { x: k, y: k, z: k }, v = { x: 20, y: 20, z: 20 };
