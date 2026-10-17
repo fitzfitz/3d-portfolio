@@ -2,7 +2,10 @@ import { withPage, settle, toDeepSpace } from "./harness.mjs";
 
 // ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
 // Measured on headless Chrome / SwiftShader (software rendering) -- see that
-// file for the full baseline table, the four states these were captured in,
+// file for the full baseline table, the five states these were captured in
+// (deep space facing away from the sun, deep space facing it, close
+// approach, modal open, 40 anomalies facing away; faceFromSun pins the
+// heading, so whether the sun is in frame is set, not left to chance),
 // and the derivation rule repeated here in short: calls/triangles are
 // baseline + 15%, rounded up to the nearest ten; programs and lights are
 // baseline + 1, since neither should grow at all during ordinary play -- the
@@ -27,6 +30,17 @@ const ANOMALIES_CALLS_CEILING = 40;
 const ANOMALIES_TRIS_CEILING = 250580;
 const ANOMALIES_PROGRAMS_CEILING = 79;
 const ANOMALIES_LIGHTS_CEILING = 5;
+
+// Deep space again, nose on the sun: the disc, its corona and the six lens
+// sprites in frame, counted on purpose (the deep-space and 40-anomalies states
+// face away from it). Baseline 108 / 418490 / 54 / 4 on 11 runs; one later
+// run read 107 calls (same triangles: a points or lines draw), inside the ceiling.
+// Programs is the page's cumulative count, read seconds after deep space on
+// the same page, so it shares deep space's ceiling rather than a tighter one.
+const FACING_SUN_CALLS_CEILING = 130;
+const FACING_SUN_TRIS_CEILING = 481270;
+const FACING_SUN_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
+const FACING_SUN_LIGHTS_CEILING = 5;
 
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
@@ -57,6 +71,73 @@ const readPerfCounters = (page) => page.evaluate(() => {
 });
 
 /**
+ * Turns the ship's nose straight away from the sun at the origin (`toward`
+ * false) or straight at it (`toward` true), from wherever the ship is now, and
+ * waits until the view has settled. Without this the deep-space counts took
+ * whatever heading the ship had before the teleport, and about one run in 15
+ * the sun sat inside the lens glare's cone, drawing six extra sprites.
+ *
+ * Convention (src/utils/pitchFlight.ts, noseDirection): yaw 0 / pitch 0 is +Z
+ * and nose = (sin yaw * cos pitch, sin pitch, cos yaw * cos pitch), so a unit
+ * direction n is yaw = atan2(n.x, n.z), pitch = asin(n.y). Away from the sun,
+ * n is the ship's position normalised; toward it, the negation. From
+ * toDeepSpace's (-170, -150, -170) that is yaw -135 deg / pitch -31.4 deg
+ * away and yaw 45 deg / pitch +31.4 deg toward, both inside PITCH_MAX (83 deg).
+ *
+ * The chase camera (Spaceship.tsx, applyChaseCam) eases toward a point 4.6u
+ * behind the nose and 1.8u up by frameLerp(0.05) a frame, 14% a frame at the
+ * 0.05 s dt clamp, so after a turn of up to 180 deg it needs ~30 frames to swing
+ * round (and the chase point itself moved ~300u with the teleport). The probe
+ * puts the camera on that point directly, as sky.probe.mjs's parkFacingSun does;
+ * the next frame's lookAt aims it. The wait then covers SunFlare's fade
+ * (Sun.tsx): `vis` decays by 0.001^dt a frame, so from full strength it falls
+ * under the 0.01 visibility cut in 14 frames at the dt clamp, or 0.67 s at
+ * faster frame rates. At least 20 frames and 1 s covers both.
+ */
+async function faceFromSun(page, toward) {
+  await page.evaluate((toward) => {
+    const d = window.__fitz;
+    const f = d.flight;
+    const r = Math.hypot(f.x, f.y, f.z);
+    const s = toward ? -1 : 1;
+    const n = { x: (s * f.x) / r, y: (s * f.y) / r, z: (s * f.z) / r };
+    d.setAttitude(Math.atan2(n.x, n.z), Math.asin(n.y));
+    // applyChaseCam's resting chase point: camDistance 4.6 (speed 0), camHeight 1.8.
+    d.camera.position.set(f.x - n.x * 4.6, f.y - n.y * 4.6 + 1.8, f.z - n.z * 4.6);
+  }, toward);
+  await page.evaluate(() => new Promise((resolve) => {
+    const t0 = performance.now();
+    let n = 0;
+    const step = () => {
+      n++;
+      if (n >= 20 && performance.now() - t0 >= 1000) resolve();
+      else requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }));
+}
+
+/**
+ * Where the sun is relative to the live camera, read on one frame: `behind`
+ * from camera space (the camera looks down its own -Z), `ndc` from projecting
+ * the origin, and `glare` the visibility of Sun.tsx's lens-sprite group, the
+ * thing that adds the six draw calls.
+ */
+const sunInView = (page) => page.evaluate(() => {
+  const cam = window.__fitz.camera;
+  cam.updateMatrixWorld();
+  const local = cam.worldToLocal(cam.position.clone().set(0, 0, 0));
+  const ndc = cam.position.clone().set(0, 0, 0).project(cam);
+  const glare = window.__fitz.scene.getObjectByName("SunGlare");
+  return {
+    behind: local.z > 0,
+    onScreen: local.z < 0 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1,
+    ndc: `(${ndc.x.toFixed(2)}, ${ndc.y.toFixed(2)})`,
+    glare: glare ? glare.visible : null,
+  };
+});
+
+/**
  * Teleports into a planet's gravity well but short of the orbit lock.
  *
  * Geometry (src/constants.ts): ZONE_FACTOR 1.8 and LOCK_ENGAGE_FACTOR 1.3 of
@@ -64,7 +145,7 @@ const readPerfCounters = (page) => page.evaluate(() => {
  * 1.3x. The ship is placed 1.45x out along the planet's outward radial —
  * inside the well, outside the lock, outside the planet's own surface (see the
  * comment in the body for why radial). Size is read from the live module, so
- * the probe follows PLANET_SIZE instead of pinning it. A measured
+ * the probe follows the planet table instead of pinning a size. A measured
  * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
  * at all, so activeZone stayed null and the check silently proved nothing.
  */
@@ -93,6 +174,7 @@ export default async function run() {
   return withPage({ label: "transition" }, async (page, checks) => {
     await toDeepSpace(page);
     await settle(page, 1000);
+    await faceFromSun(page, false);
 
     // ---- renderer counter budgets: deep space (docs/PERF-BUDGETS.md) ----
     const lightBudget = await page.evaluate(async () => {
@@ -100,6 +182,10 @@ export default async function run() {
       return LIGHT_BUDGET;
     });
     const deep = await readPerfCounters(page);
+    const deepSun = await sunInView(page);
+    checks.check("deep space faces away from the sun (precondition)",
+      deepSun.behind && deepSun.glare === false,
+      `behind=${deepSun.behind} glare=${deepSun.glare}`);
     checks.check("deep-space draw calls within budget", deep.calls <= DEEP_CALLS_CEILING,
       `calls=${deep.calls} ceiling=${DEEP_CALLS_CEILING}`);
     checks.check("deep-space triangles within budget", deep.triangles <= DEEP_TRIS_CEILING,
@@ -108,6 +194,25 @@ export default async function run() {
       `programs=${deep.programs} ceiling=${DEEP_PROGRAMS_CEILING}`);
     checks.check("deep-space light count within LIGHT_BUDGET", deep.lights <= lightBudget,
       `lights=${deep.lights} LIGHT_BUDGET=${lightBudget}`);
+
+    // ---- renderer counter budgets: deep space facing the sun (docs/PERF-BUDGETS.md) ----
+    // Same point, nose on the sun, so the disc, corona, lens sprites and the
+    // inner system are all counted on purpose (the old flake only ever caught
+    // the six sprites at its edge). The precondition proves they are in frame.
+    await faceFromSun(page, true);
+    const facing = await readPerfCounters(page);
+    const facingSun = await sunInView(page);
+    checks.check("facing-sun state has the sun and its glare in view (precondition)",
+      facingSun.onScreen && facingSun.glare === true,
+      `ndc=${facingSun.ndc} onScreen=${facingSun.onScreen} glare=${facingSun.glare}`);
+    checks.check("facing-sun draw calls within budget", facing.calls <= FACING_SUN_CALLS_CEILING,
+      `calls=${facing.calls} ceiling=${FACING_SUN_CALLS_CEILING}`);
+    checks.check("facing-sun triangles within budget", facing.triangles <= FACING_SUN_TRIS_CEILING,
+      `triangles=${facing.triangles} ceiling=${FACING_SUN_TRIS_CEILING}`);
+    checks.check("facing-sun programs within budget", facing.programs <= FACING_SUN_PROGRAMS_CEILING,
+      `programs=${facing.programs} ceiling=${FACING_SUN_PROGRAMS_CEILING}`);
+    checks.check("facing-sun light count within budget", facing.lights <= FACING_SUN_LIGHTS_CEILING,
+      `lights=${facing.lights} ceiling=${FACING_SUN_LIGHTS_CEILING}`);
 
     // ---- approach: activeZone flips, canvas must not re-render ----
     const beforeApproach = await canvasRenders(page);
@@ -281,8 +386,11 @@ export default async function run() {
       afterWarp - beforeWarp === 0, `delta=${afterWarp - beforeWarp}`);
 
     // ---- plasma: spawning must not add lights or recompile shaders ----
+    // Faced away from the sun, like the deep-space state: the 40-anomalies
+    // counts below are budgeted against a view without it.
     await toDeepSpace(page);
     await settle(page, 1000);
+    await faceFromSun(page, false);
 
     const beforePlasma = await page.evaluate(() => {
       let lights = 0;
@@ -345,6 +453,10 @@ export default async function run() {
 
     // ---- renderer counter budgets: 40 anomalies spawned (docs/PERF-BUDGETS.md) ----
     const anomalies = await readPerfCounters(page);
+    const anomaliesSun = await sunInView(page);
+    checks.check("40-anomalies state faces away from the sun (precondition)",
+      anomaliesSun.behind && anomaliesSun.glare === false,
+      `behind=${anomaliesSun.behind} glare=${anomaliesSun.glare}`);
     checks.check("40-anomalies draw calls within budget", anomalies.calls <= ANOMALIES_CALLS_CEILING,
       `calls=${anomalies.calls} ceiling=${ANOMALIES_CALLS_CEILING}`);
     checks.check("40-anomalies triangles within budget", anomalies.triangles <= ANOMALIES_TRIS_CEILING,

@@ -7,15 +7,18 @@ import { planets, SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { glareLevels } from "../../utils/sunGlare";
-import { makeSunSurfaceMaterial, makeSunCoronaMaterial } from "./sunMaterials";
+import { makeSunSurfaceMaterial, makeSunCoronaMaterial, CORONA_SIZE, SUN_BLOOM_GAIN } from "./sunMaterials";
+import { sunApparentRadius, lensScale, coronaLimbFit } from "../../utils/sunLens";
 
 /** SUN_COLLIDER (data/asteroids.ts) and the glare's occlusion test track it. */
 const CORE_R = SUN_RADIUS;
-const CORONA_SIZE = 52;
+/** coronaLimbFit's result, reused every frame. */
+const CORONA_FIT = { offset: 0, scale: 1 };
 
 export default function Sun() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const coronaRef = useRef<THREE.Mesh>(null);
+  const coronaFitRef = useRef<THREE.Group>(null);
 
   const surfaceMaterial = useMemo(makeSunSurfaceMaterial, []);
   const coronaMaterial = useMemo(() => makeSunCoronaMaterial((CORE_R * 2) / CORONA_SIZE), []);
@@ -29,8 +32,24 @@ export default function Sun() {
     // A world-event flare swells the heat and the corona (spec: slow, two peaks 6s apart).
     const flare = flareLevel(worldEventElapsed("flare"));
     surfaceMaterial.uniforms.uHeat.value = 0.5 + 0.5 * Math.sin(t * 0.9) + 0.6 * flare;
+    surfaceMaterial.uniforms.uGain.value = isLowPerf ? 1 : SUN_BLOOM_GAIN;
     coronaMaterial.uniforms.uTime.value = t;
-    if (coronaRef.current) coronaRef.current.quaternion.copy(state.camera.quaternion);
+    // The billboard sits on the limb, not through the centre: a flat plane at
+    // the centre hid most of the halo behind the 24-unit disc up close. The fit
+    // group moves it R²/d toward the camera, faces it down the sun-camera line
+    // and scales its disc to the limb (coronaLimbFit); its resting reach from
+    // the centre never exceeds CORONA_SIZE / 2 (36 < belt edge 40).
+    const fitGroup = coronaFitRef.current;
+    if (fitGroup) {
+      const cam = state.camera.position;
+      const d = cam.length();
+      coronaLimbFit(d, CORONA_FIT);
+      if (d > 1e-6) fitGroup.position.copy(cam).multiplyScalar(CORONA_FIT.offset / d);
+      fitGroup.scale.setScalar(CORONA_FIT.scale);
+      fitGroup.lookAt(cam);
+    }
+    // The swell (1 + 0.6 * flare) briefly pushes the halo to ~r 58, past the belt's
+    // inner edge (r 40): an accepted transient; the resting halo stays under 40.
     if (coronaRef.current) coronaRef.current.scale.setScalar(1 + 0.6 * flare);
   });
 
@@ -42,9 +61,11 @@ export default function Sun() {
 
       {/* Streamer corona billboard (skipped in low-perf) */}
       {!isLowPerf && (
-        <mesh ref={coronaRef} name="SunCorona" material={coronaMaterial} renderOrder={2}>
-          <planeGeometry args={[CORONA_SIZE, CORONA_SIZE]} />
-        </mesh>
+        <group ref={coronaFitRef}>
+          <mesh ref={coronaRef} name="SunCorona" material={coronaMaterial} renderOrder={2}>
+            <planeGeometry args={[CORONA_SIZE, CORONA_SIZE]} />
+          </mesh>
+        </group>
       )}
       {!isLowPerf && <SunFlare />}
     </group>
@@ -161,16 +182,21 @@ function SunFlare() {
     g.position.copy(cam.position);
     g.quaternion.copy(cam.quaternion);
     const sp = spikesRef.current, vl = veilRef.current;
+    // Spikes and veil were sized for a small disc; past that they grow with the
+    // disc's apparent size so it never swallows them (sunLens.ts). The veil
+    // keeps its total light as it grows (opacity / lens²): at full strength a
+    // veil three times wider flooded the whole frame warm brown.
+    const lens = lensScale(sunApparentRadius(cam.position.length(), cam.fov));
     if (sp) {
       sp.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
-      sp.scale.set(0.45 * halfH * 2, 0.45 * halfH * 2, 1);
+      sp.scale.set(0.45 * halfH * 2 * lens, 0.45 * halfH * 2 * lens, 1);
       (sp.material as THREE.SpriteMaterial).opacity = glare.spikes * SPIKE_OPACITY_SCALE;
       (sp.material as THREE.SpriteMaterial).color.copy(SPIKE_COLOR).multiplyScalar(comp);
     }
     if (vl) {
       vl.position.set(_ndc.x * halfW, _ndc.y * halfH, -FLARE_DEPTH);
-      vl.scale.set(1.2 * halfH * 2, 1.2 * halfH * 2, 1);
-      (vl.material as THREE.SpriteMaterial).opacity = glare.veil;
+      vl.scale.set(1.2 * halfH * 2 * lens, 1.2 * halfH * 2 * lens, 1);
+      (vl.material as THREE.SpriteMaterial).opacity = glare.veil / (lens * lens);
       (vl.material as THREE.SpriteMaterial).color.copy(VEIL_COLOR).multiplyScalar(comp);
     }
     for (let i = 0; i < FLARE_GHOSTS.length; i++) {
@@ -188,7 +214,9 @@ function SunFlare() {
   });
 
   return (
-    <group ref={groupRef} visible={false}>
+    // Named for transition.probe.mjs, which asserts whether the sun is in view
+    // where it measures draw calls: this group is the six lens sprites' switch.
+    <group ref={groupRef} name="SunGlare" visible={false}>
       <sprite ref={spikesRef} renderOrder={10}>
         <spriteMaterial map={textures.spikes} color="#fff4e0" transparent depthTest={false} depthWrite={false}
           blending={THREE.AdditiveBlending} />

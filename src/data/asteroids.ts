@@ -54,4 +54,4 @@ for (const a of asteroidInstances) {
 export const ASTEROID_COLLIDERS = asteroidInstances.map((a, i) => ({
   id: `asteroid_${i}`, x: a.position[0], y: a.position[1], z: a.position[2], r: a.scale * 2.2,
 }));
-export const SUN_COLLIDER = { id: "sol", x: 0, y: 0, z: 0, r: 9.5 }; // Sun.tsx CORE_R 8 plus the corona's brightest skirt
+export const SUN_COLLIDER = { id: "sol", x: 0, y: 0, z: 0, r: 25.5 }; // Sun.tsx CORE_R (SUN_RADIUS 24) plus the corona's brightest skirt

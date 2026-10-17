@@ -233,6 +233,8 @@ with visible thrust (F1). The nebula haze stays as the visual cue.
 
 ### F12. Sizes that obey stellar and planetary physics (L35, L36)
 
+**Built (PR #33, `docs/superpowers/specs/2026-10-17-true-proportions-design.md`):** planets 16 / 12 / 8 and sun core 24. The planet numbers changed from 20 / 15 / 11 because every landmark, buoy, shard and route was cleared against size 16 (the career station clears Portfolio's swept orbit by only 1.55), so growing any planet forced a re-layout; shrinking keeps every clearance and the order is still right.
+
 Under P3 every body is enlarged, but their order must stay real.
 - **Sun:** the core outsizes the largest planet. **My call:** core radius 24
   (from 8), corona scaled to keep its look, colour unchanged (L25).

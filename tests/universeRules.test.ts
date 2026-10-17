@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { planets, GM_SUN, GM_PLANET, PROGRADE } from "../src/constants";
+import { planets, SUN_RADIUS, GM_SUN, gmOf, PROGRADE } from "../src/constants";
 import { orbitPosition } from "../src/utils/orbits";
 import { keplerGM, keplerOmega, keplerPeriod, keplerPosition } from "../src/utils/kepler";
 import { COMETS } from "../src/data/comets";
@@ -86,9 +86,9 @@ describe("L9 everything orbits the sun the same way (prograde)", () => {
 });
 
 describe("L11–L12 moons: Kepler around their planet, prograde unless captured, tidally locked", () => {
-  it.each(MOONS.map((m) => [m.id, m] as const))("moon %s obeys Kepler's third law with GM_PLANET", (_, m) => {
-    const r = m.distance * planets[m.planet].size;
-    expect(Math.abs(moonOrbitSpeed(m))).toBeCloseTo(keplerOmega(r, GM_PLANET), 12);
+  it.each(MOONS.map((m) => [m.id, m] as const))("moon %s obeys Kepler around its own planet (gmOf)", (_, m) => {
+    const p = planets[m.planet];
+    expect(Math.abs(moonOrbitSpeed(m))).toBeCloseTo(keplerOmega(m.distance * p.size, gmOf(p)), 12);
   });
   it("Ruangrapi's rock moon keeps its 0.4 rad/s (the anchor)", () => {
     const anchor = MOONS.find((m) => m.id === "ruangrapiRock")!;
@@ -102,5 +102,19 @@ describe("L11–L12 moons: Kepler around their planet, prograde unless captured,
   });
   it("captured (retrograde) moons are the exception: the two ice moons", () => {
     expect(MOONS.filter((m) => m.captured).map((m) => m.id).sort()).toEqual(["fuxxIce", "portfolioIce"]);
+  });
+});
+
+describe("L35–L36 planets sized and weighed by type", () => {
+  it("L36: planet size follows type — gas giant > earth > mars", () => {
+    const by = (t: string) => planets.find((p) => p.type === t)!.size;
+    expect(by("gas-giant")).toBe(16); expect(by("earth")).toBe(12); expect(by("mars")).toBe(8);
+  });
+  it("L35: the sun outsizes every planet", () => {
+    for (const p of planets) expect(SUN_RADIUS).toBeGreaterThan(p.size);
+  });
+  it("masses are ordered gas giant > earth > mars", () => {
+    const m = (t: string) => planets.find((p) => p.type === t)!.mass;
+    expect(m("gas-giant")).toBeGreaterThan(m("earth")); expect(m("earth")).toBeGreaterThan(m("mars"));
   });
 });

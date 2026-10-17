@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { projects, planets, projectById, PLANET_ORBITS } from "../src/constants";
+import { projects, planets, projectById, PLANET_ORBITS, PLANET_PROPS } from "../src/constants";
 import { RESERVED_ZONE_IDS } from "../src/data/destinations";
 
 /**
@@ -51,6 +51,15 @@ describe("project <-> planet mapping", () => {
     expect(orphans, "orbits with no project").toEqual([]);
   });
 
+  it("gives every planet a type, size and mass (PLANET_PROPS), and nothing else", () => {
+    expect(Object.keys(PLANET_PROPS).sort(), "PLANET_PROPS keys vs PLANET_ORBITS keys").toEqual(Object.keys(PLANET_ORBITS).sort());
+    for (const p of planets) {
+      expect(p.type, `${p.name}.type`).toBeTruthy();
+      expect(p.size, `${p.name}.size`).toBeGreaterThan(0);
+      expect(p.mass, `${p.name}.mass`).toBeGreaterThan(0);
+    }
+  });
+
   it("derives one planet per project, in project order", () => {
     expect(planets.map((p) => p.name)).toEqual(projects.map((p) => p.id));
   });
@@ -72,21 +81,23 @@ describe("refactor is behaviour-preserving", () => {
   // Pins the world exactly as it was when projects moved into JSON. If a value
   // here changes, the change was intentional and this test should be updated
   // deliberately — it must not be edited to make an accidental drift pass.
-  // 2026-10-12: size 4.8 -> 16, deliberately (the scale pass; see PLANET_SIZE).
+  // 2026-10-12: size 4.8 -> 16, deliberately (the scale pass).
+  // 2026-10-17: sizes by type, deliberately — portfolio 16 (gas giant), ruangrapi 12
+  // (earth), fuxx 8 (mars) — with masses 3 / 1 / 0.3 (sub-project B, L36).
   // 2026-10-16: periods 510/600 s -> ~625.7/857.0 s, deliberately: Kepler's third
   // law with one sun (docs/UNIVERSE-RULES.md L7). Ruangrapi keeps 420 s.
   it("keeps the orbital elements the engine was tuned against", () => {
     expect(planets).toEqual([
       {
-        name: "ruangrapi", color: "#00ff87", size: 16,
+        name: "ruangrapi", color: "#00ff87", size: 12, type: "earth", mass: 1,
         orbit: { radius: 115, angularSpeed: expect.closeTo((Math.PI * 2) / 420, 12), inclination: 0.3491, node: 0, phase: 0 },
       },
       {
-        name: "portfolio", color: "#00f0ff", size: 16,
+        name: "portfolio", color: "#00f0ff", size: 16, type: "gas-giant", mass: 3,
         orbit: { radius: 150, angularSpeed: expect.closeTo((Math.PI * 2) / 625.6615, 6), inclination: -0.6981, node: 2.0944, phase: 2.1 },
       },
       {
-        name: "fuxx", color: "#bd00ff", size: 16,
+        name: "fuxx", color: "#bd00ff", size: 8, type: "mars", mass: 0.3,
         orbit: { radius: 185, angularSpeed: expect.closeTo((Math.PI * 2) / 856.9592, 6), inclination: 1.0472, node: 4.1888, phase: 4.2 },
       },
     ]);

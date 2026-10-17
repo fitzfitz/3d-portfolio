@@ -1,14 +1,19 @@
 import { describe, it, expect } from "vitest";
 import {
   stepGravity, wellAccel, gravityMode, EscapeGrace, SlingshotGate, SlingshotWatch, type Well,
-  PLANET_WELL_G, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
+  PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
+  WELL_REF_SIZE, planetWell,
 } from "../src/utils/gravityWell";
 import { canCapture } from "../src/utils/capture";
 import { cruiseCap } from "../src/utils/speedCap";
+import { planets } from "../src/constants";
+import { SUN_COLLIDER } from "../src/data/asteroids";
 
 const MAX = 10.8, ACCEL = 25.2, DRAG = 0.982;
-const planet = (x = 0, y = 0, z = 0): Well => ({ x, y, z, g: PLANET_WELL_G, radius: 56, rMin: 16 });
-const sun = (): Well => ({ x: 0, y: 0, z: 0, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: 9.5 });
+/** The gas giant's well (the size PLANET_WELL_G was tuned at), moved to (x, y, z). */
+const planet = (x = 0, y = 0, z = 0): Well => ({ ...planetWell({ size: WELL_REF_SIZE }), x, y, z });
+/** The sun's well as Spaceship builds it: softened inside the collider. */
+const sun = (): Well => ({ x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r });
 const v3 = (x = 0, y = 0, z = 0) => ({ x, y, z });
 
 interface Flight {
@@ -16,9 +21,12 @@ interface Flight {
   start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number };
 }
 
-/** Spaceship's integrator plus stepGravity. Nose fixed at +x; W held unless `thrust` is false. */
-function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; seconds?: number; thrust?: boolean; dt?: number }): Flight {
-  const { b, x0 = -90, v0 = MAX, wells = [planet()], seconds = 16, thrust = true, dt = 1 / 60 } = opts;
+/**
+ * Spaceship's integrator plus stepGravity. Nose fixed at +x; W held unless
+ * `thrust` is false. `size` is the first well's planet size (capture radius).
+ */
+function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; seconds?: number; thrust?: boolean; dt?: number; size?: number }): Flight {
+  const { b, x0 = -90, v0 = MAX, wells = [planet()], seconds = 16, thrust = true, dt = 1 / 60, size = WELL_REF_SIZE } = opts;
   const p = v3(x0, b, 0), v = v3(v0, 0, 0), G = v3();
   const start = { ...p };
   let idleFor = 0, minR = Infinity, peak = 0, wasIn = false;
@@ -37,7 +45,7 @@ function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; second
     p.x += (v.x + G.x) * dt; p.y += (v.y + G.y) * dt; p.z += (v.z + G.z) * dt;
     const r = Math.hypot(p.x - wells[0].x, p.y - wells[0].y, p.z - wells[0].z);
     const s = Math.hypot(v.x + G.x, v.y + G.y, v.z + G.z);
-    if (!captured && canCapture(r, 16, s)) captured = { r };
+    if (!captured && canCapture(r, size, s)) captured = { r };
     minR = Math.min(minR, r);
     peak = Math.max(peak, s);
     if (wasIn && r >= wells[0].radius && exitSpeed === null) exitSpeed = s;
@@ -115,55 +123,92 @@ describe("gravityMode", () => {
   });
 });
 
-describe("tuning targets (spec §5.6)", () => {
+describe("planetWell", () => {
+  it("scales the gas giant's tuning by size: g by size², radius and softening by size", () => {
+    for (const p of planets) {
+      const w = planetWell(p);
+      expect(w.g, p.name).toBeCloseTo(PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, 9);
+      expect(w.radius, p.name).toBeCloseTo(p.size * PLANET_WELL_RADIUS_FACTOR, 9);
+      expect(w.rMin, p.name).toBe(p.size);
+    }
+    expect(planetWell({ size: WELL_REF_SIZE }).g).toBe(PLANET_WELL_G);
+  });
+  it("covers sizes 16, 12 and 8", () => {
+    expect(planets.map((p) => p.size).sort((a, b) => b - a)).toEqual([16, 12, 8]);
+  });
+});
+
+/**
+ * Spec §5.6 targets, tuned on the gas giant (size 16) and flown here around
+ * every planet with the impact parameters, radii and capture bounds scaled
+ * by size / 16. The pull at the same multiple of a planet's size is the same
+ * for every size (g goes as size², distance as size), but a smaller well is
+ * crossed sooner, so it bends and boosts less: the spec's pull and boost
+ * numbers are the gas giant's, and smaller planets only have to pull and
+ * boost at all. The capture rules (skim fast, dock slow) hold for all.
+ */
+describe.each(planets.map((p) => [p.name, p.size] as const))("tuning targets (spec §5.6) around %s (size %d)", (_name, size) => {
+  const k = size / WELL_REF_SIZE;
+  const ref = size === WELL_REF_SIZE;
+  const wells = [planetWell({ size })];
+  const at = (b: number, extra: Partial<Parameters<typeof fly>[0]> = {}) => fly({ b: b * k, wells, size, ...extra });
   it("b=40: a visible pull and a boost, no capture", () => {
-    const f = fly({ b: -40 });
+    const f = at(-40);
     expect(f.captured).toBeNull();
-    expect(f.minR).toBeLessThanOrEqual(36);
-    expect(f.peak).toBeGreaterThanOrEqual(14);
+    expect(f.minR).toBeLessThanOrEqual((ref ? 36 : 39) * k);
+    expect(f.peak).toBeGreaterThanOrEqual(ref ? 14 : MAX + 1);
   });
   it("b=34: pulled in, leaves the well faster than cruise, no capture", () => {
-    const f = fly({ b: -34 });
+    const f = at(-34);
     expect(f.captured).toBeNull();
-    expect(f.minR).toBeLessThanOrEqual(28);
+    expect(f.minR).toBeLessThanOrEqual((ref ? 28 : 31) * k);
     expect(f.exitSpeed).not.toBeNull();
-    expect(f.exitSpeed!).toBeGreaterThanOrEqual(13.5);
+    expect(f.exitSpeed!).toBeGreaterThanOrEqual(ref ? 13.5 : MAX + 1);
   });
-  it("b=30: a fast skim inside 20.8 does not open the dossier", () => {
-    const f = fly({ b: -30 });
+  it("b=30: a fast skim inside 1.3 sizes does not open the dossier", () => {
+    const f = at(-30);
     expect(f.captured).toBeNull();
-    expect(f.minR).toBeGreaterThan(18);
+    expect(f.minR).toBeGreaterThan(18 * k);
   });
-  it("b=22 and straight in: docks, never inside 17u first", () => {
+  it("b=22 and straight in: docks, never inside 1.06 sizes first", () => {
     for (const b of [-22, 0.01]) {
-      const f = fly({ b });
+      const f = at(b);
       expect(f.captured, `b=${b}`).not.toBeNull();
-      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17);
+      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17 * k);
     }
   });
   // The ship's dt is clamped to 0.05s, so a slow device runs at 20 fps steps.
   it("b=30 still skims at 30 and 20 fps", () => {
     for (const dt of [1 / 30, 1 / 20]) {
-      const f = fly({ b: -30, dt });
+      const f = at(-30, { dt });
       expect(f.captured, `dt=${dt}`).toBeNull();
-      expect(f.minR, `dt=${dt}`).toBeGreaterThan(18);
+      expect(f.minR, `dt=${dt}`).toBeGreaterThan(18 * k);
     }
   });
   it("b=22 and straight in still dock at 20 fps", () => {
     for (const b of [-22, 0.01]) {
-      const f = fly({ b, dt: 1 / 20 });
+      const f = at(b, { dt: 1 / 20 });
       expect(f.captured, `b=${b}`).not.toBeNull();
-      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17);
+      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17 * k);
     }
   });
-  it("an idle ship 30u out barely drifts (station-keeping)", () => {
-    const f = fly({ b: 0.01, x0: -30, v0: 0, thrust: false, seconds: 30 });
+  it("an idle ship 30u (scaled) out barely drifts (station-keeping)", () => {
+    const f = at(0.01, { x0: -30 * k, v0: 0, thrust: false, seconds: 30 });
     const drift = Math.hypot(f.end.x - f.start.x, f.end.y - f.start.y, f.end.z - f.start.z);
     expect(drift).toBeLessThan(3);
   });
-  it("a W-held pass 20u off the sun stays clear of its surface", () => {
-    const f = fly({ b: -20, x0: -120, wells: [sun()], seconds: 25 });
-    expect(f.minR).toBeGreaterThan(9.5);
+});
+
+describe("the sun's well (G = 1000, softened inside its collider)", () => {
+  it("is built from SUN_COLLIDER", () => {
+    expect(sun().rMin).toBe(SUN_COLLIDER.r);
+  });
+  it("W-held passes 10u and more off its collider stay clear of it", () => {
+    for (const extra of [10, 15, 25]) {
+      const b = SUN_COLLIDER.r + extra;
+      const f = fly({ b: -b, x0: -120, wells: [sun()], seconds: 25 });
+      expect(f.minR, `b=${b}`).toBeGreaterThan(SUN_COLLIDER.r);
+    }
   });
 });
 

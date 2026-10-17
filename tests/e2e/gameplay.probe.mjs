@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, chatterText, pollUntil, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, hold, settle, readStore, chatterText, pollUntil, SCENE_READY_TIMEOUT_MS, PLANET_STANDOFF } from "./harness.mjs";
 
 /**
  * Teleports the ship next to a world point and zeroes its velocity.
@@ -195,9 +195,12 @@ export default async function run() {
     }
 
     // ---- scan loop ----
-    // 2x size: outside the lock-retain radius (1.9x), inside scan range of the
-    // surface. A fixed 18 sat inside the lock radius once planets grew.
-    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 2);
+    // 2.5x size: outside the lock-retain radius (1.9x), inside scan range of the
+    // surface (SCAN_RANGE 22 + size = 3.2x at size 12). A fixed 18 sat inside the
+    // lock radius once planets grew; at 2x the smaller 12-unit Ruangrapi (sub-project
+    // B, 2026-10-17) let the well pull the ship into a re-lock during the 2.6 s hold,
+    // freezing the canvas and the scanner with it.
+    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * PLANET_STANDOFF);
     await settle(page, 1200);
     s = await readStore(page);
     checks.check("a scannable target is acquired in range", s.scanTarget !== null,

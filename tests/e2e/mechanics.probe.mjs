@@ -183,8 +183,9 @@ async function reducedMotion(page, checks) {
 
 /**
  * Eclipses (docs/UNIVERSE-RULES.md L20, F4), with the planets and moons frozen
- * by reduced motion. Ruangrapi (16 across, the sun 8) is bigger than the sun,
- * so its umbra never closes: 2.5 sizes out on the far side is full night.
+ * by reduced motion. Ruangrapi (radius 12) is smaller than the sun (24), so its
+ * umbra closes, but only ~115 out (12 x 115 / (24 - 12)); the test point 2.5
+ * sizes (30u) out on the far side is deep inside it: full night.
  */
 async function eclipses(page, checks) {
   await page.keyboard.press("KeyW");
@@ -298,6 +299,7 @@ async function ringShade(page, dark) {
   const setup = await page.evaluate(async (wantDark) => {
     const f = window.__fitz;
     const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
+    const { SUN_RADIUS } = await import("/src/constants.ts");
     const ring = f.scene.getObjectByName("PlanetRing_ruangrapi");
     if (!ring) return { ok: false, why: "no ring" };
     const V3 = f.camera.position.constructor;
@@ -321,7 +323,7 @@ async function ringShade(page, dark) {
     for (let deg = 0; deg < 360; deg += 3) {
       const phi = (deg * Math.PI) / 180;
       const pt = new V3(R * Math.cos(phi), R * Math.sin(phi), 0).applyMatrix4(ring.matrixWorld);
-      const vis = sunVisibility(pt, [planet], 8);
+      const vis = sunVisibility(pt, [planet], SUN_RADIUS);
       if (wantDark ? vis > 0 : vis < 1) continue;
       const cam = pt.clone().addScaledVector(n, 30);
       if (!clear(cam, pt) || !clear(pt, pt.clone().addScaledVector(n, -400))) continue;

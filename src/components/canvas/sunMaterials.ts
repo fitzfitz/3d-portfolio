@@ -29,6 +29,7 @@ const surfaceFragment = /* glsl */ `
   uniform float uTime;
   uniform float uHeat;   // 0 cool .. 1 hot (the breathing pulse)
   uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
+  uniform float uGain;   // SUN_BLOOM_GAIN with bloom, 1 in low-perf (Sun.tsx)
   varying vec3 vPos;
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -48,7 +49,7 @@ const surfaceFragment = /* glsl */ `
     vec3 col = mix(edge, mid, limb);
     col = mix(col, hot, limb * limb * (0.55 + 0.45 * g));
     col *= 0.75 + 0.5 * g;
-    gl_FragColor = vec4(col * (2.6 + 2.2 * uHeat) * uExposureComp, 1.0);
+    gl_FragColor = vec4(col * (2.6 + 2.2 * uHeat) * uGain * uExposureComp, 1.0);
   }
 `;
 
@@ -89,9 +90,22 @@ const coronaFragment = /* glsl */ `
  * `exposureCompensation` object (not a copy), so ExposureDriver's one write a
  * frame lands here and the disc looks the same at every exposure.
  */
+/**
+ * The photosphere's HDR gain where bloom runs (the composer tier). When the
+ * core grew to 24 (L35) its ~9x area flooded bloom and washed the frame warm
+ * brown, so the gain is cut hard. Tuned facing the sun from 115 against the
+ * old 8-unit sun in the same framing: the mean luma of the frame around the
+ * disc at the bottom / middle / top of a breath is 23.5 / 26.9 / 30.4,
+ * against 26.3 / 28.8 / 29.6 before (2026-10-17). The disc still reads
+ * white-hot, with the corona's fill and bloom on top. Low-perf has no bloom
+ * and no corona, so it keeps the full gain (1), or its disc would turn a dull
+ * orange.
+ */
+export const SUN_BLOOM_GAIN = 0.15;
+
 export function makeSunSurfaceMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uHeat: { value: 1 }, uExposureComp: exposureCompensation },
+    uniforms: { uTime: { value: 0 }, uHeat: { value: 1 }, uGain: { value: SUN_BLOOM_GAIN }, uExposureComp: exposureCompensation },
     vertexShader: surfaceVertex,
     fragmentShader: surfaceFragment,
     // The corona billboard blends across the disc, so the core draws in the
@@ -100,6 +114,13 @@ export function makeSunSurfaceMaterial(): THREE.ShaderMaterial {
     depthWrite: false,
   });
 }
+
+/**
+ * The corona billboard's edge length. Half of it (36) must stay inside the
+ * belt's inner edge (r 40); the core is SUN_RADIUS (24), so the halo is the
+ * 12 units between (tests/sunProportions.test.ts).
+ */
+export const CORONA_SIZE = 72;
 
 /** The corona billboard; `disc` is the disc radius as a fraction of its half-size. Compensated like the core. */
 export function makeSunCoronaMaterial(disc: number): THREE.ShaderMaterial {

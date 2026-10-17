@@ -24,7 +24,7 @@ import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
 import {
   stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
-  PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
+  planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
@@ -90,9 +90,7 @@ const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
  * entries are refreshed from `bodies`, and the active ones are copied to the
  * front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
-const PLANET_WELLS: Well[] = planets.map((p) => ({
-  x: 0, y: 0, z: 0, g: PLANET_WELL_G, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
-}));
+const PLANET_WELLS: Well[] = planets.map(planetWell);
 /** Well radius by planet name, for the per-frame escape-grace check. */
 const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };

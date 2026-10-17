@@ -1,4 +1,4 @@
-import { withPage, tap, settle, readStore } from "./harness.mjs";
+import { withPage, tap, settle, readStore, PLANET_STANDOFF } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const readInput = (page) => page.evaluate(() => ({ ...window.__fitz.flight.input }));
@@ -124,15 +124,15 @@ export default async function run() {
     checks.check("releasing BEAM clears the beam input", beamReleased.beam === false);
 
     // SCAN only exists while a scannable is in range — put one there.
-    const name = await page.evaluate(async () => {
+    const name = await page.evaluate(async (standoff) => {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
       // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
-      // 2x size: outside the lock-retain radius (1.9x), inside scan range of
-      // the surface. A fixed offset sat inside the lock once planets grew.
-      window.__fitz.teleport(b.x, b.y, b.z + planets[0].size * 2);
+      // PLANET_STANDOFF x size: outside the lock-retain radius (1.9x), inside
+      // scan range of the surface.
+      window.__fitz.teleport(b.x, b.y, b.z + planets[0].size * standoff);
       return planets[0].name;
-    });
+    }, PLANET_STANDOFF);
     await settle(page, 1500);
     const s = await readStore(page);
     checks.check(`scan target acquired near ${name}`, s.scanTarget !== null,

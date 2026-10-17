@@ -71,6 +71,7 @@ variance.
 | Close approach | 93 | 365726 | 83 | 4 |
 | Modal open | 94 | 365738 | 83 | 4 |
 | 40 anomalies | 32 | 217892 | 78 | 4 |
+| Deep space, facing the sun | 108 | 418490 | 78 | 4 |
 
 **Programs measured 2026-10-15 (warm-up compiles for the PostFX target).**
 `ShaderWarmup` used to compile with no render target bound, so every program
@@ -259,3 +260,34 @@ overlay that already existed. Measured in a full e2e run: deep space 35 /
 418,492, 40 anomalies 36 / 242,940; programs 54 in the three static states and
 55 with anomalies; the tour in `programs.probe.mjs` adds 0. Startup read 10.2-11.7 s.
 Ceilings changed: none.
+
+**True proportions measured 2026-10-17 (planets 16 / 12 / 8, sun core 24, corona 72).**
+No geometry, material or shader was added: the sun's sphere keeps its 64x64 tessellation
+at a larger radius, the corona billboard is one quad at a new scale, and the planet
+sizes are table values. Measured in a full e2e run: deep space 35 / 241,916 (calls /
+triangles), close approach 59 / 349,372, modal open 108 / 418,494, 40 anomalies
+39 / 244,990 (+2,050 on the last run, a view-dependent count; the 250,580 ceiling holds with about 2% to spare);
+programs 54 in the three static states and 55 with anomalies; the tour in
+`programs.probe.mjs` adds 0. Startup read 8.3-12.3 s. Ceilings changed: none.
+Review fixes (same day): the corona quad moves onto the limb each frame, the spike and veil
+sprites rescale with the disc, and the photosphere gained one `uGain` uniform (x0.15 with
+bloom, 1 in low-perf); still no new geometry, material or program. Full run: deep space
+35 / 241,916, close approach 57 / 338,124, modal open 108 / 418,494, 40 anomalies 39 / 244,990,
+programs 54 (tour adds 0), startup 7.7-11.6 s. One earlier run read deep space 41 calls (+6
+calls, +12 triangles: the six lens sprites, with the sun inside the glare cone from the
+deep-space point at that hour); a re-run read 35.
+
+**Deep-space heading pinned 2026-10-17 (facing-sun state added).** The 41 was the teleport
+keeping whatever heading the ship had, so about one run in 15 had the sun inside the glare
+cone. `transition.probe.mjs` now turns the nose straight away from the sun before the
+deep-space and 40-anomalies reads, puts the chase camera on its resting point, and asserts
+the sun is behind the camera with the glare group (`SunGlare`) hidden. A new state at the
+same point faces the sun and asserts it is on screen with the glare showing: 108 / 418,490
+/ 54 / 4, the disc, corona, sprites and the inner system in frame. Calls and triangles
+take the rule (130 / 481,270); programs is the page's cumulative count, read seconds after
+deep space, so it shares deep space's table baseline and ceiling (79) instead of a tighter
+one that the low-perf path above would trip; lights 5. Eleven baseline runs and eight
+verification runs read the same: deep space 35 / 241,916, 40 anomalies 35 / 241,916 (the
+39 and 36 before were view-dependent), programs 54 / 55. Facing the sun read 108 on every
+run but one independent re-run, which read 107 with the same triangles (a points or lines
+draw that comes and goes); the 130 ceiling has 22 to spare. Ceilings changed: none; one added.
