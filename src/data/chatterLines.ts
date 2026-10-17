@@ -69,11 +69,6 @@ export const chatterPools: ChatterPools = {
     "COMET FLYBY IN PROGRESS. NO AUTOGRAPHS",
     "TAIL ALWAYS POINTS AWAY FROM THE SUN. RESUME ALWAYS POINTS AT YOU",
   ],
-  altitude: [
-    "ECLIPTIC DEPARTURE LOGGED // MOST PILOTS NEVER SEE THE SYSTEM FROM OUTSIDE ITS PLANE",
-    "NAV.AI: THE SUN IS THAT WAY. ROUGHLY. EVERYTHING IS ROUGHLY THAT WAY",
-    "DEEP VOLUME ADVISORY // STARS IN EVERY DIRECTION. NO ROOF DETECTED",
-  ],
   impact: [
     "HULL SMACK REGISTERED. THE ASTEROID IS FINE",
     "COLLISION. INSURANCE PREMIUM: RISING",
@@ -121,3 +116,6 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Record<stri
     "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",
   ],
 };
+
+/** Broadcast (via ReturnBurnLineGate) while the return burn is pushing the ship back in. */
+export const RETURN_BURN_LINE = "FLIGHT COMPUTER // RETURN BURN — EDGE OF THE SYSTEM";

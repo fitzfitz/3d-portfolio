@@ -251,3 +251,11 @@ primitive instead of seven) removed up to 30 calls with five freighters on
 screen. Measured: deep space 35 / 241,916, close approach 67 / 362,628, modal open
 107 / 418,488, 40 anomalies 36 / 242,940 (calls / triangles; programs 56 and
 lights 4 in every state). Ceilings changed: none.
+
+**Bigger universe measured 2026-10-17 (400-unit sphere, radial haze, return burn).**
+No geometry, material or shader was added: the edge is CPU maths and one DOM
+overlay that already existed. Measured in a full e2e run: deep space 35 /
+241,916 (calls / triangles), close approach 57 / 349,368, modal open 109 /
+418,492, 40 anomalies 36 / 242,940; programs 54 in the three static states and
+55 with anomalies; the tour in `programs.probe.mjs` adds 0. Startup read 10.2-11.7 s.
+Ceilings changed: none.

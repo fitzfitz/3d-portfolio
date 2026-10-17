@@ -1,12 +1,9 @@
-import { COSMIC_BOUNDS } from "../constants";
-import { wrapDelta } from "./toroidal";
-import { wrapCoord } from "./edgeHaze";
 import type { Vec3 } from "./reactions";
 
 /**
  * Tractor beam (spec §6). One rule: the lighter object moves. Crystals and
  * belt pebbles come to the ship; data shards are anchored, so the beam reels
- * the ship toward them. Pure and allocation-free; wrap-aware throughout.
+ * the ship toward them. Pure and allocation-free.
  */
 export const BEAM_MAX_TARGETS = 3;
 export const BEAM_HALF_ANGLE = (20 * Math.PI) / 180;
@@ -39,13 +36,13 @@ export function clearSelection(sel: BeamSelection): void { sel.count = 0; }
 /**
  * Distance from the nose origin to the target if it lies inside the beam cone
  * (half-angle BEAM_HALF_ANGLE about the unit direction d) and within `range`;
- * -1 otherwise. Uses the shortest delta across the wrap seam.
+ * -1 otherwise.
  */
 export function inCone(
   ox: number, oy: number, oz: number, dx: number, dy: number, dz: number,
   tx: number, ty: number, tz: number, range: number,
 ): number {
-  const rx = wrapDelta(ox, tx, COSMIC_BOUNDS), ry = wrapDelta(oy, ty, COSMIC_BOUNDS), rz = wrapDelta(oz, tz, COSMIC_BOUNDS);
+  const rx = (tx - ox), ry = (ty - oy), rz = (tz - oz);
   const dist = Math.hypot(rx, ry, rz);
   if (dist > range) return -1;
   if (dist < 1e-6) return 0;
@@ -74,22 +71,16 @@ export function consider(
 /**
  * Moves `p` toward the ship at `speed` RELATIVE to it (the ship's own motion
  * is added first, so a pull keeps up with a moving ship), never past it.
- * Returns the remaining distance. Wrap-aware.
+ * Returns the remaining distance.
  */
 export function pullStep(p: Vec3, ship: Vec3, shipVel: Vec3, speed: number, dt: number): number {
   p.x += shipVel.x * dt; p.y += shipVel.y * dt; p.z += shipVel.z * dt;
-  const dx = wrapDelta(p.x, ship.x, COSMIC_BOUNDS), dy = wrapDelta(p.y, ship.y, COSMIC_BOUNDS), dz = wrapDelta(p.z, ship.z, COSMIC_BOUNDS);
+  const dx = (ship.x - p.x), dy = (ship.y - p.y), dz = (ship.z - p.z);
   const d = Math.hypot(dx, dy, dz);
   if (d < 1e-6) return 0;
   const step = Math.min(d, speed * dt);
-  // Re-wrapped: a pull across the seam must leave the item inside the universe.
-  p.x = wrapCoord(p.x + (dx / d) * step); p.y = wrapCoord(p.y + (dy / d) * step); p.z = wrapCoord(p.z + (dz / d) * step);
+  p.x += (dx / d) * step; p.y += (dy / d) * step; p.z += (dz / d) * step;
   return d - step;
-}
-
-/** The copy of `t` nearest `o` on a wrapped axis: draw a line from o to here, not across the universe. */
-export function nearImage(o: number, t: number): number {
-  return o + wrapDelta(o, t, COSMIC_BOUNDS);
 }
 
 /** Reels the pilot's velocity toward a shard along the unit direction, capped at maxSpeed. */

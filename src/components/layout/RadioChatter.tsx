@@ -53,7 +53,7 @@ export default function RadioChatter() {
       }, scheduler.nextDelayMs());
     };
 
-    // Flavour lines (zone entry, comet, altitude, impact) never overwrite a
+    // Flavour lines (zone entry, comet, impact) never overwrite a
     // held broadcast; they are dropped, not queued.
     const flavour = (pick: () => string) => {
       if (flavourAllowed(performance.now(), heldUntil)) typeLine(pick());
@@ -68,10 +68,6 @@ export default function RadioChatter() {
       useSpaceStore.subscribe(
         (s) => s.cometNear,
         (near) => { if (near) flavour(() => scheduler.pick("comet")); }
-      ),
-      useSpaceStore.subscribe(
-        (s) => s.altitudeWarn,
-        (warn) => { if (warn) flavour(() => scheduler.pick("altitude")); }
       ),
       useSpaceStore.subscribe(
         (s) => s.broadcast,

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { speedKmS, distanceAU } from "../../utils/realUnits";
-import { COSMIC_BOUNDS, SHIP_MAX_SPEED, planets } from "../../constants";
+import { SYSTEM_RADIUS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { DESTINATIONS, afterPlanets, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -190,7 +190,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         </div>
         {/* Flavour readouts fold away once the pilot is flying (data-quiet). */}
         <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
-        <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {distanceAU(COSMIC_BOUNDS * 2).toFixed(2)} AU</div>
+        <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {distanceAU(SYSTEM_RADIUS * 2).toFixed(2)} AU</div>
         {/* The AU part is hidden on phones: the longer line ran into the gravity warning in the right column. */}
         <div ref={velRef} data-testid="hud-velocity">
           <span ref={speedRef}>VELOCITY: 0 KM/S</span>

@@ -1,5 +1,5 @@
 import { BEACON_PHRASES } from "../data/beaconPhrases";
-import { COSMIC_BOUNDS } from "../constants";
+import { SYSTEM_RADIUS, VALIDATION_RADIUS } from "../constants";
 import { SPAWN } from "../data/spawn";
 
 /** A visitor's beacon as the API serves it. */
@@ -29,7 +29,13 @@ export const SPAWN_KEEP_OUT = 15;
 export const BEACON_LIMIT = 40;
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-const inBounds = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= COSMIC_BOUNDS;
+const isCoord = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const inBounds = (x: number, y: number, z: number) => Math.hypot(x, y, z) <= VALIDATION_RADIUS;
+
+/** Beacons drawn and scannable: inside the playable system (the return burn starts at its edge). */
+export function beaconVisible(p: { x: number; y: number; z: number }): boolean {
+  return Math.hypot(p.x, p.y, p.z) <= SYSTEM_RADIUS;
+}
 const isPhrase = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < BEACON_PHRASES.length;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -40,7 +46,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 export function validateDrop(body: unknown): { ok: true; drop: BeaconDrop } | { ok: false } {
   if (!isObj(body)) return { ok: false };
   const { x, y, z, phrase } = body;
-  if (!inBounds(x) || !inBounds(y) || !inBounds(z) || !isPhrase(phrase)) return { ok: false };
+  if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z) || !isPhrase(phrase)) return { ok: false };
   if (Math.hypot(x - SPAWN.x, y - SPAWN.y, z - SPAWN.z) < SPAWN_KEEP_OUT) return { ok: false };
   return { ok: true, drop: { x: round1(x), y: round1(y), z: round1(z), phrase } };
 }
@@ -61,7 +67,7 @@ export function parseBeacons(body: unknown): Beacon[] {
     if (!isObj(r)) continue;
     const { id, x, y, z, phrase, at, country } = r;
     if (typeof id !== "string" || !ID_RE.test(id)) continue;
-    if (!inBounds(x) || !inBounds(y) || !inBounds(z) || !isPhrase(phrase)) continue;
+    if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z) || !isPhrase(phrase)) continue;
     if (typeof at !== "number" || !Number.isFinite(at)) continue;
     if (country !== null && (typeof country !== "string" || !COUNTRY_RE.test(country))) continue;
     out.push({ id, x, y, z, phrase, at, country });

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_REGEN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, regenFuel, stepFuel, refuel, refuelOutcome } from "../src/utils/fuel";
-import { SHIP_WARP_SPEED, COSMIC_BOUNDS } from "../src/constants";
+import { SHIP_WARP_SPEED, SYSTEM_RADIUS } from "../src/constants";
 
 describe("drainFuel", () => {
   it("drains at the configured rate, scaled by dt", () => {
@@ -26,7 +26,7 @@ describe("drainFuel", () => {
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
     expect(seconds).toBeCloseTo(5 * 12.5, 9);
     expect(seconds * SHIP_WARP_SPEED).toBeCloseTo(2437.5, 6);
-    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(COSMIC_BOUNDS * 2 * 4);
+    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(SYSTEM_RADIUS * 2 * 3); // three full crossings of the system
   });
 });
 

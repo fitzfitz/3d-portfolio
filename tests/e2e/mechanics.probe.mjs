@@ -1,6 +1,5 @@
-import { withPage, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
-const pools = (page) => page.evaluate(async () => (await import("/src/data/chatterLines.ts")).chatterPools);
 const hazeOpacity = (page) => page.evaluate(() => Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0"));
 /** Faces the ship at a world point (yaw only) and ends the spawn auto-aim. */
 const face = (page, x, z) => page.evaluate((tx, tz) => {
@@ -15,28 +14,50 @@ const crystalAhead = (page) => page.evaluate(() => {
 });
 
 async function edge(page, checks) {
-  const P = await pools(page);
+  const radius = () => page.evaluate(() => {
+    const f = window.__fitz.flight;
+    return Math.hypot(f.x, f.y, f.z);
+  });
   await page.keyboard.press("KeyW"); // first input
-  await page.evaluate(() => { window.__fitz.teleport(238, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
+  // Installed before the teleport: the haze line fires on arrival at depth 0.5.
+  await installEdgeRecorder(page, 400);
+  await page.evaluate(() => { window.__fitz.teleport(380, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
-  checks.check("haze thickens near the edge", op > 0.5, `opacity=${op}`);
+  checks.check("haze thickens near the edge", op > 0.3, `opacity=${op} at r=${(await radius()).toFixed(1)}`);
 
+  // Holding thrust outward past the edge: the burn out-muscles the pilot
+  // (40 u/s^2 against 25.2), so the ship is still brought back. The in-page
+  // recorder (harness.mjs) timestamps crossing and return per frame, reads the
+  // haze opacity in the frame of maximum radius, and remembers any RETURN BURN
+  // broadcast. No sim clock is exposed, so "within 6 simulated seconds" is
+  // asserted as <= 18 s wall (headless ~3x slow); the 60 s polls are hang guards.
   let flashed = false;
   await page.keyboard.down("KeyW");
-  const crossed = await pollUntil(async () => {
-    const r = await page.evaluate(() => ({ x: window.__fitz.flight.x, flash: window.__fitz.store.getState().isTeleporting }));
-    flashed = flashed || r.flash;
-    return r.x < 0;
-  }, { timeoutMs: 20_000, intervalMs: 100 });
+  const done = await pollUntil(async () => {
+    flashed = flashed || (await readStore(page)).isTeleporting;
+    return (await readEdgeRecorder(page)).tBack !== null;
+  }, { timeoutMs: 60_000, intervalMs: 100 });
   await page.keyboard.up("KeyW");
-  checks.check("the ship crosses the seam", crossed.ok);
-  checks.check("the wrap fires no teleport flash", !flashed);
-  const opFar = await hazeOpacity(page);
-  checks.check("the far side of the seam is still deep haze", opFar > 0.7, `opacity=${opFar}`);
-  const line = (await readStore(page)).broadcast;
-  checks.check("a haze line played, silently", !!line && P.haze.includes(line.text) && line.silent === true,
-    `broadcast=${JSON.stringify(line)}`);
+  const rec = await readEdgeRecorder(page);
+  const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
+  checks.check("holding thrust outward, the ship reaches the edge", rec.tCross !== null, `max r=${rec.maxR.toFixed(1)}`);
+  checks.check("the haze is full at 400 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 400 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
+    `opacity=${rec.opAtMax} read in the frame of max r=${rec.maxR.toFixed(1)}`);
+  checks.check("holding thrust outward at the edge, the ship is still brought back", done.ok && rec.tBack !== null,
+    `max r=${rec.maxR.toFixed(1)}, back after ${backS.toFixed(1)}s wall`);
+  checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18, `${backS.toFixed(1)}s wall`);
+  checks.check("the ship stays well inside the validation bounds", rec.maxR < 440, `max r=${rec.maxR.toFixed(1)}`);
+  checks.check("the edge fires no teleport flash", !flashed);
+  // The haze line (depth 0.3) plays first on the way out, the burn line a moment
+  // later; the recorder catches the burn line whatever replaces it afterwards.
+  checks.check("the RETURN BURN line was broadcast", rec.burn);
+  // The burn line explains an involuntary control change, so it is audible
+  // (not silent); the haze line is ambient and may stay silent.
+  checks.check("the RETURN BURN line is audible (not silent)", rec.burn && rec.burnSilent === false, `silent=${rec.burnSilent}`);
+  checks.check("the haze line played at depth >= 0.3", rec.haze && rec.hazeDepth >= 0.3,
+    `haze line=${rec.haze}, depth=${rec.hazeDepth?.toFixed(2)}, silent=${rec.hazeSilent}`);
+  await stopEdgeRecorder(page);
 }
 
 /**
@@ -149,7 +170,7 @@ async function photoMode(page, checks) {
 
 async function reducedMotion(page, checks) {
   await page.keyboard.press("KeyW");
-  await page.evaluate(() => window.__fitz.teleport(240, 0, 0));
+  await page.evaluate(() => window.__fitz.teleport(390, 0, 0));
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);

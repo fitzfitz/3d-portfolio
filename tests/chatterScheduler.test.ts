@@ -7,7 +7,6 @@ const pools: ChatterPools = {
   warp: ["warp-1", "warp-2"],
   haze: ["haze-1"], slingshot: ["sling-1"], ore: ["ore-1"],
   comet: ["comet-1", "comet-2"],
-  altitude: ["alt-1", "alt-2"],
   impact: ["imp-1"],
   hail: ["hail-1"],
 };
@@ -51,10 +50,6 @@ describe("ChatterScheduler", () => {
   it("picks from the comet pool for comet events", () => {
     const s = new ChatterScheduler(pools, () => 0);
     expect(s.pick("comet")).toBe("comet-1");
-  });
-  it("picks from the altitude pool", () => {
-    const s = new ChatterScheduler(pools, () => 0);
-    expect(s.pick("altitude")).toBe("alt-1");
   });
   it("picks from the impact pool", () => {
     const s = new ChatterScheduler(pools, () => 0);

@@ -64,17 +64,21 @@ export default async function run() {
     };
 
     // An active crystal at least 100 units clear of every planet and destination
-    // (offset by dz on z, wrapped). A ship parked beside a planet gets orbit-
+    // (offset by dz on z). A ship parked beside a planet gets orbit-
     // captured, which freezes the scene: pickups and crystal respawns stop and
     // the checks that follow run against a frozen world.
     const pickCrystal = (dz) => page.evaluate(async (dzv) => {
-      const { COSMIC_BOUNDS } = await import("/src/constants.ts");
       const { DESTINATIONS } = await import("/src/data/destinations.ts");
-      const wrapCoord = (v) => (((v + COSMIC_BOUNDS) % (2 * COSMIC_BOUNDS) + 2 * COSMIC_BOUNDS) % (2 * COSMIC_BOUNDS)) - COSMIC_BOUNDS;
       const anchors = [...Object.values(window.__fitz.bodies), ...DESTINATIONS.map((d) => ({ x: d.pos[0], y: d.pos[1], z: d.pos[2] }))];
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
-      const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s));
-      return cr ? { x: cr.x, y: cr.y, z: wrapCoord(cr.z + dzv) } : null;
+      const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s) && Math.hypot(s.x, s.y, s.z) <= 370);
+      if (!cr) return null;
+      // Keep the teleport target inside the system (SYSTEM_RADIUS 400 minus 10),
+      // so it can never land in the edge burn: offset toward the centre if needed.
+      let z = cr.z + dzv;
+      const r = Math.hypot(cr.x, cr.y, z);
+      if (r > 390) z = cr.z - dzv; // |crystal| <= 370 so one of the two offsets is inside 390
+      return { x: cr.x, y: cr.y, z };
     }, dz);
 
     checks.check("tank starts full", (await fuel()) === 100, `fuel=${await fuel()}`);
@@ -240,7 +244,7 @@ export default async function run() {
 
     // Crystals appear on the radar only when within range (spec §8; the final
     // review's Finding 1 was that the radar's old gate was horizontal-only, so
-    // it drew crystals well outside the 160-unit RANGE). Rather than
+    // it drew crystals well outside the 220-unit RANGE). Rather than
     // re-deriving RadarMap's own math, sample the radar canvas directly: the
     // crystal fill is `#ffd24a` (255,210,74), distinct from every other radar
     // colour (rings/sweep/pitch-ladder are green, sun is #ff5500, the portal
@@ -266,25 +270,23 @@ export default async function run() {
       return n;
     });
 
-    // Find a ship position where, by 3D wrap-aware distance, no active
-    // crystal is within RANGE. Searched over the live crystal list (grid +
-    // random candidates, keeping the one farthest from its nearest crystal)
-    // rather than assumed, since the field is randomly placed every run.
+    // Find a ship position where, by plain 3D distance, no active
+    // crystal is within RANGE (220, RadarMap's). Searched over the live crystal
+    // list (grid + random candidates inside the 400 sphere, keeping the one
+    // farthest from its nearest crystal) rather than assumed, since the field is
+    // randomly placed every run.
     //
-    // The search alone is not always enough: with 40 crystals spread through
-    // the whole ±250 volume, some random arrangements genuinely leave no
-    // point farther than RANGE from every crystal — measured live, a
-    // 5331-candidate grid+random search came back empty on 1 of 6 runs. That
-    // is a property of the random field, not a search-quality problem, so no
-    // amount of extra sampling fixes it. Rather than accept that flakiness (or
-    // punt with a skip), take the best candidate the search finds regardless,
-    // then relocate — via the same live-reference debug bridge every other
-    // crystal check in this file already mutates through — just the handful
-    // of crystals still within RANGE of it, to their antipodal point on the
-    // 3-torus (COSMIC_BOUNDS away on every axis by construction, so ~433
-    // units, comfortably clear of RANGE=160). In the common case that list is
-    // empty and nothing is touched; this only kicks in for the rare dense
-    // field. It still exercises RadarMap's real gate/draw against the real
+    // The search alone is not guaranteed to succeed: with 40 crystals spread
+    // through the sphere, some random arrangements leave no point farther than
+    // RANGE from every crystal. That is a property of the random field, not a
+    // search-quality problem, so no amount of extra sampling fixes it. Rather
+    // than accept that flakiness (or punt with a skip), take the best candidate
+    // the search finds regardless, then relocate — via the same live-reference
+    // debug bridge every other crystal check in this file mutates through — just
+    // the crystals still within RANGE of it, to the far side of the sphere (on
+    // the ray from the candidate through the centre, at radius 380, so at least
+    // 380 units from it). In the common case that list is empty and nothing is
+    // touched. It still exercises RadarMap's real gate/draw against the real
     // crystalSlots array — it just guarantees the input configuration is one
     // where the property under test can actually hold.
     //
@@ -308,47 +310,35 @@ export default async function run() {
       fieldFull.ok, `active=${await activeCrystals()} locked=${await locked()}`);
 
     const farSetup = await page.evaluate(async () => {
-      const { COSMIC_BOUNDS } = await import("/src/constants.ts");
-      const RANGE = 160;
-      const wrapDelta = (from, to, bounds) => {
-        const span = bounds * 2;
-        let d = to - from;
-        if (d > bounds) d -= span;
-        else if (d < -bounds) d += span;
-        return d;
-      };
-      const wrapCoord = (v, bounds) => (((v + bounds) % (2 * bounds) + 2 * bounds) % (2 * bounds)) - bounds;
+      const SPHERE = 380; // candidates stay inside the 400 system radius, clear of the edge burn
+      const RANGE = 220;
       const crystals = (window.__fitz.crystals ?? []).filter((c) => c.active);
       const candidates = [];
-      // Coarse grid over the full volume...
-      const STEPS = 11;
+      // Coarse grid over the cube around the sphere, keeping points inside it...
+      const STEPS = 13;
       for (let ix = 0; ix < STEPS; ix++) {
         for (let iy = 0; iy < STEPS; iy++) {
           for (let iz = 0; iz < STEPS; iz++) {
-            candidates.push([
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * ix) / (STEPS - 1),
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * iy) / (STEPS - 1),
-              -COSMIC_BOUNDS + (2 * COSMIC_BOUNDS * iz) / (STEPS - 1),
-            ]);
+            const p = [
+              -SPHERE + (2 * SPHERE * ix) / (STEPS - 1),
+              -SPHERE + (2 * SPHERE * iy) / (STEPS - 1),
+              -SPHERE + (2 * SPHERE * iz) / (STEPS - 1),
+            ];
+            if (Math.hypot(...p) <= SPHERE) candidates.push(p);
           }
         }
       }
-      // ...plus random samples to cover what the grid's resolution might miss.
-      for (let i = 0; i < 4000; i++) {
-        candidates.push([
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
-          Math.random() * 2 * COSMIC_BOUNDS - COSMIC_BOUNDS,
-        ]);
+      // ...plus random samples inside the sphere (rejection sampling) to cover
+      // what the grid's resolution might miss.
+      while (candidates.length < 4000 + STEPS ** 3 / 2) {
+        const p = [0, 0, 0].map(() => Math.random() * 2 * SPHERE - SPHERE);
+        if (Math.hypot(...p) <= SPHERE) candidates.push(p);
       }
       let best = null, bestMinDist = -1;
       for (const [x, y, z] of candidates) {
         let minDist = Infinity;
         for (const cr of crystals) {
-          const dx = wrapDelta(x, cr.x, COSMIC_BOUNDS);
-          const dy = wrapDelta(y, cr.y, COSMIC_BOUNDS);
-          const dz = wrapDelta(z, cr.z, COSMIC_BOUNDS);
-          const d = Math.hypot(dx, dy, dz);
+          const d = Math.hypot(x - cr.x, y - cr.y, z - cr.z);
           if (d < minDist) minDist = d;
         }
         if (minDist > bestMinDist) { bestMinDist = minDist; best = { x, y, z }; }
@@ -356,14 +346,11 @@ export default async function run() {
       const naturallyClear = bestMinDist > RANGE;
       let relocated = 0;
       if (!naturallyClear) {
+        const bm = Math.hypot(best.x, best.y, best.z);
+        const far = bm < 1e-6 ? [SPHERE, 0, 0] : [-best.x / bm * SPHERE, -best.y / bm * SPHERE, -best.z / bm * SPHERE];
         for (const cr of crystals) {
-          const dx = wrapDelta(best.x, cr.x, COSMIC_BOUNDS);
-          const dy = wrapDelta(best.y, cr.y, COSMIC_BOUNDS);
-          const dz = wrapDelta(best.z, cr.z, COSMIC_BOUNDS);
-          if (Math.hypot(dx, dy, dz) <= RANGE) {
-            cr.x = wrapCoord(best.x + COSMIC_BOUNDS, COSMIC_BOUNDS);
-            cr.y = wrapCoord(best.y + COSMIC_BOUNDS, COSMIC_BOUNDS);
-            cr.z = wrapCoord(best.z + COSMIC_BOUNDS, COSMIC_BOUNDS);
+          if (Math.hypot(best.x - cr.x, best.y - cr.y, best.z - cr.z) <= RANGE) {
+            cr.x = far[0]; cr.y = far[1]; cr.z = far[2];
             relocated++;
           }
         }

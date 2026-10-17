@@ -51,7 +51,7 @@ export default async function run() {
     // no altitude warning. If any store key changes during the window the
     // sample is inconclusive rather than failed — retry up to 3 times.
     await toDeepSpace(page);
-    const KEYS = ["activeZone", "isNearSpawn", "cometNear", "altitudeWarn", "scanTarget",
+    const KEYS = ["activeZone", "isNearSpawn", "cometNear", "scanTarget",
       "isOrbitLocked", "isWarping", "isLowPerf", "impactCount", "broadcast"];
 
     // The zero-commit result only means something if the ship genuinely flew

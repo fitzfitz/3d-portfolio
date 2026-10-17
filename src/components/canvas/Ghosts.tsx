@@ -4,9 +4,7 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { useSpaceStore, flight } from "../../store/spaceStore";
 import { assetUrl } from "../../utils/assetUrl";
-import { COSMIC_BOUNDS } from "../../constants";
 import { PLUME_COLORS } from "../../data/plumeColors";
-import { wrapDelta } from "../../utils/toroidal";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import {
   liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, hudShowsRadio, writeRadarBlips,
@@ -22,7 +20,6 @@ const GHOST_WASH = 0.55;
 const GHOST_PLUME_LEN = 0.3;
 const GHOST_NOZZLE_R = 0.07;
 const GHOST_PLUME_POWER = 0.3;
-const B = COSMIC_BOUNDS;
 const NONE: GhostPose[] = [];
 /** This ship's pose for conn.tick, reused every frame. */
 const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
@@ -153,12 +150,7 @@ export default function Ghosts() {
         continue;
       }
       slot.group.visible = true;
-      // The nearest wrapped copy of the ghost, as seen from this ship.
-      slot.group.position.set(
-        flight.x + wrapDelta(flight.x, g.p[0], B),
-        flight.y + wrapDelta(flight.y, g.p[1], B),
-        flight.z + wrapDelta(flight.z, g.p[2], B),
-      );
+      slot.group.position.set(g.p[0], g.p[1], g.p[2]);
       slot.group.quaternion.set(g.q[0], g.q[1], g.q[2], g.q[3]);
       if (slot.plume !== g.plume) {
         slot.plume = g.plume;

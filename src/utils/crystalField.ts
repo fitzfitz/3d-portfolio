@@ -1,4 +1,4 @@
-import { COSMIC_BOUNDS, LOCK_RETAIN_FACTOR } from "../constants";
+import { SYSTEM_RADIUS, LOCK_RETAIN_FACTOR } from "../constants";
 import { DESTINATIONS } from "../data/destinations";
 import { GATE_POS } from "../data/dormantGate";
 
@@ -87,11 +87,16 @@ export function crystalAvoidPoints(
 export function randomCrystalPos(rand: () => number, avoid: AvoidPoint[]): [number, number, number] {
   let x = 0, y = 0, z = 0;
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    x = (rand() * 2 - 1) * COSMIC_BOUNDS;
-    y = (rand() * 2 - 1) * COSMIC_BOUNDS;
-    z = (rand() * 2 - 1) * COSMIC_BOUNDS;
-    if (!isRejectedSpawn(x, y, z, avoid)) break;
+    x = (rand() * 2 - 1) * SYSTEM_RADIUS;
+    y = (rand() * 2 - 1) * SYSTEM_RADIUS;
+    z = (rand() * 2 - 1) * SYSTEM_RADIUS;
+    // Rejection-sample the cube down to the ball: uniform in the system sphere.
+    if (x * x + y * y + z * z > SYSTEM_RADIUS * SYSTEM_RADIUS) continue;
+    if (!isRejectedSpawn(x, y, z, avoid)) return [x, y, z];
   }
+  // Out of attempts: keep the last candidate, pulled inside the sphere if it fell outside.
+  const r = Math.hypot(x, y, z);
+  if (r > SYSTEM_RADIUS) { const k = SYSTEM_RADIUS / r; x *= k; y *= k; z *= k; }
   return [x, y, z];
 }
 

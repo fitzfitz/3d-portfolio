@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { parseMe, normQuat, publicCountry, roundState, MAX_MESSAGE_BYTES } from "../src/utils/liveSkyProtocol";
-import { COSMIC_BOUNDS } from "../src/constants";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
@@ -8,6 +7,10 @@ const me = (o: Record<string, unknown> = {}) =>
 describe("parseMe", () => {
   it("accepts a valid message", () => {
     expect(parseMe(me())).toEqual({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" });
+  });
+  it("accepts positions inside the validation sphere, corners included", () => {
+    expect(parseMe(me({ p: [515, 0, 0] }))).not.toBeNull();
+    expect(parseMe(me({ p: [290, 290, 290] }))).not.toBeNull();
   });
   it("accepts every unlockable plume", () => {
     for (const id of ["slingshot", "comet", "ring", "ore", "convoy", "shards"]) expect(parseMe(me({ plume: id }))).not.toBeNull();
@@ -19,7 +22,8 @@ describe("parseMe", () => {
     ["a prototype key as plume", me({ plume: "toString" })],
     ["a short position", me({ p: [1, 2] })],
     ["a non-finite position", me({ p: [1, null, 3] })],
-    ["a position outside the world", me({ p: [COSMIC_BOUNDS + 5, 0, 0] })],
+    ["a position outside the world", me({ p: [525, 0, 0] })],
+    ["a corner outside the validation sphere", me({ p: [310, 310, 310] })],
     ["a zero quaternion", me({ q: [0, 0, 0, 0] })],
     ["a stretched quaternion", me({ q: [0, 0, 0, 2] })],
     ["a JSON array", "[1,2,3]"],

@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
+import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -16,7 +16,7 @@ import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
-import { wrapCoord } from "../../utils/edgeHaze";
+import { edgeReturn, edgeLatch } from "../../utils/edgeHaze";
 import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
@@ -26,7 +26,6 @@ import {
   stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
-import { toroidalDistance3 } from "../../utils/toroidal";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
@@ -215,6 +214,7 @@ export default function Spaceship() {
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
+  const edgeCut = useRef(false);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on an intercept course, so the first W press flies into a planet.
   const hasFlown = useRef(false);
@@ -411,6 +411,7 @@ export default function Spaceship() {
       shipRef.current.position.y = pos.current.y + Math.sin(ambient * 2) * 0.05;
       drivePlumes(0.35, 0.25, time, dt);
       store.setWarping(false);
+      flight.edgeBurn = false;
       beamState.active = false; beamState.reel.active = false;
       flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
       flight.pitch = pitch.current;
@@ -497,6 +498,7 @@ export default function Spaceship() {
 
       zeroGravity();
       _total.set(0, 0, 0);
+      flight.edgeBurn = false;
       beamState.active = false; beamState.reel.active = false;
       applyChaseCam(false, true);
       return;
@@ -584,7 +586,10 @@ export default function Spaceship() {
     // Running dry is a graceful coast, not a stop: the warp branch below assigns
     // velocity directly, so when it stops running the ship keeps its 39 u/s and
     // decays through the existing SPACE_DRAG.
-    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0;
+    // The edge cut is latched (see edgeLatch): the burn returning the ship to the
+    // radius must not re-engage warp and point it outward again.
+    edgeCut.current = edgeLatch(edgeCut.current, Math.hypot(pos.current.x, pos.current.y, pos.current.z), input.boost);
+    const warpActive = input.boost && time > warpSuppressUntil.current && flight.fuel > 0 && !edgeCut.current;
     flight.fuel = stepFuel(flight.fuel, dt, input.boost || fuelDebug.holdRegen, warpActive);
     store.setFuelEmpty(flight.fuel <= 0);
     store.setWarping(warpActive);
@@ -624,7 +629,7 @@ export default function Spaceship() {
     if (grace.skip) {
       const gb = bodies[grace.skip];
       const gr = WELL_RADIUS_BY_NAME.get(grace.skip);
-      if (gb && gr !== undefined) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gr);
+      if (gb && gr !== undefined) grace.update(Math.hypot(pos.current.x - gb.x, pos.current.z - gb.z, pos.current.y - gb.y), gr);
       else grace.clear();
     }
     let wellCount = 0;
@@ -637,14 +642,13 @@ export default function Spaceship() {
     sunDst.x = SUN_WELL.x; sunDst.y = SUN_WELL.y; sunDst.z = SUN_WELL.z;
     sunDst.g = SUN_WELL.g; sunDst.radius = SUN_WELL.radius; sunDst.rMin = SUN_WELL.rMin;
     const g = gravity.current;
+    // The edge: after the caps (so it overrides warp and thrust), before integration.
+    flight.edgeBurn = edgeReturn(pos.current, vel.current, dt);
     stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
 
     pos.current.x += (vel.current.x + g.x) * dt;
     pos.current.y += (vel.current.y + g.y) * dt;
     pos.current.z += (vel.current.z + g.z) * dt;
-
-    // Ecliptic-departure advisory (flavor only — nothing pulls the ship back)
-    store.setAltitudeWarn(Math.abs(pos.current.y) > 180);
 
     // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
     for (const c of COLLIDERS) {
@@ -676,7 +680,7 @@ export default function Spaceship() {
     let wellNow: string | null = null;
     for (let i = 0; i < planets.length; i++) {
       const b = bodies[planets[i].name];
-      if (toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, b.x, b.z, b.y, COSMIC_BOUNDS) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
@@ -685,17 +689,6 @@ export default function Spaceship() {
     if (sling.whoosh) soundManager.whoosh();
     if (sling.whoosh) store.recordBadge("slingshot"); // logbook: Slingshot
     if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });
-
-    // Toroidal boundary wrap — all three axes (spec §2). Exactly one period, so
-    // it agrees with utils/toroidal.ts, and silent: it happens inside the edge
-    // haze (EdgeHaze.tsx), so there is no flash, zap or radio line any more.
-    const wx = wrapCoord(pos.current.x), wy = wrapCoord(pos.current.y), wz = wrapCoord(pos.current.z);
-    if (wx !== pos.current.x || wy !== pos.current.y || wz !== pos.current.z) {
-      state.camera.position.x += wx - pos.current.x;
-      state.camera.position.y += wy - pos.current.y;
-      state.camera.position.z += wz - pos.current.z;
-      pos.current.set(wx, wy, wz);
-    }
 
     shipRef.current.position.copy(pos.current);
     // Idle bob. Photo mode (:184) and orbit lock (:241) already bobbed, but free

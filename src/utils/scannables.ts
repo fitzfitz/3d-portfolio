@@ -1,5 +1,3 @@
-import { COSMIC_BOUNDS } from "../constants";
-import { toroidalDistance3 } from "./toroidal";
 
 /** How close the ship must be to scan, measured from the target's surface. */
 export const SCAN_RANGE = 22;
@@ -21,7 +19,7 @@ export function removeScannable(id: string) { registry.delete(id); }
 export function nearestScannable(x: number, y: number, z: number, range: number) {
   let best: { id: string; label: string; dist: number } | null = null;
   for (const [id, s] of registry) {
-    const d = toroidalDistance3(x, z, y, s.x, s.z, s.y, COSMIC_BOUNDS) - s.radius;
+    const d = Math.hypot(x - s.x, z - s.z, y - s.y) - s.radius;
     if (d < range && (!best || d < best.dist)) best = { id, label: s.label, dist: d };
   }
   return best;

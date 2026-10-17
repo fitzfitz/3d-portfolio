@@ -5,7 +5,7 @@
  */
 export const BROADCAST_HOLD_MS = 8000;
 
-/** May a flavour line (zone, ambient, comet, altitude, impact) type now? */
+/** May a flavour line (zone, ambient, comet, impact) type now? */
 export function flavourAllowed(now: number, heldUntil: number): boolean {
   return now >= heldUntil;
 }

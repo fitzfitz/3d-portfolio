@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   inCone, consider, createSelection, clearSelection, pullStep, reelStep,
-  BEAM_RANGE, BEAM_MAX_TARGETS, REEL_ACCEL, nearestShardInCone, nearImage,
+  BEAM_RANGE, BEAM_MAX_TARGETS, REEL_ACCEL, nearestShardInCone,
 } from "../src/utils/tractorBeam";
 
 describe("inCone", () => {
@@ -11,9 +11,9 @@ describe("inCone", () => {
     expect(inCone(0, 0, 0, 0, 0, 1, 20, 0, 20, BEAM_RANGE)).toBe(-1); // 45° off
     expect(inCone(0, 0, 0, 0, 0, 1, 0, 0, 31, BEAM_RANGE)).toBe(-1);
   });
-  it("sees a target across the wrap seam", () => {
-    // Ship at x=245 looking +x; a crystal at x=-248 is 7u ahead through the seam.
-    expect(inCone(245, 0, 0, 1, 0, 0, -248, 0, 0, BEAM_RANGE)).toBeCloseTo(7);
+  it("does not see a target across the old seam", () => {
+    // Ship at x=245 looking +x; a crystal at x=-248 is 493u away, out of range.
+    expect(inCone(245, 0, 0, 1, 0, 0, -248, 0, 0, BEAM_RANGE)).toBe(-1);
   });
 });
 
@@ -82,19 +82,5 @@ describe("nearestShardInCone", () => {
   it("picks the nearest uncollected shard inside the cone", () => {
     expect(nearestShardInCone(0, 0, 0, 0, 0, 1, shards, [])).toBe(1);
     expect(nearestShardInCone(0, 0, 0, 0, 0, 1, shards, [1])).toBe(-1); // shard 0 is out of range (40u)
-  });
-});
-
-describe("wrap seam (review #3)", () => {
-  it("pullStep carries a crystal through the seam and keeps it in bounds", () => {
-    // Ship at x=245; crystal at x=-248 is 7u away through the seam (toward -x from the crystal).
-    const p = { x: -248, y: 0, z: 0 };
-    const left = pullStep(p, { x: 245, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, 20, 0.2);
-    expect(left).toBeCloseTo(3);
-    expect(p.x).toBeCloseTo(248);
-  });
-  it("nearImage gives the copy of a point nearest the origin, for drawing across the seam", () => {
-    expect(nearImage(225, -245)).toBeCloseTo(255);
-    expect(nearImage(10, 40)).toBe(40);
   });
 });

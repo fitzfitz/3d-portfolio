@@ -3,8 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
-import { planets, COSMIC_BOUNDS } from "../../constants";
-import { toroidalDistance3 } from "../../utils/toroidal";
+import { planets } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
 import { refuel, refuelOutcome, FUEL_MAX } from "../../utils/fuel";
 import {
@@ -143,7 +142,7 @@ export default function FuelCrystals() {
 
       // Pickup measures the BASE position, never `s.y + bob`. That is what makes
       // freezing the bob under reduced motion unable to affect collection.
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, s.x, s.z, s.y, COSMIC_BOUNDS);
+      const dist = Math.hypot(flight.x - s.x, flight.z - s.z, flight.y - s.y);
       if (dist < CRYSTAL_PICKUP_RADIUS) {
         // Consume it even at a full tank, or a full ship would plough through a
         // crystal field leaving it visibly intact.

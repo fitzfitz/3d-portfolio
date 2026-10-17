@@ -1,4 +1,5 @@
 import { flight, useSpaceStore } from "../store/spaceStore";
+import { SYSTEM_RADIUS } from "../constants";
 import { BEACON_LIMIT } from "./beacons";
 import { BEACON_PHRASES } from "../data/beaconPhrases";
 import { fetchBeacons, postBeacon } from "./beaconApi";
@@ -23,7 +24,11 @@ export async function loadBeacons(): Promise<void> {
 export async function dropBeacon(phrase: number): Promise<void> {
   const s = useSpaceStore.getState();
   s.sendBroadcast("BEACON // TRANSMITTING...");
-  const r = await postBeacon({ x: flight.x, y: flight.y, z: flight.z, phrase });
+  // Beacons past the edge are accepted by the Worker but never drawn: clamp onto
+  // the system sphere (direction preserved) so a drop is always visible.
+  const m = Math.hypot(flight.x, flight.y, flight.z);
+  const k = m > SYSTEM_RADIUS ? SYSTEM_RADIUS / m : 1;
+  const r = await postBeacon({ x: flight.x * k, y: flight.y * k, z: flight.z * k, phrase });
   const now = useSpaceStore.getState();
   if (r.ok) {
     now.addOwnBeacon(r.beacon.id);
@@ -33,8 +38,10 @@ export async function dropBeacon(phrase: number): Promise<void> {
   } else if (r.reason === "rate") {
     now.sendBroadcast("BEACON RELAY // ONE BEACON PER PILOT EVERY 10 MINUTES");
   } else if (r.reason === "invalid") {
-    // The only drop a configured client can make that fails validation.
+    // The only drop a configured client can make that fails local validation.
     now.sendBroadcast("BEACON REFUSED // TOO CLOSE TO THE SPAWN PAD. FLY OUT A LITTLE");
+  } else if (r.reason === "refused") {
+    now.sendBroadcast("BEACON REFUSED BY RELAY");
   } else {
     now.sendBroadcast("BEACON RELAY OFFLINE // TRY AGAIN LATER");
   }

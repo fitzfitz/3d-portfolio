@@ -15,7 +15,7 @@ export function gateDistance(p: Point): number {
 
 /**
  * Whether the move a→b flew through the opening, either way. A jump, a debug
- * teleport or a boundary wrap moves more than race.ts's MAX_STEP and never
+ * teleport moves more than race.ts's MAX_STEP and never
  * counts.
  */
 export function gatePassed(a: Point, b: Point): boolean {
