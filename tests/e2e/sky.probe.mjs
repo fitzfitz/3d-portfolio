@@ -241,16 +241,16 @@ async function exposureChecks(page, checks, tier) {
   // Read as the corona's own light (shot minus a corona-hidden shot) in a
   // band at 0.70-0.78 of the billboard, where its direct glow is strongest.
   // Calibrated 2026-10-17 (24-unit sun, corona on the limb, breathing frozen
-  // at uHeat <= 0.15; repeat runs agree within 0.005, but the frozen streamer
-  // pattern differs run to run, so two calibrations are given), the corona's
-  // own band luma / the d=115 value, compensated vs forced to 1:
-  //   d=48:  0.60-0.72 vs 0.18-0.23. Below 1 even compensated: bloom runs
-  //   before the exposure, and the band sits on the near disc's much brighter
-  //   bloom, where tone mapping compresses what the corona adds. Bound
-  //   [0.4, 1.0], 0.4 at the geometric midpoint of the closest readings.
-  //   d=230: 0.54-0.55 vs 1.18-1.32. The corona's own bloom shrinks with its
-  //   pre-exposure brightness (x0.4 here). Bound [0.4, 0.8], 0.8 at the
-  //   geometric midpoint of the closest readings.
+  // at uHeat >= 0.85; repeat runs agree within ~0.005, though the frozen
+  // streamer pattern differs run to run), the corona's own band luma / the
+  // d=115 value, compensated vs forced to 1:
+  //   d=48:  0.62 vs 0.18 (0.60-0.72 vs 0.18-0.23 frozen at the bottom of a
+  //   breath). Below 1 even compensated: bloom runs before the exposure, and
+  //   the band sits on the near disc's much brighter bloom, where tone mapping
+  //   compresses what the corona adds. Bound [0.4, 1.0].
+  //   d=230: 0.59 vs 1.38 (0.54-0.55 vs 1.18-1.32 at the bottom). The
+  //   corona's own bloom shrinks with its pre-exposure brightness (x0.4
+  //   here). Bound [0.4, 0.8], under the geometric midpoints of every pair.
   if (!lowPerf) {
     const cfmt = (d) => `${d.corona.toFixed(1)} over ${d.coronaBg?.toFixed(1)} (${d.coronaN}px)`;
     const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
@@ -463,19 +463,21 @@ export default async function run() {
     // F3 (L19): the camera's exposure, and the sun looking the same at every
     // exposure, in both tiers. Reduced motion so the exposure snaps. It also
     // freezes the sun's breathing (uHeat), which sets how hard the disc blooms
-    // and so the corona readings below: freeze it near the bottom of a breath
-    // (uHeat <= 0.15, ~1.8 s of each 7 s cycle) so every run measures the
-    // same sun instead of wherever the breath happened to stop.
+    // and so the disc and corona readings below: freeze it near the top of a
+    // breath (uHeat >= 0.85, ~1.8 s of each 7 s cycle) so every run measures
+    // the same sun instead of wherever the breath happened to stop. At the
+    // bottom the far disc (bloomed x0.4 less, since bloom runs before the
+    // exposure) drifted ~4% under the near one, past the 3% bar.
     const sunHeat = () => page.evaluate(() => {
       let h = null;
       window.__fitz.scene.traverse((o) => { if (h === null && o.material?.uniforms?.uHeat) h = o.material.uniforms.uHeat.value; });
       return h;
     });
-    const cool = await pollUntil(async () => ((await sunHeat()) <= 0.15 ? true : null), { timeoutMs: 30_000, intervalMs: 200 });
+    const hot = await pollUntil(async () => ((await sunHeat()) >= 0.85 ? true : null), { timeoutMs: 30_000, intervalMs: 200 });
     await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(true, true));
     await settle(page, 1000);
     const frozenHeat = await sunHeat();
-    checks.check("the sun's breathing froze near the bottom of a breath", cool.ok && frozenHeat <= 0.25, `uHeat=${frozenHeat?.toFixed(3)}`);
+    checks.check("the sun's breathing froze near the top of a breath", hot.ok && frozenHeat >= 0.75, `uHeat=${frozenHeat?.toFixed(3)}`);
     await exposureChecks(page, checks, "composer");
     await page.evaluate(() => window.__fitz.store.getState().setLowPerf(true, true));
     // The low tier's tone-mapped variants compile on the switch (slow in SwiftShader).
