@@ -1,39 +1,33 @@
 import { withPage, hold, settle, sceneQuery } from "./harness.mjs";
 
-const BOUNDS = 250;
-const RANGE = 160; // RadarMap RANGE
+const SYSTEM_RADIUS = 400; // src/constants.ts
+const VALIDATION_RADIUS = 440; // the beacon-api bounds; the burn must never let the ship out this far
+const RANGE = 220; // RadarMap RANGE
 const SIZE = 148;  // RadarMap SIZE
 
 /**
- * Recomputes what the radar should be drawing, using the same wrap + heading-up
- * transform the component uses, from live flight/bodies telemetry.
+ * Recomputes what the radar should be drawing, using the same plain-distance
+ * heading-up transform the component uses, from live flight/bodies telemetry.
  */
 const expectedBlips = (page) => page.evaluate((args) => {
-  const { bounds, range, size } = args;
+  const { range, size } = args;
   const f = window.__fitz.flight;
   const b = window.__fitz.bodies;
-  const wrapDelta = (d, lim) => {
-    const span = lim * 2;
-    let x = d % span;
-    if (x > lim) x -= span;
-    if (x < -lim) x += span;
-    return x;
-  };
   const c = size / 2;
   const rimR = c - 6;
   const scale = rimR / range;
   const cosA = Math.cos(f.heading), sinA = Math.sin(f.heading);
   return Object.entries(b).map(([name, p]) => {
-    const dx = wrapDelta(p.x - f.x, bounds);
-    const dy = wrapDelta(p.y - f.y, bounds);
-    const dz = wrapDelta(p.z - f.z, bounds);
+    const dx = p.x - f.x;
+    const dy = p.y - f.y;
+    const dz = p.z - f.z;
     const rx = dz * sinA - dx * cosA;
     const up = dx * sinA + dz * cosA;
     const dist = Math.hypot(dx, dz);
     return { name, dx, dy, dz, dist, px: c + rx * scale, py: c - up * scale,
              inRange: dist <= range };
   });
-}, { bounds: BOUNDS, range: RANGE, size: SIZE });
+}, { range: RANGE, size: SIZE });
 
 /** Quantizes a "#rrggbb" colour the same way the histogram sampler below
  * buckets canvas pixels (`channel >> 5`), so expected colours can be
@@ -95,94 +89,67 @@ export default async function run() {
       foundBlipColours.length >= 2,
       `found ${foundBlipColours.join(",") || "none"} of ${Object.keys(blipColours).join(",")}`);
 
-    // Across a wrap seam the transform must stay continuous. The brief's
-    // original approach set `window.__fitz.flight.x = BOUNDS - 4` directly
-    // and expected the ship to then fly across it. Verified live (see
-    // task-6-report.md) that this does NOT work: `flight.{x,y,z}` is a
-    // write-only telemetry mirror — Spaceship.tsx's useFrame overwrites it
-    // from its own internal `pos` ref every single frame
-    // (`flight.x = pos.current.x`, etc.), so an external write is clobbered
-    // on the very next frame and the ship's real position never moves. There
-    // is no debug-bridge teleport hook, so the only way to actually get the
-    // ship near the seam is to fly it there for real. The ship now spawns
-    // aimed at a planet, so pin heading 0 first via `__fitz.setAttitude`;
-    // heading 0 points the nose down +Z (`noseDirection(0,0) = (0,0,1)`), so
-    // holding forward+boost with NO turning drives flight.z toward +BOUNDS
-    // and across — measured live at ~37 u/s effective, i.e. ~19s from spawn
-    // to the wrap. Poll every 500ms and stop the instant a wrap is detected
-    // (z drops by >100 between polls — the only way that happens, since
-    // forward flight only ever increases z) rather than holding for a fixed
-    // guess, so the check can't pass on a race and can't hang indefinitely.
-    await page.evaluate(() => window.__fitz.setAttitude(0, 0));
+    // Flying out at warp: the ship is returned. There is no wrap; past
+    // SYSTEM_RADIUS the flight computer cuts warp and brakes the ship, so it
+    // must never reach the beacon-api bounds (VALIDATION_RADIUS) and must come
+    // back inside. Start 20u inside the edge facing +X (yaw pi/2 points the
+    // nose down +X), hold warp until the edge is crossed, release, then poll
+    // generously: headless sim time runs ~3x slower than wall time.
+    await page.evaluate(() => {
+      window.__fitz.teleport(380, 0, 0);
+      window.__fitz.setAttitude(Math.PI / 2, 0);
+    });
+    const radius = () => page.evaluate(() => {
+      const f = window.__fitz.flight;
+      return Math.hypot(f.x, f.y, f.z);
+    });
+    const radioSeen = async () => {
+      const st = await page.evaluate(() => window.__fitz.store.getState().broadcast?.text ?? "");
+      const dom = (await page.evaluate(() => document.querySelector('[data-testid="radio-chatter"]')?.textContent ?? ""));
+      return st.includes("RETURN BURN") || dom.includes("RETURN BURN");
+    };
+    let maxR = 0, burnLine = false, crossed = false;
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
-    let pre = null, post = null, preZ = null, postZ = null, wrapped = false;
-    // 90s, not 45: under full-suite load SwiftShader can drop to a few
-    // frames a second, and the flight is ~230u at warp. The loop exits the
-    // moment the wrap is seen, so a generous deadline costs nothing when fast.
-    const deadline = Date.now() + 90_000;
-    while (Date.now() < deadline) {
-      await settle(page, 500);
-      const zNow = await page.evaluate(() => window.__fitz.flight.z);
-      if (preZ !== null && zNow < preZ - 100) {
-        post = await expectedBlips(page);
-        postZ = zNow;
-        wrapped = true;
-        break;
-      }
-      preZ = zNow;
-      pre = await expectedBlips(page);
+    const t0 = Date.now();
+    while (Date.now() - t0 < 90_000) {
+      await settle(page, 200);
+      const r = await radius();
+      maxR = Math.max(maxR, r);
+      burnLine = burnLine || (await radioSeen());
+      if (r > SYSTEM_RADIUS) { crossed = true; break; }
     }
-    await page.keyboard.up("KeyW");
     await page.keyboard.up("ShiftLeft");
-
-    // Confirm the seam crossing actually happened before trusting anything
-    // it implies — otherwise a check that never ran the scenario would pass
-    // for free (same principle as Task 4's flight-displacement gate).
-    checks.check("ship actually crossed the wrap seam (z jumped by > bounds)",
-      wrapped && Math.abs(postZ - preZ) > BOUNDS,
-      wrapped ? `z ${preZ.toFixed(1)} -> ${postZ.toFixed(1)} (Δ=${(postZ - preZ).toFixed(1)})`
-        : `no wrap within 90s (last z=${preZ?.toFixed(1)})`);
-
-    // Check ALL THREE components, not just the axis the manoeuvre happens to
-    // travel along. An earlier version of this check only compared `dx`
-    // (inherited from the brief's original design, which teleported along X)
-    // after the manoeuvre was rewritten to fly +Z instead — leaving `dx`
-    // permanently near zero (the ship barely moves in x) and `dz` (the axis
-    // that actually wraps) unchecked entirely, so the assertion passed
-    // unconditionally regardless of whether `wrapDelta`/the radar transform
-    // was continuous. Comparing dx/dy/dz together is robust to the manoeuvre
-    // changing axis again in the future — exactly the failure mode that
-    // produced the bug — and the detail string reports which axis actually
-    // carried the crossing, so a future reader can see the seam was genuinely
-    // exercised rather than just not-obviously-broken.
-    if (wrapped && pre && post) {
-      const AXES = ["dx", "dy", "dz"];
-      const diffs = pre.map((p) => {
-        const q = post.find((o) => o.name === p.name);
-        if (!q) return null;
-        return { name: p.name, ...Object.fromEntries(AXES.map((a) => [a, q[a] - p[a]])) };
-      }).filter(Boolean);
-
-      const jumped = diffs.filter((d) => AXES.some((a) => Math.abs(d[a]) > BOUNDS));
-
-      let biggest = { name: null, axis: null, value: -1 };
-      for (const d of diffs) {
-        for (const a of AXES) {
-          const v = Math.abs(d[a]);
-          if (v > biggest.value) biggest = { name: d.name, axis: a, value: v };
-        }
-      }
-
-      checks.check("radar deltas stay continuous across the wrap seam (dx/dy/dz)",
-        jumped.length === 0,
-        jumped.length
-          ? jumped.map((d) => `${d.name}(dx=${d.dx.toFixed(1)},dy=${d.dy.toFixed(1)},dz=${d.dz.toFixed(1)})`).join(" ")
-          : `no discontinuity; largest single-axis change ${biggest.name}.${biggest.axis.slice(1)}=${biggest.value.toFixed(1)} (ship travelled along z, so this is expected to be the ~dz of some body)`);
-    } else {
-      checks.check("radar deltas stay continuous across the wrap seam (dx/dy/dz)", false,
-        "skipped — seam crossing was not confirmed, so continuity cannot be judged");
+    await page.keyboard.up("KeyW");
+    checks.check("flying out at warp crosses the edge", crossed, `max |p|=${maxR.toFixed(1)}`);
+    const tCross = Date.now();
+    let back = false;
+    while (Date.now() - tCross < 60_000) {
+      await settle(page, 150);
+      const r = await radius();
+      maxR = Math.max(maxR, r);
+      burnLine = burnLine || (await radioSeen());
+      if (r < SYSTEM_RADIUS && crossed) { back = true; break; }
     }
+    const backMs = Date.now() - tCross;
+    checks.check("the ship never gets near the beacon-api bounds", maxR < VALIDATION_RADIUS,
+      `max |p|=${maxR.toFixed(1)} < ${VALIDATION_RADIUS}`);
+    checks.check("the ship is returned inside the system", back,
+      back ? `back inside ${SYSTEM_RADIUS} after ${(backMs / 1000).toFixed(1)}s wall` : `still at |p|=${(await radius()).toFixed(1)}`);
+    checks.check("the return-burn radio line was broadcast", burnLine);
+
+    // Radar transform after the burn: bodies telemetry still lands inside the rim.
+    const after = await expectedBlips(page);
+    const stray = after.filter((q) => q.inRange && Math.hypot(q.px - c, q.py - c) > rimR + 0.5);
+    checks.check("radar blips stay inside the rim after the burn", stray.length === 0,
+      stray.map((o) => o.name).join(" "));
+
+    // Back to open deep space so the warp below is not cut by the edge burn.
+    await page.evaluate(() => {
+      window.__fitz.teleport(150, 60, 150);
+      window.__fitz.setAttitude(0, 0);
+    });
+    await settle(page, 500);
 
     // Warp tunnel orientation must track heading and pitch: rotation is
     // set as (PI/2 - pitch, heading, 0) in WarpTunnel.tsx.

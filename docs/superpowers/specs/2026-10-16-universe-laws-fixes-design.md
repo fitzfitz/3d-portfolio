@@ -221,6 +221,8 @@ event window. The event director's route checks use the hyperbola.
 
 ### F11. A lawful boundary instead of wrap-around (L18)
 
+**Built** at radius 400 (`docs/superpowers/specs/2026-10-17-bigger-universe-design.md`): no wrap anywhere, a radial haze, and a return burn with a radio line. Deferred to F1: the visible thrusters, and the clause below about assist off letting the pilot drift out.
+
 Space no longer wraps. At the edge of the system (today's ±250 box, kept as a
 sphere of about 250), the flight computer warns, then turns the ship back
 with visible thrust (F1). The nebula haze stays as the visual cue.

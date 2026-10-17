@@ -161,6 +161,13 @@ resolve relative `og:image`, and Vite's HTML rewriting covers `og:image` but not
 `twitter:image`. A custom domain later means updating `og:url`, `canonical`,
 `og:image` and `twitter:image` by hand.
 
+### Redeploy `beacon-api` before merging the bigger universe
+
+The system grew from a 250-unit torus to a 400-unit sphere, and `beacon-api`
+validates positions against the new bounds (`VALIDATION_RADIUS` 440). Redeploy
+`beacon-api` **before** this change merges, or beacons and live-sky positions
+beyond the old bounds are rejected.
+
 ## Docs
 
 `docs/superpowers/specs/` holds a design document per feature and

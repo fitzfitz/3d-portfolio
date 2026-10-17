@@ -68,9 +68,10 @@ describe("shipyard placement", () => {
 
 describe("dormant gate placement", () => {
   it("stays out of the edge haze, frame included", () => {
+    // Each axis within 200 (the old cube bound; stricter than the radial check below needs).
     for (const v of GATE_POS) {
       expect(Math.abs(v)).toBeLessThan(200);
-      }
+    }
     expect(Math.hypot(...GATE_POS) + GATE_RADIUS).toBeLessThan(HAZE_START);
   });
   it("lies beyond the outermost planet orbit", () => {

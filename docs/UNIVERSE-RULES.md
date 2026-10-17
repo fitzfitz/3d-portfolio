@@ -73,7 +73,7 @@ The code source of these numbers is `src/utils/realUnits.ts`; `tests/realUnits.t
 | L15 | **Lagrange points.** L4 and L5, 60° ahead of and behind a planet on its orbit, are stable; Trojans live there. | Not used yet. F8 parks stations there. |
 | L16 | **Nothing unpowered hovers.** A body that is not orbiting falls toward the star; holding still costs constant thrust. | **Breaks → F8.** Stations, the shipyard, the gate, the portal, buoys, beacons, shards, fuel crystals and the hero asteroids hold still. |
 | L17 | **Escape velocity.** A visitor from outside the system flies a hyperbola that bends around the star ('Oumuamua: e ≈ 1.2). | **Breaks → F9.** The world-event comet flies a straight line. |
-| L18 | **Space has no edge.** | **Breaks → F11.** Space wraps around at ±250 behind a nebula haze. |
+| L18 | **Space has no edge.** | Follows: the system is a 400-unit sphere with a real edge. A nebula haze thickens from 360 to 400, and past 400 the flight computer cuts warp and flies a return burn that brings the ship back; nothing wraps. The burn's visible thrusters come with F1. |
 
 ## B. Light and optics
 

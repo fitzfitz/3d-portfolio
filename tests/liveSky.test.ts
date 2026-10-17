@@ -6,9 +6,10 @@ import {
   liveRadar, writeRadarBlips,
 } from "../src/utils/liveSky";
 import { generateScanReport } from "../src/utils/scanReport";
-import { VALIDATION_RADIUS } from "../src/constants";
-const EDGE = 400;
+import { VALIDATION_RADIUS, SYSTEM_RADIUS } from "../src/constants";
 import type { ShipState, SnapShip } from "../src/utils/liveSkyProtocol";
+
+const EDGE = SYSTEM_RADIUS;
 
 afterEach(() => { vi.unstubAllEnvs(); ghostRegistry.clear(); });
 

@@ -58,9 +58,12 @@ A, then B, then C, each shipped before the next.
    400; the radio warning (today's `HazeLineGate`) moves to 360.
 2. **Turn-back (the return burn).**
    - Beyond 400 the flight computer cuts warp.
-   - It decelerates the ship's outward velocity at up to 25 u/s², then pushes
-     it gently back inward. From full warp (39 u/s) that stops the ship within
-     about 30 units (39²/(2·25) ≈ 30.4), so the overshoot stays under 440.
+   - It decelerates the ship's outward velocity at up to 40 u/s² (the pilot's own thrust is 25.2, so a
+     lower figure could never beat a pilot holding thrust outward), then pushes
+     it gently back inward. Whatever brake budget is left after cancelling the
+     outward velocity spills into that inward push, so a pilot holding thrust
+     outward cannot sit pinned just past the edge. From full warp (39 u/s) that stops the ship within
+     about 19 units (39²/(2·40) ≈ 19), so the overshoot stays under 440.
    - The burn adds to the pilot's input rather than overriding it. Steering
      and inward thrust still work; holding thrust outward cannot carry the
      ship past the cap.

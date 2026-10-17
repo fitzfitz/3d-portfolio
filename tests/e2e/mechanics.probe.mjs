@@ -16,27 +16,51 @@ const crystalAhead = (page) => page.evaluate(() => {
 
 async function edge(page, checks) {
   const P = await pools(page);
+  const radius = () => page.evaluate(() => {
+    const f = window.__fitz.flight;
+    return Math.hypot(f.x, f.y, f.z);
+  });
   await page.keyboard.press("KeyW"); // first input
-  await page.evaluate(() => { window.__fitz.teleport(238, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
+  await page.evaluate(() => { window.__fitz.teleport(380, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
-  checks.check("haze thickens near the edge", op > 0.5, `opacity=${op}`);
+  checks.check("haze thickens near the edge", op > 0.3, `opacity=${op} at r=${(await radius()).toFixed(1)}`);
 
-  let flashed = false;
+  // Holding thrust outward past the edge: the burn out-muscles the pilot
+  // (40 u/s^2 against 25.2), so the ship is still brought back.
+  let maxR = 0, flashed = false, burnSeen = false, fullHaze = 0;
   await page.keyboard.down("KeyW");
   const crossed = await pollUntil(async () => {
-    const r = await page.evaluate(() => ({ x: window.__fitz.flight.x, flash: window.__fitz.store.getState().isTeleporting }));
+    const r = await page.evaluate(() => {
+      const f = window.__fitz.flight;
+      return { r: Math.hypot(f.x, f.y, f.z), flash: window.__fitz.store.getState().isTeleporting };
+    });
     flashed = flashed || r.flash;
-    return r.x < 0;
-  }, { timeoutMs: 20_000, intervalMs: 100 });
+    maxR = Math.max(maxR, r.r);
+    return r.r > 400;
+  }, { timeoutMs: 60_000, intervalMs: 100 });
+  checks.check("holding thrust outward, the ship reaches the edge", crossed.ok, `max r=${maxR.toFixed(1)}`);
+  // The haze is full at 400 (HAZE_MAX_OPACITY).
+  await settle(page, 300);
+  fullHaze = await hazeOpacity(page);
+  checks.check("the haze is full at 400 (HAZE_MAX_OPACITY 0.92)", fullHaze > 0.9 && fullHaze <= 0.92, `opacity=${fullHaze}`);
+  const t0 = Date.now();
+  const turned = await pollUntil(async () => {
+    const r = await radius();
+    maxR = Math.max(maxR, r);
+    const line = (await readStore(page)).broadcast;
+    burnSeen = burnSeen || (!!line && line.text.includes("RETURN BURN"));
+    return r < 400 && Date.now() - t0 > 500;
+  }, { timeoutMs: 60_000, intervalMs: 100 });
   await page.keyboard.up("KeyW");
-  checks.check("the ship crosses the seam", crossed.ok);
-  checks.check("the wrap fires no teleport flash", !flashed);
-  const opFar = await hazeOpacity(page);
-  checks.check("the far side of the seam is still deep haze", opFar > 0.7, `opacity=${opFar}`);
+  checks.check("holding thrust outward at the edge, the ship is still brought back", turned.ok,
+    `max r=${maxR.toFixed(1)}, back after ${((Date.now() - t0) / 1000).toFixed(1)}s wall`);
+  checks.check("the ship stays well inside the validation bounds", maxR < 440, `max r=${maxR.toFixed(1)}`);
+  checks.check("the edge fires no teleport flash", !flashed);
   const line = (await readStore(page)).broadcast;
-  checks.check("a haze line played, silently", !!line && P.haze.includes(line.text) && line.silent === true,
-    `broadcast=${JSON.stringify(line)}`);
+  checks.check("a haze or return-burn line played, silently",
+    !!line && (P.haze.includes(line.text) || line.text.includes("RETURN BURN")) && line.silent === true,
+    `broadcast=${JSON.stringify(line)} burnSeen=${burnSeen}`);
 }
 
 /**
@@ -149,7 +173,7 @@ async function photoMode(page, checks) {
 
 async function reducedMotion(page, checks) {
   await page.keyboard.press("KeyW");
-  await page.evaluate(() => window.__fitz.teleport(240, 0, 0));
+  await page.evaluate(() => window.__fitz.teleport(390, 0, 0));
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);
