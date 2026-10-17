@@ -288,4 +288,6 @@ take the rule (130 / 481,270); programs is the page's cumulative count, read sec
 deep space, so it shares deep space's table baseline and ceiling (79) instead of a tighter
 one that the low-perf path above would trip; lights 5. Eleven baseline runs and eight
 verification runs read the same: deep space 35 / 241,916, 40 anomalies 35 / 241,916 (the
-39 and 36 before were view-dependent), programs 54 / 55. Ceilings changed: none; one added.
+39 and 36 before were view-dependent), programs 54 / 55. Facing the sun read 108 on every
+run but one independent re-run, which read 107 with the same triangles (a points or lines
+draw that comes and goes); the 130 ceiling has 22 to spare. Ceilings changed: none; one added.

@@ -33,7 +33,8 @@ const ANOMALIES_LIGHTS_CEILING = 5;
 
 // Deep space again, nose on the sun: the disc, its corona and the six lens
 // sprites in frame, counted on purpose (the deep-space and 40-anomalies states
-// face away from it). Baseline 108 / 418490 / 54 / 4, identical on 11 runs.
+// face away from it). Baseline 108 / 418490 / 54 / 4 on 11 runs; one later
+// run read 107 calls (same triangles: a points or lines draw), inside the ceiling.
 // Programs is the page's cumulative count, read seconds after deep space on
 // the same page, so it shares deep space's ceiling rather than a tighter one.
 const FACING_SUN_CALLS_CEILING = 130;
@@ -195,8 +196,9 @@ export default async function run() {
       `lights=${deep.lights} LIGHT_BUDGET=${lightBudget}`);
 
     // ---- renderer counter budgets: deep space facing the sun (docs/PERF-BUDGETS.md) ----
-    // Same point, nose on the sun: the view the deep-space state used to land
-    // in by chance. The precondition proves the sun and its glare are in frame.
+    // Same point, nose on the sun, so the disc, corona, lens sprites and the
+    // inner system are all counted on purpose (the old flake only ever caught
+    // the six sprites at its edge). The precondition proves they are in frame.
     await faceFromSun(page, true);
     const facing = await readPerfCounters(page);
     const facingSun = await sunInView(page);
