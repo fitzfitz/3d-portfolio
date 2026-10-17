@@ -210,3 +210,35 @@ describe("patchSunShadow: patch once, shared sunVis", () => {
     expect(sb.uniforms.uSunVis).toBe(shared);
   });
 });
+
+describe("the coverage early-out (lateral distance before the trig)", () => {
+  it("sits before the asin/acos in the GLSL", () => {
+    const i = SUN_SHADOW_GLSL.indexOf("r + d * tanSun");
+    expect(i).toBeGreaterThan(-1);
+    expect(i).toBeLessThan(SUN_SHADOW_GLSL.indexOf("asin( r / d )"));
+  });
+
+  it("never skips an occluder that covers any of the sun (exact, checked against sunVisibility)", async () => {
+    const { sunVisibility } = await import("../src/utils/sunOcclusion");
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    let rejected = 0;
+    for (let n = 0; n < 20000; n++) {
+      const p = { x: (rand() - 0.5) * 400, y: (rand() - 0.5) * 400, z: (rand() - 0.5) * 400 };
+      const o = { x: p.x * (0.2 + rand() * 0.8) + (rand() - 0.5) * 60, y: p.y * (0.2 + rand() * 0.8) + (rand() - 0.5) * 60,
+        z: p.z * (0.2 + rand() * 0.8) + (rand() - 0.5) * 60, r: 0.5 + rand() * 20 };
+      const sunDist = Math.hypot(p.x, p.y, p.z);
+      if (sunDist <= 8) continue;
+      const bx = o.x - p.x, by = o.y - p.y, bz = o.z - p.z, d = Math.hypot(bx, by, bz);
+      if (d >= sunDist || d <= o.r) continue;
+      const c = -(bx * p.x + by * p.y + bz * p.z) / (d * sunDist);
+      if (c <= 0) continue;
+      const sinSun = 8 / sunDist, tanSun = sinSun / Math.sqrt(1 - sinSun * sinSun);
+      if (d * Math.sqrt(Math.max(0, 1 - c * c)) > o.r + d * tanSun) {
+        rejected++;
+        expect(sunVisibility(p, [o], 8)).toBe(1);
+      }
+    }
+    expect(rejected).toBeGreaterThan(1000);
+  });
+});

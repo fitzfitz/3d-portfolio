@@ -253,6 +253,107 @@ async function eclipses(page, checks) {
   const lit = await pollUntil(async () => (await sunVis()) > 0.95, { timeoutMs: 10_000, intervalMs: 250 });
   const litV = await sunVis();
   checks.check("...and is fully lit beside it", lit.ok, `sunVis=${litV}`);
+
+  // Ruangrapi's ring darkens where it passes through the planet's umbra.
+  // Measured on the GPU: right after the ring draws, the same 7x7 pixels are
+  // read with the ring's shadow on and then forced off (uNightFloor = 1), from
+  // straight above a ring point seen against empty space, with the ship hidden.
+  // Comparing one pixel block with itself cancels the ring's banding and the
+  // background, which a sunlit-vs-umbra comparison of two places would not.
+  const umbra = await ringShade(page, true);
+  checks.check("Ruangrapi's ring goes dark in the planet's umbra",
+    umbra.ok && umbra.ratio < 0.5, JSON.stringify(umbra));
+  const sunlit = await ringShade(page, false);
+  checks.check("...and keeps full brightness in sunlight",
+    sunlit.ok && sunlit.ratio > 0.9, JSON.stringify(sunlit));
+}
+
+/**
+ * Parks the camera 30u above a point of Ruangrapi's ring that is in the
+ * planet's umbra (`dark`) or in full sun, then reads the ring's own pixels
+ * with its shadow on and forced off. Returns { ok, ratio = on / off, ... }.
+ */
+async function ringShade(page, dark) {
+  const setup = await page.evaluate(async (wantDark) => {
+    const f = window.__fitz;
+    const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
+    const ring = f.scene.getObjectByName("PlanetRing_ruangrapi");
+    if (!ring) return { ok: false, why: "no ring" };
+    const V3 = f.camera.position.constructor;
+    const occ = f.sunShadow.uOccluders.value;
+    const planet = { x: occ[0].x, y: occ[0].y, z: occ[0].z, r: occ[0].w };
+    ring.updateWorldMatrix(true, false);
+    const { innerRadius: ri, outerRadius: ro } = ring.geometry.parameters;
+    const R = ri + 0.35 * (ro - ri);
+    const n = new V3(0, 0, 1).transformDirection(ring.matrixWorld);
+    if (n.y < 0) n.negate();
+    const clear = (a, b) => {
+      const ab = b.clone().sub(a);
+      for (const o of occ) {
+        if (o.w <= 0) continue;
+        const c = new V3(o.x, o.y, o.z);
+        const t = Math.max(0, Math.min(1, c.clone().sub(a).dot(ab) / ab.lengthSq()));
+        if (a.clone().addScaledVector(ab, t).distanceTo(c) < o.w + 1) return false;
+      }
+      return true;
+    };
+    for (let deg = 0; deg < 360; deg += 3) {
+      const phi = (deg * Math.PI) / 180;
+      const pt = new V3(R * Math.cos(phi), R * Math.sin(phi), 0).applyMatrix4(ring.matrixWorld);
+      const vis = sunVisibility(pt, [planet], 8);
+      if (wantDark ? vis > 0 : vis < 1) continue;
+      const cam = pt.clone().addScaledVector(n, 30);
+      if (!clear(cam, pt) || !clear(pt, pt.clone().addScaledVector(n, -400))) continue;
+      // Ship 4.6 ahead of the camera along the view direction (the chase cam
+      // sits 4.6 behind and 1.8 above it), nose straight down at the point.
+      const nose = pt.clone().sub(cam).normalize();
+      const ship = cam.clone().addScaledVector(nose, 4.6);
+      ship.y -= 1.8;
+      f.teleport(ship.x, ship.y, ship.z);
+      f.setAttitude(Math.atan2(nose.x, nose.z), Math.asin(nose.y));
+      window.__ringPt = pt;
+      window.__ringCam = cam;
+      return { ok: true, deg, vis };
+    }
+    return { ok: false, why: "no clear ring point" };
+  }, dark);
+  if (!setup.ok) return setup;
+  // The chase camera eases in; wait until it is parked above the point.
+  const parked = await pollUntil(() => page.evaluate(() => window.__fitz.camera.position.distanceTo(window.__ringCam) < 1),
+    { timeoutMs: 120_000, intervalMs: 500 });
+  if (!parked.ok) return { ok: false, why: "camera never parked", ...setup };
+  const read = (floor) => page.evaluate((fl) => new Promise((resolve) => {
+    const f = window.__fitz;
+    const ring = f.scene.getObjectByName("PlanetRing_ruangrapi");
+    const hull = [];
+    f.scene.traverse((o) => { if (o.isMesh && f.shipShadow.materials.includes(o.material) && o.visible) hull.push(o); });
+    for (const o of hull) o.visible = false;
+    const u = ring.material.uniforms.uNightFloor;
+    const keep = u.value;
+    if (fl !== null) u.value = fl;
+    let draws = 0;
+    ring.onAfterRender = (renderer, _scene, camera) => {
+      if (++draws < 2) return;
+      ring.onAfterRender = () => {};
+      u.value = keep;
+      for (const o of hull) o.visible = true;
+      const ctx = renderer.getContext();
+      const rt = renderer.getRenderTarget();
+      const W = rt ? rt.width : ctx.drawingBufferWidth, H = rt ? rt.height : ctx.drawingBufferHeight;
+      const v = window.__ringPt.clone().project(camera);
+      const cx = Math.round(((v.x + 1) / 2) * W), cy = Math.round(((v.y + 1) / 2) * H);
+      const S = 7, float = !!rt && rt.texture.type !== 1009;
+      const buf = float ? new Float32Array(S * S * 4) : new Uint8Array(S * S * 4);
+      ctx.readPixels(cx - 3, cy - 3, S, S, ctx.RGBA, float ? ctx.FLOAT : ctx.UNSIGNED_BYTE, buf);
+      let sum = 0;
+      for (let i = 0; i < S * S; i++) sum += buf[i * 4] + buf[i * 4 + 1] + buf[i * 4 + 2];
+      resolve({ lum: sum / (S * S) / (float ? 1 : 255), onScreen: Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 && v.z < 1 });
+    };
+  }), floor);
+  const on = await read(null);
+  const off = await read(1);
+  const ratio = off.lum > 0 ? on.lum / off.lum : NaN;
+  return { ok: on.onScreen && off.lum > 0.02, ratio: Number(ratio.toFixed(3)), on: Number(on.lum.toFixed(4)), off: Number(off.lum.toFixed(4)), ...setup };
 }
 
 export default async function run() {

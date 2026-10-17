@@ -18,11 +18,11 @@ import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
-import { makeGuideLineMaterial, makePlanetRingMaterial } from "./guideLine";
+import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
 import { assetUrl } from "../../utils/assetUrl";
 import { MOON_TINTS } from "../../data/moonTints";
 import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moons";
-import { MAX_OCCLUDERS, occluders, patchSunShadow, setOccluder, sunShadowUniforms } from "./sunShadow";
+import { MAX_OCCLUDERS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
 
@@ -345,9 +345,18 @@ export default function SpacePlanets() {
     color: p.color, opacity: 0.4, dashes: 48, fadeIn: [4, 9], fadeOut: [28, 55],
   })), []);
   const planetRingMat = useMemo(
-    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6), []);
+    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, 0), []);
   useEffect(() => () => [...orbitRingMats, ...gravityMats, planetRingMat].forEach((m) => m.dispose()),
     [orbitRingMats, gravityMats, planetRingMat]);
+  // The ring's umbra floor is measured per tier (guideLine.ts): the PostFX
+  // buffer is linear, the low-perf tier draws display-encoded colour.
+  useEffect(() => {
+    const apply = (lowPerf: boolean) => {
+      planetRingMat.uniforms.uNightFloor.value = lowPerf ? RING_NIGHT_FLOOR.display : RING_NIGHT_FLOOR.linear;
+    };
+    apply(useSpaceStore.getState().isLowPerf);
+    return useSpaceStore.subscribe((st) => st.isLowPerf, apply);
+  }, [planetRingMat]);
   const nebulaeGroupRef = useRef<THREE.Group>(null);
   const portalOuterAuraRef = useRef<THREE.Mesh>(null);
   const portalInnerAuraRef = useRef<THREE.Mesh>(null);
@@ -389,7 +398,8 @@ export default function SpacePlanets() {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.sunShadow = sunShadowUniforms;
-    return () => { fitzDebug.sunShadow = null; };
+    fitzDebug.sunShadowDebug = sunShadowDebug;
+    return () => { fitzDebug.sunShadow = null; fitzDebug.sunShadowDebug = null; };
   }, []);
 
   const gl = useThree((s) => s.gl);
@@ -461,7 +471,7 @@ export default function SpacePlanets() {
       const vis = moonSunVis[k];
       if (vis) vis.value = sunVisibility(occluders[slot], PLANET_OCCLUDERS, SUN_RADIUS);
     }
-    sunShadowUniforms.uOccluderCount.value = OCCLUDER_COUNT;
+    sunShadowUniforms.uOccluderCount.value = sunShadowDebug.countOverride >= 0 ? sunShadowDebug.countOverride : OCCLUDER_COUNT;
 
     // 1. Slowly rotate planets
     // Prograde, like their orbits (docs/UNIVERSE-RULES.md L9). They spun
@@ -587,7 +597,7 @@ export default function SpacePlanets() {
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
         {/* Planetary ring: banded, translucent, with a division (guideLine.ts) */}
-        <mesh ref={saasRingRef} rotation={[Math.PI / 2.3, 0, 0]} material={planetRingMat}>
+        <mesh ref={saasRingRef} name={`PlanetRing_${planets[0].name}`} rotation={[Math.PI / 2.3, 0, 0]} material={planetRingMat}>
           <ringGeometry args={[planets[0].size * 1.15, planets[0].size * 1.6, 160, 1]} />
         </mesh>
 

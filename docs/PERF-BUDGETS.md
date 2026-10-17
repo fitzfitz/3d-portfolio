@@ -105,7 +105,32 @@ programs, 40 anomalies 55 (51 / 51 / 51 / 52 the day before, so +3). The tour
 in `programs.probe.mjs` still adds 0. Calls and triangles are unchanged (deep
 space 35 / 241,916, close approach 57 / 349,368, modal 109 / 418,492, 40
 anomalies 36 / 242,940): the shadows are shader work, not geometry. Startup
-read 10.1-10.4 s in the mechanics run. The ceilings are unchanged.
+read 10.1-10.4 s in the mechanics run. The ceilings are unchanged. Shadowing
+Ruangrapi's ring (fix round 1) left the counts at 54 / 55: its one-slot
+variant replaces the ring's old program rather than adding one.
+
+**Eclipse fragment cost, low-perf tier, measured 2026-10-17 in a real browser.**
+Headless SwiftShader times nothing useful, so this was measured with Playwright
+on this Mac: Apple M5 (ANGLE Metal), Chrome 155, 1512x806 at DPR 1, a 100 Hz
+display, low-perf forced on (`setLowPerf(true, true)`). The ship was parked 25u
+from Ruangrapi's centre (9 above the surface) on its day side, facing it, so
+the planet, its clouds and its ring filled the screen. Each mode ran 10 s after
+a 1.5 s settle, alternated on/off three times; off is
+`__fitz.sunShadowDebug.countOverride = 0`, which empties the per-fragment
+occluder loop (the ring's one-slot test stays in both).
+
+| Mode | frame p50 / p99 (rAF) | GPU p50 / p99 (scene render, timer query) |
+|---|---|---|
+| Shadows on | 10.0 / 10.9-11.0 ms | 4.43-4.44 / 4.54-4.66 ms |
+| Shadows off | 10.0 / 10.8-10.9 ms | 3.57 / 3.68-3.70 ms |
+
+Frame time is pinned to vsync (10 ms) either way, so frame p50 rose by 0 ms. The
+GPU time is the real cost: +0.87 ms p50 (+24% of the scene render), steady in
+every alternation and under the 1 ms trigger. The exact lateral-distance
+early-out (before the asin/acos, `sunShadowCoverFrom`) was added anyway and
+measured again: 4.43-4.44 vs 3.57 ms, no change on the M5, whose trig units are
+fast. It is kept for slower GPUs because it is exact (unit-tested against
+`sunVisibility`). The low-perf frame keeps about 5.5 ms of headroom at 100 Hz.
 
 The ceilings above are deliberately **not** lowered to match. Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,

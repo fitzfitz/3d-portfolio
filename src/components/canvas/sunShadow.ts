@@ -42,6 +42,13 @@ export const sunShadowUniforms = {
 };
 
 /**
+ * Dev measurement hook: `countOverride` >= 0 replaces the occluder count the
+ * frame loop writes, so the per-fragment cost can be timed with the shadows
+ * off (0) against on (-1, the default). Reached through `__fitz` in dev.
+ */
+export const sunShadowDebug = { countOverride: -1 };
+
+/**
  * The same slots on the CPU, for `sunVisibility` (object mode: moons and the
  * ship). Fixed objects, rewritten in place by `setOccluder`. Unused slots keep
  * r = 0, which covers nothing.
@@ -66,17 +73,64 @@ export function updateSunView(camera: THREE.Camera): void {
 }
 
 /**
- * The fragment-shader chunk, inserted after `#include <common>`. It needs
- * `SUN_SHADOW_SELF` (-1 for none) defined before it. `sunShadowCoverage`
- * returns the visible fraction of the sun (1 clear, 0 hidden), mirroring
- * `sunVisibility` term for term. The point is in world space; the sun is at
- * the origin.
+ * The coverage maths on its own, shared by the lit-material patch below and
+ * by shaders that are not lit materials (Ruangrapi's ring, guideLine.ts):
+ * the slot uniforms, and two functions mirroring `sunVisibility` term for
+ * term. The sun is a disc of radius SUN_SHADOW_RADIUS at the origin; points
+ * are in world space.
+ *
+ * - `sunShadowCoverFrom( p, u, sunDist, sunAng, o )`: the fraction of the
+ *   sun that occluder `o` (xyz centre, w radius) hides from p, given the sun's
+ *   direction `u`, distance and angular radius from p (computed once per
+ *   point by the caller).
+ * - `sunShadowVisibility( p, o )`: the visible fraction against `o` alone.
  */
-export const SUN_SHADOW_GLSL = /* glsl */ `
+export const SUN_SHADOW_CORE_GLSL = /* glsl */ `
 #define SUN_SHADOW_MAX ${MAX_OCCLUDERS}
 #define SUN_SHADOW_RADIUS ${SUN_RADIUS.toFixed(1)}
 uniform vec4 uOccluders[ SUN_SHADOW_MAX ];
 uniform int uOccluderCount;
+
+float sunShadowCoverFrom( vec3 p, vec3 u, float sunDist, float sunAng, vec4 o ) {
+	vec3 b = o.xyz - p;
+	float r = o.w;
+	float d = length( b );
+	if ( d >= sunDist || d == 0.0 ) return 0.0;
+	float c = dot( b, u ) / d;
+	if ( c <= 0.0 ) return 0.0; // on the far side of the point from the sun
+	if ( d <= r ) return 1.0; // inside the body
+	// Early out before the trig: an occluder farther off the sun line than
+	// its radius plus the sun's own width at its distance hides nothing.
+	// Exact, never an approximation: sin( bodyAng + sunAng ) <= r / d +
+	// tan( sunAng ), so this only skips occluders whose cover is 0.
+	float sinSun = SUN_SHADOW_RADIUS / sunDist;
+	float tanSun = sinSun * inversesqrt( 1.0 - sinSun * sinSun );
+	if ( d * sqrt( max( 0.0, 1.0 - c * c ) ) > r + d * tanSun ) return 0.0;
+	float bodyAng = asin( r / d );
+	float sep = acos( min( 1.0, c ) );
+	float cover = clamp( ( bodyAng + sunAng - sep ) / ( 2.0 * sunAng ), 0.0, 1.0 );
+	if ( bodyAng < sunAng ) {
+		float share = bodyAng / sunAng;
+		cover = min( cover, share * share );
+	}
+	return cover;
+}
+
+float sunShadowVisibility( vec3 p, vec4 o ) {
+	float sunDist = length( p );
+	if ( sunDist <= SUN_SHADOW_RADIUS ) return 1.0;
+	return 1.0 - sunShadowCoverFrom( p, -p / sunDist, sunDist, asin( SUN_SHADOW_RADIUS / sunDist ), o );
+}
+`;
+
+/**
+ * The fragment-shader chunk for lit materials, inserted after
+ * `#include <common>`: the core above, plus the sun-light test and the
+ * all-occluder loop. It needs `SUN_SHADOW_SELF` (-1 for none) defined before
+ * it. `sunShadowCoverage` returns the visible fraction of the sun (1 clear,
+ * 0 hidden), mirroring `sunVisibility`.
+ */
+export const SUN_SHADOW_GLSL = /* glsl */ `${SUN_SHADOW_CORE_GLSL}
 uniform vec3 uSunShadowView;
 
 // The sun's point light: the one three placed at the origin's view position.
@@ -86,30 +140,15 @@ bool isSunLight( vec3 lightViewPos ) {
 }
 
 float sunShadowCoverage( vec3 p ) {
-	vec3 s = -p;
-	float sunDist = length( s );
+	float sunDist = length( p );
 	if ( sunDist <= SUN_SHADOW_RADIUS ) return 1.0;
-	vec3 u = s / sunDist;
+	vec3 u = -p / sunDist;
 	float sunAng = asin( SUN_SHADOW_RADIUS / sunDist );
 	float visible = 1.0;
 	for ( int k = 0; k < SUN_SHADOW_MAX; k ++ ) {
 		if ( k >= uOccluderCount ) break;
 		if ( k == SUN_SHADOW_SELF ) continue;
-		vec3 b = uOccluders[ k ].xyz - p;
-		float r = uOccluders[ k ].w;
-		float d = length( b );
-		if ( d >= sunDist || d == 0.0 ) continue;
-		float c = dot( b, u ) / d;
-		if ( c <= 0.0 ) continue; // on the far side of the point from the sun
-		if ( d <= r ) return 0.0; // inside the body
-		float bodyAng = asin( r / d );
-		float sep = acos( min( 1.0, c ) );
-		float cover = clamp( ( bodyAng + sunAng - sep ) / ( 2.0 * sunAng ), 0.0, 1.0 );
-		if ( bodyAng < sunAng ) {
-			float share = bodyAng / sunAng;
-			cover = min( cover, share * share );
-		}
-		visible *= 1.0 - cover;
+		visible *= 1.0 - sunShadowCoverFrom( p, u, sunDist, sunAng, uOccluders[ k ] );
 	}
 	return visible;
 }

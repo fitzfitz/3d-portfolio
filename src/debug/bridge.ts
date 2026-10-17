@@ -95,6 +95,12 @@ export interface FitzDebug {
    * patched hull material in `materials`.
    */
   shipShadow: { sunVis: { value: number }; materials: THREE.Material[] } | null;
+  /**
+   * Set `countOverride` to 0 to switch the per-fragment eclipse loop off
+   * (frame-cost measurement, docs/PERF-BUDGETS.md); -1 restores it.
+   * Registered by SpacePlanets in dev.
+   */
+  sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
 }
 
 export const fitzDebug: FitzDebug = {
@@ -123,4 +129,5 @@ export const fitzDebug: FitzDebug = {
   perfStats,
   sunShadow: null,
   shipShadow: null,
+  sunShadowDebug: null,
 };
