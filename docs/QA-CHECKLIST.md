@@ -330,6 +330,12 @@ without any surface blowing out to white or sinking into murk? Do the sun,
 guide lines, ring-course gates and HUD look the same brightness everywhere?
 Is the very first screen readable rather than dark?
 
+Fuxx is expected to read about 0.79 of Ruangrapi's brightness only for equal
+albedo with the camera at Fuxx's distance (exposure is metered at the camera,
+not the surface). Fuxx's albedo is lifted 3x on its material (a C-type ~4%), so
+its lit side should read as dim violet rock, not black. A faint red glow on
+night sides is the known studio-environment reflection (docs/FOLLOW-UPS.md).
+
 **Pass criterion (yes/no):** Is every stop readable, with the HUD and sun
 unchanged?
 

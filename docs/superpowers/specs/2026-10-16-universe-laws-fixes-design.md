@@ -123,8 +123,10 @@ readable from there. The owner chose to **move the spawn out**.
   "beside the spawn pad" to the inner belt.
 - **The beacon keep-out** moves with the spawn. The Cloudflare Worker shares
   `validateDrop`. Until the Worker is redeployed, the server still refuses
-  drops near the old pad. The client already refuses drops near the new pad
-  itself, so nobody sees a wrong answer. Redeploy the Worker after merge.
+  drops near the old pad (0, 0, 18), which is now inner-belt space: a visitor
+  dropping a beacon within 15 of it gets a server refusal shown as "TOO CLOSE
+  TO THE SPAWN PAD". The client already refuses drops near the new pad
+  itself. Redeploying beacon-api is a post-merge step.
 - **The exposure law** (my call): exposure = clamp((d / AU)^1.5, 0.15, 2.5),
   where d is the camera's distance from the sun, eased with a half-life of
   1.5 s and snapped under reduced motion. It is exactly 1 at 1 AU. At Fuxx
