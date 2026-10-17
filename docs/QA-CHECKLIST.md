@@ -120,7 +120,7 @@ is original and regenerable from a script in this repo (see its
 
 ---
 
-## The 9 checks
+## The 11 checks
 
 ### 1. Ship banking feel on curves
 
@@ -312,11 +312,47 @@ others at any point in that sequence.
 **Pass criterion (yes/no):** Across that whole sequence, is any single audio
 layer too loud relative to the rest of the mix?
 
+### 10. Exposure and sunlight falloff
+
+**Setup:**
+
+```js
+// Hop between the sun's neighbourhood and the outer system.
+const b = __fitz.bodies.fuxx;
+__fitz.teleport(b.x + 30, b.y, b.z)
+```
+
+**Do:** Start at the default spawn, then fly to the inner belt near the sun,
+then out to Fuxx. Give each stop two seconds for the exposure to settle.
+
+**Look for:** Does the scene brighten near the sun and dim far from it,
+without any surface blowing out to white or sinking into murk? Do the sun,
+guide lines, ring-course gates and HUD look the same brightness everywhere?
+Is the very first screen readable rather than dark?
+
+**Pass criterion (yes/no):** Is every stop readable, with the HUD and sun
+unchanged?
+
+### 11. Eclipses and umbra
+
+**Setup:** park near a planet that has a moon, with the sun behind the moon.
+
+**Do:** Watch a moon's shadow cross its planet, then fly into a planet's
+shadow behind it. Look at Ruangrapi's ring and clouds when the planet sits
+between them and the sun. Repeat with the low-performance tier on.
+
+**Look for:** A soft shadow on the planet surface, the ship going dark in the
+umbra and recovering outside it, and no striping or flicker (shadow acne) on
+lit surfaces with no moon in front.
+
+**Pass criterion (yes/no):** Do shadows appear where the geometry says they
+should, and clear cleanly, in both tiers?
+
 ---
 
 ## Results
 
-Every row below is `NOT RUN — awaiting human pass`. These nine checks exist
+Every row below is `NOT RUN — awaiting human pass`. These eleven checks exist
 precisely because they require human judgement that an automated agent
 cannot honestly provide; a fabricated verdict here would be worse than an
 empty row. Do not fill in Pass/Fail without actually performing the check.
@@ -332,3 +368,5 @@ empty row. Do not fill in Pass/Fail without actually performing the check.
 | | | 7. Sun glare occlusion | NOT RUN — awaiting human pass | |
 | | | 8. Real-device touch ergonomics | NOT RUN — awaiting human pass | |
 | | | 9. Audio mix balance | NOT RUN — awaiting human pass | |
+| | | 10. Exposure and sunlight falloff | NOT RUN — awaiting human pass | |
+| | | 11. Eclipses and umbra | NOT RUN — awaiting human pass | |
