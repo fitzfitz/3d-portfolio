@@ -214,7 +214,9 @@ function SunFlare() {
   });
 
   return (
-    <group ref={groupRef} visible={false}>
+    // Named for transition.probe.mjs, which asserts whether the sun is in view
+    // where it measures draw calls: this group is the six lens sprites' switch.
+    <group ref={groupRef} name="SunGlare" visible={false}>
       <sprite ref={spikesRef} renderOrder={10}>
         <spriteMaterial map={textures.spikes} color="#fff4e0" transparent depthTest={false} depthWrite={false}
           blending={THREE.AdditiveBlending} />
