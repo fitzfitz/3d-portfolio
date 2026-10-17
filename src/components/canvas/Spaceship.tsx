@@ -186,7 +186,6 @@ export default function Spaceship() {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
       zeroGravity();
-      snapCamera.current = true; // a teleport is a cut, like a jump
     };
     fitzDebug.setAttitude = (yaw: number, nosePitch: number) => {
       angle.current = yaw;

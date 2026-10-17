@@ -420,50 +420,6 @@ export default async function run() {
       checks.check("sun glare capture", false, `screenshot failed: ${e.message}`);
     }
 
-    // I2: a camera cut re-meters the exposure on the cut frame itself.
-    // Reduced motion is OFF here, so without the re-meter the exposure would
-    // ease from the sun-glare value (~0.2) for seconds after the cut. Every
-    // gl.render records (exposure, camera distance); the first render with
-    // the camera far out must already carry the far-out exposure.
-    {
-      const ur = await retryEval(() => clearDirection(page));
-      const u = ur.value;
-      checks.check("[cut] found a clear view of the sun", !!u);
-      if (u) {
-        await page.evaluate((u) => {
-          const d = window.__fitz;
-          d.teleport(u[0] * 36, u[1] * 36, u[2] * 36);
-        }, u);
-        const adapted = await pollUntil(async () => {
-          const e = await page.evaluate(() => window.__fitz.gl.toneMappingExposure);
-          return e < 0.3 ? e : null;
-        }, { timeoutMs: 40_000, intervalMs: 400 });
-        checks.check("[cut] exposure adapted to the sun's glare before the cut", adapted.ok,
-          `exposure=${adapted.value?.toFixed?.(3)}`);
-        const cut = await page.evaluate(async (u) => {
-          const d = window.__fitz;
-          const { targetExposure } = await import("/src/utils/sunLight.ts");
-          const log = [];
-          const orig = d.gl.render.bind(d.gl);
-          d.gl.render = (...a) => {
-            log.push({ e: d.gl.toneMappingExposure, c: d.camera.position.length() });
-            return orig(...a);
-          };
-          d.teleport(u[0] * 226, u[1] * 226, u[2] * 226);
-          const t0 = performance.now();
-          while (performance.now() - t0 < 20_000 && !log.some((r) => r.c > 200)) {
-            await new Promise((r) => setTimeout(r, 50));
-          }
-          d.gl.render = orig;
-          const first = log.find((r) => r.c > 200);
-          return first ? { e: first.e, c: first.c, want: targetExposure(first.c) } : null;
-        }, u);
-        checks.check("[cut] the first frame after a teleport to ~230 is already exposed for it",
-          !!cut && Math.abs(cut.e - cut.want) <= 0.05,
-          cut ? `camera ${cut.c.toFixed(1)} from the sun, exposure=${cut.e.toFixed(3)} want ${cut.want.toFixed(3)}` : "no render with the camera far out");
-      }
-    }
-
     // F3 (L19): the camera's exposure, and the sun looking the same at every
     // exposure, in both tiers. Reduced motion so the exposure snaps.
     await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(true, true));
@@ -473,5 +429,53 @@ export default async function run() {
     // The low tier's tone-mapped variants compile on the switch (slow in SwiftShader).
     await settle(page, 4000);
     await exposureChecks(page, checks, "low-perf");
+
+    // I2: a jump snaps the camera, and the exposure must be re-metered on that
+    // same frame. Reduced motion is OFF here, so without the re-meter the
+    // exposure would ease from the sun-glare value (~0.2) for seconds after
+    // the cut. Every gl.render records (exposure, camera distance); the first
+    // render with the camera far out must already carry the far-out exposure.
+    {
+      await page.evaluate(() => window.__fitz.store.getState().setReducedMotion(false, true));
+      const ur = await retryEval(() => clearDirection(page));
+      const u = ur.value;
+      checks.check("[cut] found a clear view of the sun", !!u);
+      if (u) {
+        await page.evaluate((u) => window.__fitz.teleport(u[0] * 36, u[1] * 36, u[2] * 36), u);
+        // The chase camera eases to the teleport; wait for exposure to adapt to the glare.
+        const adapted = await pollUntil(async () => {
+          const e = await page.evaluate(() => {
+            const d = window.__fitz;
+            return d.camera.position.length() < 60 ? d.gl.toneMappingExposure : 9;
+          });
+          return e < 0.3 ? e : null;
+        }, { timeoutMs: 60_000, intervalMs: 400 });
+        checks.check("[cut] exposure adapted to the sun's glare before the cut", adapted.ok,
+          `exposure=${adapted.value?.toFixed?.(3)}`);
+        const cut = await page.evaluate(async () => {
+          const d = window.__fitz;
+          const { targetExposure } = await import("/src/utils/sunLight.ts");
+          // The farthest planet from the sun is a real jump target ~185+ out.
+          const far = Object.entries(d.bodies).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
+          const log = [];
+          const orig = d.gl.render.bind(d.gl);
+          d.gl.render = (...a) => {
+            log.push({ e: d.gl.toneMappingExposure, c: d.camera.position.length() });
+            return orig(...a);
+          };
+          d.store.getState().requestJump(far);
+          const t0 = performance.now();
+          while (performance.now() - t0 < 20_000 && !log.some((r) => r.c > 120)) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          d.gl.render = orig;
+          const first = log.find((r) => r.c > 120);
+          return first ? { e: first.e, c: first.c, want: targetExposure(first.c), far } : null;
+        });
+        checks.check("[cut] the first frame after a jump far from the sun is already exposed for it",
+          !!cut && Math.abs(cut.e - cut.want) <= 0.05,
+          cut ? `jump to ${cut.far}: camera ${cut.c.toFixed(1)} from the sun, exposure=${cut.e.toFixed(3)} want ${cut.want.toFixed(3)}` : "no render with the camera far out");
+      }
+    }
   });
 }
