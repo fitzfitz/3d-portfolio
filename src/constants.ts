@@ -15,7 +15,9 @@ export interface Project {
 }
 export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;
+  type: PlanetType; mass: number;
 }
+export type PlanetType = "earth" | "gas-giant" | "mars";
 
 /** The playable system: past this radius a return burn pushes the ship back (utils/edgeHaze.ts). */
 export const SYSTEM_RADIUS = 400;
@@ -60,14 +62,17 @@ export const PORTAL_ORBIT_R = 2.6;
 export const projects: Project[] = projectsData;
 
 /**
- * Planet physical size. Uniform today; per-planet if that ever changes.
- *
- * 16, up from 4.8 (2026-10-12): at 4.8 a planet was ~5 ship-lengths wide and
- * read as a boulder, while the gaps between bodies read as empty. Every lock
- * radius scales off this, and tests/planetClearance.test.ts guards what is
- * placed around the orbits it sweeps.
+ * Planet size, type and relative mass, by project id (2026-10-17, sub-project B):
+ * size follows type — gas giant 16 > earth 12 > mars 8 — so the sun can outsize
+ * every planet (L35/L36). Masses are compressed but correctly ordered (P3).
+ * Size was a uniform 16 (4.8 before 2026-10-12); every lock radius scales off
+ * it, and tests/planetClearance.test.ts guards what is placed around the orbits.
  */
-const PLANET_SIZE = 16;
+export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number }> = {
+  ruangrapi: { type: "earth", size: 12, mass: 1 },
+  portfolio: { type: "gas-giant", size: 16, mass: 3 },
+  fuxx: { type: "mars", size: 8, mass: 0.3 },
+};
 
 /**
  * The sun's pull, GM (docs/UNIVERSE-RULES.md L7). Every orbit around the sun
@@ -83,12 +88,15 @@ export const GM_SUN = keplerGM(AU, YEAR_S);
 export const sunOmega = (r: number): number => keplerOmega(r, GM_SUN);
 
 /**
- * One planet's pull, GM, shared by all three because they share PLANET_SIZE
- * (docs/UNIVERSE-RULES.md L11). Anchored so Ruangrapi's moon (1.7 × size)
- * keeps its 0.4 rad/s. Moon systems are magnified insets on their own clock
- * (principle P3, law L13), so this is not comparable with GM_SUN.
+ * Ruangrapi's pull, GM, anchored so its moon (1.7 × its size 12) keeps 0.4 rad/s.
+ * Every planet's own pull is this × its relative mass (`gmOf`), so L7 holds
+ * within each moon system (one GM per central body). Moon systems are magnified
+ * insets on their own clock (principle P3, law L13), so this is not comparable
+ * with GM_SUN.
  */
-export const GM_PLANET = keplerGM(PLANET_SIZE * 1.7, (Math.PI * 2) / 0.4);
+export const GM_RUANGRAPI = keplerGM(12 * 1.7, (Math.PI * 2) / 0.4);
+/** One planet's pull, GM_RUANGRAPI × its mass (docs/UNIVERSE-RULES.md L11). */
+export const gmOf = (p: PlanetData): number => GM_RUANGRAPI * p.mass;
 
 /**
  * Sign of a `rotation.y` rate that turns the same way the planets orbit
@@ -134,7 +142,7 @@ export function projectById(zoneId: string | null): Project | undefined {
  */
 export const planets: PlanetData[] = projects
   .filter((p) => p.id in PLANET_ORBITS)
-  .map((p) => ({ name: p.id, color: p.color, size: PLANET_SIZE, orbit: PLANET_ORBITS[p.id] }));
+  .map((p) => ({ name: p.id, color: p.color, ...PLANET_PROPS[p.id], orbit: PLANET_ORBITS[p.id] }));
 
 /**
  * Hard ceiling on simultaneous lights in the scene.

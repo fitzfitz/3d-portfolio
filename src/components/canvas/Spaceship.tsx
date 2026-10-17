@@ -91,7 +91,7 @@ const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
  * front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
 const PLANET_WELLS: Well[] = planets.map((p) => ({
-  x: 0, y: 0, z: 0, g: PLANET_WELL_G, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
+  x: 0, y: 0, z: 0, g: PLANET_WELL_G * (p.size / 16) ** 2, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size,
 }));
 /** Well radius by planet name, for the per-frame escape-grace check. */
 const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));

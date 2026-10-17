@@ -22,7 +22,7 @@ export function formatOrbit(orbit: OrbitalElements): string {
 }
 
 /** Planet radius drawn vs. true, taking Jupiter's radius as the true size; to the nearest 10. */
-export const SIZE_ENLARGEMENT = Math.round((planets[0].size * KM_PER_UNIT) / JUPITER_RADIUS_KM / 10) * 10;
+export const SIZE_ENLARGEMENT = Math.round((planets.find((p) => p.type === "gas-giant")!.size * KM_PER_UNIT) / JUPITER_RADIUS_KM / 10) * 10;
 
 export const ORRERY_NOTE =
   `TWO ORRERY CONVENTIONS: PLANETS DRAWN ~${SIZE_ENLARGEMENT}× JUPITER'S SIZE · 1 S ≈ ${Math.round(SECONDS_PER_GAME_SECOND / 3600)} H, MOON SYSTEMS ON THEIR OWN SLOWER CLOCK`;

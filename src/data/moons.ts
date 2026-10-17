@@ -1,11 +1,11 @@
-import { GM_PLANET, PROGRADE, planets } from "../constants";
+import { gmOf, PROGRADE, planets } from "../constants";
 import { keplerOmega } from "../utils/kepler";
 import { MOON_TINTS } from "./moonTints";
 
 /**
  * Every moon in the scene, drawn by OrbitingMoon in SpacePlanets.tsx
  * (docs/UNIVERSE-RULES.md L11). A moon's speed is not stored: it follows
- * Kepler's third law around its planet (GM_PLANET), turning with the planet's
+ * Kepler's third law around its planet (gmOf, its own mass), turning with the planet's
  * spin unless `captured` — a moon caught from outside orbits backwards, as
  * Neptune's Triton does. Moons are tidally locked: they never spin on their own.
  */
@@ -35,7 +35,7 @@ export const MOONS: readonly MoonSpec[] = [
 
 /** The moon's orbit-group `rotation.y` rate (rad/s), signed by direction. */
 export function moonOrbitSpeed(m: MoonSpec): number {
-  const omega = keplerOmega(m.distance * planets[m.planet].size, GM_PLANET);
+  const omega = keplerOmega(m.distance * planets[m.planet].size, gmOf(planets[m.planet]));
   return (m.captured ? -PROGRADE : PROGRADE) * omega;
 }
 
