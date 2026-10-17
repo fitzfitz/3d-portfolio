@@ -575,7 +575,7 @@ function GlobalCanvas() {
           <Shipyard />
           <DormantGate />
 
-          {/* Time-trial ring course from the spawn pad, with a ghost of the best lap */}
+          {/* Time-trial ring course through the inner belt, with a ghost of the best lap */}
           <RingCourse />
 
           {/* Visitors' beacons — only when the beacon API is configured */}

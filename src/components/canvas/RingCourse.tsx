@@ -222,6 +222,9 @@ export default function RingCourse() {
     // shared value is 1 / exposure there and 1 in low-perf (sunLight.ts).
     // A uniform write: no recompile, no allocation.
     (rings.material as THREE.MeshBasicMaterial).color.setScalar(exposureCompensation.value);
+    // The race ghost is toneMapped: false and additive too: same compensation,
+    // on top of its 0.55 sky wash (allocation-free: SKY is read, not cloned).
+    ghostMaterial.color.copy(SKY).multiplyScalar(0.55 * exposureCompensation.value);
   });
 
   return (
