@@ -13,14 +13,12 @@ describe("nearestScannable", () => {
     setScannable("a", 100, 0, 0, "A");
     expect(nearestScannable(0, 0, 0, 22)).toBeNull();
   });
-  it("sees targets across the wrap seam on any axis", () => {
-    // ship at x=249, target at x=-249: 2 apart through the seam
+  it("does not see targets across the old seam on any axis", () => {
     setScannable("seam", -249, 0, 0, "SEAM");
-    expect(nearestScannable(249, 0, 0, 22)?.id).toBe("seam");
+    expect(nearestScannable(249, 0, 0, 22)).toBeNull();
     clearScannables();
-    // vertical seam
     setScannable("vseam", 0, -249, 0, "VSEAM");
-    expect(nearestScannable(0, 249, 0, 22)?.id).toBe("vseam");
+    expect(nearestScannable(0, 249, 0, 22)).toBeNull();
   });
   it("measures range from a body's surface, not its centre", () => {
     // A radius-16 planet 35 out: 19 from its surface, inside range 22.

@@ -1,10 +1,9 @@
 import { useEffect, useRef } from "react";
-import { COSMIC_BOUNDS, planets } from "../../constants";
+import { planets } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
-import { wrapDelta } from "../../utils/toroidal";
 import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
@@ -67,8 +66,8 @@ export default function RadarMap() {
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
       for (const t of targets) {
-        const dx = wrapDelta(flight.x, t.x, COSMIC_BOUNDS);
-        const dz = wrapDelta(flight.z, t.z, COSMIC_BOUNDS);
+        const dx = (t.x - flight.x);
+        const dz = (t.z - flight.z);
         const { x: sx, up } = worldToRadar(dx, dz, a);
         let px = sx * scale;
         let py = -up * scale;
@@ -93,7 +92,7 @@ export default function RadarMap() {
           ctx.stroke();
         }
         // Relative-altitude chevron: ▲ target above, ▼ below (Y-wrap aware)
-        const dy = wrapDelta(flight.y, t.y, COSMIC_BOUNDS);
+        const dy = (t.y - flight.y);
         const cue = altitudeCue(dy);
         if (cue.dir !== 0) {
           ctx.globalAlpha = cue.alpha * (onRim ? 0.45 : 0.9);
@@ -116,9 +115,9 @@ export default function RadarMap() {
       {
         for (const s of crystalSlots) {
           if (!s.active) continue;
-          const dx = wrapDelta(flight.x, s.x, COSMIC_BOUNDS);
-          const dz = wrapDelta(flight.z, s.z, COSMIC_BOUNDS);
-          const dy = wrapDelta(flight.y, s.y, COSMIC_BOUNDS);
+          const dx = (s.x - flight.x);
+          const dz = (s.z - flight.z);
+          const dy = (s.y - flight.y);
           if (Math.hypot(dx, dz, dy) > RANGE) continue; // out of range: simply absent
           const { x: sx, up } = worldToRadar(dx, dz, a);
           const px = sx * scale;
@@ -158,9 +157,9 @@ export default function RadarMap() {
       ctx.strokeStyle = CAREER_AMBER;
       ctx.lineWidth = 1.2;
       for (const p of BUOY_POSITIONS) {
-        const dx = wrapDelta(flight.x, p[0], COSMIC_BOUNDS);
-        const dz = wrapDelta(flight.z, p[2], COSMIC_BOUNDS);
-        const dy = wrapDelta(flight.y, p[1], COSMIC_BOUNDS);
+        const dx = (p[0] - flight.x);
+        const dz = (p[2] - flight.z);
+        const dy = (p[1] - flight.y);
         if (Math.hypot(dx, dz, dy) > RANGE) continue;
         const { x: sx, up } = worldToRadar(dx, dz, a);
         ctx.beginPath();
@@ -172,9 +171,9 @@ export default function RadarMap() {
       // The dormant gate: an unlabelled grey dot, in range only and never
       // rim-clamped, so it is found by flying (spec §2). No name, no ring.
       {
-        const dx = wrapDelta(flight.x, GATE_POS[0], COSMIC_BOUNDS);
-        const dz = wrapDelta(flight.z, GATE_POS[2], COSMIC_BOUNDS);
-        const dy = wrapDelta(flight.y, GATE_POS[1], COSMIC_BOUNDS);
+        const dx = (GATE_POS[0] - flight.x);
+        const dz = (GATE_POS[2] - flight.z);
+        const dy = (GATE_POS[1] - flight.y);
         if (Math.hypot(dx, dz, dy) <= RANGE) {
           const { x: sx, up } = worldToRadar(dx, dz, a);
           ctx.globalAlpha = 0.8;
@@ -191,8 +190,8 @@ export default function RadarMap() {
       // planets: the point is knowing which way the other pilots are.
       for (let i = 0; i < liveRadar.count; i++) {
         const g = liveRadar.blips[i];
-        const dx = wrapDelta(flight.x, g.x, COSMIC_BOUNDS);
-        const dz = wrapDelta(flight.z, g.z, COSMIC_BOUNDS);
+        const dx = (g.x - flight.x);
+        const dz = (g.z - flight.z);
         const { x: sx, up } = worldToRadar(dx, dz, a);
         let px = sx * scale;
         let py = -up * scale;
@@ -213,7 +212,7 @@ export default function RadarMap() {
         ctx.lineTo(c + px - 3.2, c + py);
         ctx.closePath();
         ctx.stroke();
-        const cue = altitudeCue(wrapDelta(flight.y, g.y, COSMIC_BOUNDS));
+        const cue = altitudeCue((g.y - flight.y));
         if (cue.dir !== 0) {
           ctx.globalAlpha = cue.alpha * (onRim ? 0.55 : 0.9);
           const by = c + py - cue.dir * 7;

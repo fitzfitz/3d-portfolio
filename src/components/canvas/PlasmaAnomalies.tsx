@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight } from "../../store/spaceStore";
-import { COSMIC_BOUNDS } from "../../constants";
+import { SYSTEM_RADIUS } from "../../constants";
 import { assetUrl } from "../../utils/assetUrl";
 import { gameTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -15,10 +15,10 @@ const ANOMALY_MAX = 40;
 /**
  * Box anomalies bounce inside (spec §5): the whole play volume. It used to be
  * ±60 around the origin, but clicks spawn up to ~90u from the ship anywhere in
- * a ±250 world, so an anomaly spawned outside that box snapped to its wall on
+ * the system, so an anomaly spawned outside that box snapped to its wall on
  * the next frame and was never seen.
  */
-const ANOMALY_LIMIT = COSMIC_BOUNDS;
+const ANOMALY_LIMIT = SYSTEM_RADIUS;
 
 interface Anomaly {
   position: THREE.Vector3;
@@ -79,18 +79,17 @@ function stepAnomalies(pool: Anomaly[], ship: THREE.Vector3, dt: number): void {
     m.position.addScaledVector(m.velocity, frames);
     m.velocity.multiplyScalar(drag);
 
-    // Boundary reflection.
-    if (Math.abs(m.position.x) >= ANOMALY_LIMIT) {
-      m.position.x = Math.sign(m.position.x) * ANOMALY_LIMIT;
-      m.velocity.x = -m.velocity.x * 0.8;
-    }
-    if (Math.abs(m.position.y) >= ANOMALY_LIMIT) {
-      m.position.y = Math.sign(m.position.y) * ANOMALY_LIMIT;
-      m.velocity.y = -m.velocity.y * 0.8;
-    }
-    if (Math.abs(m.position.z) >= ANOMALY_LIMIT) {
-      m.position.z = Math.sign(m.position.z) * ANOMALY_LIMIT;
-      m.velocity.z = -m.velocity.z * 0.8;
+    // Boundary reflection off the system sphere.
+    const pr = m.position.length();
+    if (pr >= ANOMALY_LIMIT) {
+      m.position.multiplyScalar(ANOMALY_LIMIT / pr);
+      // Reflect the outward velocity component (nx = position / R), damped.
+      const nx = m.position.x / ANOMALY_LIMIT, ny = m.position.y / ANOMALY_LIMIT, nz = m.position.z / ANOMALY_LIMIT;
+      const vn = m.velocity.x * nx + m.velocity.y * ny + m.velocity.z * nz;
+      if (vn > 0) {
+        const k = vn * 1.8;
+        m.velocity.x -= nx * k; m.velocity.y -= ny * k; m.velocity.z -= nz * k;
+      }
     }
   }
 }

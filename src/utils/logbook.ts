@@ -1,5 +1,3 @@
-import { COSMIC_BOUNDS } from "../constants";
-import { toroidalDistance3 } from "./toroidal";
 import type { Vec3 } from "./reactions";
 import { jumpKey } from "../data/destinations";
 
@@ -79,10 +77,10 @@ export function badgeLine(id: string, plumeName: string | null): string {
     : `LOGBOOK // ${title} EARNED. PRESS L`;
 }
 
-/** True when any convoy ship is within `radius` of the ship (wrap-aware). */
+/** True when any convoy ship is within `radius` of the ship. */
 export function convoySighted(ship: Vec3, ships: readonly Vec3[], radius = CONVOY_SIGHT_RADIUS): boolean {
   for (const s of ships) {
-    if (toroidalDistance3(ship.x, ship.z, ship.y, s.x, s.z, s.y, COSMIC_BOUNDS) < radius) return true;
+    if (Math.hypot(ship.x - s.x, ship.z - s.z, ship.y - s.y) < radius) return true;
   }
   return false;
 }

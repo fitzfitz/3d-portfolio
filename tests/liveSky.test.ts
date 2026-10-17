@@ -101,12 +101,12 @@ describe("GhostBuffer", () => {
     b.push([ship("a", 10)], 250);
     expect(b.sample(5000)[0].p[0]).toBeCloseTo(10);
   });
-  it("blends across the wrap seam the short way", () => {
+  it("blends in a straight line, with no seam", () => {
     const b = new GhostBuffer();
     b.push([ship("a", COSMIC_BOUNDS - 1)], 0);
     b.push([ship("a", -COSMIC_BOUNDS + 1)], 250);
     const x = b.sample(125 + RENDER_DELAY_MS)[0].p[0];
-    expect(Math.abs(x)).toBeGreaterThan(COSMIC_BOUNDS - 1.01);
+    expect(Math.abs(x)).toBeLessThan(1);
   });
   it("blends rotation along the short arc", () => {
     const yaw90: [number, number, number, number] = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
@@ -147,11 +147,11 @@ describe("GhostBuffer", () => {
 
 describe("nearestGhosts", () => {
   const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
-  it("sorts by toroidal distance and keeps n", () => {
+  it("sorts by plain distance and keeps n", () => {
     const at = { x: -COSMIC_BOUNDS + 5, y: 0, z: 0 };
-    const list = [pose("mid", 0), pose("acrossSeam", COSMIC_BOUNDS - 5), pose("near", -COSMIC_BOUNDS + 8)];
+    const list = [pose("mid", 0), pose("far", COSMIC_BOUNDS - 5), pose("near", -COSMIC_BOUNDS + 8)];
     const out = nearestGhosts(at, list, 2);
-    expect(out.map((g) => g.id)).toEqual(["near", "acrossSeam"]);
+    expect(out.map((g) => g.id)).toEqual(["near", "mid"]);
     expect(out).toBe(list); // sorted and trimmed in place: no per-frame allocation
   });
 });

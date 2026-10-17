@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { COSMIC_BOUNDS } from "../constants";
 import { hasPlumeColour, PLUME_COLORS } from "../data/plumeColors";
-import { toroidalDistance3, wrapDelta } from "./toroidal";
 import {
   normQuat, publicCountry, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
   type Quat, type ServerMessage, type ShipState, type SnapShip, type Vec3,
@@ -92,14 +91,9 @@ export interface GhostPose {
 interface Sample { at: number; p: Vec3; q: Quat }
 interface Track { samples: Sample[]; firstSeen: number; pose: GhostPose }
 
-const wrap = (v: number) => {
-  const span = COSMIC_BOUNDS * 2;
-  return ((((v + COSMIC_BOUNDS) % span) + span) % span) - COSMIC_BOUNDS;
-};
-
 /** Writes the blend of `a` and `b` at `k` into `out` (no allocation: it runs per ghost per frame). */
 function blendInto(a: Sample, b: Sample, k: number, out: GhostPose): void {
-  for (let i = 0; i < 3; i++) out.p[i] = wrap(a.p[i] + wrapDelta(a.p[i], b.p[i], COSMIC_BOUNDS) * k);
+  for (let i = 0; i < 3; i++) out.p[i] = a.p[i] + (b.p[i] - a.p[i]) * k;
   // Normalised lerp on the short arc; at 250 ms steps it is indistinguishable from slerp.
   const sign = a.q[0] * b.q[0] + a.q[1] * b.q[1] + a.q[2] * b.q[2] + a.q[3] * b.q[3] < 0 ? -1 : 1;
   for (let i = 0; i < 4; i++) out.q[i] = a.q[i] * (1 - k) + b.q[i] * sign * k;
@@ -176,9 +170,9 @@ export class GhostBuffer {
 
 const byDist = (a: GhostPose, b: GhostPose) => a.dist - b.dist;
 
-/** The n ghosts nearest the ship, measured across the wrap: sorts and trims `ghosts` in place. */
+/** The n ghosts nearest the ship, measured in plain 3D: sorts and trims `ghosts` in place. */
 export function nearestGhosts(ship: { x: number; y: number; z: number }, ghosts: GhostPose[], n: number): GhostPose[] {
-  for (const g of ghosts) g.dist = toroidalDistance3(ship.x, ship.z, ship.y, g.p[0], g.p[2], g.p[1], COSMIC_BOUNDS);
+  for (const g of ghosts) g.dist = Math.hypot(ship.x - g.p[0], ship.z - g.p[2], ship.y - g.p[1]);
   ghosts.sort(byDist);
   if (ghosts.length > n) ghosts.length = n;
   return ghosts;
@@ -209,9 +203,9 @@ export function shouldSend(s: SendState, peers: number, now: number, me: ShipSta
   if (peers <= 0 || now - s.lastAt < SEND_INTERVAL_MS) return false;
   if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || now - s.lastAt >= KEEPALIVE_MS) return true;
   const moved = Math.hypot(
-    wrapDelta(s.lastP[0], me.p[0], COSMIC_BOUNDS),
-    wrapDelta(s.lastP[1], me.p[1], COSMIC_BOUNDS),
-    wrapDelta(s.lastP[2], me.p[2], COSMIC_BOUNDS),
+    (me.p[0] - s.lastP[0]),
+    (me.p[1] - s.lastP[1]),
+    (me.p[2] - s.lastP[2]),
   ) > MOVE_EPS;
   const dot = Math.abs(s.lastQ[0] * me.q[0] + s.lastQ[1] * me.q[1] + s.lastQ[2] * me.q[2] + s.lastQ[3] * me.q[3]);
   const turned = 2 * Math.acos(Math.min(1, dot)) > TURN_EPS;

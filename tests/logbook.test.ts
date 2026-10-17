@@ -84,8 +84,8 @@ describe("convoySighted", () => {
     expect(convoySighted(ship, [{ x: 500, y: 0, z: 0 }, { x: 119, y: 0, z: 0 }])).toBe(true);
     expect(convoySighted(ship, [{ x: 121, y: 0, z: 0 }])).toBe(false);
   });
-  it("works across the wrap seam", () => {
-    expect(convoySighted({ x: 240, y: 0, z: 0 }, [{ x: -240, y: 0, z: 0 }])).toBe(true);
+  it("does not see across the old seam", () => {
+    expect(convoySighted({ x: 240, y: 0, z: 0 }, [{ x: -240, y: 0, z: 0 }])).toBe(false);
   });
 });
 

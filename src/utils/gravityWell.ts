@@ -1,5 +1,3 @@
-import { COSMIC_BOUNDS } from "../constants";
-import { wrapDelta } from "./toroidal";
 import type { Vec3 } from "./reactions";
 import { RADIO_BUSY_S } from "./cargoReaction";
 
@@ -76,9 +74,9 @@ export function stepGravity(G: Vec3, pos: Vec3, v: Vec3, wells: readonly Well[],
     const kFling = 1 - Math.pow(0.5, dt / FLING_HALF_LIFE);
     for (let i = 0; i < count; i++) {
       const w = wells[i];
-      const dx = wrapDelta(pos.x, w.x, COSMIC_BOUNDS);
-      const dy = wrapDelta(pos.y, w.y, COSMIC_BOUNDS);
-      const dz = wrapDelta(pos.z, w.z, COSMIC_BOUNDS);
+      const dx = (w.x - pos.x);
+      const dy = (w.y - pos.y);
+      const dz = (w.z - pos.z);
       const r = Math.hypot(dx, dy, dz);
       if (r >= w.radius || r < 1e-6) continue;
       const ux = dx / r, uy = dy / r, uz = dz / r;

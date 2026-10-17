@@ -81,9 +81,9 @@ describe("stepGravity basics", () => {
     const g = stepGravity(v3(), v3(0, 0, 0), v3(0, 0, 1), [planet(30, 0, 0), planet(-30, 0, 0)], 1, "free", 0.01);
     expect(g.x).toBeGreaterThan(0);
   });
-  it("pulls across the wrap seam the short way", () => {
+  it("does not pull across the old seam", () => {
     const g = stepGravity(v3(), v3(245, 0, 0), v3(0, 0, 1), [planet(-245, 0, 0)], 1, "free", 0.01);
-    expect(g.x).toBeGreaterThan(0); // the planet is 10u away through +x, not 490u back through -x
+    expect(g.x).toBe(0); // the planet is 490u away in plain space
   });
   it("does not pull while keeping station, in warp, or before first input", () => {
     for (const mode of ["keeping", "warp", "off"] as const) {

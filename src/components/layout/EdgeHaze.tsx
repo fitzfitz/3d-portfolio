@@ -6,6 +6,12 @@ import { chatterPools, RETURN_BURN_LINE } from "../../data/chatterLines";
 import { SYSTEM_RADIUS } from "../../constants";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 
+/** Stable predicate (no per-frame closure): is the current broadcast a haze or return-burn line? */
+function isEdgeLine(): boolean {
+  const t = useSpaceStore.getState().broadcast?.text;
+  return t === RETURN_BURN_LINE || (t !== undefined && chatterPools.haze.includes(t));
+}
+
 /**
  * Nebula haze at the edge of the system: thickens radially from HAZE_START to
  * SYSTEM_RADIUS (~92% opaque there), where the return burn takes over. Also
@@ -30,10 +36,7 @@ export default function EdgeHaze() {
       if (ref.current) ref.current.style.opacity = (HAZE_MAX_OPACITY * depth).toFixed(3);
       const s = useSpaceStore.getState();
       const now = performance.now() / 1000;
-      clock.observe(s.broadcast?.id ?? 0, now, () => {
-        const t = s.broadcast?.text;
-        return t === RETURN_BURN_LINE || (t !== undefined && chatterPools.haze.includes(t));
-      });
+      clock.observe(s.broadcast?.id ?? 0, now, isEdgeLine);
       if (gate.update(depth, clock.busy(now, RADIO_BUSY_S), s.race.phase === "running")) {
         s.sendBroadcast(scheduler.pick("haze"), { silent: true });
       }

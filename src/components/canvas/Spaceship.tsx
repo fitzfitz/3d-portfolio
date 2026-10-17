@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { COSMIC_BOUNDS, SYSTEM_RADIUS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
+import { SYSTEM_RADIUS, PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
@@ -26,7 +26,6 @@ import {
   stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
-import { toroidalDistance3 } from "../../utils/toroidal";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { softSprite } from "./softSprite";
@@ -625,7 +624,7 @@ export default function Spaceship() {
     if (grace.skip) {
       const gb = bodies[grace.skip];
       const gr = WELL_RADIUS_BY_NAME.get(grace.skip);
-      if (gb && gr !== undefined) grace.update(toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, gb.x, gb.z, gb.y, COSMIC_BOUNDS), gr);
+      if (gb && gr !== undefined) grace.update(Math.hypot(pos.current.x - gb.x, pos.current.z - gb.z, pos.current.y - gb.y), gr);
       else grace.clear();
     }
     let wellCount = 0;
@@ -676,7 +675,7 @@ export default function Spaceship() {
     let wellNow: string | null = null;
     for (let i = 0; i < planets.length; i++) {
       const b = bodies[planets[i].name];
-      if (toroidalDistance3(pos.current.x, pos.current.z, pos.current.y, b.x, b.z, b.y, COSMIC_BOUNDS) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,

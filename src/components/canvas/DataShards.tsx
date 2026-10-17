@@ -3,8 +3,6 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { SHARDS, SHARDS_COMPLETE_MESSAGE, shardBroadcast } from "../../data/shards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
-import { COSMIC_BOUNDS } from "../../constants";
-import { toroidalDistance3 } from "../../utils/toroidal";
 import { soundManager } from "../../audio/soundManager";
 import { useGLTF } from "@react-three/drei";
 import { assetUrl } from "../../utils/assetUrl";
@@ -99,7 +97,7 @@ export default function DataShards() {
       // Shards are anchored: the tractor beam reels the SHIP toward them
       // (TractorBeam.tsx sets beamState.reel; Spaceship applies it), so their
       // positions never move and the pickup below is unchanged.
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, px, pz, py, COSMIC_BOUNDS);
+      const dist = Math.hypot(flight.x - px, flight.z - pz, flight.y - py);
       if (dist < 3) {
         store.collectShard(i);
         soundManager.pickup();

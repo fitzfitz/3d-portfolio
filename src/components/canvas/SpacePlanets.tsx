@@ -6,7 +6,7 @@ import PortalRing from "./PortalRing";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
 import {
-  COSMIC_BOUNDS, PORTAL_POS, planets, PROGRADE,
+  PORTAL_POS, planets, PROGRADE,
   ZONE_FACTOR, LOCK_RETAIN_FACTOR, SUN_RADIUS,
 } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
@@ -14,7 +14,6 @@ import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
 import { ambientTime } from "../../utils/ambientTime";
-import { toroidalDistance3 } from "../../utils/toroidal";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -555,7 +554,7 @@ export default function SpacePlanets() {
 
     planets.forEach((p) => {
       const b = bodies[p.name];
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, b.x, b.z, b.y, COSMIC_BOUNDS);
+      const dist = Math.hypot(flight.x - b.x, flight.z - b.z, flight.y - b.y);
       if (lockedNow && zoneNow === p.name) {
         if (dist < p.size * LOCK_RETAIN_FACTOR) {
           activeZone = p.name;
@@ -571,7 +570,7 @@ export default function SpacePlanets() {
     // Destinations (src/data/destinations.ts): fixed points with their own
     // radii, checked after the planets exactly as the portal always was.
     for (const d of DESTINATIONS) {
-      const dist = toroidalDistance3(flight.x, flight.z, flight.y, d.pos[0], d.pos[2], d.pos[1], COSMIC_BOUNDS);
+      const dist = Math.hypot(flight.x - d.pos[0], flight.z - d.pos[2], flight.y - d.pos[1]);
       if (lockedNow && zoneNow === d.id) {
         if (dist < d.retainR) {
           activeZone = d.id;

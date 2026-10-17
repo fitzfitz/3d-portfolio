@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   CRYSTAL_LANDMARKS, CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, LANDMARK_KEEP_OUT, crystalAvoidPoints, isRejectedSpawn, randomCrystalPos, respawnTick,
 } from "../src/utils/crystalField";
-import { COSMIC_BOUNDS } from "../src/constants";
+import { SYSTEM_RADIUS } from "../src/constants";
 import { DESTINATIONS } from "../src/data/destinations";
 import { GATE_POS } from "../src/data/dormantGate";
 
@@ -58,14 +58,12 @@ describe("isRejectedSpawn", () => {
 });
 
 describe("randomCrystalPos", () => {
-  it("stays inside the world bounds", () => {
+  it("stays inside the system sphere", () => {
     let n = 0;
     const rand = () => [0.1, 0.9, 0.5, 0.3, 0.7, 0.2][n++ % 6];
     for (let i = 0; i < 50; i++) {
       const [x, y, z] = randomCrystalPos(rand, []);
-      expect(Math.abs(x)).toBeLessThanOrEqual(COSMIC_BOUNDS);
-      expect(Math.abs(y)).toBeLessThanOrEqual(COSMIC_BOUNDS);
-      expect(Math.abs(z)).toBeLessThanOrEqual(COSMIC_BOUNDS);
+      expect(Math.hypot(x, y, z)).toBeLessThanOrEqual(SYSTEM_RADIUS);
     }
   });
 
