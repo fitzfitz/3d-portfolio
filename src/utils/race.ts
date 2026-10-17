@@ -10,7 +10,7 @@ export interface Gate { c: Vec3; n: Vec3 }
 /**
  * Longest per-frame move that still counts as flying. Warp covers ~2 units a
  * frame at 60fps (39 u/s, dt clamped to 0.05 → ≤2 units even at 20fps); a
- * jump, a debug teleport or a boundary wrap moves far more and must not
+ * jump or a debug teleport moves far more and must not
  * trigger a gate on the way.
  */
 export const MAX_STEP = 10;
@@ -103,7 +103,7 @@ export function sampleGhost(samples: readonly GhostSample[], t: number): GhostSa
   const i = Math.floor(f);
   if (t < 0 || i >= samples.length - 1) return null;
   const a = samples[i], b = samples[i + 1], k = f - i;
-  // A boundary wrap mid-run: snap rather than sweep across the whole world.
+  // A teleport mid-run: snap rather than sweep across the whole world.
   if (Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z) > MAX_STEP * 4) return a;
   const lerp = (p: number, q: number) => p + (q - p) * k;
   return {

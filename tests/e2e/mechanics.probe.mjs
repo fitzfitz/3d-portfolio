@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
 const hazeOpacity = (page) => page.evaluate(() => Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0"));
 /** Faces the ship at a world point (yaw only) and ends the spawn auto-aim. */
@@ -19,6 +19,8 @@ async function edge(page, checks) {
     return Math.hypot(f.x, f.y, f.z);
   });
   await page.keyboard.press("KeyW"); // first input
+  // Installed before the teleport: the haze line fires on arrival at depth 0.5.
+  await installEdgeRecorder(page, 400);
   await page.evaluate(() => { window.__fitz.teleport(380, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
@@ -30,7 +32,6 @@ async function edge(page, checks) {
   // haze opacity in the frame of maximum radius, and remembers any RETURN BURN
   // broadcast. No sim clock is exposed, so "within 6 simulated seconds" is
   // asserted as <= 18 s wall (headless ~3x slow); the 60 s polls are hang guards.
-  await installEdgeRecorder(page, 400);
   let flashed = false;
   await page.keyboard.down("KeyW");
   const done = await pollUntil(async () => {
@@ -51,8 +52,12 @@ async function edge(page, checks) {
   // The haze line (depth 0.3) plays first on the way out, the burn line a moment
   // later; the recorder catches the burn line whatever replaces it afterwards.
   checks.check("the RETURN BURN line was broadcast", rec.burn);
-  const line = (await readStore(page)).broadcast;
-  checks.check("edge lines play silently", !!line && line.silent === true, `last broadcast=${JSON.stringify(line)}`);
+  // The burn line explains an involuntary control change, so it is audible
+  // (not silent); the haze line is ambient and may stay silent.
+  checks.check("the RETURN BURN line is audible (not silent)", rec.burn && rec.burnSilent === false, `silent=${rec.burnSilent}`);
+  checks.check("the haze line played at depth >= 0.3", rec.haze && rec.hazeDepth >= 0.3,
+    `haze line=${rec.haze}, depth=${rec.hazeDepth?.toFixed(2)}, silent=${rec.hazeSilent}`);
+  await stopEdgeRecorder(page);
 }
 
 /**

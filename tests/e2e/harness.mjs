@@ -391,7 +391,7 @@ export function sceneQuery(page, name) {
 export async function toDeepSpace(page) {
   const ok = await page.evaluate(() => {
     if (typeof window.__fitz.teleport !== "function") return false;
-    window.__fitz.teleport(-230, -210, -230);
+    window.__fitz.teleport(-170, -150, -170); // r 288: clear of every landmark, planet orbit (<=185) and comet (aphelion 227), outside the haze (360)
     return true;
   });
   if (!ok) throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
@@ -422,23 +422,53 @@ export function lockFullFidelity() {
  */
 export function installEdgeRecorder(page, edge = 400) {
   return page.evaluate((E) => {
-    const rec = { maxR: 0, opAtMax: 0, tCross: null, tBack: null, burn: false, stop: false };
+    const rec = {
+      maxR: 0, opAtMax: 0, tCross: null, tBack: null,
+      burn: false, burnSilent: null,
+      // Haze line (chatterLines.ts `haze` pool, matched by fragment): the haze
+      // opacity / 0.92 is the edge depth, read in the frame it was broadcast.
+      haze: false, hazeSilent: null, hazeDepth: null,
+      // Warp re-engagements after the edge cut took hold (the I1 latch must keep this 0).
+      cutSeen: false, rewarp: 0,
+      stop: false,
+    };
     window.__edgeRec = rec;
-    window.__fitz.store.subscribe((s) => { if (s.broadcast?.text?.includes("RETURN BURN")) rec.burn = true; });
+    const HAZE_RE = /NEBULA DENSITY RISING|HERE BE MORE OF THIS|VISIBILITY ZERO|EDGE HAZE/;
+    const opacity = () => Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0");
+    window.__edgeRecUnsub = window.__fitz.store.subscribe((s) => {
+      const b = s.broadcast;
+      if (!b?.text) return;
+      if (b.text.includes("RETURN BURN")) { rec.burn = true; rec.burnSilent = b.silent; }
+      else if (HAZE_RE.test(b.text) && !rec.haze) { rec.haze = true; rec.hazeSilent = b.silent; rec.hazeDepth = opacity() / 0.92; }
+    });
     const step = () => {
       const f = window.__fitz.flight;
       const r = Math.hypot(f.x, f.y, f.z);
       const now = performance.now();
       if (r > rec.maxR) {
         rec.maxR = r;
-        rec.opAtMax = Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0");
+        rec.opAtMax = opacity();
       }
       if (r > E && rec.tCross === null) rec.tCross = now;
       if (rec.tCross !== null && rec.tBack === null && r < E) rec.tBack = now;
+      if (rec.tCross !== null) {
+        const warping = window.__fitz.store.getState().isWarping;
+        if (!warping) rec.cutSeen = true;
+        else if (rec.cutSeen) rec.rewarp++;
+      }
       if (!rec.stop) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }, edge);
+}
+
+/** Stops the recorder's frame loop and drops its store subscription. */
+export function stopEdgeRecorder(page) {
+  return page.evaluate(() => {
+    if (window.__edgeRec) window.__edgeRec.stop = true;
+    window.__edgeRecUnsub?.();
+    window.__edgeRecUnsub = null;
+  });
 }
 
 export const readEdgeRecorder = (page) => page.evaluate(() => ({ ...window.__edgeRec }));

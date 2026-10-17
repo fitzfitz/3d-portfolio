@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { flight } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { planGalaxy, type GalaxyKind, type GalaxyPlan } from "../../utils/galaxyPainter";
 
@@ -67,6 +68,7 @@ const GALAXIES: { pos: readonly [number, number, number]; scale: number; hue: nu
 ];
 
 export default function DistantGalaxies() {
+  const groupRef = useRef<THREE.Group>(null);
   const sprites = useMemo(
     () =>
       GALAXIES.map((g) => {
@@ -84,6 +86,10 @@ export default function DistantGalaxies() {
   );
 
   useFrame((state) => {
+    // Anchored to the ship like the star shells: the galaxies are at effectively
+    // infinite distance, so they translate with the ship and show no parallax
+    // (the system is now flyable out to r 400, past where they used to sit).
+    groupRef.current?.position.set(flight.x, flight.y, flight.z);
     const t = ambientTime(state.clock.getElapsedTime());
     sprites.forEach((s) => {
       s.material.rotation = t * s.spin;
@@ -91,10 +97,10 @@ export default function DistantGalaxies() {
   });
 
   return (
-    <>
+    <group ref={groupRef}>
       {sprites.map((s, i) => (
         <sprite key={i} position={[s.pos[0], s.pos[1], s.pos[2]]} scale={[s.scale, s.scale, 1]} material={s.material} />
       ))}
-    </>
+    </group>
   );
 }

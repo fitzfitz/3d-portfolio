@@ -1,7 +1,7 @@
-import { withPage, hold, settle, sceneQuery, installEdgeRecorder, readEdgeRecorder } from "./harness.mjs";
+import { withPage, hold, settle, sceneQuery, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
 const SYSTEM_RADIUS = 400; // src/constants.ts
-const VALIDATION_RADIUS = 440; // the beacon-api bounds; the burn must never let the ship out this far
+const EDGE_BOUND = 440; // the burn must never let the ship out this far (the Worker accepts 520)
 const RANGE = 220; // RadarMap RANGE
 const SIZE = 148;  // RadarMap SIZE
 
@@ -91,7 +91,7 @@ export default async function run() {
 
     // Flying out at warp: the ship is returned. There is no wrap; past
     // SYSTEM_RADIUS the flight computer cuts warp and brakes the ship, so it
-    // must never reach the beacon-api bounds (VALIDATION_RADIUS) and must come
+    // must never reach the edge bound (EDGE_BOUND) and must come
     // back inside. Start 20u inside the edge facing +X (yaw pi/2 points the
     // nose down +X), hold warp until the edge is crossed, release, then poll
     // generously: headless sim time runs ~3x slower than wall time.
@@ -113,8 +113,12 @@ export default async function run() {
       await settle(page, 200);
       rec = await readEdgeRecorder(page);
     }
+    // Keep holding Shift+W outward ~10 s past the crossing: the edge cut is
+    // latched, so warp must never re-engage (no bounce, no warp flicker).
+    await settle(page, 10_000);
     await page.keyboard.up("ShiftLeft");
     await page.keyboard.up("KeyW");
+    rec = await readEdgeRecorder(page);
     checks.check("flying out at warp crosses the edge", rec.tCross !== null, `max |p|=${rec.maxR.toFixed(1)}`);
     const tWait = Date.now();
     while (rec.tBack === null && Date.now() - tWait < 60_000) {
@@ -122,19 +126,19 @@ export default async function run() {
       rec = await readEdgeRecorder(page);
     }
     const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
-    checks.check("the ship never gets near the beacon-api bounds", rec.maxR < VALIDATION_RADIUS,
-      `max |p|=${rec.maxR.toFixed(1)} < ${VALIDATION_RADIUS}`);
+    checks.check("the ship never gets near the edge bound", rec.maxR < EDGE_BOUND,
+      `max |p|=${rec.maxR.toFixed(1)} < ${EDGE_BOUND}`);
+    checks.check("warp never re-engages after the edge cut (held Shift+W, 10 s)", rec.cutSeen && rec.rewarp === 0,
+      `cut seen=${rec.cutSeen}, warp frames after the cut=${rec.rewarp}`);
     checks.check("the ship is returned inside the system", rec.tBack !== null,
       rec.tBack !== null ? `back inside ${SYSTEM_RADIUS}` : "never came back inside");
     checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18,
       `${backS.toFixed(1)}s wall`);
     checks.check("the return-burn radio line was broadcast", rec.burn);
+    await stopEdgeRecorder(page);
 
-    // Radar transform after the burn: bodies telemetry still lands inside the rim.
-    const after = await expectedBlips(page);
-    const stray = after.filter((q) => q.inRange && Math.hypot(q.px - c, q.py - c) > rimR + 0.5);
-    checks.check("radar blips stay inside the rim after the burn", stray.length === 0,
-      stray.map((o) => o.name).join(" "));
+    // (No 'radar blips stay inside the rim after the burn' check: it recomputed the
+    // same transform it asserted against and could not fail; the pixel check above covers the radar.)
 
     // Back to open deep space so the warp below is not cut by the edge burn.
     await page.evaluate(() => {

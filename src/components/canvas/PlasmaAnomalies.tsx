@@ -203,6 +203,10 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
       }
       const m = pool[i];
       m.position.set(point.x, point.y + (Math.random() - 0.5) * 0.5, point.z);
+      // Clamp inside the sphere at spawn, not only by the per-frame reflect: a
+      // click past the edge must not flash a frame outside it.
+      const pr = m.position.length();
+      if (pr > ANOMALY_LIMIT) m.position.multiplyScalar(ANOMALY_LIMIT / pr);
       m.velocity.set(
         (Math.random() - 0.5) * 0.015,
         (Math.random() - 0.5) * 0.005,

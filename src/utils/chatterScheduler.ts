@@ -9,13 +9,12 @@ export interface ChatterPools {
   /** First ore of a session (AsteroidBelt). */
   ore: string[];
   comet: string[];
-  altitude: string[];
   impact: string[];
   /** Cargo ships hailing a pilot who flies close (CargoTraffic). */
   hail: string[];
 }
 
-export type ChatterKind = "ambient" | "zone" | "warp" | "haze" | "slingshot" | "ore" | "comet" | "altitude" | "impact" | "hail";
+export type ChatterKind = "ambient" | "zone" | "warp" | "haze" | "slingshot" | "ore" | "comet" | "impact" | "hail";
 
 /** Pure line-selection + pacing logic. Injectable RNG for tests. */
 export class ChatterScheduler {
@@ -36,7 +35,6 @@ export class ChatterScheduler {
     else if (kind === "slingshot") pool = this.pools.slingshot;
     else if (kind === "ore") pool = this.pools.ore;
     else if (kind === "comet") pool = this.pools.comet;
-    else if (kind === "altitude") pool = this.pools.altitude;
     else if (kind === "impact") pool = this.pools.impact;
     else if (kind === "hail") pool = this.pools.hail;
     else pool = this.pools.deepSpace;
