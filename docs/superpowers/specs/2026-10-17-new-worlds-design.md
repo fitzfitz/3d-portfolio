@@ -56,9 +56,35 @@ So:
 - **The look follows the type as visitors recognise it,** adjusted where the physics at the world's distance demands it. For example, the Neptune-type's bright cloud streaks are ammonia ice, which condenses near 145 K, not methane ice, which needs about 80 K. They look much the same and are honest.
 - Orbits stay circular (L5): e = 0. Nothing claims an eccentric-orbit effect such as Mercury's 3:2 spin resonance.
 
+## Built to scale: three rules every world obeys (owner: "best practice and scalability, not shortcuts")
+
+These make the five worlds the first entries of a system that can grow, including the owner's future realms, without anyone hand-checking physics again.
+
+1. **The world-type law, in code and tested** (`src/data/worldTypes.ts`).
+   - Each type declares the physical conditions it needs, as functions of its orbit:
+     - the stellar flux in S⊕ (`(AU/r)²`);
+     - its equilibrium temperature;
+     - for ringed types, whether water ice survives.
+   - Examples:
+     - a Venus-type needs flux above the runaway-greenhouse limit (~1.1 S⊕);
+     - a nitrogen-ice dwarf (Pluto-type) needs T_eq below ~60 K;
+     - water-ice rings need T_eq below ~170 K;
+     - an airless rock has no constraint.
+   - `tests/worldTypes.test.ts` fails if any world in `WORLDS` sits where its type cannot exist. The rules cite their sources in the code, and the thresholds are stated as approximate where the science is.
+2. **Facts are computed from the orbit, never typed in.**
+   - Each world's scan and logbook card build their numbers (flux, equilibrium temperature, period, distance in AU) from its orbit and Bond albedo, using shared functions in `src/utils/worldPhysics.ts`.
+   - Namesake comparisons ("SATURN ITSELF: −178 °C") are fixed reference data, labelled as the real planet's.
+   - Move a world and its scan stays true. A test checks every stated number against the functions.
+3. **Placement is a permanent test, not a one-off search.**
+   - `tests/worldClearance.test.ts` sweeps every world's orbit (1440 samples) against:
+     - every planet and world (a gap ≥ 7 after both bodies);
+     - both comet paths, the jelly path, the belt, the halo, the sun's keep-out;
+     - every landmark, shard, ring gate, buoy and the spawn, by the existing clearance rules.
+   - The search tool that found the orbits is kept as a script (`scripts/worlds/searchOrbits.mjs`). Adding a world is data, plus one search, plus the tests.
+
 ## The five worlds
 
-**⚠ OWNER DECISION PENDING: the roster (see "Open question" at the end).** This section assumes the recommended option A.
+Roster: option A, the owner's decision (see the end).
 
 | World | Type | Size (u) | Look | Facts (true at its orbit) |
 |---|---|---|---|---|
@@ -66,7 +92,7 @@ So:
 | Tilted ice giant (Uranus-type) | ice giant | 13.5 | Pale cyan, almost featureless, faint polar brightening. Axis tipped 98°. Its narrow dark rings (albedo ~0.02) are invisible in visible light, so they are not drawn. | Rolls on its side. Methane gas absorbs red light, hence the cyan. Equilibrium temperature. |
 | Blue ice giant (Neptune-type) | ice giant | 13 | Deep blue bands, one dark storm spot, bright ammonia-ice cloud streaks. | Methane gives the blue. Winds like Neptune's are plausible but not stated as measured. Equilibrium temperature. |
 | Airless rock (Mercury-type) | rocky, airless | 5.7 (Mars-type 8 × the real Mercury/Mars ratio) | Grey-brown; rayed young craters, smooth plains, lobate scarps, one large impact basin. | No atmosphere to hold heat, so day and night differ enormously. A large iron core (stated as a Mercury-like composition). |
-| Salt-spotted dwarf (Ceres-type, option A) | dwarf planet | 3.5 | Dark grey, cratered, a few brilliant white salt spots (like Occator's faculae), one lone mountain (like Ahuna Mons). | Massive enough to be round, not a planet. Bright spots of sodium-carbonate salts. Water ice below the surface. Real Ceres orbits at 2.77 AU, which is where this one sits. |
+| Salt-spotted dwarf (Ceres-type) | dwarf planet | 3.5 | Dark grey, cratered, a few brilliant white salt spots (like Occator's faculae), one lone mountain (like Ahuna Mons). | Massive enough to be round, not a planet. Bright spots of sodium-carbonate salts. Water ice below the surface. Real Ceres orbits at 2.77 AU, which is where this one sits. |
 
 - **Sizes keep the real order**, compressed (P3): gas giant 16 > ringed giant 15 > Uranus-type 13.5 > Neptune-type 13 > Earth-type 12 > Mars-type 8 > Mercury-type 5.7 > Ceres-type 3.5. `tests/universeRules.test.ts` pins the order. The ringed giant's occluder and clearance use its equatorial radius.
   - The existing Jupiter-type is round; its 6.5% flattening is logged as a follow-up, not changed here.
@@ -395,9 +421,18 @@ Two PRs, each shipped before the next.
 - How the stars become background.
 - How the probes are rewritten.
 
-## Open question for the owner
+## Owner decision: the roster (2026-10-17)
 
-**The roster.** A real Mercury and Venus orbit inside the Earth-type world (115). There is no room there without moving the asteroid belt, the halo, the spawn, the shipyard, the ring course and shards. Venus-type worlds also exist only close to their star: runaway greenhouse heating needs strong sunlight, so a Venus-type past the Mars-type would be a lie.
+**Option A, chosen by the owner.** The roster is:
+- the ringed giant;
+- both ice giants;
+- the airless rock;
+- a Ceres-type salt-spotted dwarf, at real Ceres's own distance.
 
-- **A (recommended):** the ringed giant, both ice giants and the airless rock, plus a **Ceres-type salt-spotted dwarf** instead of the Venus-type. It sits at real Ceres's own distance (2.77 AU). Every fact is honest and nothing existing moves.
-- **B:** rebuild the inner system so a Mercury-type and a Venus-type get their real places (0.39 and 0.72 AU). This moves the belt and the halo, plus the spawn, shipyard, ring course and shards, and with them the recruiter path. It is much bigger and riskier, so it would be its own sub-project first.
+The Venus-type is dropped. A Venus-type needs sunlight strong enough for a runaway greenhouse, which means an orbit inside about 109 u, and there is no room there. Placing one farther out would be a lie.
+
+**Not taken: rebuilding the inner system** so that a Mercury-type and a Venus-type sit at 0.39 and 0.72 AU.
+- It would move the belt, the halo, the spawn, the shipyard, the ring course, the shards and the recruiter path.
+- It would make the system mimic the Solar System on the inside, which it cannot do on the outside, against P2.
+
+If a Venus-type is wanted later, it comes as its own sub-project that lays out the inner system properly, and it must pass the world-type law below.
