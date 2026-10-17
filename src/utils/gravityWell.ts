@@ -19,6 +19,23 @@ export interface Well { x: number; y: number; z: number; g: number; radius: numb
 export const PLANET_WELL_G = 3000;
 /** Planet well radius = size × this (56u at size 16). */
 export const PLANET_WELL_RADIUS_FACTOR = 3.5;
+/** The planet size PLANET_WELL_G was tuned at (the gas giant); other wells scale by (size / this)². */
+export const WELL_REF_SIZE = 16;
+/**
+ * A planet's well at the origin (the caller moves it): g by size², radius and
+ * softening by size, so the pull at the same multiple of a planet's size is
+ * the same for every planet and the tuning targets hold around each one.
+ * Wells go by size², not by mass (docs/UNIVERSE-RULES.md L4, L36).
+ */
+export function planetWell(p: { size: number }): Well {
+  return { x: 0, y: 0, z: 0, g: PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size };
+}
+/**
+ * The sun keeps G = 1000 at every size. Its softening radius follows its
+ * collider (25.5 since the core grew to 24), so its grazing pull is now the
+ * gentlest in the system; scaling G like the planets would make every pull
+ * across the belt ~9x stronger (docs/UNIVERSE-RULES.md L4).
+ */
 export const SUN_WELL_G = 1000;
 /** Stops short of the inner planet orbit (115). */
 export const SUN_WELL_RADIUS = 110;
