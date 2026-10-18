@@ -2,7 +2,7 @@ import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
-import { makeStarMaterial } from "./starLayer";
+import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
@@ -39,6 +39,7 @@ import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../
 import { flareLevel } from "../../utils/worldEvents";
 import {
   SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
+  AMBIENT_BASE, applyFill, fillLight,
 } from "../../utils/sunLight";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
@@ -95,7 +96,7 @@ function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity }: StarLayerPro
   });
 
   return (
-    <points ref={pointsRef} name="StarLayer" material={material}>
+    <points ref={pointsRef} name="StarLayer" material={material} renderOrder={STAR_RENDER_ORDER}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} count={count} array={positions} itemSize={3} />
         <bufferAttribute attach="attributes-color" args={[colors, 3]} count={count} array={colors} itemSize={3} />
@@ -408,20 +409,29 @@ function SunLight() {
  * which both tiers read: the composer's ToneMapping pass in the full tier,
  * the renderer's own tone mapping of built-in materials in low-perf. Then it
  * sets the sun's and the overlays' compensation (sunLight.ts) for the tier
- * actually rendering. Mounted in both tiers; allocates nothing per frame.
+ * actually rendering, and the fill (ambient light and IBL), which falls off
+ * like the sunlight with no easing. Mounted in both tiers; allocates nothing
+ * per frame.
  */
 function ExposureDriver() {
   const gl = useThree((s) => s.gl);
   const first = useRef(true);
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, scene }, delta) => {
     const s = useSpaceStore.getState();
-    const target = targetExposure(camera.position.length());
+    const d = camera.position.length();
+    applyFill(scene, d);
+    const target = targetExposure(d);
     const e = stepExposure(gl.toneMappingExposure, target, delta, s.reducedMotion || first.current);
     first.current = false;
     gl.toneMappingExposure = e;
     setExposureCompensation(e, !s.isLowPerf);
   });
   return null;
+}
+
+/** Hands GlobalCanvas's ambient light to the fill law (sunLight.ts); null on unmount. */
+function registerFillAmbient(light: THREE.AmbientLight | null) {
+  fillLight.ambient = light;
 }
 
 function GlobalCanvas() {
@@ -510,8 +520,9 @@ function GlobalCanvas() {
             <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
           </Environment>
 
-          {/* Ambient galactic backdrop lighting */}
-          <ambientLight intensity={0.15} />
+          {/* Ambient galactic backdrop lighting; with the IBL above it falls
+              off like the sunlight past 1 AU (ExposureDriver, L19) */}
+          <ambientLight ref={registerFillAmbient} intensity={AMBIENT_BASE} />
           {/* The sun: single dominant light at the origin — gives every body a
               real day side and terminator (realistic-planets spec G2) */}
           {/* 2.1 at 1 AU, up from 2.0: absorbs Sun.tsx's second light at the

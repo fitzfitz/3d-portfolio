@@ -29,12 +29,24 @@ const STAR_FRAG = /* glsl */ `
   }
 `;
 
+/**
+ * The shells are the sky at infinity, but they sit 40-260 from the ship, so a
+ * depth-tested shell would draw over any world farther than that. Instead
+ * they are background: opaque-list (not transparent) with a negative render
+ * order, so they draw first, before every opaque body, and with no depth test
+ * or write, so every world drawn after them covers them. Additive blending
+ * still applies (three keeps a non-Normal blending on an opaque material).
+ * Set on the Points object (GlobalCanvas's StarLayer).
+ */
+export const STAR_RENDER_ORDER = -1;
+
 export function makeStarMaterial(opacity: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: STAR_VERT,
     fragmentShader: STAR_FRAG,
     vertexColors: true,
-    transparent: true,
+    transparent: false,
+    depthTest: false,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     uniforms: {

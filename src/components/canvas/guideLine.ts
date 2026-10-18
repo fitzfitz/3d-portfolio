@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { exposureCompensation } from "../../utils/sunLight";
+import { exposureCompensation, litExposure } from "../../utils/sunLight";
 import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
 
 /**
@@ -109,6 +109,7 @@ const RING_FRAG = /* glsl */ `
   uniform float uInner;
   uniform float uOuter;
   uniform float uOpacity;
+  uniform float uLitExposure; // the exposure where no post pass applies it (sunLight.ts)
   varying float vR;
   float hash(float n) { return fract(sin(n) * 43758.5453); }
   float bands(float t) {
@@ -129,8 +130,9 @@ const RING_FRAG = /* glsl */ `
     // ambient light is left (F4).
     col *= mix( uNightFloor, 1.0, sunShadowVisibility( vWorld, uOccluders[ SUN_SHADOW_RING_SLOT ] ) );
     #endif
-    // Lit matter, not an instrument: it follows exposure like its planet (F3).
-    gl_FragColor = vec4(col, a);
+    // Lit matter, not an instrument: it follows exposure like its planet (F3),
+    // in low-perf too, where only uLitExposure applies it.
+    gl_FragColor = vec4(col * uLitExposure, a);
   }
 `;
 
@@ -169,6 +171,7 @@ export function makePlanetRingMaterial(
       uOccluders: sunShadowUniforms.uOccluders,
       uOccluderCount: sunShadowUniforms.uOccluderCount,
       uNightFloor: { value: RING_NIGHT_FLOOR.linear },
+      uLitExposure: litExposure,
     },
   });
 }

@@ -9,7 +9,7 @@ import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
-import { cutExposure } from "../../utils/sunLight";
+import { applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -450,9 +450,14 @@ export default function Spaceship() {
       const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
-      // The exposure is re-metered with the camera (I2): ExposureDriver ran
-      // earlier this frame, so without this the cut frame is mis-exposed.
-      if (cut) cutExposure(state.gl, state.camera.position.length(), !store.isLowPerf);
+      // The exposure and the fill are re-metered with the camera (I2):
+      // ExposureDriver ran earlier this frame, so without this the cut frame
+      // is mis-exposed.
+      if (cut) {
+        const d = state.camera.position.length();
+        cutExposure(state.gl, d, !store.isLowPerf);
+        applyFill(state.scene, d);
+      }
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,
         pos.current.y + nose.y * 1.5 + 0.2,

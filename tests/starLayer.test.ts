@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { makeStarMaterial } from "../src/components/canvas/starLayer";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import * as THREE from "three";
+import { makeStarMaterial, STAR_RENDER_ORDER } from "../src/components/canvas/starLayer";
 
 describe("star layer (L23 no twinkle, L24 fixed stars)", () => {
   it("has no time input: stars do not twinkle or move", () => {
@@ -10,5 +13,18 @@ describe("star layer (L23 no twinkle, L24 fixed stars)", () => {
   });
   it("keeps the opacity it was given", () => {
     expect(makeStarMaterial(0.8).uniforms.uOpacity.value).toBe(0.8);
+  });
+  it("is background: drawn before opaque geometry and never over a world", () => {
+    const m = makeStarMaterial(0.8);
+    // Opaque list (drawn before transparent), first in it (negative order).
+    expect(m.transparent).toBe(false);
+    expect(STAR_RENDER_ORDER).toBeLessThan(0);
+    // Ignores and leaves the depth buffer alone: every world drawn after covers it.
+    expect(m.depthTest).toBe(false);
+    expect(m.depthWrite).toBe(false);
+    // Still additive (three honours a non-Normal blending on an opaque material).
+    expect(m.blending).toBe(THREE.AdditiveBlending);
+    const canvas = readFileSync(join("src", "components", "canvas", "GlobalCanvas.tsx"), "utf8");
+    expect(canvas).toMatch(/<points ref=\{pointsRef\} name="StarLayer" material=\{material\} renderOrder=\{STAR_RENDER_ORDER\}>/);
   });
 });

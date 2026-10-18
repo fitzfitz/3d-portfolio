@@ -1,4 +1,4 @@
-import { AU } from "../constants";
+import { AU, SYSTEM_RADIUS } from "../constants";
 
 /**
  * Inverse-square sunlight and the camera's exposure (F3; law L19).
@@ -9,7 +9,9 @@ import { AU } from "../constants";
  * exposure = clamp((d / AU)^1.5, EXPOSURE_MIN, EXPOSURE_MAX), d being the
  * camera's distance from the sun. It is exactly 1 at 1 AU; the net brightness
  * of a lit surface, irradiance × exposure, falls as (AU / d)^0.5 between the
- * clamps, so the outer system reads dimmer but readable.
+ * clamps, so the outer system reads dimmer but readable: 0.53 of Ruangrapi's
+ * at 402, 0.49 at the edge. The ceiling is the edge's own exposure, so the
+ * law holds all the way out.
  */
 
 /** Irradiance at 1 AU: the old decay-0 intensity, so Ruangrapi looks as it did. */
@@ -21,7 +23,8 @@ export const SUN_FLARE_SWELL = 1.1 / 2.1;
 
 export const EXPOSURE_POWER = 1.5;
 export const EXPOSURE_MIN = 0.15;
-export const EXPOSURE_MAX = 2.5;
+/** The exposure at the system's edge, ≈ 8.53: no clamp inside the system. */
+export const EXPOSURE_MAX = (SYSTEM_RADIUS / AU) ** EXPOSURE_POWER;
 export const EXPOSURE_HALF_LIFE_S = 1.5;
 
 /** Sunlight falling on a surface `d` scene units from the sun. */
@@ -56,6 +59,35 @@ export function irradianceVsAU(d: number): number {
 }
 
 /**
+ * The scene's fill (the ambient light and the IBL environment) is scattered
+ * sunlight too, so it falls off like the sun: (AU / d)² at the camera's
+ * distance d, clamped to at most 1 so the inner system keeps today's fill.
+ */
+export function fillScale(cameraDistance: number): number {
+  return Math.min(1, irradianceVsAU(cameraDistance));
+}
+
+/** The ambient light's intensity at full fill (1 AU and inward). */
+export const AMBIENT_BASE = 0.15;
+
+/**
+ * GlobalCanvas's ambient light (registered by its ref), so both ExposureDriver
+ * and a camera cut (Spaceship) can reach it without a scene search.
+ */
+export const fillLight: { ambient: { intensity: number } | null } = { ambient: null };
+
+/**
+ * Sets the fill for a camera `cameraDistance` from the sun: the ambient light
+ * to AMBIENT_BASE × fillScale and `scene.environmentIntensity` to fillScale.
+ * Allocation-free; called every frame and on a camera cut.
+ */
+export function applyFill(scene: { environmentIntensity: number }, cameraDistance: number): void {
+  const k = fillScale(cameraDistance);
+  if (fillLight.ambient) fillLight.ambient.intensity = AMBIENT_BASE * k;
+  scene.environmentIntensity = k;
+}
+
+/**
  * Shared uniform for the sun's self-luminous parts and the instrument
  * overlays: the sun's core and corona, and the orbit rings, zone circles and
  * guide lines (guideLine.ts). They multiply their output by it, so they look
@@ -69,14 +101,27 @@ export function irradianceVsAU(d: number): number {
 export const exposureCompensation = { value: 1 };
 
 /**
+ * Shared uniform for lit matter drawn by custom shaders: the planetary rings
+ * (guideLine.ts) and the atmosphere rims (atmosphereMaterial.ts). Like the
+ * lit planets, they must follow the exposure, but the renderer never exposes
+ * them (no `<tonemapping_fragment>`). So they multiply by this: 1 where the
+ * composer's ToneMapping pass exposes every pixel, the exposure itself where
+ * it does not (low-perf). Referenced directly, like exposureCompensation.
+ */
+export const litExposure = { value: 1 };
+
+/**
  * Sets the compensation. Its users are never exposed by the renderer: the
  * custom ShaderMaterials include no `<tonemapping_fragment>`, and the course
  * gates are `toneMapped: false`. Only the composer's ToneMapping pass exposes
  * them, and it exposes every pixel. So they need 1 / exposure exactly when that
- * pass runs (PostFX enabled, i.e. not low-perf), and 1 otherwise.
+ * pass runs (PostFX enabled, i.e. not low-perf), and 1 otherwise. Lit matter
+ * in custom shaders needs the opposite: litExposure, 1 when that pass runs and
+ * the exposure otherwise.
  */
 export function setExposureCompensation(exposure: number, postPassExposes: boolean): void {
   exposureCompensation.value = postPassExposes ? 1 / exposure : 1;
+  litExposure.value = postPassExposes ? 1 : exposure;
 }
 
 /**
