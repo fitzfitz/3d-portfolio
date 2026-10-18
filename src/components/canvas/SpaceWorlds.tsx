@@ -8,6 +8,7 @@ import { bodies, useSpaceStore, worldVisibility } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { ringRadii } from "../../utils/ringOptics";
+import { makeSphereLOD } from "../../utils/sphereLod";
 import { irradianceVsAU } from "../../utils/sunLight";
 import { worldMeshScale, worldSpinQuaternion } from "../../utils/worldSpin";
 import { ICE_GIANT_SHELL } from "../../utils/worldCollide";
@@ -22,9 +23,6 @@ import { showChartedOrbits, updateWorlds } from "./worldDrive";
  * Always mounted; charting (worldVisibility) never mounts: it only shows the
  * world's faint orbit line.
  */
-
-/** Same tessellation as the planets (SpacePlanets' PLANET_SEGMENTS). */
-const WORLD_SEGMENTS = 64;
 
 /** The worlds with a surface normal map: the cratered rock and the dwarf. */
 const NORMAL_MAPPED: ReadonlySet<string> = new Set(["w-rock", "w-dwarf"]);
@@ -118,6 +116,15 @@ export default function SpaceWorlds() {
     return m;
   }), [textures, ringMap]);
   useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
+  // Detail by distance, as the planets (sphereLod.ts), flattened in the spin
+  // frame (worldMeshScale). The eclipse occluders and collisions use the
+  // world's size, never this scale.
+  const lods = useMemo(() => WORLDS.map((w, i) => {
+    const lod = makeSphereLOD(materials[i], w.size, { name: `World_${w.id}` });
+    const [x, y, z] = worldMeshScale(w);
+    lod.scale.multiply(new THREE.Vector3(x, y, z));
+    return lod;
+  }), [materials]);
 
   // Lit by the sunlight at its orbit (L19); in its planet's umbra through
   // that world's occluder slot (L20).
@@ -174,9 +181,7 @@ export default function SpaceWorlds() {
       {WORLDS.map((w, i) => (
         <group key={w.id} ref={(g) => { posGroups.current[i] = g; }}>
           <group ref={(g) => { spinGroups.current[i] = g; }}>
-            <mesh name={`World_${w.id}`} scale={worldMeshScale(w)} material={materials[i]}>
-              <sphereGeometry args={[w.size, WORLD_SEGMENTS, WORLD_SEGMENTS]} />
-            </mesh>
+            <primitive object={lods[i]} dispose={null} />
             {/* In the equatorial plane: the spin group's XZ (RingGeometry's
                 XY turned down). It turns with the planet, which a radially
                 symmetric strip cannot show, and so the ring and the shadow's

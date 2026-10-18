@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import { patchSunShadow } from "./sunShadow";
+import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
+
+/** The cloud shell's radius, in planet radii. */
+const CLOUD_SHELL = 1.03;
 
 // One shared wispy alpha texture for all planets, generated once at module load.
 // Stacked soft radial blobs (same trick as the nebula sprite) read as cloud bands.
@@ -52,10 +56,6 @@ interface CloudLayerProps {
 }
 
 export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, sunShadow = false }: CloudLayerProps) {
-  const ref = useRef<THREE.Mesh>(null);
-  useFrame((state) => {
-    if (ref.current) ref.current.rotation.y = ambientTime(state.clock.getElapsedTime()) * speed;
-  });
   // Built here, not as JSX, so a re-render cannot drop the shadow patch.
   const material = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
@@ -71,9 +71,17 @@ export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, sun
     return m;
   }, [tint, sunShadow]);
   useEffect(() => () => material.dispose(), [material]);
-  return (
-    <mesh name="CloudLayer" ref={ref} material={material}>
-      <sphereGeometry args={[radius * 1.03, 32, 32]} />
-    </mesh>
-  );
+  // Detail by distance with its planet (sphereLod.ts); the clouds cover the
+  // whole disc, so they are culled only once the disc is under a pixel.
+  const lod = useMemo(() => makeSphereLOD(material, radius, {
+    radius: radius * CLOUD_SHELL, name: "CloudLayer", cullBeyond: shellCullDistance(radius * CLOUD_SHELL),
+  }), [material, radius]);
+  // Each level turns, not the LOD, so the mesh named CloudLayer (what the
+  // probes read) carries the rotation and the material.
+  const levels = useMemo(() => lod.levels.map((l) => l.object), [lod]);
+  useFrame((state) => {
+    const y = ambientTime(state.clock.getElapsedTime()) * speed;
+    for (let i = 0; i < levels.length; i++) levels[i].rotation.y = y;
+  });
+  return <primitive object={lod} dispose={null} />;
 }

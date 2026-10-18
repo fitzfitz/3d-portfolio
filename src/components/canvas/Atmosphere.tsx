@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ATMOSPHERE_VERT, makeAtmosphereMaterial } from "./atmosphereMaterial";
+import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
 
 interface AtmosphereProps {
   radius: number;
@@ -48,11 +49,14 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
       .normalize();
   });
 
-  return (
-    <mesh material={material} renderOrder={renderOrder}>
-      <sphereGeometry args={[radius * thickness, 32, 32]} />
-    </mesh>
-  );
+  // Detail by distance with its planet (sphereLod.ts). Drawn from its back
+  // faces behind the planet's depth, the shell shows only the band beyond the
+  // limb, (thickness − 1) × radius wide: culled once that is under a pixel.
+  const lod = useMemo(() => makeSphereLOD(material, radius, {
+    radius: radius * thickness, renderOrder, cullBeyond: shellCullDistance((thickness - 1) * radius),
+  }), [material, radius, thickness, renderOrder]);
+
+  return <primitive object={lod} dispose={null} />;
 }
 
 const limbFragment = /* glsl */ `
@@ -65,6 +69,9 @@ const limbFragment = /* glsl */ `
     gl_FragColor = vec4(0.0, 0.0, 0.0, rim * uStrength);
   }
 `;
+
+/** The limb-darkening shell's radius, in planet radii: just over the surface. */
+const LIMB_SHELL = 1.005;
 
 /** Gas-giant limb darkening: the disk dims toward the edge (deeper atmosphere
  * path = more absorption) — the visual signature that separates a gas giant
@@ -82,9 +89,10 @@ export function LimbDarkening({ radius, strength = 0.75, renderOrder = 0 }: { ra
       }),
     [strength]
   );
-  return (
-    <mesh material={material} renderOrder={renderOrder}>
-      <sphereGeometry args={[radius * 1.005, 32, 32]} />
-    </mesh>
-  );
+  // Detail by distance with its planet (sphereLod.ts); it covers the whole
+  // disc, so it is culled only once the disc itself is under a pixel.
+  const lod = useMemo(() => makeSphereLOD(material, radius, {
+    radius: radius * LIMB_SHELL, renderOrder, cullBeyond: shellCullDistance(radius * LIMB_SHELL),
+  }), [material, radius, renderOrder]);
+  return <primitive object={lod} dispose={null} />;
 }

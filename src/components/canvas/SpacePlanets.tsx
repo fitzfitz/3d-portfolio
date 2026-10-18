@@ -25,6 +25,7 @@ import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug,
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
 import { FUXX_ALBEDO_LIFT, irradianceVsAU } from "../../utils/sunLight";
+import { makeSphereLOD } from "../../utils/sphereLod";
 
 /**
  * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20): the fixed slots of
@@ -303,13 +304,6 @@ function useNightSideEmissive() {
 }
 
 /**
- * Sphere tessellation for the three planets. 32 faceted visibly on the limb at
- * lock distance, where a planet fills half the screen; 64 is smooth there and
- * costs ~18k triangles across all three, next to an 840k-triangle scene.
- */
-const PLANET_SEGMENTS = 64;
-
-/**
  * Maps with a 4096-wide variant (assets-src/4k/). In orbit lock the planet
  * fills the screen and the hard-edged worlds' 2048 texels show as blocks; the
  * soft-banded gas giant and the sparse city lights don't need it.
@@ -331,9 +325,6 @@ const prefersHiResMaps = () =>
 const orbitScratch = { x: 0, y: 0, z: 0 };
 
 export default function SpacePlanets() {
-  const saasPlanetRef = useRef<THREE.Mesh>(null);
-  const videoPlanetRef = useRef<THREE.Mesh>(null);
-  const agentPlanetRef = useRef<THREE.Mesh>(null);
   const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
   /** Orbit-path ring materials, one per planet, for the opacity breathe. */
@@ -398,6 +389,12 @@ export default function SpacePlanets() {
     return mats;
   }, [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow, cityLights]);
   useEffect(() => () => planetMats.forEach((m) => m.dispose()), [planetMats]);
+  // Detail by distance (sphereLod.ts): 64 segments near, as before, then 24
+  // and 12 once the coarser silhouette is within half a pixel of the limb.
+  // 64 is what keeps the limb smooth at lock distance, where a planet fills
+  // half the screen. The LOD is what spins.
+  const planetLods = useMemo(() => planetMats.map((m, i) =>
+    makeSphereLOD(m, planets[i].size, { name: `Planet_${planets[i].name}` })), [planetMats]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -480,9 +477,9 @@ export default function SpacePlanets() {
     // 1. Slowly rotate planets
     // Prograde, like their orbits (docs/UNIVERSE-RULES.md L9). They spun
     // backwards before, the way only Venus and Uranus do.
-    if (saasPlanetRef.current) saasPlanetRef.current.rotation.y = PROGRADE * time * 0.1;
-    if (videoPlanetRef.current) videoPlanetRef.current.rotation.y = PROGRADE * time * 0.3;
-    if (agentPlanetRef.current) agentPlanetRef.current.rotation.y = PROGRADE * time * 0.13;
+    planetLods[0].rotation.y = PROGRADE * time * 0.1;
+    planetLods[1].rotation.y = PROGRADE * time * 0.3;
+    planetLods[2].rotation.y = PROGRADE * time * 0.13;
 
     // Spin Stargate Portal Frame infinitely
     if (portalFrameRef.current) {
@@ -593,9 +590,7 @@ export default function SpacePlanets() {
       {/* 1. RUANGRAPI PLANET (Neon Green, Rings) */}
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={saasPlanetRef} name={`Planet_${planets[0].name}`} material={planetMats[0]}>
-          <sphereGeometry args={[planets[0].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-        </mesh>
+        <primitive object={planetLods[0]} dispose={null} />
         <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} sunShadow />
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
@@ -614,9 +609,7 @@ export default function SpacePlanets() {
       {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={videoPlanetRef} name={`Planet_${planets[1].name}`} material={planetMats[1]}>
-          <sphereGeometry args={[planets[1].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-        </mesh>
+        <primitive object={planetLods[1]} dispose={null} />
         <LimbDarkening radius={planets[1].size} strength={0.8} />
         <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} orbitRadius={planets[1].orbit.radius} intensity={0.55} thickness={1.06} />
         {MOONS.filter((m) => m.planet === 1).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
@@ -630,9 +623,7 @@ export default function SpacePlanets() {
       {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
-        <mesh ref={agentPlanetRef} name={`Planet_${planets[2].name}`} material={planetMats[2]}>
-          <sphereGeometry args={[planets[2].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
-        </mesh>
+        <primitive object={planetLods[2]} dispose={null} />
         <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} orbitRadius={planets[2].orbit.radius} intensity={0.5} thickness={1.05} />
         {MOONS.filter((m) => m.planet === 2).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
