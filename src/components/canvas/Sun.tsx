@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
 import { flareLevel } from "../../utils/worldEvents";
 import { planets, SUN_RADIUS } from "../../constants";
+import { WORLDS } from "../../data/worlds";
 import { ambientTime } from "../../utils/ambientTime";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { glareLevels } from "../../utils/sunGlare";
@@ -130,8 +131,13 @@ function flareTexture(kind: "soft" | "hex" | "ring" | "spikes"): THREE.CanvasTex
 
 const _sun = new THREE.Vector3();
 const _ndc = new THREE.Vector3();
-/** Reused every frame: planet occluders, positions refreshed from `bodies`. */
-const OCCLUDERS: Occluder[] = planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size }));
+/**
+ * Reused every frame: the planets' and the worlds' occluders (equatorial
+ * radii), positions refreshed from `bodies`, which keys planets by name and
+ * worlds by id.
+ */
+const OCCLUDER_KEYS = [...planets.map((p) => p.name), ...WORLDS.map((w) => w.id)];
+const OCCLUDERS: Occluder[] = [...planets, ...WORLDS].map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
 const FLARE_DEPTH = 4; // world units in front of the camera
 /** The spikes are faint (spec F5): glareLevels peaks at 1.5 with a flare, so scale that to ~0.55. */
 const SPIKE_OPACITY_SCALE = 0.55 / 1.5;
@@ -164,9 +170,9 @@ function SunFlare() {
     _ndc.copy(_sun).project(cam);
     const inFront = _ndc.z < 1;
     const onScreen = inFront && Math.abs(_ndc.x) < 1.1 && Math.abs(_ndc.y) < 1.1;
-    // Occlusion by planets: fraction of the sun left uncovered (0..1).
-    for (let i = 0; i < planets.length; i++) {
-      const b = bodies[planets[i].name];
+    // Occlusion by planets and worlds: fraction of the sun left uncovered (0..1).
+    for (let i = 0; i < OCCLUDERS.length; i++) {
+      const b = bodies[OCCLUDER_KEYS[i]];
       OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
     }
     const visibility = inFront ? sunVisibility(cam.position, OCCLUDERS, SUN_RADIUS) : 0;

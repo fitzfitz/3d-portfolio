@@ -210,7 +210,7 @@ async function eclipses(page, checks) {
       }),
     };
   });
-  checks.check("all eight occluder slots are in use", moons.count === 8, `count=${moons.count}`);
+  checks.check("all twelve GPU occluder slots are in use (planets, moons, the four inner worlds)", moons.count === 12, `count=${moons.count}`);
   checks.check("occluder slots track the moons", moons.moons.every((m) => m.err < 0.01 && m.dr < 1e-6),
     moons.moons.map((m) => `${m.id} ${m.err.toFixed(4)}`).join(", "));
 

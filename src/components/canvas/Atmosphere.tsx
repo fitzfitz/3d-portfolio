@@ -23,16 +23,18 @@ interface AtmosphereProps {
   orbitRadius?: number;
   /** shell thickness multiplier (1.12 = earth-like, 1.05 = thin haze) */
   thickness?: number;
+  /** The terminator band's tint; omit for the sunset orange (atmosphereMaterial.ts). */
+  dusk?: THREE.ColorRepresentation;
 }
 
 /** Sun-aware fresnel scattering shell. Place inside a planet group. */
-export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius }: AtmosphereProps) {
+export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk }: AtmosphereProps) {
   const material = useMemo(
-    () => makeAtmosphereMaterial({ color, planetPos, intensity, thickness, orbitRadius }),
+    () => makeAtmosphereMaterial({ color, planetPos, intensity, thickness, orbitRadius, dusk }),
     // planetPos is a stable mutated-in-place object; only its identity (not
     // its contents) should retrigger material creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [color, intensity, thickness, orbitRadius],
+    [color, intensity, thickness, orbitRadius, dusk],
   );
 
   // Planet moves every frame (SpacePlanets writes into the same object) — the

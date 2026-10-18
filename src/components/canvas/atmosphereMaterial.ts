@@ -20,6 +20,7 @@ const ATMOSPHERE_FRAG = /* glsl */ `
   uniform vec3 uSunDir;
   uniform float uIntensity;
   uniform float uLimbFacing;
+  uniform vec3 uDusk;
   uniform float uLitExposure; // the exposure where no post pass applies it (sunLight.ts)
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -38,10 +39,12 @@ const ATMOSPHERE_FRAG = /* glsl */ `
     // faint airglow rather than a quarter of the day-side glow.
     float sunCos = dot(normalize(vWorldNormal), uSunDir);
     float lit = smoothstep(-0.25, 0.45, sunCos);
-    // Warm, sunset-tinted band right at the terminator.
+    // The tinted band right at the terminator: sunset-warm by default, where
+    // the long path through the air reddens the light; methane absorbs red,
+    // so an ice giant's stays cool (uDusk).
     float du = sunCos / 0.18;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
     float dusk = exp(-du * du);
-    vec3 col = mix(uColor, vec3(1.0, 0.62, 0.38), dusk * 0.55);
+    vec3 col = mix(uColor, uDusk, dusk * 0.55);
     float a = density * (0.04 + 0.96 * lit) * uIntensity * 1.15;
     // Scattered sunlight is lit matter: it follows exposure like its planet,
     // in low-perf too. On alpha, not colour: under additive blending that
@@ -60,11 +63,16 @@ export interface AtmosphereMaterialOptions {
   orbitRadius?: number;
   /** Shell thickness multiplier. */
   thickness?: number;
+  /** The terminator band's tint; the default is the sunset orange every planet had. */
+  dusk?: THREE.ColorRepresentation;
 }
+
+/** The terminator band's default tint, as linear RGB. */
+const SUNSET_DUSK = new THREE.Color(1.0, 0.62, 0.38);
 
 /** The sun-aware scattering shell's material (Atmosphere.tsx). */
 export function makeAtmosphereMaterial({
-  color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius,
+  color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk = SUNSET_DUSK,
 }: AtmosphereMaterialOptions): THREE.ShaderMaterial {
   const sunDir = planetPos
     ? new THREE.Vector3(-planetPos.x, -planetPos.y, -planetPos.z).normalize()
@@ -77,6 +85,7 @@ export function makeAtmosphereMaterial({
       // facing (|N·V|) of the shell's back face where it passes the
       // planet's limb: sqrt(1 - (r/R)²) for shell radius R = r·thickness.
       uLimbFacing: { value: Math.sqrt(1 - 1 / (thickness * thickness)) },
+      uDusk: { value: new THREE.Color(dusk) },
       // The shared object, so ExposureDriver's one write reaches every rim.
       uLitExposure: litExposure,
     },

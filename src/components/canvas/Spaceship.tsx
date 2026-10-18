@@ -32,8 +32,9 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
-import { occluders, patchSunShadow } from "./sunShadow";
-import { sunVisibility } from "../../utils/sunOcclusion";
+import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
+import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
+import { WORLDS } from "../../data/worlds";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -117,6 +118,14 @@ const _total = new THREE.Vector3();
  * trip): a patch is applied once and keeps the uniform it was given.
  */
 const SHIP_SUN_VIS = { value: 1 };
+/**
+ * What shadows the ship: every GPU occluder slot, plus the worlds that have
+ * none (the outermost, w-blue: it shadows nothing the GPU draws, but the ship
+ * can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
+ */
+const CPU_ONLY_WORLDS = WORLDS.filter((w) => worldSlot(w.id) < 0);
+const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_WORLDS.map((w) => ({ x: 0, y: 0, z: 0, r: w.size }));
+const SHIP_OCCLUDERS: readonly Occluder[] = [...occluders, ...CPU_ONLY_OCCLUDERS];
 
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
@@ -805,11 +814,16 @@ export default function Spaceship() {
     store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
   });
 
-  // The ship in a planet's or moon's shadow. Runs after the flight loop above,
-  // so it sees this frame's position. The occluder slots are SpacePlanets',
-  // which runs after this component: a frame old, a few hundredths of a unit.
+  // The ship in a planet's, moon's or world's shadow. Runs after the flight
+  // loop above, so it sees this frame's position. The occluder slots and
+  // `bodies` are SpacePlanets' and SpaceWorlds', which run after this
+  // component: a frame old, a few hundredths of a unit.
   useFrame(() => {
-    SHIP_SUN_VIS.value = sunVisibility(pos.current, occluders, SUN_RADIUS);
+    for (let i = 0; i < CPU_ONLY_WORLDS.length; i++) {
+      const b = bodies[CPU_ONLY_WORLDS[i].id], o = CPU_ONLY_OCCLUDERS[i];
+      o.x = b.x; o.y = b.y; o.z = b.z;
+    }
+    SHIP_SUN_VIS.value = sunVisibility(pos.current, SHIP_OCCLUDERS, SUN_RADIUS);
   });
 
   return (

@@ -7,6 +7,7 @@ import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
 import SpacePlanets from "./SpacePlanets";
+import SpaceWorlds from "./SpaceWorlds";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
@@ -551,6 +552,8 @@ function GlobalCanvas() {
 
           {/* Orbiting planets */}
           <SpacePlanets />
+          {/* The five worlds: textures load here, so ShaderWarmup compiles them */}
+          <SpaceWorlds />
 
           {/* Central sun core + corona/flare shell */}
           <Sun />

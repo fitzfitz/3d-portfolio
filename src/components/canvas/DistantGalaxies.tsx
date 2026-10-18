@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { flight } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { planGalaxy, type GalaxyKind, type GalaxyPlan } from "../../utils/galaxyPainter";
+import { makeGalaxyMaterial, STAR_RENDER_ORDER } from "./starLayer";
 
 /** Paints a seeded galaxy plan: halo, stars and knots, dust lanes, then the bulge. */
 function makeGalaxyTexture(plan: GalaxyPlan, hueBase: number): THREE.CanvasTexture | null {
@@ -73,13 +74,7 @@ export default function DistantGalaxies() {
     () =>
       GALAXIES.map((g) => {
         const map = makeGalaxyTexture(planGalaxy(g.seed, g.kind, g.hue), g.hue);
-        const material = new THREE.SpriteMaterial({
-          map: map ?? undefined,
-          transparent: true,
-          opacity: 0.5,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-        });
+        const material = makeGalaxyMaterial(map);
         return { ...g, material };
       }),
     []
@@ -99,7 +94,7 @@ export default function DistantGalaxies() {
   return (
     <group ref={groupRef}>
       {sprites.map((s, i) => (
-        <sprite key={i} position={[s.pos[0], s.pos[1], s.pos[2]]} scale={[s.scale, s.scale, 1]} material={s.material} />
+        <sprite key={i} position={[s.pos[0], s.pos[1], s.pos[2]]} scale={[s.scale, s.scale, 1]} material={s.material} renderOrder={STAR_RENDER_ORDER} />
       ))}
     </group>
   );

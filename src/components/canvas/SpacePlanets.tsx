@@ -28,12 +28,12 @@ import { FUXX_ALBEDO_LIFT } from "../../utils/sunLight";
 
 /**
  * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20): the fixed slots of
- * sunShadow.ts's OCCLUDER_SLOTS, planets then moons. The worlds' slots after
- * them are not written yet, so the shaders read only these.
+ * sunShadow.ts's OCCLUDER_SLOTS, planets then moons, written here; the worlds'
+ * slots after them are SpaceWorlds'. The shaders read all of them.
  */
 const PLANET_SLOT0 = OCCLUDER_SLOTS.planets.first;
 const MOON_SLOT0 = OCCLUDER_SLOTS.moons.first;
-const OCCLUDER_COUNT = OCCLUDER_SLOTS.moons.first + OCCLUDER_SLOTS.moons.count;
+const OCCLUDER_COUNT = OCCLUDER_SLOTS.worlds.first + OCCLUDER_SLOTS.worlds.count;
 /** The planets' CPU slots: what a moon's sunVis is measured against. */
 const PLANET_OCCLUDERS = occluders.slice(PLANET_SLOT0, PLANET_SLOT0 + OCCLUDER_SLOTS.planets.count);
 const MOON_SPEEDS = MOONS.map(moonOrbitSpeed);
@@ -448,7 +448,7 @@ export default function SpacePlanets() {
   useFrame((state) => {
     const time = ambientTime(state.clock.getElapsedTime());
 
-    // 0. Orbit drive: single writer of `bodies` (spec §3)
+    // 0. Orbit drive: single writer of the planets' `bodies` (spec §3); the worlds' are SpaceWorlds'
     for (let i = 0; i < planets.length; i++) {
       const p = planets[i];
       const pos = orbitPosition(p.orbit, time, orbitScratch);

@@ -55,3 +55,21 @@ export function makeStarMaterial(opacity: number): THREE.ShaderMaterial {
     },
   });
 }
+
+/**
+ * A distant galaxy's sprite material (DistantGalaxies). The galaxies ride
+ * with the ship at ~200-290 u like the star shells, so they are background
+ * the same way: opaque-list, drawn first (STAR_RENDER_ORDER on the sprite),
+ * with no depth test or write. A non-Normal blending keeps the map's alpha
+ * (three defines OPAQUE only for Normal blending), so the sprite still fades.
+ */
+export function makeGalaxyMaterial(map: THREE.Texture | null): THREE.SpriteMaterial {
+  return new THREE.SpriteMaterial({
+    map,
+    transparent: false,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+  });
+}

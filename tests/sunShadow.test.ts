@@ -296,9 +296,9 @@ describe("OCCLUDER_SLOTS (fixed, no per-frame selection)", () => {
     expect(OCCLUDER_SLOTS.worlds.first + OCCLUDER_SLOTS.worlds.count).toBeLessThanOrEqual(MAX_OCCLUDERS);
   });
 
-  it("worldSlot gives the four inner worlds 8-11 and the outermost, w-blue, no GPU slot", () => {
-    const slots = WORLD_IDS.filter((id) => id !== "w-blue").map(worldSlot);
-    expect([...slots].sort((x, y) => x - y)).toEqual([8, 9, 10, 11]);
-    expect(worldSlot("w-blue")).toBe(-1);
+  it("worldSlot gives the four inner worlds 8-11 in WORLDS order and the outermost, w-blue, no GPU slot", () => {
+    expect(Object.fromEntries(WORLD_IDS.map((id) => [id, worldSlot(id)]))).toEqual({
+      "w-rock": 8, "w-ringed": 9, "w-tilted": 10, "w-blue": -1, "w-dwarf": 11,
+    });
   });
 });

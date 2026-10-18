@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as THREE from "three";
-import { makeStarMaterial, STAR_RENDER_ORDER } from "../src/components/canvas/starLayer";
+import { makeGalaxyMaterial, makeStarMaterial, STAR_RENDER_ORDER } from "../src/components/canvas/starLayer";
 
 describe("star layer (L23 no twinkle, L24 fixed stars)", () => {
   it("has no time input: stars do not twinkle or move", () => {
@@ -26,5 +26,16 @@ describe("star layer (L23 no twinkle, L24 fixed stars)", () => {
     expect(m.blending).toBe(THREE.AdditiveBlending);
     const canvas = readFileSync(join("src", "components", "canvas", "GlobalCanvas.tsx"), "utf8");
     expect(canvas).toMatch(/<points ref=\{pointsRef\} name="StarLayer" material=\{material\} renderOrder=\{STAR_RENDER_ORDER\}>/);
+  });
+  it("the distant galaxies are background too: never drawn over a world", () => {
+    const m = makeGalaxyMaterial(null);
+    expect(m).toBeInstanceOf(THREE.SpriteMaterial);
+    expect(m.transparent).toBe(false);
+    expect(m.depthTest).toBe(false);
+    expect(m.depthWrite).toBe(false);
+    expect(m.blending).toBe(THREE.AdditiveBlending);
+    expect(m.opacity).toBe(0.5);
+    const galaxies = readFileSync(join("src", "components", "canvas", "DistantGalaxies.tsx"), "utf8");
+    expect(galaxies).toMatch(/<sprite [^>]*material=\{s\.material\} renderOrder=\{STAR_RENDER_ORDER\} \/>/);
   });
 });

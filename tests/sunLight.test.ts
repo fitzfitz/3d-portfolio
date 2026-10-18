@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { AU, PLANET_ORBITS, SYSTEM_RADIUS } from "../src/constants";
 import { makePlanetRingMaterial } from "../src/components/canvas/guideLine";
 import { makeAtmosphereMaterial } from "../src/components/canvas/atmosphereMaterial";
+import { ICE_GIANT_DUSK } from "../src/components/canvas/SpaceWorlds";
 import {
   sunIrradiance,
   targetExposure,
@@ -80,6 +81,15 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     setExposureCompensation(5.5, true);
     expect(ring.uniforms.uLitExposure.value).toBe(1);
     expect(rim.uniforms.uLitExposure.value).toBe(1);
+  });
+  it("the atmosphere's dusk band is a uniform, the old orange by default, a methane-cool tint when given", () => {
+    const rim = makeAtmosphereMaterial({ color: "#88aaff" });
+    expect(rim.fragmentShader).toMatch(/uniform vec3 uDusk;/);
+    expect(rim.fragmentShader).toMatch(/mix\(uColor, uDusk, dusk \* 0\.55\)/);
+    expect(rim.fragmentShader).not.toMatch(/vec3\(1\.0, 0\.62, 0\.38\)/);
+    expect(rim.uniforms.uDusk.value.toArray()).toEqual([1.0, 0.62, 0.38]);
+    const cool = makeAtmosphereMaterial({ color: "#88aaff", dusk: ICE_GIANT_DUSK }).uniforms.uDusk.value;
+    expect(cool.b).toBeGreaterThan(cool.r); // methane absorbs red: the terminator does not redden
   });
   it("atmosphere rims scale with the sunlight at each planet's orbit (L27 under L19)", () => {
     expect(irradianceVsAU(PLANET_ORBITS.ruangrapi.radius)).toBeCloseTo(1, 12);

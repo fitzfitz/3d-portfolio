@@ -6,6 +6,7 @@ import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
 import { planets } from "../constants";
+import { WORLDS, WORLD_IDS, type WorldId } from "../data/worlds";
 import { destinationById } from "../data/destinations";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
@@ -245,12 +246,23 @@ export const flight = {
 
 /**
  * Live positions of orbiting bodies, written once per frame by SpacePlanets'
- * useFrame and read by Spaceship (lock center), RadarMap, HUD, and the
- * scannable registry. Mutable outside React — same pattern as `flight`.
+ * useFrame (planets, by name) and SpaceWorlds' (worlds, by id), and read by
+ * Spaceship (lock center), RadarMap, HUD, and the scannable registry. Mutable
+ * outside React — same pattern as `flight`.
  */
-export const bodies: Record<string, { x: number; y: number; z: number }> = Object.fromEntries(
-  planets.map((p) => [p.name, orbitPosition(p.orbit, 0)])
-);
+export const bodies: Record<string, { x: number; y: number; z: number }> = Object.fromEntries([
+  ...planets.map((p) => [p.name, orbitPosition(p.orbit, 0)] as const),
+  ...WORLDS.map((w) => [w.id, orbitPosition(w.orbit, 0)] as const),
+]);
+
+/**
+ * Which worlds are charted, for what draws only once a world is: module-level
+ * and mutable outside React, like `bodies`. Charting toggles visibility, never
+ * mounts (the worlds are always mounted).
+ */
+export const worldVisibility: Record<WorldId, { charted: boolean }> = Object.fromEntries(
+  WORLD_IDS.map((id) => [id, { charted: false }]),
+) as Record<WorldId, { charted: boolean }>;
 
 export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
 
