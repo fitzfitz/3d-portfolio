@@ -183,7 +183,10 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {!isOrbitLocked && <BuoyCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
-      <div className="absolute top-16 left-4 sm:top-24 sm:left-6 flex flex-col gap-1.5">
+      {/* items-start: each row is only as wide as its text. Stretched rows took
+          the widest row's width (the logbook tracker with its worlds suffix),
+          which put the velocity line's box under the gravity warning. */}
+      <div className="absolute top-16 left-4 sm:top-24 sm:left-6 flex flex-col items-start gap-1.5">
         <div className="flex items-center gap-1.5 text-primary">
           <Terminal className="w-3.5 h-3.5" />
           <span>VESSEL.NAV: ONLINE</span>

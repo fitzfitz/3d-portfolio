@@ -62,12 +62,21 @@ export default async function run() {
         const hit = [...col.querySelectorAll("*")].filter((e) => { const b = box(e); return b.r > b.l && b.b > b.t; })
           .filter((e) => { const b = box(e); return v.l < b.r && b.l < v.r && v.t < b.b && b.t < v.b; })
           .map((e) => e.textContent.slice(0, 40));
-        return { text: el.textContent, box: v, right: v.r, width: window.innerWidth, warning: col.textContent.includes("GRAVITY"), hit };
+        // The logbook tracker is the widest left-column row on a phone (the
+        // worlds suffix); its own box must clear the right column too.
+        const tr = document.querySelector('[data-testid="logbook-tracker"]');
+        const t = tr ? box(tr) : null;
+        const trackerHit = !t ? null : [...col.querySelectorAll("*")].filter((e) => { const b = box(e); return b.r > b.l && b.b > b.t; })
+          .filter((e) => { const b = box(e); return t.l < b.r && b.l < t.r && t.t < b.b && b.t < t.b; })
+          .map((e) => e.textContent.slice(0, 40));
+        return { text: el.textContent, box: v, right: v.r, width: window.innerWidth, warning: col.textContent.includes("GRAVITY"), hit, tracker: t, trackerHit };
       });
     } finally {
       await page.keyboard.up("w");
     }
     checks.check("the HUD velocity line fits and does not overlap the right column",
       !!vel && vel.warning && vel.right <= vel.width && vel.hit.length === 0, JSON.stringify(vel));
+    checks.check("the logbook tracker fits and does not overlap the right column",
+      !!vel && !!vel.tracker && vel.tracker.r <= vel.width && vel.trackerHit.length === 0, JSON.stringify(vel && { tracker: vel.tracker, trackerHit: vel.trackerHit }));
   });
 }
