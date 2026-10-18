@@ -35,7 +35,8 @@ import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
 import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
-import { resolveWorldContact } from "../../utils/worldCollide";
+import { resolveWorldContact, keepCameraOutsideWorlds } from "../../utils/worldCollide";
+import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -446,8 +447,8 @@ export default function Spaceship() {
       // Speed-driven framing: the camera eases back and the lens widens a
       // little with throttle, more at warp — the "push" of acceleration.
       const speedNorm = Math.min(1, _total.length() / MAX_SPEED);
-      const camDistance = warpActive ? 6.8 : 4.6 + 0.6 * speedNorm;
-      const camHeight = warpActive ? 2.8 : 1.8;
+      const camDistance = warpActive ? CHASE_CAM.warpDistance : CHASE_CAM.distance + CHASE_CAM.speedGain * speedNorm;
+      const camHeight = (warpActive ? CHASE_CAM.warpHeight : CHASE_CAM.height) + (orbiting && !rm ? 0.8 : 0);
       const targetFov = warpActive ? 86 : 58 + (rm ? 0 : 6 * speedNorm);
       const perspCam = state.camera as THREE.PerspectiveCamera;
       if (Math.abs(perspCam.fov - targetFov) > 0.01) {
@@ -460,17 +461,16 @@ export default function Spaceship() {
       // Orbit lock adds a slow cinematic offset to one side.
       const swing = rm ? 0 : (orbiting ? 1.6 : -turnVelocity.current * 0.55);
       _camSide.set(nose.z, 0, -nose.x).normalize().multiplyScalar(swing);
-      _camTarget.set(
-        pos.current.x - nose.x * camDistance + _camSide.x,
-        pos.current.y - nose.y * camDistance + camHeight + (orbiting && !rm ? 0.8 : 0),
-        pos.current.z - nose.z * camDistance + _camSide.z
-      );
+      chaseCamTarget(_camTarget, pos.current, nose, camDistance, camHeight, _camSide);
       // A jump snaps the camera with the ship: easing across ~150u would swing
       // it through the sun, and is exactly the motion reduced motion avoids.
       const cut = snapCamera.current;
       const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
+      // The ship rests only half a length off a world's surface, so the
+      // camera behind it would sit inside: keep it out (worldCollide.ts).
+      keepCameraOutsideWorlds(state.camera.position, bodies);
       // The exposure and the fill are re-metered with the camera (I2):
       // ExposureDriver ran earlier this frame, so without this the cut frame
       // is mis-exposed.

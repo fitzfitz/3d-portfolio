@@ -10,6 +10,7 @@ import { assetUrl } from "../../utils/assetUrl";
 import { ringRadii } from "../../utils/ringOptics";
 import { irradianceVsAU } from "../../utils/sunLight";
 import { worldMeshScale, worldSpinQuaternion } from "../../utils/worldSpin";
+import { ICE_GIANT_SHELL } from "../../utils/worldCollide";
 import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
 import { patchSunShadow, worldSlot } from "./sunShadow";
 import { showChartedOrbits, updateWorlds } from "./worldDrive";
@@ -191,7 +192,7 @@ export default function SpaceWorlds() {
             <>
               <LimbDarkening radius={w.size} strength={0.7} renderOrder={WORLD_RENDER_ORDER.limb} />
               <Atmosphere radius={w.size} color={ICE_GIANT_RIM[w.id]} planetPos={bodies[w.id]}
-                orbitRadius={w.orbit.radius} intensity={0.5} thickness={1.04} dusk={ICE_GIANT_DUSK}
+                orbitRadius={w.orbit.radius} intensity={0.5} thickness={ICE_GIANT_SHELL} dusk={ICE_GIANT_DUSK}
                 renderOrder={WORLD_RENDER_ORDER.atmosphere} />
             </>
           )}
