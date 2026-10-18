@@ -1,4 +1,4 @@
-import { WORLDS } from "../../data/worlds";
+import { WORLDS, type WorldId } from "../../data/worlds";
 import { orbitPosition } from "../../utils/orbits";
 import { setScannable } from "../../utils/scannables";
 import { setOccluder, worldSlot } from "./sunShadow";
@@ -22,5 +22,20 @@ export function updateWorlds(t: number, out: Record<string, { x: number; y: numb
     b.x = p.x; b.y = p.y; b.z = p.z;
     setScannable(w.id, p.x, p.y, p.z, WORLD_LABELS[i], w.size);
     if (WORLD_SLOTS[i] >= 0) setOccluder(WORLD_SLOTS[i], p.x, p.y, p.z, w.size);
+  }
+}
+
+/**
+ * Each world's orbit line (one per world, always mounted, in WORLDS order)
+ * shows only once that world is charted: charting toggles visibility, never
+ * mounts. Written in place each frame.
+ */
+export function showChartedOrbits(
+  lines: readonly ({ visible: boolean } | null)[],
+  visibility: Readonly<Record<WorldId, { charted: boolean }>>,
+): void {
+  for (let i = 0; i < WORLDS.length; i++) {
+    const line = lines[i];
+    if (line) line.visible = visibility[WORLDS[i].id].charted;
   }
 }

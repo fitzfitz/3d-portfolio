@@ -3,15 +3,18 @@ import { planets } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
-import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
-import { worldToRadar, altitudeCue } from "../../utils/radarTransform";
+import { WORLDS, WORLD_MARK_COLOR } from "../../data/worlds";
+import { flight, useSpaceStore, bodies, crystalSlots, worldVisibility } from "../../store/spaceStore";
+import { worldToRadar, altitudeCue, radarShowsWorld, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
-const RANGE = 220; // world units mapped to radar radius
 const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 /** Destinations are fixed: one blip each, in the table's colour. */
 const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
+
+/** A blip; `rim` pins it to the rim whatever its distance. */
+interface RadarTarget { name: string; x: number; y: number; z: number; color: string; rim?: boolean }
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -24,7 +27,7 @@ export default function RadarMap() {
     let raf: number;
     const c = SIZE / 2;
     const rimR = c - 6;
-    const scale = rimR / RANGE;
+    const scale = rimR / RADAR_RANGE;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = SIZE * dpr;
@@ -57,7 +60,7 @@ export default function RadarMap() {
       // Blips (heading-up: rotate world deltas by ship heading)
       const a = flight.heading;
       const { activeZone, visitedDossiers: visited } = useSpaceStore.getState();
-      const targets = [
+      const targets: RadarTarget[] = [
         ...PLANET_COLORS.map((p) => {
           const b = bodies[p.name];
           return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
@@ -65,6 +68,13 @@ export default function RadarMap() {
         ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
+      // Worlds (radarShowsWorld): uncharted only in range, charted like a planet.
+      for (const w of WORLDS) {
+        const b = bodies[w.id];
+        const show = radarShowsWorld(worldVisibility[w.id].charted, Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z));
+        if (show === "hidden") continue;
+        targets.push({ name: w.id, x: b.x, y: b.y, z: b.z, color: WORLD_MARK_COLOR, rim: show === "rim" });
+      }
       for (const t of targets) {
         const dx = (t.x - flight.x);
         const dz = (t.z - flight.z);
@@ -73,8 +83,8 @@ export default function RadarMap() {
         let py = -up * scale;
         const dist = Math.hypot(px, py);
         let onRim = false;
-        if (dist > rimR - 3) {
-          const k = (rimR - 3) / dist;
+        if (dist > rimR - 3 || t.rim) {
+          const k = (rimR - 3) / Math.max(dist, 1e-6);
           px *= k; py *= k; onRim = true;
         }
         const pulse = activeZone === t.name ? 1 + 0.5 * Math.sin(now * 8) : 1;
@@ -108,9 +118,9 @@ export default function RadarMap() {
       }
 
       // Fuel crystals: in-range only (3D gate — a horizontal-only
-      // gate here used to draw ~57% of blips farther than RANGE with no
+      // gate here used to draw ~57% of blips farther than RADAR_RANGE with no
       // altitude cue at all), never rim-clamped. Only crystals inside the
-      // 3D RANGE sphere draw, so the radar is the "where is my nearest fuel"
+      // 3D RADAR_RANGE sphere draw, so the radar is the "where is my nearest fuel"
       // cue without swamping the display with all 40 across the 400 system.
       {
         for (const s of crystalSlots) {
@@ -118,7 +128,7 @@ export default function RadarMap() {
           const dx = (s.x - flight.x);
           const dz = (s.z - flight.z);
           const dy = (s.y - flight.y);
-          if (Math.hypot(dx, dz, dy) > RANGE) continue; // out of range: simply absent
+          if (Math.hypot(dx, dz, dy) > RADAR_RANGE) continue; // out of range: simply absent
           const { x: sx, up } = worldToRadar(dx, dz, a);
           const px = sx * scale;
           const py = -up * scale;
@@ -160,7 +170,7 @@ export default function RadarMap() {
         const dx = (p[0] - flight.x);
         const dz = (p[2] - flight.z);
         const dy = (p[1] - flight.y);
-        if (Math.hypot(dx, dz, dy) > RANGE) continue;
+        if (Math.hypot(dx, dz, dy) > RADAR_RANGE) continue;
         const { x: sx, up } = worldToRadar(dx, dz, a);
         ctx.beginPath();
         ctx.arc(c + sx * scale, c - up * scale, 2.4, 0, Math.PI * 2);
@@ -174,7 +184,7 @@ export default function RadarMap() {
         const dx = (GATE_POS[0] - flight.x);
         const dz = (GATE_POS[2] - flight.z);
         const dy = (GATE_POS[1] - flight.y);
-        if (Math.hypot(dx, dz, dy) <= RANGE) {
+        if (Math.hypot(dx, dz, dy) <= RADAR_RANGE) {
           const { x: sx, up } = worldToRadar(dx, dz, a);
           ctx.globalAlpha = 0.8;
           ctx.fillStyle = GATE_RADAR_GREY;

@@ -7,6 +7,7 @@ import {
 import { canCapture } from "../src/utils/capture";
 import { cruiseCap } from "../src/utils/speedCap";
 import { planets } from "../src/constants";
+import { WORLDS, PLANETS_AND_WORLDS } from "../src/data/worlds";
 import { SUN_COLLIDER } from "../src/data/asteroids";
 
 const MAX = 10.8, ACCEL = 25.2, DRAG = 0.982;
@@ -133,8 +134,14 @@ describe("planetWell", () => {
     }
     expect(planetWell({ size: WELL_REF_SIZE }).g).toBe(PLANET_WELL_G);
   });
-  it("covers sizes 16, 12 and 8", () => {
-    expect(planets.map((p) => p.size).sort((a, b) => b - a)).toEqual([16, 12, 8]);
+  it("is built for every planet and world, sizes read from the data", () => {
+    expect(PLANETS_AND_WORLDS.map((b) => b.key)).toEqual([...planets.map((p) => p.name), ...WORLDS.map((w) => w.id)]);
+    expect(PLANETS_AND_WORLDS.map((b) => b.size)).toEqual([...planets, ...WORLDS].map((b) => b.size));
+    for (const b of PLANETS_AND_WORLDS) {
+      const w = planetWell(b);
+      expect(w.g, b.key).toBeCloseTo(PLANET_WELL_G * (b.size / WELL_REF_SIZE) ** 2, 9);
+      expect(w.radius, b.key).toBeCloseTo(b.size * PLANET_WELL_RADIUS_FACTOR, 9);
+    }
   });
 });
 

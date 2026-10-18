@@ -20,6 +20,9 @@ describe("LOGBOOK", () => {
   it("gives every badge a plume and no essential one", () => {
     for (const e of LOGBOOK) expect(e.plume).toBe(e.section === "badge");
   });
+  it("hints that a world's well counts for the slingshot too", () => {
+    expect(byId("slingshot").hint).toBe("SKIM A PLANET OR WORLD");
+  });
 });
 
 describe("entryDone", () => {

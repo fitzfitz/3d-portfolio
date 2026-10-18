@@ -149,10 +149,14 @@ const RING_FRAG = /* glsl */ `
   // ringOptics.ts ringRadiance: single scattering in a layer of normal
   // optical depth tau, amu0 and amu the sun's and the viewer's |cosines| to
   // its normal, litFace when both are on one side. ×2: Lambert face-on.
+  // tau = 0 (gaps, the strip's ends) returns first, as the mirror does: under
+  // a mediump fallback a 1e-12 epsilon flushes to 0 and 0/0 would be a NaN in
+  // the premultiplied pixel. 1e-4 is a mediump normal (2^-14 ~ 6.1e-5).
   float ringRadiance(float tau, float amu0, float amu, bool litFace) {
+    if (tau <= 0.0) return 0.0;
     float x = tau / amu;
     float x0 = tau / amu0;
-    if (litFace) return 2.0 * x / max(x + x0, 1e-12) * (1.0 - exp(-(x + x0)));
+    if (litFace) return 2.0 * x / max(x + x0, 1e-4) * (1.0 - exp(-(x + x0)));
     float d = 0.5 * (x - x0);
     // (e^-x0 - e^-x)/(x - x0) = e^-(x+x0)/2 sinh(d)/d: the series near d = 0, where the difference cancels.
     if (abs(d) < 5e-3) return 2.0 * x * exp(-0.5 * (x + x0)) * (1.0 + d * d / 6.0);

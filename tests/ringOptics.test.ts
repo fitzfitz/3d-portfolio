@@ -142,6 +142,12 @@ describe("the ring material", () => {
     expect(m.fragmentShader).toMatch(/x\s*\/\s*max\(\s*x\s*\+\s*x0\s*,[^)]*\)\s*\*\s*\(\s*1\.0\s*-\s*exp\(\s*-\s*\(\s*x\s*\+\s*x0\s*\)\s*\)\s*\)/);
     expect(m.fragmentShader).toMatch(/\(\s*exp\(\s*-x0\s*\)\s*-\s*exp\(\s*-x\s*\)\s*\)\s*\/\s*\(\s*x\s*-\s*x0\s*\)/);
     expect(m.fragmentShader).not.toContain("RING_FORWARD");
+    // τ = 0 texels (the gaps and the strip's ends) return 0 before any
+    // division: under a mediump fallback a tiny epsilon flushes to 0, and
+    // 0/0 is a NaN that corrupts the premultiplied pixel (ringOptics.ts does the same).
+    expect(m.fragmentShader).toMatch(/float ringRadiance\([^)]*\)\s*\{\s*if\s*\(\s*tau\s*<=\s*0\.0\s*\)\s*return 0\.0;/);
+    const eps = Number(/max\(\s*x\s*\+\s*x0\s*,\s*([0-9.e+-]+)\s*\)/.exec(m.fragmentShader)![1]);
+    expect(eps).toBeGreaterThanOrEqual(6.2e-5); // mediump's smallest normal is 2^-14 ≈ 6.1e-5
     expect(m.premultipliedAlpha).toBe(true);
     // Same program for any slot and map: both are uniforms.
     const n = makePlanetRingMaterial("#ffffff", 18.6, 34.05, 3, { ringMap: new THREE.Texture(), irradiance: 0.5 });

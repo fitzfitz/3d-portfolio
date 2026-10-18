@@ -28,7 +28,7 @@ export const LOGBOOK: readonly LogbookEntry[] = [
   { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "READ THE FUXX DOSSIER", hintShort: "FUXX DOSSIER", plume: false },
   { id: "career", section: "essential", title: "Read the career dossier", hint: "DOCK AT THE CAREER STATION", hintShort: "CAREER DOSSIER", plume: false },
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
-  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET FAST FOR A GRAVITY ASSIST", hintShort: "SLINGSHOT A PLANET", plume: true },
+  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR WORLD", hintShort: "SLINGSHOT A PLANET", plume: true },
   { id: "comet", section: "badge", title: "Comet chaser", hint: "SCAN A VISITING COMET (HOLD E)", hintShort: "SCAN A COMET", plume: true },
   { id: "ring", section: "badge", title: "Ring runner", hint: "LAP THE RING COURSE UNDER 1:00", hintShort: "RING LAP < 1:00", plume: true },
   { id: "ore", section: "badge", title: "Prospector", hint: "MINE A CRYSTAL'S WORTH OF ORE (HOLD F)", hintShort: "MINE 16 ORE", plume: true },

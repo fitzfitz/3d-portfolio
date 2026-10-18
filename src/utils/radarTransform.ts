@@ -21,3 +21,17 @@ export function altitudeCue(dy: number): { dir: -1 | 0 | 1; alpha: number } {
   if (mag < 6) return { dir: 0, alpha: 0 };
   return { dir: dy > 0 ? 1 : -1, alpha: Math.min(1, (mag - 6) / 74) };
 }
+
+/** World units mapped to the radar's radius. */
+export const RADAR_RANGE = 220;
+
+/**
+ * How the radar shows a world, `dist` its 3D distance from the ship
+ * (discovery, not signposts): uncharted, a blip inside RADAR_RANGE and
+ * nothing beyond (no rim arrow), so it is found by flying; charted, like a
+ * planet, a blip in range and pinned to the rim beyond.
+ */
+export function radarShowsWorld(charted: boolean, dist: number): "blip" | "rim" | "hidden" {
+  if (dist <= RADAR_RANGE) return "blip";
+  return charted ? "rim" : "hidden";
+}

@@ -7,7 +7,7 @@ import { orbitPosition } from "../src/utils/orbits";
 import { clearScannables, nearestScannable } from "../src/utils/scannables";
 import { bodies, worldVisibility } from "../src/store/spaceStore";
 import { occluders, worldSlot } from "../src/components/canvas/sunShadow";
-import { updateWorlds } from "../src/components/canvas/worldDrive";
+import { updateWorlds, showChartedOrbits } from "../src/components/canvas/worldDrive";
 import { worldMeshScale } from "../src/utils/worldSpin";
 
 beforeEach(() => clearScannables());
@@ -60,6 +60,23 @@ describe("the worlds in the shared state", () => {
   it("worldVisibility starts with every world uncharted", () => {
     expect(Object.keys(worldVisibility).sort()).toEqual([...WORLD_IDS].sort());
     for (const id of WORLD_IDS) expect(worldVisibility[id]).toEqual({ charted: false });
+  });
+});
+
+describe("showChartedOrbits (the charted worlds' orbit lines)", () => {
+  it("shows a world's line only once it is charted, and hides it again if not", () => {
+    const lines = WORLDS.map(() => ({ visible: true }));
+    const vis = Object.fromEntries(WORLD_IDS.map((id) => [id, { charted: false }])) as typeof worldVisibility;
+    showChartedOrbits(lines, vis);
+    expect(lines.map((l) => l.visible)).toEqual(WORLDS.map(() => false));
+    vis["w-ringed"].charted = true;
+    showChartedOrbits(lines, vis);
+    expect(lines.map((l) => l.visible)).toEqual(WORLDS.map((w) => w.id === "w-ringed"));
+  });
+
+  it("skips a line that has not mounted yet", () => {
+    const lines = WORLDS.map((_, i) => (i === 0 ? null : { visible: false }));
+    expect(() => showChartedOrbits(lines, worldVisibility)).not.toThrow();
   });
 });
 

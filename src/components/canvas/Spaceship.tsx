@@ -34,7 +34,8 @@ import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
 import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
-import { WORLDS } from "../../data/worlds";
+import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
+import { resolveWorldContact } from "../../utils/worldCollide";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -87,15 +88,15 @@ const FIRST_TARGET = planets[0];
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
 /**
- * Gravity wells, one per planet plus the sun, reused every frame: planet
- * entries are refreshed from `bodies`, and the active ones are copied to the
- * front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
+ * Gravity wells, one per planet and world plus the sun, reused every frame:
+ * body entries are refreshed from `bodies`, and the active ones are copied to
+ * the front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
-const PLANET_WELLS: Well[] = planets.map(planetWell);
-/** Well radius by planet name, for the per-frame escape-grace check. */
-const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));
+const BODY_WELLS: Well[] = PLANETS_AND_WORLDS.map(planetWell);
+/** Well radius by planet name, for the per-frame escape-grace check (only a planet's lock arms it). */
+const WELL_RADIUS_BY_NAME = new Map(planets.map((p) => [p.name, planetWell(p).radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
-const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
+const ACTIVE_WELLS: Well[] = Array.from({ length: PLANETS_AND_WORLDS.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
 /**
  * The engine material's original emissive colour, captured the first time the
@@ -221,6 +222,17 @@ export default function Spaceship() {
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
+  /** After a bounce off the sun, an asteroid or a world: the ship's position and velocity are already resolved. */
+  const impact = (time: number) => {
+    zeroGravity(); // momentum into the body would just hit it again
+    warpSuppressUntil.current = time + 0.45; // let the reflection push us away
+    if (time - lastImpactAt.current > 0.5) {
+      lastImpactAt.current = time;
+      shake.current = 0.5; // the camera skips it under reduced motion
+      soundManager.impact();
+      useSpaceStore.getState().bumpImpact();
+    }
+  };
   const edgeCut = useRef(false);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on an intercept course, so the first W press flies into a planet.
@@ -645,9 +657,9 @@ export default function Spaceship() {
       else grace.clear();
     }
     let wellCount = 0;
-    for (let i = 0; i < planets.length; i++) {
-      if (planets[i].name === grace.skip) continue;
-      const b = bodies[planets[i].name], src = PLANET_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
+    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
+      if (PLANETS_AND_WORLDS[i].key === grace.skip) continue;
+      const b = bodies[PLANETS_AND_WORLDS[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
       dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
     }
     const sunDst = ACTIVE_WELLS[wellCount++];
@@ -672,27 +684,25 @@ export default function Spaceship() {
       if (hit) {
         pos.current.set(hit.px, hit.py, hit.pz);
         vel.current.set(hit.vx, hit.vy, hit.vz);
-        zeroGravity(); // momentum into the sun would just hit it again
-        warpSuppressUntil.current = time + 0.45; // let the reflection push us away
-        if (time - lastImpactAt.current > 0.5) {
-          lastImpactAt.current = time;
-          shake.current = 0.5;
-          soundManager.impact();
-          store.bumpImpact();
-        }
+        impact(time);
         break;
       }
+    }
+    // The worlds' solid surfaces (worldCollide.ts): they move, so each is
+    // read from `bodies`, at its equatorial size. The rings are fly-through.
+    for (let i = 0; i < WORLDS.length; i++) {
+      if (resolveWorldContact(pos.current, vel.current, bodies[WORLDS[i].id], WORLDS[i].size)) { impact(time); break; }
     }
 
     _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);
     const totalSpeed = _total.length();
     beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
-    // Which planet well the ship is in now; leaving one fast is a slingshot.
+    // Which planet or world well the ship is in now; leaving one fast is a slingshot.
     let wellNow: string | null = null;
-    for (let i = 0; i < planets.length; i++) {
-      const b = bodies[planets[i].name];
-      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
+    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
+      const b = bodies[PLANETS_AND_WORLDS[i].key];
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = PLANETS_AND_WORLDS[i].key; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,

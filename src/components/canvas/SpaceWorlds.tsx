@@ -3,22 +3,23 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
-import { WORLDS } from "../../data/worlds";
-import { bodies, useSpaceStore } from "../../store/spaceStore";
+import { WORLDS, WORLD_MARK_COLOR } from "../../data/worlds";
+import { bodies, useSpaceStore, worldVisibility } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { ringRadii } from "../../utils/ringOptics";
 import { irradianceVsAU } from "../../utils/sunLight";
 import { worldMeshScale, worldSpinQuaternion } from "../../utils/worldSpin";
-import { makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
+import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
 import { patchSunShadow, worldSlot } from "./sunShadow";
-import { updateWorlds } from "./worldDrive";
+import { showChartedOrbits, updateWorlds } from "./worldDrive";
 
 /**
  * The five worlds (data/worlds.ts): they orbit, spin on their tilted axes and
  * are lit, shadowed and scanned like the planets, but they are not planets.
- * No orbit lock, zone, dossier, jump key or waypoint, and no guide ring or
- * gravity circle. Always mounted; charting (worldVisibility) never mounts.
+ * No orbit lock, zone, dossier, jump key or waypoint, and no gravity circle.
+ * Always mounted; charting (worldVisibility) never mounts: it only shows the
+ * world's faint orbit line.
  */
 
 /** Same tessellation as the planets (SpacePlanets' PLANET_SEGMENTS). */
@@ -64,6 +65,12 @@ const RING_SEGMENTS = 256;
  * own from its model matrix; the planet's ring-shadow patch reads this.
  */
 const ringNormal = { value: new THREE.Vector3(0, 1, 0) };
+
+/**
+ * A charted world's orbit line: the planets' dashed guide (SpacePlanets'
+ * orbit paths, the same program), fainter and steady, without their breathe.
+ */
+const ORBIT_LINE_OPACITY = 0.2;
 
 const mapUrl = (file: string) => assetUrl(`/models/${file}.webp`);
 const COLOR_URLS = WORLDS.map((w) => mapUrl(w.map));
@@ -137,6 +144,13 @@ export default function SpaceWorlds() {
     });
   }, [textures, gl]);
 
+  // One material for all five lines; each line is one draw call, shown once charted.
+  const orbitLineMat = useMemo(() => makeGuideLineMaterial({
+    color: WORLD_MARK_COLOR, opacity: ORBIT_LINE_OPACITY, dashes: 220, fadeIn: [10, 55],
+  }), []);
+  useEffect(() => () => orbitLineMat.dispose(), [orbitLineMat]);
+  const orbitLines = useRef<(THREE.Mesh | null)[]>(WORLDS.map(() => null));
+
   const posGroups = useRef<(THREE.Group | null)[]>(WORLDS.map(() => null));
   const spinGroups = useRef<(THREE.Group | null)[]>(WORLDS.map(() => null));
 
@@ -151,6 +165,7 @@ export default function SpaceWorlds() {
     }
     const r = spinGroups.current[RINGED];
     if (r) ringNormal.value.set(0, 1, 0).applyQuaternion(r.quaternion);
+    showChartedOrbits(orbitLines.current, worldVisibility);
   });
 
   return (
@@ -180,6 +195,18 @@ export default function SpaceWorlds() {
                 renderOrder={WORLD_RENDER_ORDER.atmosphere} />
             </>
           )}
+        </group>
+      ))}
+      {/* Orbit lines, tilted as SpacePlanets tilts the planets' (node, then
+          inclination); hidden until charted. */}
+      {WORLDS.map((w, i) => (
+        <group key={`orbit-${w.id}`} rotation={[0, w.orbit.node, 0]}>
+          <group rotation={[w.orbit.inclination, 0, 0]}>
+            <mesh ref={(m) => { orbitLines.current[i] = m; }} name={`WorldOrbit_${w.id}`} visible={false}
+              rotation={[-Math.PI / 2, 0, 0]} material={orbitLineMat}>
+              <ringGeometry args={[w.orbit.radius - 0.06, w.orbit.radius + 0.06, 512]} />
+            </mesh>
+          </group>
         </group>
       ))}
     </group>

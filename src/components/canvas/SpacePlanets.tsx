@@ -9,7 +9,7 @@ import {
   PORTAL_POS, planets, PROGRADE,
   ZONE_FACTOR, LOCK_RETAIN_FACTOR, SUN_RADIUS,
 } from "../../constants";
-import { DESTINATIONS } from "../../data/destinations";
+import { DESTINATIONS, ZONE_PLANETS } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
@@ -554,7 +554,7 @@ export default function SpacePlanets() {
     let activeZone: string | null = null;
     let lockActive = false;
 
-    planets.forEach((p) => {
+    ZONE_PLANETS.forEach((p) => {
       const b = bodies[p.name];
       const dist = Math.hypot(flight.x - b.x, flight.z - b.z, flight.y - b.y);
       if (lockedNow && zoneNow === p.name) {

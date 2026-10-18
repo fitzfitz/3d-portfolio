@@ -1,4 +1,4 @@
-import { AU, PROGRADE, sunOmega } from "../constants";
+import { AU, PROGRADE, planets, sunOmega } from "../constants";
 import type { OrbitalElements } from "../utils/orbits";
 import type { WorldTypeId } from "./worldTypes";
 
@@ -100,5 +100,22 @@ export const WORLDS: readonly WorldData[] = [
   },
 ];
 
+/**
+ * A world's marks, its radar blip and (once charted) its orbit line: one cool
+ * slate for all five, apart from the planets' colours, the dormant gate's grey
+ * and the crystals' gold.
+ */
+export const WORLD_MARK_COLOR = "#9fb8d0";
+
 const IDS: ReadonlySet<string> = new Set(WORLD_IDS);
 export const isWorld = (id: string): id is WorldId => IDS.has(id);
+
+/**
+ * Every body with a flight well (gravityWell.ts planetWell), a slingshot and
+ * a crystal and comet keep-out: the planets, then the worlds, keyed as in
+ * `bodies` (a planet's name, a world's id).
+ */
+export const PLANETS_AND_WORLDS: readonly { key: string; size: number; orbit: OrbitalElements }[] = [
+  ...planets.map((p) => ({ key: p.name, size: p.size, orbit: p.orbit })),
+  ...WORLDS.map((w) => ({ key: w.id, size: w.size, orbit: w.orbit })),
+];
