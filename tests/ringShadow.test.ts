@@ -16,11 +16,12 @@ describe("SUN_SHADOW_CORE_GLSL (the shared coverage maths)", () => {
 describe("makePlanetRingMaterial with a shadow slot", () => {
   it("is shadowed by that slot through the shared core, down to the night floor", () => {
     const m = makePlanetRingMaterial("#7dffc0", 18.4, 25.6, 0);
-    expect(m.defines.SUN_SHADOW_RING_SLOT).toBe(0);
+    expect(m.defines.SUN_SHADOW_RING).toBeDefined();
+    expect(m.uniforms.uRingSlot.value).toBe(0);
     expect(m.uniforms.uOccluders).toBe(sunShadowUniforms.uOccluders);
     expect(m.uniforms.uNightFloor.value).toBe(RING_NIGHT_FLOOR.linear);
     expect(m.fragmentShader).toContain(SUN_SHADOW_CORE_GLSL);
-    expect(m.fragmentShader).toMatch(/mix\(\s*uNightFloor\s*,\s*1\.0\s*,\s*sunShadowVisibility\(\s*vWorld\s*,\s*uOccluders\[\s*SUN_SHADOW_RING_SLOT\s*\]\s*\)\s*\)/);
+    expect(m.fragmentShader).toMatch(/mix\(\s*uNightFloor\s*,\s*1\.0\s*,\s*sunShadowVisibility\(\s*vWorld\s*,\s*uOccluders\[\s*uRingSlot\s*\]\s*\)\s*\)/);
     expect(m.vertexShader).toMatch(/vWorld\s*=\s*\(\s*modelMatrix\s*\*/);
     // Measured floors (guideLine.ts): linear PostFX buffer, display-encoded low-perf.
     expect(RING_NIGHT_FLOOR.linear).toBeCloseTo(0.09, 2);
@@ -29,13 +30,17 @@ describe("makePlanetRingMaterial with a shadow slot", () => {
 
   it("has no shadow without a slot (the define gates it)", () => {
     const m = makePlanetRingMaterial("#7dffc0", 18.4, 25.6);
-    expect(m.defines.SUN_SHADOW_RING_SLOT).toBeUndefined();
-    expect(m.fragmentShader).toContain("#ifdef SUN_SHADOW_RING_SLOT");
+    expect(m.defines.SUN_SHADOW_RING).toBeUndefined();
+    expect(m.fragmentShader).toContain("#ifdef SUN_SHADOW_RING");
   });
 
-  it("keeps a distinct program per slot", () => {
+  it("shares one program across slots: the slot is a uniform, not a define", () => {
     const a = makePlanetRingMaterial("#7dffc0", 18.4, 25.6, 0);
-    const b = makePlanetRingMaterial("#7dffc0", 18.4, 25.6, 1);
-    expect(a.defines.SUN_SHADOW_RING_SLOT).not.toBe(b.defines.SUN_SHADOW_RING_SLOT);
+    const b = makePlanetRingMaterial("#7dffc0", 18.4, 25.6, 9);
+    expect(a.defines).toEqual(b.defines);
+    expect(a.fragmentShader).toBe(b.fragmentShader);
+    expect(a.uniforms.uRingSlot.value).toBe(0);
+    expect(b.uniforms.uRingSlot.value).toBe(9);
+    expect(a.fragmentShader).toMatch(/uniform int uRingSlot;/);
   });
 });

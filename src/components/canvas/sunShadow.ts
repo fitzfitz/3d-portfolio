@@ -1,6 +1,8 @@
 import * as THREE from "three";
-import { SUN_RADIUS } from "../../constants";
-import type { Occluder } from "../../utils/sunOcclusion";
+import { planets, SUN_RADIUS } from "../../constants";
+import { MOONS } from "../../data/moons";
+import { WORLDS, type WorldId } from "../../data/worlds";
+import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
 /**
  * Analytic sun shadows (F4). Bodies are spheres and the sun is a disc of
@@ -12,7 +14,8 @@ import type { Occluder } from "../../utils/sunOcclusion";
  * and scales only the sun's light by it, never the engine glow or the portal.
  *
  * - "fragment": coverage per fragment against `uOccluders` (for planets,
- *   whose discs a moon's shadow can cross part of).
+ *   whose discs a moon's shadow can cross part of). The loop skips the body
+ *   the fragment lies on by distance, so no program depends on a body's slot.
  * - "object": one factor per material, `sunVis`, written on the CPU from
  *   `sunVisibility` (for moons and the ship, small enough to be all in or out).
  *
@@ -24,7 +27,41 @@ import type { Occluder } from "../../utils/sunOcclusion";
  */
 
 /** Occluder slots in the shared uniform array. */
-export const MAX_OCCLUDERS = 8;
+export const MAX_OCCLUDERS = 16;
+
+/**
+ * The worlds that hold a GPU slot, in WORLDS order. A body only shadows
+ * receivers farther from the sun than itself, so the outermost world (w-blue)
+ * needs none; it still shadows the ship and the sun's glare on the CPU.
+ */
+const OUTERMOST_WORLD = WORLDS.reduce((a, w) => (w.orbit.radius > a.orbit.radius ? w : a));
+const SLOTTED_WORLDS: readonly WorldId[] = WORLDS.filter((w) => w !== OUTERMOST_WORLD).map((w) => w.id);
+
+/**
+ * Fixed occluder slots (F4, docs/UNIVERSE-RULES.md L20): the planets in
+ * `planets` order, the moons in MOONS order, then the worlds in WORLDS order
+ * less the outermost (w-rock 8, w-ringed 9, w-tilted 10, w-dwarf 11). Fixed,
+ * never a per-frame nearest-N choice, which would make shadows pop.
+ */
+export const OCCLUDER_SLOTS = {
+  planets: { first: 0, count: planets.length },
+  moons: { first: planets.length, count: MOONS.length },
+  worlds: { first: planets.length + MOONS.length, count: SLOTTED_WORLDS.length },
+} as const;
+
+/** World `id`'s occluder slot, or -1 for the outermost world, which has none. */
+export function worldSlot(id: WorldId): number {
+  const i = SLOTTED_WORLDS.indexOf(id);
+  return i < 0 ? -1 : OCCLUDER_SLOTS.worlds.first + i;
+}
+
+/**
+ * The self-skip, in radii: an occluder whose centre is closer to the point
+ * than this is the body the point lies on (or its cloud shell, at 1.03 R).
+ * Its night side is already dark from N·L, and without the skip its surface
+ * would sit in its own umbra.
+ */
+export const SELF_SKIP_RADII = 1.05;
 
 /**
  * Shared by every patched material, so one write reaches all of them.
@@ -88,6 +125,7 @@ export function updateSunView(camera: THREE.Camera): void {
 export const SUN_SHADOW_CORE_GLSL = /* glsl */ `
 #define SUN_SHADOW_MAX ${MAX_OCCLUDERS}
 #define SUN_SHADOW_RADIUS ${SUN_RADIUS.toFixed(1)}
+#define SUN_SHADOW_SELF_SKIP ${SELF_SKIP_RADII.toFixed(2)}
 uniform vec4 uOccluders[ SUN_SHADOW_MAX ];
 uniform int uOccluderCount;
 
@@ -126,9 +164,8 @@ float sunShadowVisibility( vec3 p, vec4 o ) {
 /**
  * The fragment-shader chunk for lit materials, inserted after
  * `#include <common>`: the core above, plus the sun-light test and the
- * all-occluder loop. It needs `SUN_SHADOW_SELF` (-1 for none) defined before
- * it. `sunShadowCoverage` returns the visible fraction of the sun (1 clear,
- * 0 hidden), mirroring `sunVisibility`.
+ * all-occluder loop. `sunShadowCoverage` returns the visible fraction of the
+ * sun (1 clear, 0 hidden); its CPU mirror is `sunShadowCoverage` below.
  */
 export const SUN_SHADOW_GLSL = /* glsl */ `${SUN_SHADOW_CORE_GLSL}
 uniform vec3 uSunShadowView;
@@ -147,7 +184,7 @@ float sunShadowCoverage( vec3 p ) {
 	float visible = 1.0;
 	for ( int k = 0; k < SUN_SHADOW_MAX; k ++ ) {
 		if ( k >= uOccluderCount ) break;
-		if ( k == SUN_SHADOW_SELF ) continue;
+		if ( length( uOccluders[ k ].xyz - p ) < SUN_SHADOW_SELF_SKIP * uOccluders[ k ].w ) continue;
 		visible *= 1.0 - sunShadowCoverFrom( p, u, sunDist, sunAng, uOccluders[ k ] );
 	}
 	return visible;
@@ -159,6 +196,14 @@ vec3 sunShadowWorld( vec3 viewPos ) {
 	return ( viewPos - viewMatrix[ 3 ].xyz ) * mat3( viewMatrix );
 }
 `;
+
+/**
+ * The CPU mirror of the GLSL `sunShadowCoverage` loop, self-skip included:
+ * the visible fraction of the sun at `p` against `bodies`.
+ */
+export function sunShadowCoverage(p: { x: number; y: number; z: number }, bodies: readonly Occluder[]): number {
+  return sunVisibility(p, bodies, SUN_RADIUS, SELF_SKIP_RADII);
+}
 
 /** Where the gate goes: right after three fills `directLight` for point light i. */
 const POINT_LIGHT_ANCHOR = "getPointLightInfo( pointLight, geometryPosition, directLight );";
@@ -187,9 +232,8 @@ const patched = new WeakMap<THREE.Material, Handle>();
  * with any `onBeforeCompile`, `onBeforeRender` and `customProgramCacheKey`
  * the material already has. Patch a material once.
  *
- * `selfIndex` (fragment mode) is the occluder slot holding the body this
- * material is drawn on; it is skipped, as the body's own night side is already
- * dark from N·L. Returns `sunVis` in object mode: the CPU writes the visible
+ * Fragment mode needs no slot: the loop skips the body the fragment lies on
+ * (`SELF_SKIP_RADII`). Returns `sunVis` in object mode: the CPU writes the visible
  * fraction there (it starts at 1, a clear sun). It belongs to this material,
  * so objects sharing a material share it; pass `opts.sunVis` to make several
  * materials (the ship's hull parts) read one shared value instead.
@@ -199,11 +243,10 @@ const patched = new WeakMap<THREE.Material, Handle>();
 export function patchSunShadow(
   material: THREE.Material,
   mode: Mode,
-  opts?: { selfIndex?: number; sunVis?: { value: number } },
+  opts?: { sunVis?: { value: number } },
 ): Handle {
   const existing = patched.get(material);
   if (existing) return existing;
-  const selfIndex = mode === "fragment" ? (opts?.selfIndex ?? -1) : -1;
   const sunVis = mode === "object" ? (opts?.sunVis ?? { value: 1 }) : undefined;
 
   const prevCompile = material.onBeforeCompile;
@@ -222,8 +265,7 @@ export function patchSunShadow(
     shader.uniforms.uSunShadowView = sunShadowUniforms.uSunView;
     if (sunVis) shader.uniforms.uSunVis = sunVis;
 
-    const header =
-      `#define SUN_SHADOW_SELF ${selfIndex}\n` + SUN_SHADOW_GLSL + (sunVis ? "uniform float uSunVis;\n" : "");
+    const header = SUN_SHADOW_GLSL + (sunVis ? "uniform float uSunVis;\n" : "");
     const lights = THREE.ShaderChunk.lights_fragment_begin.replace(
       POINT_LIGHT_ANCHOR,
       `${POINT_LIGHT_ANCHOR}\n\t\t${GATE[mode]}`,
@@ -244,7 +286,7 @@ export function patchSunShadow(
     updateSunView(camera);
   };
 
-  material.customProgramCacheKey = () => `${prevKey()}|sunShadow:${mode}:${selfIndex}`;
+  material.customProgramCacheKey = () => `${prevKey()}|sunShadow:${mode}`;
 
   const handle: Handle = sunVis ? { sunVis } : {};
   patched.set(material, handle);

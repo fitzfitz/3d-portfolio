@@ -87,8 +87,8 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  *
  * With a shadow slot (F4, docs/UNIVERSE-RULES.md L20) the part of the ring in
  * its planet's shadow darkens: the shared disc-coverage maths of sunShadow.ts
- * against that one occluder slot, from 1 in full sun down to RING_NIGHT_FLOOR
- * in the umbra.
+ * against that one occluder slot (the uniform `uRingSlot`), from 1 in full sun
+ * down to RING_NIGHT_FLOOR in the umbra.
  */
 const RING_VERT = /* glsl */ `
   varying float vR;
@@ -100,9 +100,10 @@ const RING_VERT = /* glsl */ `
   }
 `;
 const RING_FRAG = /* glsl */ `
-  #ifdef SUN_SHADOW_RING_SLOT
+  #ifdef SUN_SHADOW_RING
   ${SUN_SHADOW_CORE_GLSL}
   uniform float uNightFloor;
+  uniform int uRingSlot;
   varying vec3 vWorld;
   #endif
   uniform vec3 uColor;
@@ -125,10 +126,10 @@ const RING_FRAG = /* glsl */ `
     float division = 1.0 - 0.85 * exp(-dv * dv);
     float a = uOpacity * bands(t) * edge * division;
     vec3 col = mix(uColor, vec3(0.92, 1.0, 0.95), 0.35 * bands(t + 0.3));
-    #ifdef SUN_SHADOW_RING_SLOT
+    #ifdef SUN_SHADOW_RING
     // In the planet's shadow only what the planet's surface keeps from
     // ambient light is left (F4).
-    col *= mix( uNightFloor, 1.0, sunShadowVisibility( vWorld, uOccluders[ SUN_SHADOW_RING_SLOT ] ) );
+    col *= mix( uNightFloor, 1.0, sunShadowVisibility( vWorld, uOccluders[ uRingSlot ] ) );
     #endif
     // Lit matter, not an instrument: it follows exposure like its planet (F3),
     // in low-perf too, where only uLitExposure applies it.
@@ -150,7 +151,7 @@ export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
 
 /**
  * `shadowSlot`: the planet's eclipse occluder slot (sunShadow.ts). It is a
- * compile-time define, so each slot is its own program, compiled at warm-up.
+ * uniform, so every shadowed ring shares one program.
  */
 export function makePlanetRingMaterial(
   color: THREE.ColorRepresentation, inner: number, outer: number, shadowSlot?: number,
@@ -161,7 +162,7 @@ export function makePlanetRingMaterial(
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    defines: shadowSlot === undefined ? {} : { SUN_SHADOW_RING_SLOT: shadowSlot },
+    defines: shadowSlot === undefined ? {} : { SUN_SHADOW_RING: "" },
     uniforms: {
       uColor: { value: new THREE.Color(color) },
       uInner: { value: inner },
@@ -171,6 +172,7 @@ export function makePlanetRingMaterial(
       uOccluders: sunShadowUniforms.uOccluders,
       uOccluderCount: sunShadowUniforms.uOccluderCount,
       uNightFloor: { value: RING_NIGHT_FLOOR.linear },
+      uRingSlot: { value: shadowSlot ?? -1 },
       uLitExposure: litExposure,
     },
   });

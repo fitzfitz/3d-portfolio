@@ -43,15 +43,15 @@ interface CloudLayerProps {
   /** rotation in rad/s (planet surface speeds are ~0.08-0.16; pass ~1.4x that) */
   speed?: number;
   /**
-   * The planet's eclipse occluder slot (sunShadow.ts). When set, the clouds
-   * darken in a moon's shadow like the surface under them; without it, lit
-   * clouds drawn over the shadow wash it out. The slot is skipped, as the
-   * surface skips it.
+   * Eclipse shadows (sunShadow.ts). When set, the clouds darken in a moon's
+   * shadow like the surface under them; without it, lit clouds drawn over the
+   * shadow wash it out. At 1.03 R the shell is inside the self-skip, so its
+   * own planet never shadows it, as it never shadows its surface.
    */
-  shadowSlot?: number;
+  sunShadow?: boolean;
 }
 
-export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, shadowSlot }: CloudLayerProps) {
+export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, sunShadow = false }: CloudLayerProps) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame((state) => {
     if (ref.current) ref.current.rotation.y = ambientTime(state.clock.getElapsedTime()) * speed;
@@ -67,9 +67,9 @@ export default function CloudLayer({ radius, tint = "#ffffff", speed = 0.17, sha
       roughness: 1,
       metalness: 0,
     });
-    if (shadowSlot !== undefined) patchSunShadow(m, "fragment", { selfIndex: shadowSlot });
+    if (sunShadow) patchSunShadow(m, "fragment");
     return m;
-  }, [tint, shadowSlot]);
+  }, [tint, sunShadow]);
   useEffect(() => () => material.dispose(), [material]);
   return (
     <mesh name="CloudLayer" ref={ref} material={material}>

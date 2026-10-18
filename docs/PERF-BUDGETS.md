@@ -133,6 +133,34 @@ measured again: 4.43-4.44 vs 3.57 ms, no change on the M5, whose trig units are
 fast. It is kept for slower GPUs because it is exact (unit-tested against
 `sunVisibility`). The low-perf frame keeps about 5.5 ms of headroom at 100 Hz.
 
+**Sixteen occluder slots, measured 2026-10-18 (New Worlds C1, L20).**
+`MAX_OCCLUDERS` went 8 → 16 with fixed slots (planets 0-2, moons 3-7, worlds
+8-11; the outermost world has none), and the per-body `SUN_SHADOW_SELF` define
+became a distance skip in the loop, so bodies share programs. Programs: the
+`programs.probe.mjs` tour read 54 before and 54 after, adding 0 both times;
+the ring's slot is now a uniform. Same method and machine as above (Apple M5,
+ANGLE Metal, Chrome 155, Playwright, 1512x806 at DPR 1, 100 Hz, low-perf
+forced, the ship parked 25u from Ruangrapi's centre on its day side, facing
+it). Slots 8-15 were filled by hand with the four slotted worlds at their
+orbits and the same four a quarter-orbit on, so 16 means sixteen live
+occluders. Each count ran 10 s after a 1.5 s settle, alternated 8/16 three
+times, then 0/8/16 twice for 6 s each.
+
+| `countOverride` | frame p50 / p99 (rAF) | GPU p50 / p99 (scene render, timer query) |
+|---|---|---|
+| 0 (shadows off) | — | 2.58 / 2.68-2.89 ms |
+| 8 (today's planets and moons) | 10.0 / 12.0 ms | 3.12-3.13 / 3.20-3.23 ms |
+| 16 (every slot) | 10.0 / 12.0 ms | 3.67-3.68 / 3.82-4.42 ms |
+
+Frame time stays pinned to vsync. Going from 8 to 16 occluders costs +0.55 ms
+GPU p50, steady in every alternation. That is 0.05 ms over the spec's
+≤ +0.5 ms estimate, and well under the 1 ms trigger. The p99 tail grows by up
+to 1.2 ms in some windows (one 0/8/16 repeat read +0.6 ms). Play still writes
+8 for now: the worlds' slots stay unwritten until the worlds render. The
+scene render reads cheaper than in the F4 table above (3.12 against 4.43 ms
+with 8 on). The cause was not investigated. The tables come from separate
+sessions on different branches, so compare within a table, not across.
+
 The ceilings above are deliberately **not** lowered to match. Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,
 before warm-up runs; warm-up then rightly compiles for the screen, and the

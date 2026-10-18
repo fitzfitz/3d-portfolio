@@ -21,20 +21,21 @@ import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from 
 import { assetUrl } from "../../utils/assetUrl";
 import { MOON_TINTS } from "../../data/moonTints";
 import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moons";
-import { MAX_OCCLUDERS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
+import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
 import { FUXX_ALBEDO_LIFT } from "../../utils/sunLight";
 
 /**
- * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20), fixed so a
- * planet's own slot can be compiled out of its shader: the planets first, in
- * `planets` order, then the moons in MOONS order.
+ * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20): the fixed slots of
+ * sunShadow.ts's OCCLUDER_SLOTS, planets then moons. The worlds' slots after
+ * them are not written yet, so the shaders read only these.
  */
-const MOON_SLOT0 = planets.length;
-const OCCLUDER_COUNT = Math.min(MAX_OCCLUDERS, planets.length + MOONS.length);
+const PLANET_SLOT0 = OCCLUDER_SLOTS.planets.first;
+const MOON_SLOT0 = OCCLUDER_SLOTS.moons.first;
+const OCCLUDER_COUNT = OCCLUDER_SLOTS.moons.first + OCCLUDER_SLOTS.moons.count;
 /** The planets' CPU slots: what a moon's sunVis is measured against. */
-const PLANET_OCCLUDERS = occluders.slice(0, planets.length);
+const PLANET_OCCLUDERS = occluders.slice(PLANET_SLOT0, PLANET_SLOT0 + OCCLUDER_SLOTS.planets.count);
 const MOON_SPEEDS = MOONS.map(moonOrbitSpeed);
 const MOON_RADII = MOONS.map((m) => m.size * planets[m.planet].size);
 /** Moon orbit groups and sunVis uniforms, by MOONS index; SpacePlanets' frame drives both. */
@@ -345,7 +346,7 @@ export default function SpacePlanets() {
     color: p.color, opacity: 0.4, dashes: 48, fadeIn: [4, 9], fadeOut: [28, 55],
   })), []);
   const planetRingMat = useMemo(
-    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, 0), []);
+    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, PLANET_SLOT0), []);
   useEffect(() => () => [...orbitRingMats, ...gravityMats, planetRingMat].forEach((m) => m.dispose()),
     [orbitRingMats, gravityMats, planetRingMat]);
   // The ring's umbra floor is measured per tier (guideLine.ts): the PostFX
@@ -376,7 +377,7 @@ export default function SpacePlanets() {
 
   // Surface materials, built here rather than as JSX so that no re-render can
   // re-apply an `onBeforeCompile` prop over the composed shadow patch. Each is
-  // patched in fragment mode with its own slot skipped (selfIndex): its night
+  // patched in fragment mode, which skips its own body by distance: its night
   // side is already dark from N·L. Ruangrapi composes with its city lights.
   const planetMats = useMemo(() => {
     const ruangrapi = new THREE.MeshStandardMaterial({
@@ -392,7 +393,7 @@ export default function SpacePlanets() {
     // Albedo lift (I1, sunLight.ts): the baked map is ~1.4% median, far darker than any body.
     fuxx.color.setScalar(FUXX_ALBEDO_LIFT);
     const mats = [ruangrapi, portfolio, fuxx];
-    mats.forEach((m, i) => patchSunShadow(m, "fragment", { selfIndex: i }));
+    mats.forEach((m) => patchSunShadow(m, "fragment"));
     return mats;
   }, [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow, cityLights]);
   useEffect(() => () => planetMats.forEach((m) => m.dispose()), [planetMats]);
@@ -456,12 +457,12 @@ export default function SpacePlanets() {
       const g = planetGroupRefs.current[i];
       if (g) g.position.set(pos.x, pos.y, pos.z);
       setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase(), p.size);
-      setOccluder(i, pos.x, pos.y, pos.z, p.size);
+      setOccluder(PLANET_SLOT0 + i, pos.x, pos.y, pos.z, p.size);
     }
 
     // 0.5. Moons: orbit angle, occluder slot and sunVis from one angle, after
     // the planets have moved, so the slots match what this frame draws.
-    for (let k = 0; k < MOONS.length && MOON_SLOT0 + k < OCCLUDER_COUNT; k++) {
+    for (let k = 0; k < MOONS.length; k++) {
       const m = MOONS[k];
       const angle = m.phase + time * MOON_SPEEDS[k];
       const g = moonOrbitGroups[k];
@@ -595,7 +596,7 @@ export default function SpacePlanets() {
           <sphereGeometry args={[planets[0].size, PLANET_SEGMENTS, PLANET_SEGMENTS]} />
         </mesh>
         <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
-        <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} shadowSlot={0} />
+        <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} sunShadow />
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
         {/* Planetary ring: banded, translucent, with a division (guideLine.ts) */}

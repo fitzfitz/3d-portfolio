@@ -214,44 +214,46 @@ async function eclipses(page, checks) {
   checks.check("occluder slots track the moons", moons.moons.every((m) => m.err < 0.01 && m.dr < 1e-6),
     moons.moons.map((m) => `${m.id} ${m.err.toFixed(4)}`).join(", "));
 
-  // Each planet's own slot is skipped: its compiled program says so. Reading
-  // the program in use (not the material's key function) also proves the
-  // patch survived React and is what three actually compiled.
+  // Each planet skips its own body by distance, in one program per material
+  // kind: its compiled program says so. Reading the program in use (not the
+  // material's key function) also proves the patch survived React and is
+  // what three actually compiled.
   const programs = await page.evaluate(async () => {
     const { planets } = await import("/src/constants.ts");
     const { MOONS } = await import("/src/data/moons.ts");
     const gl = window.__fitz.gl, ctx = gl.getContext();
+    const SKIP = "if ( length( uOccluders[ k ].xyz - p ) < SUN_SHADOW_SELF_SKIP * uOccluders[ k ].w ) continue;";
     const used = (mat) => {
       const prog = gl.properties.get(mat).currentProgram;
       return prog ? { key: prog.cacheKey, src: ctx.getShaderSource(prog.fragmentShader) ?? "" } : { key: "", src: "" };
     };
     return {
-      planets: planets.map((p, i) => {
+      planets: planets.map((p) => {
         const mesh = window.__fitz.scene.getObjectByName(`Planet_${p.name}`);
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return { name: p.name, key: key.includes(`|sunShadow:fragment:${i}`), self: src.includes(`#define SUN_SHADOW_SELF ${i}\n`),
+        return { name: p.name, key: key.endsWith("|sunShadow:fragment"), self: src.includes(SKIP),
           gate: src.includes("sunShadowCoverage( sunShadowWorld( geometryPosition ) )"), cityLights: src.includes("uniform vec3 uSunView;") };
       }),
       clouds: (() => {
         const mesh = window.__fitz.scene.getObjectByName("CloudLayer");
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return key.includes("|sunShadow:fragment:0") && src.includes("#define SUN_SHADOW_SELF 0\n");
+        return key.endsWith("|sunShadow:fragment") && src.includes(SKIP);
       })(),
       moons: MOONS.map((m) => {
         const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+        return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
       }),
       ship: window.__fitz.shipShadow.materials.map((mat) => {
         const { key, src } = used(mat);
-        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+        return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
       }),
     };
   });
-  checks.check("a planet does not shadow itself (its own slot is compiled out)",
+  checks.check("a planet does not shadow itself (its own body is skipped by distance)",
     programs.planets.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.planets));
   checks.check("Ruangrapi keeps its night-side city lights alongside the shadow", programs.planets[0]?.cityLights === true);
-  checks.check("Ruangrapi's clouds darken in the same shadows (its slot skipped)", programs.clouds === true);
+  checks.check("Ruangrapi's clouds darken in the same shadows (their planet skipped)", programs.clouds === true);
   checks.check("every moon draws with its object-mode shadow program", programs.moons.every(Boolean), JSON.stringify(programs.moons));
   checks.check("every ship hull material draws with its shadow program",
     programs.ship.length > 0 && programs.ship.every(Boolean), `materials=${programs.ship.length} ${JSON.stringify(programs.ship)}`);
