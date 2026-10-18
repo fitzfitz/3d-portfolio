@@ -571,15 +571,27 @@ describe("charting", () => {
 });
 
 it("charting lines queue behind the scan report on the radio", async () => {
+  // chartWorld persists to fitz-charted: stub storage as the charting describe
+  // does, so the test never writes the real (or a missing) localStorage.
+  const stored: Record<string, string> = {};
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => stored[k] ?? null,
+    setItem: (k: string, v: string) => { stored[k] = v; },
+  });
   vi.useFakeTimers();
-  const s = useSpaceStore.getState();
-  s.sendBroadcast("SCAN[WORLD_AIRLESS ROCK]");
-  s.chartWorld("w-rock");
-  await Promise.resolve();
-  expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN[WORLD_AIRLESS ROCK]");
-  vi.advanceTimersByTime(4500);
-  expect(useSpaceStore.getState().broadcast?.text).toBe(chartLine("w-rock", 1));
-  vi.useRealTimers();
+  try {
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("SCAN[WORLD_AIRLESS ROCK]");
+    s.chartWorld("w-rock");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN[WORLD_AIRLESS ROCK]");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toBe(chartLine("w-rock", 1));
+    expect(JSON.parse(stored["fitz-charted"])).toEqual([{ id: "w-rock", at: todayStamp() }]);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });
 
 describe("charted at module load", () => {

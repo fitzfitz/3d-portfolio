@@ -35,6 +35,10 @@ describe("worldReport: every number true where the world orbits", () => {
         expect(report).toContain(`${w.namesake.toUpperCase()} ITSELF (${n.distanceAU.toFixed(2)} AU): ${celsius(n.tempC)} EQUILIBRIUM`);
       });
 
+      it("says its size is compressed, with no number (sizes are P3, not to scale)", () => {
+        expect(report).toContain(`${w.namesake.toUpperCase()}-TYPE (SIZE COMPRESSED)`);
+      });
+
       it("states its fixed type facts", () => {
         for (const f of WORLD_FACTS[w.id]) expect(report).toContain(f);
       });

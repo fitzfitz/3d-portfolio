@@ -40,14 +40,15 @@ export const WORLD_FACTS: Readonly<Record<WorldId, readonly string[]>> = {
 const celsius = (c: number): string => `${Math.round(c)}`.replace("-", "−") + " °C";
 
 /**
- * A world's scan report: its namesake type, its own equilibrium temperature
+ * A world's scan report: its namesake type (size compressed), its own equilibrium temperature
  * and sunlight (worldPhysics, from its orbit and Bond albedo), the namesake's
  * own value labelled as the real planet's, its type facts and its orbit in
  * real units. Move the world and the report stays true.
  */
 export function worldReport(w: WorldData): string {
   const r = w.orbit.radius;
-  const type = `${w.namesake.toUpperCase()}-TYPE`;
+  // Sizes keep the real order but not the real ratios (P3): no number here.
+  const type = `${w.namesake.toUpperCase()}-TYPE (SIZE COMPRESSED)`;
   const own = `EQUILIBRIUM ${celsius(kToC(equilibriumTempK(r, w.bondAlbedo)))} · SUNLIGHT ${fluxEarth(r).toFixed(2)}× EARTH'S`;
   const ref = w.namesakeRef;
   const namesake = `${w.namesake.toUpperCase()} ITSELF (${ref.distanceAU.toFixed(2)} AU): ${celsius(ref.tempC)} EQUILIBRIUM`;
