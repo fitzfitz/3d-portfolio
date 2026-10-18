@@ -6,7 +6,8 @@ import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./ha
 // (srgb-linear variants of anything not on screen at load). After that, the
 // sun still compiled one more about one run in four, from a since-removed
 // post pass that flipped its material transparent after warm-up.
-// The tour stops include the shipyard and the dormant gate.
+// The tour stops include the shipyard and the dormant gate, and every world,
+// charted once warm-up is over.
 //
 // Low-perf is locked off before load, as on a real GPU: headless SwiftShader
 // otherwise declines to low-perf while assets load, warm-up then rightly
@@ -21,6 +22,12 @@ export default async function run() {
 
     const keys = () => page.evaluate(() => window.__fitz.gl.info.programs.map((p) => p.cacheKey));
     const before = await keys();
+    // Chart every world after warm-up, so their orbit lines first show during
+    // the tour (charting toggles visibility only: it must compile nothing).
+    await page.evaluate(async () => {
+      const { WORLD_IDS } = await import("/src/data/worlds.ts");
+      for (const id of WORLD_IDS) window.__fitz.store.getState().chartWorld(id);
+    });
     const stops = await page.evaluate(async () => {
       const { STATION_POS, BUOYS } = await import("/src/data/careerTrail.ts");
       const { SHIPYARD_POS } = await import("/src/data/shipyard.ts");
@@ -53,7 +60,7 @@ export default async function run() {
     await settle(page, 1500);
 
     const added = (await keys()).filter((k) => !before.includes(k));
-    checks.check("a tour of every landmark and a warp compile no new shader program", added.length === 0,
+    checks.check("a tour of every landmark, charting every world and a warp compile no new shader program", added.length === 0,
       `before=${before.length} added=${added.length} ${JSON.stringify(added.map((k) => k.split(",").slice(0, 3).join(",")))}`);
   });
 }

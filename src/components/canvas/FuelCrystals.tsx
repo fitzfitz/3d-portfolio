@@ -68,7 +68,7 @@ export default function FuelCrystals() {
 
   /** Places to keep clear of, rebuilt per spawn from live positions: planets and worlds alike. */
   const avoidFor = () => crystalAvoidPoints(
-    PLANETS_AND_WORLDS.map((p) => ({ ...bodies[p.key], size: p.size })),
+    PLANETS_AND_WORLDS.map((p) => ({ ...bodies[p.key], size: p.size, reach: p.reach })),
     CRYSTAL_LANDMARKS,
     flight,
   );

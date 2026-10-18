@@ -132,3 +132,31 @@ describe("CRYSTAL_LANDMARKS", () => {
     expect(isRejectedSpawn(GATE_POS[0] + 14, GATE_POS[1], GATE_POS[2], avoid)).toBe(true);
   });
 });
+
+describe("crystal keep-out around a ringed world", () => {
+  it("covers the ring reach (2.3 × size) when it lies beyond the lock-retain radius", async () => {
+    const { RING_REACH_FACTOR } = await import("../src/utils/ringOptics");
+    const { CRYSTAL_PICKUP_RADIUS } = await import("../src/utils/crystalField");
+    const { LOCK_RETAIN_FACTOR } = await import("../src/constants");
+    const { PLANETS_AND_WORLDS } = await import("../src/data/worlds");
+    const ringed = PLANETS_AND_WORLDS.find((b) => b.key === "w-ringed")!;
+    expect(ringed.reach).toBeCloseTo(ringed.size * RING_REACH_FACTOR);
+    expect(ringed.reach).toBeGreaterThan(ringed.size * LOCK_RETAIN_FACTOR);
+    // Far from the bands, the landmarks and the ship.
+    const at = { x: 300, y: 0, z: 0 };
+    const avoid = crystalAvoidPoints([{ ...at, size: ringed.size, reach: ringed.reach }], [], { x: -300, y: 0, z: 0 });
+    // Inside the rings, past the lock-retain radius: rejected.
+    expect(isRejectedSpawn(at.x + ringed.size * 2.2, 0, 0, avoid)).toBe(true);
+    expect(isRejectedSpawn(at.x + ringed.reach + CRYSTAL_PICKUP_RADIUS - 0.1, 0, 0, avoid)).toBe(true);
+    expect(isRejectedSpawn(at.x + ringed.reach + CRYSTAL_PICKUP_RADIUS + 0.1, 0, 0, avoid)).toBe(false);
+  });
+
+  it("keeps a body without rings at its lock-retain radius", async () => {
+    const { CRYSTAL_PICKUP_RADIUS } = await import("../src/utils/crystalField");
+    const { LOCK_RETAIN_FACTOR } = await import("../src/constants");
+    const { PLANETS_AND_WORLDS } = await import("../src/data/worlds");
+    for (const b of PLANETS_AND_WORLDS) if (b.key !== "w-ringed") expect(b.reach, b.key).toBe(b.size);
+    const avoid = crystalAvoidPoints([{ x: 300, y: 0, z: 0, size: 12, reach: 12 }], [], { x: -300, y: 0, z: 0 });
+    expect(avoid[0].r).toBe(12 * LOCK_RETAIN_FACTOR + CRYSTAL_PICKUP_RADIUS);
+  });
+});

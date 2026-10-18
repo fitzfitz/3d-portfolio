@@ -6,7 +6,7 @@ const liveText = (page) => page.evaluate(() => document.querySelector("[aria-liv
 const ready = (page) => page.waitForFunction(() => window.__fitz?.store.getState().sceneReady, { timeout: 60_000 });
 
 async function desktop(page, checks) {
-  await page.evaluate(() => ["fitz-logbook", "fitz-plume", "fitz-dossiers", "fitz-shards"].forEach((k) => localStorage.removeItem(k)));
+  await page.evaluate(() => ["fitz-logbook", "fitz-plume", "fitz-dossiers", "fitz-shards", "fitz-charted"].forEach((k) => localStorage.removeItem(k)));
   await page.reload();
   await ready(page);
   checks.check("fresh tracker shows 0/11 and the first essential", /LOGBOOK 0\/11.*RUANGRAPI/.test(await tracker(page)), await tracker(page));
@@ -82,6 +82,44 @@ async function desktop(page, checks) {
   checks.check("progress survives a reload", st.badges.length === 2 && /LOGBOOK 4\/11/.test(await tracker(page)), await tracker(page));
   checks.check("a tampered plume for a locked badge falls back to stock", st.plumeColor === "stock", `plume=${st.plumeColor}`);
   checks.check("a reload announces nothing for old progress", !/LOGBOOK \/\/|TOUR COMPLETE/.test(await liveText(page)), await liveText(page));
+
+  // Charting: fly next to the salt-spotted dwarf and hold scan. It orbits, so
+  // the ship is kept beside it (outside its surface, inside scan range).
+  checks.check("an uncharted visitor's tracker shows WORLDS 0/5", /WORLDS 0\/5/.test(await tracker(page)), await tracker(page));
+  const besideDwarf = () => page.evaluate(() => {
+    const d = window.__fitz, b = d.bodies["w-dwarf"];
+    d.teleport(b.x - 12, b.y, b.z);
+    d.flight.input.scan = true;
+  });
+  const charted = await pollUntil(async () => {
+    await besideDwarf();
+    return (await readStore(page)).charted.length > 0 ? true : null;
+  }, { timeoutMs: 30_000, intervalMs: 300 });
+  await page.evaluate(() => { window.__fitz.flight.input.scan = false; });
+  const scanned = await readStore(page);
+  checks.check("scanning a world charts it", charted.ok && scanned.charted[0]?.id === "w-dwarf", JSON.stringify(scanned.charted));
+  checks.check("the world's scan report is on the radio", /^SCAN\[WORLD_SALT-SPOTTED DWARF\] \/\/ CERES-TYPE/.test(scanned.broadcast?.text ?? ""), scanned.broadcast?.text);
+  const line = await pollUntil(async () => ((await readStore(page)).broadcast?.text ?? "").startsWith("WORLD CHARTED") ? true : null,
+    { timeoutMs: 15_000, intervalMs: 300 });
+  checks.check("the charting line follows the report", line.ok && /^WORLD CHARTED 1\/5 — CERES-TYPE: /.test((await readStore(page)).broadcast?.text ?? ""),
+    (await readStore(page)).broadcast?.text);
+  checks.check("the tracker shows WORLDS 1/5", /WORLDS 1\/5/.test(await tracker(page)), await tracker(page));
+  await page.reload();
+  await ready(page);
+  await settle(page, 1000);
+  checks.check("charting survives a reload", /WORLDS 1\/5/.test(await tracker(page)), await tracker(page));
+  await page.evaluate(() => window.__fitz.store.getState().setLogbookOpen(true));
+  await settle(page, 400);
+  const card = await page.evaluate(() => ({
+    card: document.querySelector('[data-testid="logbook-world-w-dwarf"]')?.textContent ?? "",
+    today: (() => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; })(),
+    orbit: document.querySelector('[data-testid="system-chart-orbit-w-dwarf"]')?.getAttribute("data-charted"),
+    other: document.querySelector('[data-testid="system-chart-orbit-w-rock"]')?.getAttribute("data-charted"),
+  }));
+  checks.check("the logbook card says CHARTED with today's date", card.card.includes(`CHARTED ${card.today}`), card.card);
+  checks.check("the system chart draws the charted orbit solid, the rest dashed", card.orbit === "true" && card.other === "false", JSON.stringify(card));
+  checks.check("a reload announces nothing for old charting", !/WORLD CHARTED/.test(await liveText(page)), await liveText(page));
+  await page.evaluate(() => window.__fitz.store.getState().setLogbookOpen(false));
 }
 
 async function phone(page, checks) {

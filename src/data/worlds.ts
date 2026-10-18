@@ -1,6 +1,7 @@
 import { AU, PROGRADE, planets, sunOmega } from "../constants";
 import type { OrbitalElements } from "../utils/orbits";
 import type { WorldTypeId } from "./worldTypes";
+import { RING_REACH_FACTOR } from "../utils/ringOptics";
 
 /**
  * The new worlds (docs/superpowers/specs/2026-10-17-new-worlds-design.md,
@@ -113,9 +114,12 @@ export const isWorld = (id: string): id is WorldId => IDS.has(id);
 /**
  * Every body with a flight well (gravityWell.ts planetWell), a slingshot and
  * a crystal and comet keep-out: the planets, then the worlds, keyed as in
- * `bodies` (a planet's name, a world's id).
+ * `bodies` (a planet's name, a world's id). `reach` is the body's outer
+ * extent: its radius, or the ringed giant's rings (RING_REACH_FACTOR).
  */
-export const PLANETS_AND_WORLDS: readonly { key: string; size: number; orbit: OrbitalElements }[] = [
-  ...planets.map((p) => ({ key: p.name, size: p.size, orbit: p.orbit })),
-  ...WORLDS.map((w) => ({ key: w.id, size: w.size, orbit: w.orbit })),
+export const PLANETS_AND_WORLDS: readonly { key: string; size: number; reach: number; orbit: OrbitalElements }[] = [
+  ...planets.map((p) => ({ key: p.name, size: p.size, reach: p.size, orbit: p.orbit })),
+  ...WORLDS.map((w) => ({
+    key: w.id, size: w.size, reach: w.type === "ringed-giant" ? w.size * RING_REACH_FACTOR : w.size, orbit: w.orbit,
+  })),
 ];

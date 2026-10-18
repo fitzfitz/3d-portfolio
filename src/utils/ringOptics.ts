@@ -15,6 +15,12 @@ export const RING_OUT = 2.27;
 /** The strip's alpha is τ / RING_TAU_MAX, so τ = A · RING_TAU_MAX (gen_worlds.mjs). */
 export const RING_TAU_MAX = 4;
 
+/**
+ * The ringed giant's reach in equatorial radii: its A ring ends at RING_OUT
+ * (2.27), rounded up. Its clearances and crystal keep-out cover it.
+ */
+export const RING_REACH_FACTOR = 2.3;
+
 /** The rings' inner and outer radii (u) around a world of equatorial radius `size`. */
 export function ringRadii(size: number): [number, number] {
   return [RING_IN * size, RING_OUT * size];

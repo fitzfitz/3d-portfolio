@@ -15,6 +15,7 @@ import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { SPAWN } from "../../src/data/spawn";
 import { HAZE_START } from "../../src/utils/edgeHaze";
 import type { WorldTypeId } from "../../src/data/worldTypes";
+import { RING_REACH_FACTOR } from "../../src/utils/ringOptics";
 import { beltClearance, MOON_REACH_FACTOR, MARGIN } from "./clearance";
 
 /**
@@ -25,8 +26,8 @@ import { beltClearance, MOON_REACH_FACTOR, MARGIN } from "./clearance";
  * margin is positive.
  */
 
-/** The ringed giant's reach: its A ring ends at 2.27 equatorial radii. */
-export const RING_REACH_FACTOR = 2.3;
+/** The ringed giant's reach (ringOptics.ts): its A ring ends at 2.27 equatorial radii. */
+export { RING_REACH_FACTOR };
 /** World-vs-planet and world-vs-world gap, after both bodies. */
 export const BODY_GAP = 7;
 /** A world's body stays this far inside the haze; its gravity well may reach into it. */

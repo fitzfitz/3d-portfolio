@@ -6,7 +6,7 @@ import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
 import { planets } from "../constants";
-import { WORLDS, WORLD_IDS, type WorldId } from "../data/worlds";
+import { WORLDS, WORLD_IDS, isWorld, type WorldId } from "../data/worlds";
 import { destinationById } from "../data/destinations";
 import { orbitPosition } from "../utils/orbits";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
@@ -16,6 +16,7 @@ import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { CHANGELOG } from "../data/changelog";
 import { SHARDS } from "../data/shards";
+import { loadCharted, chartLine, isCartographer, SURVEY_LINE, type ChartRecord } from "../utils/charting";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
@@ -255,13 +256,17 @@ export const bodies: Record<string, { x: number; y: number; z: number }> = Objec
   ...WORLDS.map((w) => [w.id, orbitPosition(w.orbit, 0)] as const),
 ]);
 
+/** Charted worlds from fitz-charted, read once at import (sanitised). */
+const initialCharted = loadCharted(safeGetJSON<unknown>("fitz-charted", []));
+
 /**
  * Which worlds are charted, for what draws only once a world is: module-level
  * and mutable outside React, like `bodies`. Charting toggles visibility, never
- * mounts (the worlds are always mounted).
+ * mounts (the worlds are always mounted). Seeded from the stored charting, so
+ * a returning visitor's orbit lines and radar arrows show at once.
  */
 export const worldVisibility: Record<WorldId, { charted: boolean }> = Object.fromEntries(
-  WORLD_IDS.map((id) => [id, { charted: false }]),
+  WORLD_IDS.map((id) => [id, { charted: initialCharted.some((c) => c.id === id) }]),
 ) as Record<WorldId, { charted: boolean }>;
 
 export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
@@ -396,6 +401,15 @@ export interface SpaceState {
   /** The live-sky notice has been on the radio (persisted as fitz-live-seen). No pose is sent before it. */
   liveSkySeen: boolean;
   setLiveSkySeen: (v: boolean) => void;
+  /** Worlds charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
+  charted: ChartRecord[];
+  /**
+   * Charts a world on its first scan (Scanner.tsx); a repeat is a no-op.
+   * Persists, shows its orbit line and radar arrow (worldVisibility), and
+   * announces through announceLogbook, so the line queues behind the scan
+   * report; the fifth also announces the survey.
+   */
+  chartWorld: (id: WorldId) => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -482,6 +496,16 @@ export const useSpaceStore = create<SpaceState>()(
     setLogbookOpen: (v) => {
       if (get().logbookOpen === v) return;
       set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
+    },
+    charted: initialCharted,
+    chartWorld: (id) => {
+      if (!isWorld(id) || get().charted.some((c) => c.id === id)) return;
+      const next = [...get().charted, { id, at: todayStamp() }];
+      safeSetJSON("fitz-charted", next);
+      set({ charted: next });
+      worldVisibility[id].charted = true;
+      get().announceLogbook(chartLine(id, next.length));
+      if (isCartographer(next)) get().announceLogbook(SURVEY_LINE);
     },
     changelogOpen: false,
     changelogSeen: initialChangelogSeen,

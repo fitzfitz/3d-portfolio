@@ -5,7 +5,7 @@ import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { WORLDS, WORLD_MARK_COLOR } from "../../data/worlds";
 import { flight, useSpaceStore, bodies, crystalSlots, worldVisibility } from "../../store/spaceStore";
-import { worldToRadar, altitudeCue, radarShowsWorld, RADAR_RANGE } from "../../utils/radarTransform";
+import { worldToRadar, altitudeCue, radarShowsWorld, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
@@ -13,8 +13,10 @@ const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 /** Destinations are fixed: one blip each, in the table's colour. */
 const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
 
-/** A blip; `rim` pins it to the rim whatever its distance. */
-interface RadarTarget { name: string; x: number; y: number; z: number; color: string; rim?: boolean }
+const blip = { px: 0, py: 0, onRim: false };
+
+/** A blip; `free` ones (uncharted worlds, in range only) are never rim-clamped or dimmed. */
+interface RadarTarget { name: string; x: number; y: number; z: number; color: string; free?: boolean }
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -68,25 +70,18 @@ export default function RadarMap() {
         ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
-      // Worlds (radarShowsWorld): uncharted only in range, charted like a planet.
+      // Worlds (radarShowsWorld): uncharted only in range and free, charted like a planet.
       for (const w of WORLDS) {
         const b = bodies[w.id];
         const show = radarShowsWorld(worldVisibility[w.id].charted, Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z));
         if (show === "hidden") continue;
-        targets.push({ name: w.id, x: b.x, y: b.y, z: b.z, color: WORLD_MARK_COLOR, rim: show === "rim" });
+        targets.push({ name: w.id, x: b.x, y: b.y, z: b.z, color: WORLD_MARK_COLOR, free: show === "free" });
       }
       for (const t of targets) {
         const dx = (t.x - flight.x);
         const dz = (t.z - flight.z);
         const { x: sx, up } = worldToRadar(dx, dz, a);
-        let px = sx * scale;
-        let py = -up * scale;
-        const dist = Math.hypot(px, py);
-        let onRim = false;
-        if (dist > rimR - 3 || t.rim) {
-          const k = (rimR - 3) / Math.max(dist, 1e-6);
-          px *= k; py *= k; onRim = true;
-        }
+        const { px, py, onRim } = radarBlip(sx, up, scale, rimR, !t.free, blip);
         const pulse = activeZone === t.name ? 1 + 0.5 * Math.sin(now * 8) : 1;
         ctx.globalAlpha = onRim ? 0.45 : 1;
         ctx.fillStyle = t.color;

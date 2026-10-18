@@ -34,3 +34,12 @@ it("planet scans end with the orbit in real units", () => {
   expect(generateScanReport("portfolio")).toMatch(/ \/\/ ORBIT 1\.30 AU · YEAR 1\.49 EARTH-YR$/);
   expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
 });
+
+it("world scans report the world, not the hash fallback", async () => {
+  const { WORLDS } = await import("../src/data/worlds");
+  const { worldReport } = await import("../src/utils/worldReports");
+  for (const w of WORLDS) {
+    expect(generateScanReport(w.id)).toBe(worldReport(w));
+    expect(generateScanReport(w.id)).not.toMatch(/MASS CLASS/);
+  }
+});

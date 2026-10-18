@@ -95,6 +95,12 @@ export function plumeAllowed(id: string, p: LogbookProgress, hasColour: (id: str
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }
 
+/**
+ * The everything-done milestone line. It claims only the badge plumes, so it
+ * stays true once a plume is earned by charting the worlds, outside the 11.
+ */
+export const ALL_LINE = "LOGBOOK COMPLETE // ALL BADGE PLUMES UNLOCKED. FLY PRETTY, PILOT";
+
 /** The milestone a progress change crosses (everything-done wins); null if none was newly crossed. */
 export function milestoneFor(prev: LogbookProgress, next: LogbookProgress): "essentials" | "all" | null {
   if (allDone(next) && !allDone(prev)) return "all";
