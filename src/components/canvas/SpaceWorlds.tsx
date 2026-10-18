@@ -39,8 +39,16 @@ const ICE_GIANT_RIM: Readonly<Record<string, string>> = { "w-tilted": "#a6e6ec",
  * Draw order of a world's transparent layers, explicit rather than left to
  * distance sorting (their shells share a centre): limb darkening, then the
  * atmosphere over it, then the rings over both.
+ *
+ * renderOrder is a global key three sorts by before depth, so the values stay
+ * between the stars (STAR_RENDER_ORDER, −1) and everything else (0): the ring
+ * at 0 still depth-sorts against the other order-0 transparents (the ship's
+ * plume, the guide lines), so one in front of the rings draws over them
+ * rather than under. The ice giants' shells sit just below 0, so a plume in
+ * front of one is drawn after it, as it should be (one behind a shell's faint
+ * halo draws over it too: the lesser error, and the order the brief asks for).
  */
-const WORLD_RENDER_ORDER = { limb: 1, atmosphere: 2, ring: 3 } as const;
+const WORLD_RENDER_ORDER = { limb: -0.2, atmosphere: -0.1, ring: 0 } as const;
 
 /**
  * The ringed giant's rings (L14): C ring inner edge to A ring outer edge,

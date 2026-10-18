@@ -8,7 +8,7 @@ import { WORLDS } from "../src/data/worlds";
 import { irradianceVsAU } from "../src/utils/sunLight";
 import {
   fluidRocheLimit, RING_ICE_DENSITY, RING_IN, RING_OUT, RING_TAU_MAX, RINGED_GIANT_DENSITY,
-  ringRadii, ringTransmission, ringViewOpacity,
+  ringRadiance, ringRadii, ringTransmission, ringViewOpacity,
 } from "../src/utils/ringOptics";
 
 /**
@@ -63,6 +63,59 @@ describe("ringTransmission: exp(−τ/μ₀), the sunlight the rings let through
   });
 });
 
+describe("ringRadiance: single scattering in a layer of depth τ, both faces", () => {
+  const MU0 = [0.05, 0.2, 0.45, 1];
+  const MU = [0.2, 0.5, 1];
+
+  it("tends to τ/|μ| (×2) for a thin layer, whatever the sun's elevation, on either face", () => {
+    const tau = 1e-4;
+    for (const mu0 of MU0) for (const mu of MU) {
+      expect(ringRadiance(tau, mu0, mu) / (2 * tau / mu)).toBeCloseTo(1, 2);
+      expect(ringRadiance(tau, mu0, -mu) / (2 * tau / mu)).toBeCloseTo(1, 2);
+    }
+  });
+
+  it("does not darken thin rings under a low sun the way μ₀/(μ₀+μ)·(1 − e^(−τ/μ)) did", () => {
+    // The review's case: μ₀ = 0.2, μ = 0.5. The old output was too dark by
+    // 2.8× for τ = 0.1 and 1.5× for τ = 0.5; the B ring (τ = 2) was right.
+    const old = (tau: number) => 2 * 0.2 / 0.7 * (1 - Math.exp(-tau / 0.5));
+    expect(ringRadiance(0.1, 0.2, 0.5) / old(0.1)).toBeGreaterThan(2.5);
+    expect(ringRadiance(0.5, 0.2, 0.5) / old(0.5)).toBeGreaterThan(1.4);
+    expect(ringRadiance(2, 0.2, 0.5) / old(2)).toBeLessThan(1.1);
+  });
+
+  it("is Lommel–Seeliger, 2μ₀/(μ₀+μ), for a thick layer's lit face, and Lambert's 1 face-on", () => {
+    for (const mu0 of MU0) for (const mu of MU) {
+      expect(ringRadiance(60, mu0, mu)).toBeCloseTo(2 * mu0 / (mu0 + mu), 6);
+    }
+    expect(ringRadiance(60, 1, 1)).toBeCloseTo(1, 6);
+  });
+
+  it("lets nothing through a thick layer to its unlit face, and is never brighter there than on the lit face", () => {
+    expect(ringRadiance(60, 0.3, -0.5)).toBeLessThan(1e-12);
+    for (const tau of [0.01, 0.1, 0.5, 1, 2, 4]) for (const mu0 of MU0) for (const mu of MU) {
+      expect(ringRadiance(tau, mu0, -mu)).toBeLessThanOrEqual(ringRadiance(tau, mu0, mu) + 1e-12);
+    }
+  });
+
+  it("is continuous across μ = μ₀ on the unlit face, where the difference form cancels", () => {
+    for (const tau of [0.05, 0.5, 2]) {
+      const at = ringRadiance(tau, 0.3, -0.3);
+      expect(at).toBeCloseTo(2 * (tau / 0.3) * Math.exp(-tau / 0.3), 9);
+      expect(ringRadiance(tau, 0.3, -0.3001)).toBeCloseTo(at, 3);
+      expect(ringRadiance(tau, 0.3, -0.31)).toBeCloseTo(at, 1);
+    }
+  });
+
+  it("is 0 where the strip is empty, and finite edge-on or with the sun in the ring plane", () => {
+    expect(ringRadiance(0, 0.3, 0.5)).toBe(0);
+    expect(ringRadiance(0, 0.3, -0.5)).toBe(0);
+    for (const [mu0, mu] of [[0, 0.5], [0.3, 0], [0, 0], [0, -0.5], [-0.3, 0]]) {
+      expect(Number.isFinite(ringRadiance(1, mu0, mu))).toBe(true);
+    }
+  });
+});
+
 describe("the ring material", () => {
   it("leaves Ruangrapi's ring without RING_MAP (its program is unchanged), at ×1 irradiance", () => {
     const m = makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, 0, {
@@ -71,6 +124,7 @@ describe("the ring material", () => {
     expect(m.defines.RING_MAP).toBeUndefined();
     expect(m.fragmentShader).toContain("#ifdef RING_MAP");
     expect(m.uniforms.uIrradiance.value).toBeCloseTo(1, 12);
+    expect(m.premultipliedAlpha).toBe(false); // its blending, and so its program, unchanged
     expect(makePlanetRingMaterial("#7dffc0", 18.4, 25.6).uniforms.uIrradiance.value).toBe(1);
   });
 
@@ -83,7 +137,12 @@ describe("the ring material", () => {
     expect(m.uniforms.uTauMax.value).toBe(RING_TAU_MAX);
     expect(m.uniforms.uIrradiance.value).toBe(0.18);
     expect(m.fragmentShader).toMatch(/1\.0\s*-\s*exp\(\s*-\s*tau\s*\/\s*amu\s*\)/);
-    expect(m.fragmentShader).toMatch(/amu0\s*\/\s*\(\s*amu0\s*\+\s*amu\s*\)/);
+    // ringRadiance: the full layer, the incident path's e^(−τ/μ₀) included,
+    // written as premultiplied colour so no division by the opacity is needed.
+    expect(m.fragmentShader).toMatch(/x\s*\/\s*max\(\s*x\s*\+\s*x0\s*,[^)]*\)\s*\*\s*\(\s*1\.0\s*-\s*exp\(\s*-\s*\(\s*x\s*\+\s*x0\s*\)\s*\)\s*\)/);
+    expect(m.fragmentShader).toMatch(/\(\s*exp\(\s*-x0\s*\)\s*-\s*exp\(\s*-x\s*\)\s*\)\s*\/\s*\(\s*x\s*-\s*x0\s*\)/);
+    expect(m.fragmentShader).not.toContain("RING_FORWARD");
+    expect(m.premultipliedAlpha).toBe(true);
     // Same program for any slot and map: both are uniforms.
     const n = makePlanetRingMaterial("#ffffff", 18.6, 34.05, 3, { ringMap: new THREE.Texture(), irradiance: 0.5 });
     expect(n.fragmentShader).toBe(m.fragmentShader);

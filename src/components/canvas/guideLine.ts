@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { RING_TAU_MAX } from "../../utils/ringOptics";
+import { RING_MU_MIN, RING_TAU_MAX } from "../../utils/ringOptics";
 import { exposureCompensation, litExposure, SUN_IRRADIANCE_AT_AU } from "../../utils/sunLight";
 import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
 
@@ -100,13 +100,19 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * (ringOptics.ts), u = 0 at the inner edge and 1 at the outer. Then:
  * - the viewer sees opacity 1 − exp(−τ/|μ|), μ the cosine of the view ray to
  *   the ring normal (ringViewOpacity): thin face-on, opaque edge-on;
- * - the particles are lit by Lommel–Seeliger, the law of a layer of single
- *   scatterers: radiance ∝ μ₀/(μ₀ + μ), μ₀ the cosine of the sun's direction,
- *   normalised (×2) to match a Lambert surface face-on, under the sun's
- *   radiance at 1 AU (the planets' MeshStandardMaterial gets E/π);
- * - seen from the unlit face, only the light the layer scatters forward comes
- *   through, RING_FORWARD · exp(−τ): a thin ring glows when backlit, the
- *   opaque B core stays dark (as the Blender turntables render it).
+ * - the particles single-scatter the sunlight (ringRadiance, its pure
+ *   mirror), μ₀ the cosine of the sun's direction, x = τ/|μ|, x₀ = τ/|μ₀|:
+ *   on the lit face the layer's diffuse reflection μ₀/(μ₀ + μ)·(1 − e^−(x₀+x)),
+ *   whose thick limit is Lommel–Seeliger; on the unlit face its diffuse
+ *   transmission μ₀/(μ₀ − μ)·(e^−x₀ − e^−x), which a thin ring passes almost
+ *   whole and the opaque B core not at all. A thin layer gives τ/|μ| on either
+ *   face, whatever the sun's elevation. Normalised (×2) to match a Lambert
+ *   surface face-on, under the sun's radiance at 1 AU (the planets'
+ *   MeshStandardMaterial gets E/π);
+ * - that radiance is the layer's whole output, so it is written premultiplied
+ *   (premultipliedAlpha: the blend is ONE, ONE − a): the background behind
+ *   keeps e^−τ/|μ| of itself and the ring adds its light, with no division by
+ *   the opacity.
  */
 const RING_VERT = /* glsl */ `
   varying float vR;
@@ -125,8 +131,6 @@ const RING_VERT = /* glsl */ `
   }
 `;
 
-/** Fraction of the light a thin ring layer scatters forward, seen from its unlit face (× exp(−τ)). */
-const RING_FORWARD = 0.5;
 const RING_FRAG = /* glsl */ `
   #ifdef SUN_SHADOW_RING
   ${SUN_SHADOW_CORE_GLSL}
@@ -138,10 +142,22 @@ const RING_FRAG = /* glsl */ `
   #endif
   #ifdef RING_MAP
   #define RING_SUN_RADIANCE ${(SUN_IRRADIANCE_AT_AU / Math.PI).toFixed(4)}
-  #define RING_FORWARD ${RING_FORWARD.toFixed(2)}
+  #define RING_MU_MIN ${RING_MU_MIN.toExponential()}
   uniform sampler2D uRingMap;
   uniform float uTauMax;
   varying vec3 vRingNormal;
+  // ringOptics.ts ringRadiance: single scattering in a layer of normal
+  // optical depth tau, amu0 and amu the sun's and the viewer's |cosines| to
+  // its normal, litFace when both are on one side. ×2: Lambert face-on.
+  float ringRadiance(float tau, float amu0, float amu, bool litFace) {
+    float x = tau / amu;
+    float x0 = tau / amu0;
+    if (litFace) return 2.0 * x / max(x + x0, 1e-12) * (1.0 - exp(-(x + x0)));
+    float d = 0.5 * (x - x0);
+    // (e^-x0 - e^-x)/(x - x0) = e^-(x+x0)/2 sinh(d)/d: the series near d = 0, where the difference cancels.
+    if (abs(d) < 5e-3) return 2.0 * x * exp(-0.5 * (x + x0)) * (1.0 + d * d / 6.0);
+    return 2.0 * x * (exp(-x0) - exp(-x)) / (x - x0);
+  }
   #endif
   uniform float uIrradiance; // sunlight at the ring's orbit vs 1 AU (sunLight.ts irradianceVsAU)
   uniform vec3 uColor;
@@ -165,13 +181,11 @@ const RING_FRAG = /* glsl */ `
     vec3 n = normalize(vRingNormal);
     float mu = dot(n, normalize(cameraPosition - vWorld));
     float mu0 = dot(n, normalize(-vWorld)); // the sun is at the origin
-    float amu = max(abs(mu), 1e-3);
-    float amu0 = abs(mu0);
+    float amu = max(abs(mu), RING_MU_MIN);
+    float amu0 = max(abs(mu0), RING_MU_MIN);
     float a = 1.0 - exp(-tau / amu); // ringOptics.ts ringViewOpacity
-    // Lommel–Seeliger, on the lit face; the forward-scattered share on the other.
-    float forward = RING_FORWARD * exp(-tau);
-    float face = mu * mu0 >= 0.0 ? 1.0 - forward : forward;
-    vec3 col = strip.rgb * uColor * RING_SUN_RADIANCE * 2.0 * amu0 / (amu0 + amu) * face;
+    // The layer's radiance itself, premultiplied: not divided by a.
+    vec3 col = strip.rgb * uColor * RING_SUN_RADIANCE * ringRadiance(tau, amu0, amu, mu * mu0 >= 0.0);
     #else
     float edge = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.9, 1.0, t));
     float dv = (t - 0.62) / 0.025;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
@@ -228,6 +242,9 @@ export function makePlanetRingMaterial(
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+    // The ring map's colour is the layer's radiance, already weighted by its
+    // opacity; the procedural bands keep straight alpha (and their program).
+    premultipliedAlpha: !!opts.ringMap,
     defines,
     uniforms: {
       uColor: { value: new THREE.Color(color) },

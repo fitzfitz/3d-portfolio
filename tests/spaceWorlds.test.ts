@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { STAR_RENDER_ORDER } from "../src/components/canvas/starLayer";
 import { planets } from "../src/constants";
 import { WORLDS, WORLD_IDS } from "../src/data/worlds";
 import { orbitPosition } from "../src/utils/orbits";
@@ -66,5 +68,21 @@ describe("worldMeshScale", () => {
     for (const w of WORLDS) {
       expect(worldMeshScale(w)).toEqual(w.id === "w-ringed" ? [1, 0.9, 1] : [1, 1, 1]);
     }
+  });
+});
+
+describe("the worlds' transparent layers' draw order", () => {
+  it("is limb, atmosphere, ring, all between the stars and the order-0 transparents (the ring depth-sorts with them)", () => {
+    const src = readFileSync("src/components/canvas/SpaceWorlds.tsx", "utf8");
+    const m = src.match(/const WORLD_RENDER_ORDER = \{ limb: (-?[\d.]+), atmosphere: (-?[\d.]+), ring: (-?[\d.]+) \} as const;/);
+    expect(m).not.toBeNull();
+    const [limb, atmosphere, ring] = m!.slice(1).map(Number);
+    expect(limb).toBeGreaterThan(STAR_RENDER_ORDER);
+    expect(atmosphere).toBeGreaterThan(limb);
+    expect(ring).toBeGreaterThan(atmosphere);
+    // Above 0 the ring would draw after every order-0 transparent, the ship's
+    // plume in front of it included, whatever their depths.
+    expect(ring).toBe(0);
+    for (const k of ["limb", "atmosphere", "ring"]) expect(src).toContain(`renderOrder={WORLD_RENDER_ORDER.${k}}`);
   });
 });
