@@ -509,8 +509,12 @@ export default async function run() {
         const cut = await page.evaluate(async () => {
           const d = window.__fitz;
           const { targetExposure } = await import("/src/utils/sunLight.ts");
+          const { planets } = await import("/src/constants.ts");
           // The farthest planet from the sun is a real jump target ~185+ out.
-          const far = Object.entries(d.bodies).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
+          // bodies also holds the outer worlds, which are not jump targets
+          // (requestJump ignores them), so pick among the planets only.
+          const jumpable = new Set(planets.map((p) => p.name));
+          const far = Object.entries(d.bodies).filter(([name]) => jumpable.has(name)).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
           const log = [];
           const orig = d.gl.render.bind(d.gl);
           d.gl.render = (...a) => {
