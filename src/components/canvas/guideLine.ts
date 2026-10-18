@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { exposureCompensation, litExposure } from "../../utils/sunLight";
+import { RING_TAU_MAX } from "../../utils/ringOptics";
+import { exposureCompensation, litExposure, SUN_IRRADIANCE_AT_AU } from "../../utils/sunLight";
 import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
 
 /**
@@ -89,23 +90,60 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * its planet's shadow darkens: the shared disc-coverage maths of sunShadow.ts
  * against that one occluder slot (the uniform `uRingSlot`), from 1 in full sun
  * down to RING_NIGHT_FLOOR in the umbra.
+ *
+ * Every ring is scaled by `uIrradiance`, the sunlight at its orbit as a
+ * fraction of 1 AU's (irradianceVsAU, L19): Ruangrapi's sits at 1 AU, so ×1.
+ *
+ * With a ring map (`RING_MAP`, the ringed giant's rings, L14) the procedural
+ * bands give way to a measured radial profile: a strip whose RGB is the
+ * particle colour and whose alpha is the normal optical depth τ / uTauMax
+ * (ringOptics.ts), u = 0 at the inner edge and 1 at the outer. Then:
+ * - the viewer sees opacity 1 − exp(−τ/|μ|), μ the cosine of the view ray to
+ *   the ring normal (ringViewOpacity): thin face-on, opaque edge-on;
+ * - the particles are lit by Lommel–Seeliger, the law of a layer of single
+ *   scatterers: radiance ∝ μ₀/(μ₀ + μ), μ₀ the cosine of the sun's direction,
+ *   normalised (×2) to match a Lambert surface face-on, under the sun's
+ *   radiance at 1 AU (the planets' MeshStandardMaterial gets E/π);
+ * - seen from the unlit face, only the light the layer scatters forward comes
+ *   through, RING_FORWARD · exp(−τ): a thin ring glows when backlit, the
+ *   opaque B core stays dark (as the Blender turntables render it).
  */
 const RING_VERT = /* glsl */ `
   varying float vR;
   varying vec3 vWorld;
+  #ifdef RING_MAP
+  varying vec3 vRingNormal;
+  #endif
   void main() {
     vR = length(position.xy);
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    #ifdef RING_MAP
+    // RingGeometry lies in its local XY plane: its normal is local +Z.
+    vRingNormal = normalize(mat3(modelMatrix) * vec3(0.0, 0.0, 1.0));
+    #endif
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+
+/** Fraction of the light a thin ring layer scatters forward, seen from its unlit face (× exp(−τ)). */
+const RING_FORWARD = 0.5;
 const RING_FRAG = /* glsl */ `
   #ifdef SUN_SHADOW_RING
   ${SUN_SHADOW_CORE_GLSL}
   uniform float uNightFloor;
   uniform int uRingSlot;
+  #endif
+  #if defined( SUN_SHADOW_RING ) || defined( RING_MAP )
   varying vec3 vWorld;
   #endif
+  #ifdef RING_MAP
+  #define RING_SUN_RADIANCE ${(SUN_IRRADIANCE_AT_AU / Math.PI).toFixed(4)}
+  #define RING_FORWARD ${RING_FORWARD.toFixed(2)}
+  uniform sampler2D uRingMap;
+  uniform float uTauMax;
+  varying vec3 vRingNormal;
+  #endif
+  uniform float uIrradiance; // sunlight at the ring's orbit vs 1 AU (sunLight.ts irradianceVsAU)
   uniform vec3 uColor;
   uniform float uInner;
   uniform float uOuter;
@@ -121,11 +159,27 @@ const RING_FRAG = /* glsl */ `
   }
   void main() {
     float t = clamp((vR - uInner) / (uOuter - uInner), 0.0, 1.0);
+    #ifdef RING_MAP
+    vec4 strip = texture2D(uRingMap, vec2(t, 0.5));
+    float tau = strip.a * uTauMax;
+    vec3 n = normalize(vRingNormal);
+    float mu = dot(n, normalize(cameraPosition - vWorld));
+    float mu0 = dot(n, normalize(-vWorld)); // the sun is at the origin
+    float amu = max(abs(mu), 1e-3);
+    float amu0 = abs(mu0);
+    float a = 1.0 - exp(-tau / amu); // ringOptics.ts ringViewOpacity
+    // Lommel–Seeliger, on the lit face; the forward-scattered share on the other.
+    float forward = RING_FORWARD * exp(-tau);
+    float face = mu * mu0 >= 0.0 ? 1.0 - forward : forward;
+    vec3 col = strip.rgb * uColor * RING_SUN_RADIANCE * 2.0 * amu0 / (amu0 + amu) * face;
+    #else
     float edge = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.9, 1.0, t));
     float dv = (t - 0.62) / 0.025;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
     float division = 1.0 - 0.85 * exp(-dv * dv);
     float a = uOpacity * bands(t) * edge * division;
     vec3 col = mix(uColor, vec3(0.92, 1.0, 0.95), 0.35 * bands(t + 0.3));
+    #endif
+    col *= uIrradiance;
     #ifdef SUN_SHADOW_RING
     // In the planet's shadow only what the planet's surface keeps from
     // ambient light is left (F4).
@@ -149,20 +203,32 @@ const RING_FRAG = /* glsl */ `
  */
 export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
 
+export interface PlanetRingOptions {
+  /** The radial strip (RGB colour, A = τ / RING_TAU_MAX); turns on RING_MAP. */
+  ringMap?: THREE.Texture;
+  /** Sunlight at the ring's orbit as a fraction of 1 AU's (irradianceVsAU). Default 1. */
+  irradiance?: number;
+}
+
 /**
  * `shadowSlot`: the planet's eclipse occluder slot (sunShadow.ts). It is a
- * uniform, so every shadowed ring shares one program.
+ * uniform, so every shadowed ring shares one program. A `ringMap` adds the
+ * RING_MAP program; without one the ring keeps the procedural bands' program.
  */
 export function makePlanetRingMaterial(
   color: THREE.ColorRepresentation, inner: number, outer: number, shadowSlot?: number,
+  opts: PlanetRingOptions = {},
 ): THREE.ShaderMaterial {
+  const defines: Record<string, string> = {};
+  if (shadowSlot !== undefined) defines.SUN_SHADOW_RING = "";
+  if (opts.ringMap) defines.RING_MAP = "";
   return new THREE.ShaderMaterial({
     vertexShader: RING_VERT,
     fragmentShader: RING_FRAG,
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    defines: shadowSlot === undefined ? {} : { SUN_SHADOW_RING: "" },
+    defines,
     uniforms: {
       uColor: { value: new THREE.Color(color) },
       uInner: { value: inner },
@@ -174,6 +240,9 @@ export function makePlanetRingMaterial(
       uNightFloor: { value: RING_NIGHT_FLOOR.linear },
       uRingSlot: { value: shadowSlot ?? -1 },
       uLitExposure: litExposure,
+      uIrradiance: { value: opts.irradiance ?? 1 },
+      uRingMap: { value: opts.ringMap ?? null },
+      uTauMax: { value: RING_TAU_MAX },
     },
   });
 }

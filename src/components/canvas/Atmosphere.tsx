@@ -25,10 +25,12 @@ interface AtmosphereProps {
   thickness?: number;
   /** The terminator band's tint; omit for the sunset orange (atmosphereMaterial.ts). */
   dusk?: THREE.ColorRepresentation;
+  /** Explicit draw order among a world's transparent shells (SpaceWorlds' WORLD_RENDER_ORDER). */
+  renderOrder?: number;
 }
 
 /** Sun-aware fresnel scattering shell. Place inside a planet group. */
-export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk }: AtmosphereProps) {
+export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk, renderOrder = 0 }: AtmosphereProps) {
   const material = useMemo(
     () => makeAtmosphereMaterial({ color, planetPos, intensity, thickness, orbitRadius, dusk }),
     // planetPos is a stable mutated-in-place object; only its identity (not
@@ -47,7 +49,7 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
   });
 
   return (
-    <mesh material={material}>
+    <mesh material={material} renderOrder={renderOrder}>
       <sphereGeometry args={[radius * thickness, 32, 32]} />
     </mesh>
   );
@@ -67,7 +69,7 @@ const limbFragment = /* glsl */ `
 /** Gas-giant limb darkening: the disk dims toward the edge (deeper atmosphere
  * path = more absorption) — the visual signature that separates a gas giant
  * from a rocky body. Normal-blended dark fresnel overlay. */
-export function LimbDarkening({ radius, strength = 0.75 }: { radius: number; strength?: number }) {
+export function LimbDarkening({ radius, strength = 0.75, renderOrder = 0 }: { radius: number; strength?: number; renderOrder?: number }) {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -81,7 +83,7 @@ export function LimbDarkening({ radius, strength = 0.75 }: { radius: number; str
     [strength]
   );
   return (
-    <mesh material={material}>
+    <mesh material={material} renderOrder={renderOrder}>
       <sphereGeometry args={[radius * 1.005, 32, 32]} />
     </mesh>
   );

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { planets, SUN_RADIUS } from "../../constants";
 import { MOONS } from "../../data/moons";
 import { WORLDS, type WorldId } from "../../data/worlds";
+import { RING_TAU_MAX } from "../../utils/ringOptics";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
 /**
@@ -205,6 +206,64 @@ export function sunShadowCoverage(p: { x: number; y: number; z: number }, bodies
   return sunVisibility(p, bodies, SUN_RADIUS, SELF_SKIP_RADII);
 }
 
+/**
+ * The rings' shadow on their planet (L20), for `patchSunShadow`'s `ringShadow`
+ * option: the ray from the fragment toward the sun meets the ring plane
+ * (through the planet's centre, normal `uRingShadowNormal`, the spin axis)
+ * at radius r; the sunlight let through there is exp(−τ(r)/μ₀), μ₀ =
+ * |sin(the sun's elevation above the ring plane)| (ringOptics.ts
+ * ringTransmission). It has no viewer term, so it does not move with the
+ * camera. τ comes from the ring strip's alpha (τ / RING_TAU_MAX).
+ *
+ * P3 artifact (docs/UNIVERSE-RULES.md L20): the transmission is averaged over
+ * the drawn sun's disc, whose rays cross the ring plane over a radial width
+ * of about s · tan(sunAng) / μ₀ (s the distance to the plane). The drawn sun
+ * is ~45× the real one, so the Cassini division's shadow blurs; the real
+ * shadow is sharp.
+ *
+ * The planet's centre is the mesh's origin, passed from the vertex shader
+ * (`vRingShadowCentre`), so no uniform has to follow the orbit.
+ */
+const RING_SHADOW_GLSL = /* glsl */ `
+#define RING_SHADOW_TAU_MAX ${RING_TAU_MAX.toFixed(1)}
+uniform vec3 uRingShadowNormal;
+uniform vec2 uRingShadowRadii;
+uniform sampler2D uRingShadowMap;
+varying vec3 vRingShadowCentre;
+
+float ringShadowTau( float r ) {
+	// Clamp-to-edge: the strip's end texels hold τ = 0 (inside C, outside A).
+	return texture2D( uRingShadowMap, vec2( ( r - uRingShadowRadii.x ) / ( uRingShadowRadii.y - uRingShadowRadii.x ), 0.5 ) ).a * RING_SHADOW_TAU_MAX;
+}
+
+float ringShadowTransmission( vec3 p ) {
+	float sunDist = length( p );
+	if ( sunDist <= SUN_SHADOW_RADIUS ) return 1.0;
+	vec3 u = -p / sunDist;
+	vec3 n = normalize( uRingShadowNormal );
+	float un = dot( u, n );
+	float mu0 = abs( un );
+	if ( mu0 < 1e-4 ) return 1.0; // the sun in the ring plane: the rings are edge-on to it
+	float s = dot( vRingShadowCentre - p, n ) / un;
+	if ( s <= 0.0 || s >= sunDist ) return 1.0; // the plane is behind the point, or past the sun
+	float r = length( p + s * u - vRingShadowCentre );
+	// The sun's disc spread over the plane (the P3 blur), sampled radially:
+	// five taps weighted by the disc's chord.
+	float w = s * tan( asin( SUN_SHADOW_RADIUS / sunDist ) ) / max( mu0, 0.05 );
+	float t = 0.0;
+	t += 0.6 * exp( -ringShadowTau( r - 0.8 * w ) / mu0 );
+	t += 0.9165 * exp( -ringShadowTau( r - 0.4 * w ) / mu0 );
+	t += 1.0 * exp( -ringShadowTau( r ) / mu0 );
+	t += 0.9165 * exp( -ringShadowTau( r + 0.4 * w ) / mu0 );
+	t += 0.6 * exp( -ringShadowTau( r + 0.8 * w ) / mu0 );
+	return t / 4.033;
+}
+
+float sunShadowRingGate( vec3 p ) {
+	return sunShadowCoverage( p ) * ringShadowTransmission( p );
+}
+`;
+
 /** Where the gate goes: right after three fills `directLight` for point light i. */
 const POINT_LIGHT_ANCHOR = "getPointLightInfo( pointLight, geometryPosition, directLight );";
 
@@ -214,8 +273,23 @@ const GATE = {
     "if ( isSunLight( pointLight.position ) ) directLight.color *= sunShadowCoverage( sunShadowWorld( geometryPosition ) );",
   object: "if ( isSunLight( pointLight.position ) ) directLight.color *= uSunVis;",
 } as const;
+const RING_GATE =
+  "if ( isSunLight( pointLight.position ) ) directLight.color *= sunShadowRingGate( sunShadowWorld( geometryPosition ) );";
 
 type Mode = keyof typeof GATE;
+
+/**
+ * The ringed giant's rings, for their shadow on it (`RING_SHADOW_GLSL`).
+ * `normal` is the ring plane's normal (the spin axis), a uniform the frame
+ * loop rewrites in place; `inner`/`outer` are the ring's radii (u); `map` is
+ * the ring strip.
+ */
+export interface RingShadow {
+  normal: { value: THREE.Vector3 };
+  inner: number;
+  outer: number;
+  map: THREE.Texture;
+}
 
 const defaultCacheKey = THREE.Material.prototype.customProgramCacheKey;
 
@@ -238,16 +312,20 @@ const patched = new WeakMap<THREE.Material, Handle>();
  * so objects sharing a material share it; pass `opts.sunVis` to make several
  * materials (the ship's hull parts) read one shared value instead.
  *
+ * `opts.ringShadow` (fragment mode, the ringed giant only) also lets the
+ * sunlight through its rings (`RING_SHADOW_GLSL`): one more program, its own.
+ *
  * Patching the same material again returns the existing handle unchanged.
  */
 export function patchSunShadow(
   material: THREE.Material,
   mode: Mode,
-  opts?: { sunVis?: { value: number } },
+  opts?: { sunVis?: { value: number }; ringShadow?: RingShadow },
 ): Handle {
   const existing = patched.get(material);
   if (existing) return existing;
   const sunVis = mode === "object" ? (opts?.sunVis ?? { value: 1 }) : undefined;
+  const ring = mode === "fragment" ? opts?.ringShadow : undefined;
 
   const prevCompile = material.onBeforeCompile;
   const prevRender = material.onBeforeRender;
@@ -264,11 +342,16 @@ export function patchSunShadow(
     shader.uniforms.uOccluderCount = sunShadowUniforms.uOccluderCount;
     shader.uniforms.uSunShadowView = sunShadowUniforms.uSunView;
     if (sunVis) shader.uniforms.uSunVis = sunVis;
+    if (ring) {
+      shader.uniforms.uRingShadowNormal = ring.normal;
+      shader.uniforms.uRingShadowRadii = { value: new THREE.Vector2(ring.inner, ring.outer) };
+      shader.uniforms.uRingShadowMap = { value: ring.map };
+    }
 
-    const header = SUN_SHADOW_GLSL + (sunVis ? "uniform float uSunVis;\n" : "");
+    const header = SUN_SHADOW_GLSL + (sunVis ? "uniform float uSunVis;\n" : "") + (ring ? RING_SHADOW_GLSL : "");
     const lights = THREE.ShaderChunk.lights_fragment_begin.replace(
       POINT_LIGHT_ANCHOR,
-      `${POINT_LIGHT_ANCHOR}\n\t\t${GATE[mode]}`,
+      `${POINT_LIGHT_ANCHOR}\n\t\t${ring ? RING_GATE : GATE[mode]}`,
     );
     if (lights === THREE.ShaderChunk.lights_fragment_begin || !shader.fragmentShader.includes("#include <lights_fragment_begin>")) {
       console.warn("patchSunShadow: point-light loop not found; sun shadows are off for", material.type);
@@ -277,6 +360,12 @@ export function patchSunShadow(
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>\n${header}`)
       .replace("#include <lights_fragment_begin>", lights);
+    if (ring) {
+      // The planet's centre: the mesh's own origin in world space.
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vRingShadowCentre;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvRingShadowCentre = modelMatrix[ 3 ].xyz;");
+    }
   };
 
   // Refresh the sun's view position from the camera this draw uses, after
@@ -286,7 +375,7 @@ export function patchSunShadow(
     updateSunView(camera);
   };
 
-  material.customProgramCacheKey = () => `${prevKey()}|sunShadow:${mode}`;
+  material.customProgramCacheKey = () => `${prevKey()}|sunShadow:${mode}${ring ? ":ring" : ""}`;
 
   const handle: Handle = sunVis ? { sunVis } : {};
   patched.set(material, handle);

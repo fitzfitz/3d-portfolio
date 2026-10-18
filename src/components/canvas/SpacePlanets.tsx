@@ -24,7 +24,7 @@ import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moo
 import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
-import { FUXX_ALBEDO_LIFT } from "../../utils/sunLight";
+import { FUXX_ALBEDO_LIFT, irradianceVsAU } from "../../utils/sunLight";
 
 /**
  * Eclipse occluder slots (F4, docs/UNIVERSE-RULES.md L20): the fixed slots of
@@ -345,8 +345,9 @@ export default function SpacePlanets() {
   const gravityMats = useMemo(() => planets.map((p) => makeGuideLineMaterial({
     color: p.color, opacity: 0.4, dashes: 48, fadeIn: [4, 9], fadeOut: [28, 55],
   })), []);
-  const planetRingMat = useMemo(
-    () => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, PLANET_SLOT0), []);
+  // Lit by the sunlight at its orbit (L19): Ruangrapi's is 1 AU, so ×1.
+  const planetRingMat = useMemo(() => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6,
+    PLANET_SLOT0, { irradiance: irradianceVsAU(planets[0].orbit.radius) }), []);
   useEffect(() => () => [...orbitRingMats, ...gravityMats, planetRingMat].forEach((m) => m.dispose()),
     [orbitRingMats, gravityMats, planetRingMat]);
   // The ring's umbra floor is measured per tier (guideLine.ts): the PostFX
