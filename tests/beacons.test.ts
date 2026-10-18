@@ -37,7 +37,7 @@ describe("sphere bounds", () => {
     expect(validateDrop({ ...good, x: 320, y: 320, z: 320 }).ok).toBe(false);
   });
   it("draws a beacon only inside the system radius", () => {
-    expect(beaconVisible({ x: 250, y: 250, z: 250 })).toBe(false);
+    expect(beaconVisible({ x: 280, y: 280, z: 280 })).toBe(false); // r 485, past the 480 edge
     expect(beaconVisible({ x: 200, y: 200, z: 200 })).toBe(true);
   });
 });

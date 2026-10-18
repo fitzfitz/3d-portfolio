@@ -13,7 +13,7 @@ beforeEach(() => { post.mockReset(); });
 describe("dropBeacon", () => {
   it("clamps a drop beyond the edge onto the SYSTEM_RADIUS sphere, direction preserved", async () => {
     post.mockResolvedValue({ ok: false, reason: "offline" });
-    flight.x = 430; flight.y = 0; flight.z = 0;
+    flight.x = SYSTEM_RADIUS + 30; flight.y = 0; flight.z = 0;
     await dropBeacon(0);
     const sent = post.mock.calls[0][0] as { x: number; y: number; z: number };
     expect(Math.hypot(sent.x, sent.y, sent.z)).toBeCloseTo(SYSTEM_RADIUS, 6);

@@ -20,7 +20,7 @@ export interface PlanetData {
 export type PlanetType = "earth" | "gas-giant" | "mars";
 
 /** The playable system: past this radius a return burn pushes the ship back (utils/edgeHaze.ts). */
-export const SYSTEM_RADIUS = 400;
+export const SYSTEM_RADIUS = 480;
 /**
  * The Worker-shared acceptance bound (beacon-api validates positions against it).
  * Deliberately generous and fixed, not derived from SYSTEM_RADIUS: the playable

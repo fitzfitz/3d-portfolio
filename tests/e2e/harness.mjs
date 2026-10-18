@@ -2,6 +2,7 @@
 // captures page errors as failures, and collects structured check results.
 import puppeteer from "puppeteer-core";
 import { spawn } from "node:child_process";
+import { DEEP_SPACE_POINT } from "./deepSpacePoint.mjs";
 
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -389,11 +390,11 @@ export function sceneQuery(page, name) {
 
 /** Puts the ship in deep space away from every planet, portal, and comet. */
 export async function toDeepSpace(page) {
-  const ok = await page.evaluate(() => {
+  const ok = await page.evaluate(([x, y, z]) => {
     if (typeof window.__fitz.teleport !== "function") return false;
-    window.__fitz.teleport(-170, -150, -170); // r 288: clear of every landmark, planet orbit (<=185) and comet (aphelion 227), outside the haze (360)
+    window.__fitz.teleport(x, y, z); // deepSpacePoint.mjs: clear of every orbit, comet and landmark, inside the haze
     return true;
-  });
+  }, DEEP_SPACE_POINT);
   if (!ok) throw new Error("__fitz.teleport unavailable — Spaceship did not register it");
   await settle(page, 1500);
 }
@@ -420,7 +421,7 @@ export function lockFullFidelity() {
  * broadcast ever contained "RETURN BURN" (store subscription, so a later
  * broadcast replacing it cannot hide it). Read it back with readEdgeRecorder.
  */
-export function installEdgeRecorder(page, edge = 400) {
+export function installEdgeRecorder(page, edge = 480) {
   return page.evaluate((E) => {
     const rec = {
       maxR: 0, opAtMax: 0, tCross: null, tBack: null,

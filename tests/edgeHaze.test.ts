@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { edgeDepth, edgeReturn, HazeLineGate, ReturnBurnLineGate, HAZE_START, EDGE_RETURN_SPEED, EdgeRadioClock, edgeLatch } from "../src/utils/edgeHaze";
-import { SYSTEM_RADIUS } from "../src/constants";
+import { SYSTEM_RADIUS, VALIDATION_RADIUS } from "../src/constants";
 
 // p, v along +X for clarity; also run one case along (1,1,1)/sqrt3.
 function fly(p0: number, v0: number, pilotOut: number, seconds: number, dir = [1, 0, 0]) {
@@ -18,27 +18,34 @@ function fly(p0: number, v0: number, pilotOut: number, seconds: number, dir = [1
   return { maxR, backInsideAt, maxInward };
 }
 
+/** Past the edge the burn may let the ship out at most this far (the Worker accepts VALIDATION_RADIUS). */
+const OVERSHOOT_BOUND = SYSTEM_RADIUS + 20;
+const EDGE = SYSTEM_RADIUS + 0.01;
+
 describe("return burn", () => {
-  it("stops a warp-speed crossing before 440 and returns it within 6 s", () => {
-    const r = fly(400.01, 39, 0, 10);
-    expect(r.maxR).toBeLessThan(440); expect(r.backInsideAt).toBeGreaterThan(0); expect(r.backInsideAt).toBeLessThan(6);
+  it("the overshoot bound sits inside the Worker's acceptance radius", () => {
+    expect(OVERSHOOT_BOUND).toBeLessThanOrEqual(VALIDATION_RADIUS);
+  });
+  it("stops a warp-speed crossing within 20 of the edge and returns it within 6 s", () => {
+    const r = fly(EDGE, 39, 0, 10);
+    expect(r.maxR).toBeLessThan(OVERSHOOT_BOUND); expect(r.backInsideAt).toBeGreaterThan(0); expect(r.backInsideAt).toBeLessThan(6);
   });
   it("still returns a pilot holding full outward thrust (25.2 u/s2)", () => {
-    const r = fly(400.01, 10.8, 25.2, 15);
-    expect(r.maxR).toBeLessThan(440); expect(r.backInsideAt).toBeGreaterThan(0);
+    const r = fly(EDGE, 10.8, 25.2, 15);
+    expect(r.maxR).toBeLessThan(OVERSHOOT_BOUND); expect(r.backInsideAt).toBeGreaterThan(0);
   });
   it("never pushes inward faster than EDGE_RETURN_SPEED", () => {
-    expect(fly(420, 0, 0, 10).maxInward).toBeLessThanOrEqual(EDGE_RETURN_SPEED + 1e-9);
+    expect(fly(SYSTEM_RADIUS + 20, 0, 0, 10).maxInward).toBeLessThanOrEqual(EDGE_RETURN_SPEED + 1e-9);
   });
   it("does nothing inside the system", () => {
     const v = { x: 39, y: 0, z: 0 };
-    expect(edgeReturn({ x: 399, y: 0, z: 0 }, v, 1 / 60)).toBe(false); expect(v.x).toBe(39);
+    expect(edgeReturn({ x: SYSTEM_RADIUS - 1, y: 0, z: 0 }, v, 1 / 60)).toBe(false); expect(v.x).toBe(39);
   });
   it("bounds hold along (1,1,1)/sqrt3 as well", () => {
-    const a = fly(400.01, 39, 0, 10, [1, 1, 1]);
-    expect(a.maxR).toBeLessThan(440); expect(a.backInsideAt).toBeGreaterThan(0); expect(a.backInsideAt).toBeLessThan(6);
-    const b = fly(400.01, 10.8, 25.2, 15, [1, 1, 1]);
-    expect(b.maxR).toBeLessThan(440); expect(b.backInsideAt).toBeGreaterThan(0);
+    const a = fly(EDGE, 39, 0, 10, [1, 1, 1]);
+    expect(a.maxR).toBeLessThan(OVERSHOOT_BOUND); expect(a.backInsideAt).toBeGreaterThan(0); expect(a.backInsideAt).toBeLessThan(6);
+    const b = fly(EDGE, 10.8, 25.2, 15, [1, 1, 1]);
+    expect(b.maxR).toBeLessThan(OVERSHOOT_BOUND); expect(b.backInsideAt).toBeGreaterThan(0);
   });
   it("the burn line preempts the haze line but waits for any other broadcast", () => {
     const W = 6;
@@ -54,7 +61,7 @@ describe("return burn", () => {
     expect(new ReturnBurnLineGate().update(true, 1, other.busyIgnoringEdge(1, W))).toBe(false);
   });
   it("works along a diagonal too", () => {
-    const k = 400.5 / Math.sqrt(3), p = { x: k, y: k, z: k }, v = { x: 20, y: 20, z: 20 };
+    const k = (SYSTEM_RADIUS + 0.5) / Math.sqrt(3), p = { x: k, y: k, z: k }, v = { x: 20, y: 20, z: 20 };
     expect(edgeReturn(p, v, 1 / 60)).toBe(true);
     expect(v.x).toBeCloseTo(v.y, 9); expect(v.x).toBeLessThan(20);
   });
@@ -67,9 +74,12 @@ describe("return burn", () => {
 });
 
 describe("edgeDepth", () => {
-  it("is radial: 0 inside 360, 1 at 400 and beyond, along any direction", () => {
+  it("the haze starts 40 inside the edge, derived from SYSTEM_RADIUS", () => {
+    expect(HAZE_START).toBe(SYSTEM_RADIUS - 40);
+  });
+  it("is radial: 0 inside HAZE_START, 1 at SYSTEM_RADIUS and beyond, along any direction", () => {
     const d = (r: number) => edgeDepth(r / Math.sqrt(3), r / Math.sqrt(3), r / Math.sqrt(3));
-    expect(d(359)).toBe(0); expect(d(400)).toBeCloseTo(1, 9); expect(d(430)).toBe(1);
+    expect(d(HAZE_START - 1)).toBe(0); expect(d(SYSTEM_RADIUS)).toBeCloseTo(1, 9); expect(d(SYSTEM_RADIUS + 30)).toBe(1);
     expect(edgeDepth(250, 250, 0)).toBe(0);
     expect(edgeDepth(HAZE_START, 0, 0)).toBe(0);
   });
@@ -95,14 +105,14 @@ describe("HazeLineGate", () => {
 describe("edge latch (no warp re-engage at the edge)", () => {
   it("sets past SYSTEM_RADIUS, holds while boosting through the burn's return, clears on release or deep inside", () => {
     expect(edgeLatch(false, SYSTEM_RADIUS + 0.1, true)).toBe(true);
-    expect(edgeLatch(true, SYSTEM_RADIUS - 5, true)).toBe(true); // burn brought it back to ~400: still latched
+    expect(edgeLatch(true, SYSTEM_RADIUS - 5, true)).toBe(true); // burn brought it back to the edge: still latched
     expect(edgeLatch(true, SYSTEM_RADIUS - 5, false)).toBe(false); // boost released
     expect(edgeLatch(true, HAZE_START - 1, true)).toBe(false); // well inside the haze start
     expect(edgeLatch(false, SYSTEM_RADIUS - 5, true)).toBe(false); // never crossed
   });
   it("a held-Shift outward run never re-warps after the cut", () => {
     let latched = false, warpedAfterCut = false, cut = false;
-    const p = 399, dt = 1 / 60;
+    const p = SYSTEM_RADIUS - 1, dt = 1 / 60;
     const pos = { x: p, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 0 };
     for (let t = 0; t < 20; t += dt) {
       const r = Math.hypot(pos.x, pos.y, pos.z);

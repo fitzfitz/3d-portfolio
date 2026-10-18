@@ -62,7 +62,7 @@ const WINDOWS: Record<WorldId, [number, number]> = {
   "w-blue": [335, 407],
 };
 const CANDIDATES: Candidate[] = WORLDS.map((w) => ({ id: w.id, type: w.type, size: w.size, window: WINDOWS[w.id] }));
-const INC_MAX = 40;
+const INC_MAX = 60;
 
 interface Plane { inc: number; node: number; margin: number; worst: string }
 
@@ -74,7 +74,7 @@ function judge(c: Candidate, radius: number, inc: number, node: number): Plane {
   return { inc, node, margin, worst };
 }
 
-/** Grid: inclination −40…40° in 2.5° steps, node 0…350° in 10°; then refined around the best to 0.5° and 1°. */
+/** Grid: inclination −60…60° in 2.5° steps, node 0…350° in 10°; then refined around the best to 0.5° and 1°. */
 function bestPlane(c: Candidate, radius: number): Plane {
   let best: Plane = { inc: 0, node: 0, margin: -Infinity, worst: "" };
   for (let inc = -INC_MAX; inc <= INC_MAX; inc += 2.5) {

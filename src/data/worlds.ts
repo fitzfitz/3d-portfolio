@@ -8,7 +8,7 @@ import type { WorldTypeId } from "./worldTypes";
  */
 export const WORLD_IDS = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"] as const;
 export type WorldId = (typeof WORLD_IDS)[number];
-export const WORLD_COUNT = 5;
+export const WORLD_COUNT = WORLD_IDS.length;
 
 export interface WorldData {
   id: WorldId;
@@ -58,19 +58,22 @@ const circular = (radius: number, incDeg: number, nodeDeg: number, phase: number
  * under the rules in tests/helpers/worldRules.ts, which
  * tests/worldClearance.test.ts holds permanently. Each comment gives the
  * world's worst margin (u) and what sets it. Phases are spread, not chosen.
+ * The inner three's worst margins are gaps that depend on radius alone: with
+ * the rock past Fuxx and the dwarf held at 2.77 AU, the ringed giant between
+ * them leaves about 3.6 for each, whatever the planes.
  */
 export const WORLDS: readonly WorldData[] = [
   {
     id: "w-rock", name: "AIRLESS ROCK", namesake: "Mercury", type: "airless-rock",
     size: 5.7, flattening: 0, bondAlbedo: 0.068, axialTiltDeg: 0.03, spin: PROGRADE * 0.15,
-    orbit: circular(219, -28.5, 140, 1.0), // 1.90 AU; worst 2.8: gap to the ringed giant (3.7 to Fuxx)
+    orbit: circular(219, -50.5, 194, 1.0), // 1.90 AU; worst 3.74: gap to Fuxx (3.82 to the ringed giant)
     map: "w-rock", hint: "just beyond the Mars-type's orbit, small and cratered",
     namesakeRef: { distanceAU: 0.387, tempC: 166 }, // 439.6 K
   },
   {
     id: "w-ringed", name: "RINGED GIANT", namesake: "Saturn", type: "ringed-giant",
     size: 15, flattening: 0.1, bondAlbedo: 0.342, axialTiltDeg: 26.7, spin: PROGRADE * 0.3,
-    orbit: circular(269, 40, 295, 3.5), // 2.34 AU; worst 2.8: gap to the rock (2.86 to comet 1's path)
+    orbit: circular(270, -53, 118, 3.5), // 2.35 AU; worst 3.56: gap to the dwarf (3.83 to the rock)
     map: "w-ringed", hint: "beyond the Mars-type's orbit, ringed",
     namesakeRef: { distanceAU: 9.573, tempC: -192 }, // 81.0 K
   },
@@ -91,7 +94,7 @@ export const WORLDS: readonly WorldData[] = [
   {
     id: "w-dwarf", name: "SALT-SPOTTED DWARF", namesake: "Ceres", type: "salt-dwarf",
     size: 3.5, flattening: 0, bondAlbedo: 0.034, axialTiltDeg: 4, spin: PROGRADE * 0.35,
-    orbit: circular(2.77 * AU, 39.5, 240, 5.2), // 2.77 AU, real Ceres's distance; worst 4.55: gap to the ringed giant
+    orbit: circular(2.77 * AU, 58.5, 66, 5.2), // 2.77 AU, real Ceres's distance; worst 3.55: gap to the ringed giant
     map: "w-dwarf", hint: "at 2.77 AU, real Ceres's distance, tiny and dark",
     namesakeRef: { distanceAU: 2.77, tempC: -107 }, // ~166 K, computed
   },

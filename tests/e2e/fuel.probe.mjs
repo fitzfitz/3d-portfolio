@@ -73,7 +73,7 @@ export default async function run() {
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
       const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s) && Math.hypot(s.x, s.y, s.z) <= 370);
       if (!cr) return null;
-      // Keep the teleport target inside the system (SYSTEM_RADIUS 400 minus 10),
+      // Keep the teleport target well inside the system (SYSTEM_RADIUS 480),
       // so it can never land in the edge burn: offset toward the centre if needed.
       let z = cr.z + dzv;
       const r = Math.hypot(cr.x, cr.y, z);
@@ -272,7 +272,7 @@ export default async function run() {
 
     // Find a ship position where, by plain 3D distance, no active
     // crystal is within RANGE (220, RadarMap's). Searched over the live crystal
-    // list (grid + random candidates inside the 400 sphere, keeping the one
+    // list (grid + random candidates inside the 460 sphere, keeping the one
     // farthest from its nearest crystal) rather than assumed, since the field is
     // randomly placed every run.
     //
@@ -284,8 +284,8 @@ export default async function run() {
     // the search finds regardless, then relocate — via the same live-reference
     // debug bridge every other crystal check in this file mutates through — just
     // the crystals still within RANGE of it, to the far side of the sphere (on
-    // the ray from the candidate through the centre, at radius 380, so at least
-    // 380 units from it). In the common case that list is empty and nothing is
+    // the ray from the candidate through the centre, at radius 460, so at least
+    // 460 units from it). In the common case that list is empty and nothing is
     // touched. It still exercises RadarMap's real gate/draw against the real
     // crystalSlots array — it just guarantees the input configuration is one
     // where the property under test can actually hold.
@@ -310,7 +310,7 @@ export default async function run() {
       fieldFull.ok, `active=${await activeCrystals()} locked=${await locked()}`);
 
     const farSetup = await page.evaluate(async () => {
-      const SPHERE = 380; // candidates stay inside the 400 system radius, clear of the edge burn
+      const SPHERE = 460; // candidates stay inside the 480 system radius, clear of the edge burn
       const RANGE = 220;
       const crystals = (window.__fitz.crystals ?? []).filter((c) => c.active);
       const candidates = [];

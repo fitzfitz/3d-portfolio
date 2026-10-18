@@ -13,6 +13,7 @@ import { STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R } from "../../src/data/c
 import { SHIPYARD_POS, SHIPYARD_RADII } from "../../src/data/shipyard";
 import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { SPAWN } from "../../src/data/spawn";
+import { HAZE_START } from "../../src/utils/edgeHaze";
 import type { WorldTypeId } from "../../src/data/worldTypes";
 import { beltClearance, MOON_REACH_FACTOR, MARGIN } from "./clearance";
 
@@ -28,8 +29,6 @@ import { beltClearance, MOON_REACH_FACTOR, MARGIN } from "./clearance";
 export const RING_REACH_FACTOR = 2.3;
 /** World-vs-planet and world-vs-world gap, after both bodies. */
 export const BODY_GAP = 7;
-/** Task 3: HAZE_START (SYSTEM_RADIUS 480 − 40). Until then the literal. */
-export const HAZE_START_FOR_C = 440;
 /** A world's body stays this far inside the haze; its gravity well may reach into it. */
 export const HAZE_PAD = 20;
 
@@ -124,6 +123,6 @@ export function worldMargins(w: WorldShape, others: readonly Orbiter[], dist: To
   out.push({ what: "portal", margin: dist(w.orbit, PORTAL_POS) - (atLeast(ZONE_FACTOR) + PORTAL_ZONE_R) });
   for (const l of LANDMARKS) out.push({ what: l.name, margin: dist(w.orbit, l.pos) - (atLeast(MOON_REACH_FACTOR) + l.keepOut + MARGIN) });
   out.push({ what: "spawn", margin: dist(w.orbit, SPAWN_V) - (atLeast(MOON_REACH_FACTOR) + 8.5 + MARGIN + 40) });
-  out.push({ what: "haze", margin: HAZE_START_FOR_C - HAZE_PAD - (w.orbit.radius + reach) });
+  out.push({ what: "haze", margin: HAZE_START - HAZE_PAD - (w.orbit.radius + reach) });
   return out;
 }

@@ -81,8 +81,9 @@ const readPerfCounters = (page) => page.evaluate(() => {
  * and nose = (sin yaw * cos pitch, sin pitch, cos yaw * cos pitch), so a unit
  * direction n is yaw = atan2(n.x, n.z), pitch = asin(n.y). Away from the sun,
  * n is the ship's position normalised; toward it, the negation. From
- * toDeepSpace's (-170, -150, -170) that is yaw -135 deg / pitch -31.4 deg
- * away and yaw 45 deg / pitch +31.4 deg toward, both inside PITCH_MAX (83 deg).
+ * toDeepSpace's DEEP_SPACE_POINT (260, -50, 140) that is yaw 61.7 deg / pitch
+ * -9.6 deg away and yaw -118.3 deg / pitch +9.6 deg toward, both inside
+ * PITCH_MAX (83 deg).
  *
  * The chase camera (Spaceship.tsx, applyChaseCam) eases toward a point 4.6u
  * behind the nose and 1.8u up by frameLerp(0.05) a frame, 14% a frame at the

@@ -22,7 +22,7 @@ export interface WorldType {
 const RUNAWAY_FLUX = 1.1;
 /** Nitrogen ice needs T_eq ≤ ~60 K (approximate; N₂ triple point 63.15 K). */
 const N2_ICE_MAX_K = 60;
-/** Water-ice rings survive at T_eq ≤ ~170 K (approximate; water ice sublimates fast above ~170 K in vacuum). */
+/** Water-ice rings need T_eq ≤ ~170 K (approximate: the water-ice condensation, or snow-line, temperature, ~150–170 K; Hayashi 1981). */
 const RING_ICE_MAX_K = 170;
 /** A Ceres-like dwarf keeps subsurface water ice at T_eq ≤ ~180 K (approximate; real Ceres ~166 K, Dawn found ice below its surface). */
 const SALT_DWARF_MAX_K = 180;

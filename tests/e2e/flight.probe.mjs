@@ -1,7 +1,7 @@
 import { withPage, hold, settle, sceneQuery, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
-const SYSTEM_RADIUS = 400; // src/constants.ts
-const EDGE_BOUND = 440; // the burn must never let the ship out this far (the Worker accepts 520)
+const SYSTEM_RADIUS = 480; // src/constants.ts
+const EDGE_BOUND = 520; // the burn must never let the ship out this far (VALIDATION_RADIUS, what the Worker accepts)
 const RANGE = 220; // RadarMap RANGE
 const SIZE = 148;  // RadarMap SIZE
 
@@ -96,7 +96,7 @@ export default async function run() {
     // nose down +X), hold warp until the edge is crossed, release, then poll
     // generously: headless sim time runs ~3x slower than wall time.
     await page.evaluate(() => {
-      window.__fitz.teleport(380, 0, 0);
+      window.__fitz.teleport(460, 0, 0);
       window.__fitz.setAttitude(Math.PI / 2, 0);
     });
     // The in-page recorder (harness.mjs) timestamps the crossing and the return

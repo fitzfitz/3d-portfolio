@@ -35,8 +35,8 @@ describe("real units", () => {
 });
 
 describe("sector range readout", () => {
-  it("the sector is 4.35 AU across", () => {
-    expect(distanceAU(SYSTEM_RADIUS * 2).toFixed(2)).toBe("6.96");
+  it("the sector is 8.35 AU across", () => {
+    expect(distanceAU(SYSTEM_RADIUS * 2).toFixed(2)).toBe("8.35");
   });
 });
 

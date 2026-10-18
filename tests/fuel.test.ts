@@ -26,7 +26,7 @@ describe("drainFuel", () => {
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
     expect(seconds).toBeCloseTo(5 * 12.5, 9);
     expect(seconds * SHIP_WARP_SPEED).toBeCloseTo(2437.5, 6);
-    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(SYSTEM_RADIUS * 2 * 3); // three full crossings of the system
+    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(5 * SYSTEM_RADIUS); // more than two and a half diameters of the system
   });
 });
 

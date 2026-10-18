@@ -6,7 +6,7 @@ import type { Vec3 } from "./reactions";
  * and past the radius a return burn brakes the outward velocity and nudges the
  * ship back in. Nothing wraps; the edge is real.
  */
-export const HAZE_START = 360;
+export const HAZE_START = SYSTEM_RADIUS - 40;
 /** Return-burn authority (u/s^2): beats the pilot's 25.2 thrust. */
 export const EDGE_BRAKE = 40;
 /** The inward drift (u/s) the burn settles to outside the radius. */
@@ -47,7 +47,7 @@ export function edgeReturn(p: Vec3, v: Vec3, dt: number): boolean {
 
 /**
  * The edge cut latch. Set once the ship is past SYSTEM_RADIUS; while set, warp
- * is refused, so the burn bringing the ship back to 400 cannot re-engage warp
+ * is refused, so the burn bringing the ship back to the edge cannot re-engage warp
  * (which would point outward again and bounce). Cleared when boost is released
  * or the ship is back inside HAZE_START.
  */
@@ -85,7 +85,7 @@ export class HazeLineGate {
 }
 
 /**
- * Radio-busy bookkeeping for the edge lines. The haze line (depth 0.3, ~r 372)
+ * Radio-busy bookkeeping for the edge lines. The haze line (depth 0.3, ~r 455)
  * must not block the return-burn line a second later, so the burn asks for
  * busyness ignoring edge lines; every other broadcast still blocks it.
  */

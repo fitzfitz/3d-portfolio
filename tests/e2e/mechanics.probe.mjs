@@ -20,8 +20,8 @@ async function edge(page, checks) {
   });
   await page.keyboard.press("KeyW"); // first input
   // Installed before the teleport: the haze line fires on arrival at depth 0.5.
-  await installEdgeRecorder(page, 400);
-  await page.evaluate(() => { window.__fitz.teleport(380, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
+  await installEdgeRecorder(page, 480);
+  await page.evaluate(() => { window.__fitz.teleport(460, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
   checks.check("haze thickens near the edge", op > 0.3, `opacity=${op} at r=${(await radius()).toFixed(1)}`);
@@ -42,12 +42,12 @@ async function edge(page, checks) {
   const rec = await readEdgeRecorder(page);
   const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
   checks.check("holding thrust outward, the ship reaches the edge", rec.tCross !== null, `max r=${rec.maxR.toFixed(1)}`);
-  checks.check("the haze is full at 400 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 400 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
+  checks.check("the haze is full at 480 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 480 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
     `opacity=${rec.opAtMax} read in the frame of max r=${rec.maxR.toFixed(1)}`);
   checks.check("holding thrust outward at the edge, the ship is still brought back", done.ok && rec.tBack !== null,
     `max r=${rec.maxR.toFixed(1)}, back after ${backS.toFixed(1)}s wall`);
   checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18, `${backS.toFixed(1)}s wall`);
-  checks.check("the ship stays well inside the validation bounds", rec.maxR < 440, `max r=${rec.maxR.toFixed(1)}`);
+  checks.check("the ship stays well inside the validation bounds", rec.maxR < 500, `max r=${rec.maxR.toFixed(1)}`);
   checks.check("the edge fires no teleport flash", !flashed);
   // The haze line (depth 0.3) plays first on the way out, the burn line a moment
   // later; the recorder catches the burn line whatever replaces it afterwards.
@@ -170,7 +170,7 @@ async function photoMode(page, checks) {
 
 async function reducedMotion(page, checks) {
   await page.keyboard.press("KeyW");
-  await page.evaluate(() => window.__fitz.teleport(390, 0, 0));
+  await page.evaluate(() => window.__fitz.teleport(470, 0, 0)); // haze depth ~0.84 (u 0.75 of 440..480)
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);

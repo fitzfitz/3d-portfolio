@@ -172,6 +172,9 @@ sphere; `VALIDATION_RADIUS` is now a fixed 520): deploy `beacon-api`, verify it
 accepts a position near 500, then merge. Otherwise beacons and live-sky positions
 beyond the old bounds are rejected.
 
+The New Worlds change moved the edge again, to a 480-unit sphere (the haze from
+440). That sits inside the fixed 520, so it needed no Worker deploy.
+
 ## Docs
 
 `docs/superpowers/specs/` holds a design document per feature and

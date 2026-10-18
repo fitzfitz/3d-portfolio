@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { AU } from "../src/constants";
+import { AU, SYSTEM_RADIUS } from "../src/constants";
 import { WORLD_TYPES } from "../src/data/worldTypes";
 import { WORLDS, WORLD_IDS, WORLD_COUNT, isWorld } from "../src/data/worlds";
-
-// SYSTEM_RADIUS once Task 3 lands (480); import it then.
-const SYSTEM_RADIUS_FOR_C = 480; // Task 3
 
 describe("the world-type law", () => {
   it("a Venus-type cannot exist past ~1.1 S⊕", () => {
@@ -14,7 +11,7 @@ describe("the world-type law", () => {
     expect(WORLD_TYPES["venus-type"].canExistAt(0.72 * AU, 0.77).ok).toBe(true);
   });
   it("a nitrogen-ice dwarf cannot exist inside the system edge", () => {
-    expect(WORLD_TYPES["nitrogen-dwarf"].canExistAt(SYSTEM_RADIUS_FOR_C, 0.6).ok).toBe(false);
+    expect(WORLD_TYPES["nitrogen-dwarf"].canExistAt(SYSTEM_RADIUS, 0.6).ok).toBe(false);
   });
   it("water-ice rings and a Ceres-like dwarf need cold orbits", () => {
     expect(WORLD_TYPES["ringed-giant"].canExistAt(AU, 0.342).ok).toBe(false);
@@ -51,7 +48,8 @@ describe("the world roster", () => {
     expect(row("w-blue")).toMatchObject({ namesake: "Neptune", type: "ice-giant", size: 13, bondAlbedo: 0.29, axialTiltDeg: 28.3 });
     expect(row("w-dwarf")).toMatchObject({ namesake: "Ceres", type: "salt-dwarf", size: 3.5, bondAlbedo: 0.034, axialTiltDeg: 4 });
   });
-  it("orbits are circular and follow the placement preferences", () => {
+  // Circularity is by construction: OrbitalElements has no eccentricity to assert.
+  it("orbits follow the placement preferences", () => {
     const r = (id: string) => WORLDS.find((w) => w.id === id)!.orbit.radius;
     const radii = WORLDS.map((w) => w.orbit.radius);
     expect(r("w-rock")).toBe(Math.min(...radii));
