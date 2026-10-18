@@ -38,7 +38,8 @@ const GENERATORS: Record<string, string> = {
   "w-ringed_ring.webp": "scripts/textures/gen_worlds.mjs",
   "w-tilted.webp": "scripts/textures/gen_worlds.mjs",
   "w-blue.webp": "scripts/textures/gen_worlds.mjs",
-  "w-dwarf.webp": "scripts/textures/gen_worlds.mjs",
+  "w-dwarf.webp": "scripts/blender/gen_world_dwarf.py",
+  "w-dwarf_normal.webp": "scripts/blender/gen_world_dwarf.py",
 };
 
 describe("asset provenance", () => {

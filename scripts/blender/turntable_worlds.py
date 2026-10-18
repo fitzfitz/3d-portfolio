@@ -41,6 +41,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SEG, RINGS = 256, 128
 PHASE_DEG = 40.0          # sun-planet-camera angle of the turntable frames
 LIMB = {"w-ringed": 0.5, "w-tilted": 0.45, "w-blue": 0.65}
+NORMAL_MAPPED = {"w-rock", "w-dwarf"}     # they ship <map>_normal.webp
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OPT = dict(a[2:].split("=", 1) for a in argv if a.startswith("--") and "=" in a)
@@ -235,9 +236,9 @@ def planet_material(w):
     else:
         bsdf.inputs["Roughness"].default_value = 1.0     # regolith: flatter than Lambert at the limb
     nt.links.new(col, bsdf.inputs["Color"])
-    if w["id"] == "w-rock":
+    if w["id"] in NORMAL_MAPPED:
         ntex = nt.nodes.new("ShaderNodeTexImage")
-        ntex.image = image("w-rock_normal", non_color=True)
+        ntex.image = image(w["map"] + "_normal", non_color=True)
         nmap = nt.nodes.new("ShaderNodeNormalMap")
         nmap.uv_map = "UVMap"
         nt.links.new(ntex.outputs["Color"], nmap.inputs["Color"])

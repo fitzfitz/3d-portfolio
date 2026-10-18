@@ -5,7 +5,7 @@
 # Cycles bake, no sampling noise), so a re-run reproduces the same pixels.
 # Runs in Blender's Python for its bundled numpy, like gen_moon.py: it shares
 # that script's noise, crater and ray code through surface_lib.py and ports its
-# maria (here on a 2:1 grid, with its own window and local_polar). It uses no bpy.
+# maria (here on surface_lib's 2:1 equirect_grid). It uses no bpy.
 #
 # Writes (spec docs/superpowers/specs/2026-10-17-new-worlds-design.md):
 #   assets-src/w-rock.png         2048x1024 sRGB albedo: grey-brown; one large
@@ -22,15 +22,14 @@
 # (spec "Light": honest albedo on the scene's scale).
 import math
 import os
-import struct
 import sys
-import zlib
 
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from surface_lib import (Perlin, crater_set, crater_stamper, fbm, hexcol, lin_to_srgb,  # noqa: E402
-                         rays, smoothstep, srgb_to_lin, unit, voronoi, warp)
+from surface_lib import (Perlin, calibrate, crater_set, crater_stamper, dir_from, equirect_grid,  # noqa: E402
+                         fbm, hexcol, normal_map, smoothstep, soften, unit, voronoi, warp,
+                         write_png)
 
 SEED = 20261017
 W, H = 2048, 1024
@@ -39,66 +38,8 @@ TARGET_MEDIAN = 0.025       # linear luminance (tests/worldMaps.test.ts)
 NORMAL_STRENGTH = 3.0       # relief exaggeration in the normal map
 NORMAL_SOFTEN_PX = 1.2      # pre-blur of the normal map's height, texels
 
-# ------------------------------------------------------------------ grid
-LAT = (np.pi / 2 - (np.arange(H) + 0.5) / H * np.pi).astype(np.float32)
-PHI = ((np.arange(W) + 0.5) / W * 2 * np.pi).astype(np.float32)
-_cl = np.cos(LAT)[:, None]
-P = np.stack([-np.cos(PHI)[None, :] * _cl,
-              np.repeat(np.sin(LAT)[:, None], W, 1),
-              np.sin(PHI)[None, :] * _cl], -1).astype(np.float32)
-ROWS = np.arange(H)
-
-
-def dir_from(lat_deg, lon_deg):
-    la, lo = math.radians(lat_deg), math.radians(lon_deg)
-    return np.array([-math.cos(lo) * math.cos(la), math.sin(la), math.sin(lo) * math.cos(la)], np.float32)
-
-
-# ------------------------------------------------------------- sphere ops
-def window(c, R):
-    """Row and column index arrays of grid texels within ~R rad of c (seam-safe)."""
-    latc = math.asin(max(-1.0, min(1.0, float(c[1]))))
-    phic = math.atan2(float(c[2]), -float(c[0])) % (2 * math.pi)
-    r0 = max(0, int(math.floor((math.pi / 2 - latc - R) / math.pi * H)) - 1)
-    r1 = min(H, int(math.ceil((math.pi / 2 - latc + R) / math.pi * H)) + 1)
-    if abs(latc) + R > 1.45:
-        cols = np.arange(W)
-    else:
-        dl = min(math.pi, R / math.cos(abs(latc) + R))
-        j0 = int(math.floor((phic - dl) / (2 * math.pi) * W)) - 1
-        j1 = int(math.ceil((phic + dl) / (2 * math.pi) * W)) + 1
-        cols = np.arange(j0, j1) % W if j1 - j0 < W else np.arange(W)
-    return np.ix_(ROWS[r0:r1], cols)
-
-
-def local_polar(Ps, c):
-    """Angular distance to c and azimuth around c for points Ps."""
-    dot = np.clip(Ps @ c, -1, 1)
-    ang = np.arccos(dot)
-    t1 = np.cross(c, [0.0, 1.0, 0.0] if abs(c[1]) < 0.9 else [1.0, 0.0, 0.0])
-    t1 = (t1 / np.linalg.norm(t1)).astype(np.float32)
-    t2 = np.cross(c, t1).astype(np.float32)
-    az = np.arctan2(Ps @ t2, Ps @ t1)
-    return ang, az
-
-
+P, window, local_polar = equirect_grid(W, H)
 stamp_crater = crater_stamper(P, window, local_polar)
-
-
-def normal_map(R, strength):
-    """Tangent-space (OpenGL: +X east along u, +Y north) normal map from a height field."""
-    h, w = R.shape
-    lat = (np.pi / 2 - (np.arange(h) + 0.5) / h * np.pi).astype(np.float32)
-    step = 2 * math.pi / w
-    gx = (np.roll(R, -1, 1) - np.roll(R, 1, 1)) / (2 * step * np.maximum(np.cos(lat), 0.08)[:, None])
-    gy = np.zeros_like(R)
-    gy[1:-1] = (R[:-2] - R[2:]) / (2 * step)          # row j-1 is north of row j
-    # the pole triangle fans have degenerate tangents: fade detail out there
-    fade = smoothstep(1.50, 1.36, np.abs(lat))[:, None]
-    nx, ny = -gx * strength * fade, -gy * strength * fade
-    nz = np.ones_like(R)
-    l = np.sqrt(nx * nx + ny * ny + nz * nz)
-    return np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
 
 
 # ------------------------------------------------------------------ the world
@@ -115,6 +56,36 @@ def lobate_scarp(Hm, rng, noise, height, length):
     s = np.arcsin(np.clip(P @ nrm, -1, 1)) + 0.012 * fbm(noise, P + float(th0), 7.0, 3)   # lobate wander
     face = smoothstep(-0.004, 0.0, s) * np.exp(-np.maximum(s, 0) / 0.035)
     Hm += height * face * along
+
+
+def ray_system(c, r, reach, n, rng, noise, skew=0.0):
+    """MESSENGER-like rays of a young crater: n long, thin, high-contrast
+    streaks along great circles out of c, each its own length (up to `reach`
+    rad), broad where they leave the ejecta blanket, then thin and slowly
+    widening, broken into patches along their length. Never thinner than
+    about one texel, so a ray survives the 2048 map and the WebP encode.
+    `skew` is the share of rays bunched around one azimuth (an oblique
+    impact's lopsided pattern). Returns (window index, brightness 0..1)."""
+    idx = window(c, reach)
+    Ps = P[idx]
+    ang, az = local_polar(Ps, c)
+    sa = np.sin(ang)
+    out = np.zeros(ang.shape, np.float32)
+    downrange = float(rng.uniform(-math.pi, math.pi))
+    for _ in range(n):
+        a0 = downrange + float(rng.normal(0, 0.8)) if rng.uniform() < skew else float(rng.uniform(-math.pi, math.pi))
+        L = reach * max(0.25, float(rng.uniform()) ** 0.9)         # many short, a few very long
+        w0 = max(0.0022, r * float(rng.uniform(0.08, 0.2))) * (2.0 if rng.uniform() < 0.15 else 1.0)   # a few broad ones
+        amp = float(rng.uniform(0.65, 1.0))
+        da = np.mod(az - a0 + math.pi, 2 * math.pi) - math.pi
+        d = sa * np.sin(np.clip(da, -1.2, 1.2))                   # off-ray distance, rad
+        wid = w0 * (1.0 + 1.5 * ang / L + 2.0 * np.exp(-ang / (4 * r)))
+        along = smoothstep(r * 0.8, r * 1.6, ang) * (1.0 - smoothstep(0.2 * L, L, ang)) * (np.abs(da) < 1.2)
+        out = np.maximum(out, amp * along * np.exp(-(d / wid) ** 2))
+    # patchy along each ray (secondary-crater chains), never a smooth spoke
+    q = Ps + np.float32(r * 100)
+    brk = smoothstep(-0.2, 0.3, fbm(noise, q, 9.0, 4)) * (0.45 + 0.55 * smoothstep(-0.2, 0.3, fbm(noise, q, 34.0, 3)))
+    return idx, np.minimum(1.0, 1.3 * out * (0.3 + 0.7 * brk))
 
 
 def mercury():
@@ -165,19 +136,31 @@ def mercury():
 
     # epoch 2: young craters on top of everything, a few with bright rays
     fresh_alb = np.zeros_like(Hm)
-    for c, r in crater_set(rng, 420, 0.005, 0.02, 2.3):
+    young = crater_set(rng, 420, 0.005, 0.02, 2.3)
+    for c, r in young:
         idx, x, az, Ps = stamp_crater(Hm, c, r, depth=r * 0.27, rim=r * 0.08, noise=nz, ext=2.4)
-        fresh_alb[idx] = np.maximum(fresh_alb[idx], 0.3 * np.exp(-np.maximum(x - 0.7, 0) * 2.2))
-    fresh = [((58, 17), 0.045, 15.0), ((-11, 31), 0.024, 10.0), ((-34, 12), 0.035, 12.0),
-             ((3, 250), 0.03, 11.0), ((-55, 300), 0.028, 9.0), ((40, 95), 0.02, 8.0), ((-20, 135), 0.018, 7.0)]
-    for k, ((la, lo), r, L) in enumerate(fresh):
+        fresh_alb[idx] = np.maximum(fresh_alb[idx], 0.5 * np.exp(-np.maximum(x - 0.7, 0) * 2.2))
+    # (centre, crater radius, stamp extent in radii, ray reach rad, ray count):
+    # three Hokusai-like systems whose rays cross most of a hemisphere, four lesser ones
+    fresh = [((58, 17), 0.045, 15.0, 1.5, 70), ((-11, 31), 0.024, 10.0, 0.6, 30), ((-34, 12), 0.035, 12.0, 1.3, 60),
+             ((3, 250), 0.03, 11.0, 1.3, 60), ((-55, 300), 0.028, 9.0, 0.7, 34), ((40, 95), 0.02, 8.0, 0.55, 26),
+             ((-20, 135), 0.018, 7.0, 0.5, 24)]
+    ray_rng = np.random.default_rng(SEED + 3)    # its own stream: the relief stays as it was
+    for (la, lo), r, L, reach, n in fresh:
         c = dir_from(la, lo)
         idx, x, az, Ps = stamp_crater(Hm, c, r, depth=r * 0.3, rim=r * 0.1, noise=nz,
                                       floor_frac=0.4, peak=r * 0.1 if r > 0.025 else 0.0, ext=L)
-        halo = np.exp(-np.maximum(x - 1.0, 0) * 1.5) * smoothstep(0.85, 1.0, x)
-        bright = np.maximum(0.8 * halo, np.clip((1.4 if k == 0 else 1.1) * rays(nz, x, az, L, k), 0, 1))
-        bright = np.maximum(bright, 0.5 * (1 - smoothstep(0.8, 1.0, x)))
+        # a bright, patchy continuous ejecta blanket out to ~3 radii, the rays grow out of it
+        halo = np.exp(-np.maximum(x - 1.0, 0) / 1.6) * smoothstep(0.85, 1.0, x) \
+            * (0.7 + 0.3 * smoothstep(-0.3, 0.3, fbm(nz, Ps, 1.0 / r, 3)))
+        bright = np.maximum(halo, 0.85 * (1 - smoothstep(0.8, 1.0, x)))
         fresh_alb[idx] = np.maximum(fresh_alb[idx], bright)
+        ridx, ray = ray_system(c, r, reach, n, ray_rng, nz)
+        fresh_alb[ridx] = np.maximum(fresh_alb[ridx], ray)
+    for c, r in young[:30]:          # the largest young craters keep short, often lopsided ray systems
+        ridx, ray = ray_system(c, r, r * float(ray_rng.uniform(15, 35)), int(ray_rng.integers(6, 17)), ray_rng, nz,
+                               skew=0.7)
+        fresh_alb[ridx] = np.maximum(fresh_alb[ridx], float(ray_rng.uniform(0.55, 0.9)) * ray)
 
     # albedo (sRGB): grey-brown intercrater terrain, warmer brighter plains,
     # darker bluish low-reflectance material, bright fresh ejecta and rays
@@ -189,43 +172,8 @@ def mercury():
     alb = base * (1 - plains[..., None]) + plain_c * plains[..., None]
     alb = alb * (1 - 0.7 * lrm[..., None]) + lrm_c * (0.7 * lrm[..., None])
     alb = alb * var[..., None] * (1.0 + np.clip(wall, -0.1, 0.18))[..., None]
-    alb = alb + (hexcol("#d6d2cb") - alb) * np.clip(fresh_alb, 0, 1)[..., None]
+    alb = alb + (hexcol("#e6e3de") - alb) * np.clip(fresh_alb, 0, 1)[..., None]
     return Hm, alb
-
-
-def calibrate(alb, target):
-    """Scale in linear light so the linear-luminance texel median is `target`; returns sRGB."""
-    lin = srgb_to_lin(np.clip(alb, 0, 1))
-    lum = 0.2126 * lin[..., 0] + 0.7152 * lin[..., 1] + 0.0722 * lin[..., 2]
-    s = target / float(np.sort(lum.ravel())[lum.size // 2])
-    return lin_to_srgb(lin * s), s
-
-
-def soften(F, sigma):
-    """Small separable Gaussian (texels; wraps in longitude): drops sub-texel relief
-    that would only alias and that WebP cannot carry inside the byte cap."""
-    r = int(math.ceil(3 * sigma))
-    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
-    k = (k / k.sum()).astype(np.float32)
-    G = sum(k[i + r] * np.roll(F, i, 1) for i in range(-r, r + 1))
-    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
-    return sum(k[i + r] * Gp[r + i:r + i + F.shape[0]] for i in range(-r, r + 1)).astype(np.float32)
-
-
-def write_png(path, rgb01):
-    """Minimal deterministic PNG writer (8-bit RGB)."""
-    a = np.round(np.clip(rgb01, 0, 1) * 255).astype(np.uint8)
-    h, w, _ = a.shape
-    raw = b"".join(b"\x00" + a[y].tobytes() for y in range(h))
-
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) \
-        + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
-    with open(path, "wb") as f:
-        f.write(png)
-    print("wrote", path)
 
 
 def main():

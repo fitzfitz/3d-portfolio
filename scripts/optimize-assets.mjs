@@ -84,18 +84,21 @@ for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
   }
 }
 
-// The new worlds' maps (scripts/textures/gen_worlds.mjs, scripts/blender/gen_world_rock.py),
-// at their authored sizes. `-- w-rock` also takes w-rock_normal. The ring strip
+// The new worlds' maps (scripts/textures/gen_worlds.mjs, scripts/blender/gen_world_rock.py,
+// scripts/blender/gen_world_dwarf.py), at their authored sizes. `-- w-rock`
+// also takes w-rock_normal (and `-- w-dwarf` w-dwarf_normal). The ring strip
 // is lossless and keeps the colour under transparent texels: its alpha is the
-// rings' optical depth, which lossy alpha would smear. The normal map's R and
-// G are independent vector components, so plain 4:2:0 chroma subsampling
-// would tilt every texel (~3.4 levels RMS); sharp-YUV (smartSubsample) at q90
+// rings' optical depth, which lossy alpha would smear. A normal map's R and G
+// are independent vector components, so plain 4:2:0 chroma subsampling would
+// tilt every texel (~3.4 levels RMS); sharp-YUV (smartSubsample) at q90
 // brings that to ~2.5 inside the 90 KB cap (tests/worldMaps.test.ts).
+const NORMAL_WEBP = { quality: 90, smartSubsample: true };
 const WORLD_WEBP = {
   "w-ringed_ring": { lossless: true, exact: true },
-  "w-rock_normal": { quality: 90, smartSubsample: true },
+  "w-rock_normal": NORMAL_WEBP,
+  "w-dwarf_normal": NORMAL_WEBP,
 };
-for (const file of ["w-rock", "w-rock_normal", "w-ringed", "w-ringed_ring", "w-tilted", "w-blue", "w-dwarf"]) {
+for (const file of ["w-rock", "w-rock_normal", "w-ringed", "w-ringed_ring", "w-tilted", "w-blue", "w-dwarf", "w-dwarf_normal"]) {
   if (!wanted(file) && !wanted(file.split("_")[0])) continue;
   const src = [`${SRC}/${file}.jpg`, `${SRC}/${file}.png`].find((p) => existsSync(p));
   if (!src) {

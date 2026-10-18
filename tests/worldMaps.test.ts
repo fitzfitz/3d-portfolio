@@ -23,6 +23,7 @@ const MAPS: { name: string; width: number; median?: number }[] = [
   { name: "w-tilted", width: 1024, median: 0.086 },
   { name: "w-blue", width: 2048, median: 0.078 },
   { name: "w-dwarf", width: 1024, median: 0.016 },
+  { name: "w-dwarf_normal", width: 1024 },
 ];
 const BYTE_CAP: Record<number, number> = { 2048: 260 * 1024, 1024: 90 * 1024 };
 const RING = { name: "w-ringed_ring", width: 2048, height: 4, cap: 16 * 1024 };
@@ -57,14 +58,14 @@ describe("world maps: shape, seam and poles", () => {
       if (m.median !== undefined) {
         expect(seam).toBeLessThan(2);
       } else {
-        // PENDING CONTROLLER RULING (task-2-report.md, fix round 1): the brief
-        // asks < 2 for every map. The normal map cannot meet that at its
-        // shipped relief: the lossless source already measures 2.24 here,
-        // which is just its interior column-to-column step (2.12), and lossy
-        // WebP adds independent block error on the two edge columns. Only a
-        // σ ≥ 2.5-texel blur gets under 2, which erases the small craters.
-        // So: under 5 levels (~2.2° of tilt; shipped 4.56) and, the part a
-        // visible line needs, no systematic step in any channel.
+        // Normal maps (the controller's ruling (a), task-2-report.md fix
+        // round 1): < 2 cannot hold at the shipped relief. w-rock_normal's
+        // lossless source already measures 2.24 here, just its interior
+        // column-to-column step (2.12), and lossy WebP adds independent block
+        // error on the two edge columns; only a σ ≥ 2.5-texel blur gets under
+        // 2, which erases the small craters. So: under 5 levels (~2.2° of
+        // tilt) and, the part a visible line needs, no systematic step in any
+        // channel.
         expect(seam).toBeLessThan(5);
         for (let c = 0; c < 3; c++) {
           let signed = 0;
@@ -94,22 +95,25 @@ describe("world maps: shape, seam and poles", () => {
   }
 });
 
-describe("w-rock_normal: codec fidelity", () => {
+describe("normal maps: codec fidelity", () => {
   // R and G are independent vector components: plain 4:2:0 chroma subsampling
-  // tilts every texel (3.35 levels RMS against the source), sharp-YUV at q90
-  // keeps it at 2.49. Needs the generator output, which lives in the private
-  // assets-src repo (absent in CI), where maps are regenerated.
-  const SRC = "assets-src/w-rock_normal.png";
-  it.skipIf(!existsSync(SRC))("stays within 2.6 levels RMS of its source", async () => {
-    const { data, w, h, ch } = await raw("w-rock_normal");
-    const src = await sharp(SRC).raw().toBuffer({ resolveWithObject: true });
-    expect([src.info.width, src.info.height]).toEqual([w, h]);
-    let err = 0;
-    for (let k = 0; k < w * h; k++) {
-      for (let c = 0; c < 3; c++) err += (data[k * ch + c] - src.data[k * src.info.channels + c]) ** 2;
-    }
-    expect(Math.sqrt(err / (w * h * 3))).toBeLessThan(2.6);
-  });
+  // tilts every texel (3.35 levels RMS against w-rock_normal's source),
+  // sharp-YUV at q90 keeps it near 2.5. Needs the generator output, which
+  // lives in the private assets-src repo (absent in CI), where maps are
+  // regenerated.
+  for (const name of ["w-rock_normal", "w-dwarf_normal"]) {
+    const SRC = `assets-src/${name}.png`;
+    it.skipIf(!existsSync(SRC))(`${name} stays within 2.6 levels RMS of its source`, async () => {
+      const { data, w, h, ch } = await raw(name);
+      const src = await sharp(SRC).raw().toBuffer({ resolveWithObject: true });
+      expect([src.info.width, src.info.height]).toEqual([w, h]);
+      let err = 0;
+      for (let k = 0; k < w * h; k++) {
+        for (let c = 0; c < 3; c++) err += (data[k * ch + c] - src.data[k * src.info.channels + c]) ** 2;
+      }
+      expect(Math.sqrt(err / (w * h * 3))).toBeLessThan(2.6);
+    });
+  }
 });
 
 describe("world maps: honest albedo", () => {
@@ -127,6 +131,21 @@ describe("world maps: honest albedo", () => {
       expect(median).toBeLessThan(m.median! * 1.35);
     });
   }
+});
+
+describe("w-tilted: Voyager 2's pale blue-cyan, not teal", () => {
+  // The game's tone mapping (Khronos PBR Neutral) subtracts the same toe
+  // offset from every channel of a dim pixel, which saturates it and lets a
+  // cyan with G ≈ B read teal-green. So the map carries a bluer hue (B over
+  // G; Voyager's image is 1.04, Task 2's map 1.11) and a paler one (R closer
+  // to G; Voyager 0.66, Task 2's map 0.60).
+  it("has B/G ≥ 1.15 and R/G ≥ 0.68 in mean linear colour", async () => {
+    const { data, w, h, ch } = await raw("w-tilted");
+    const sum = [0, 0, 0];
+    for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
+    expect(sum[2] / sum[1]).toBeGreaterThanOrEqual(1.15);
+    expect(sum[0] / sum[1]).toBeGreaterThanOrEqual(0.68);
+  });
 });
 
 describe("ring strip (w-ringed_ring)", () => {
@@ -182,7 +201,8 @@ describe("gen_worlds.mjs determinism", () => {
       try {
         execFileSync(process.execPath, ["scripts/textures/gen_worlds.mjs", "--width=64", `--out=${dir}`], { stdio: "pipe" });
         const files = readdirSync(dir).sort();
-        expect(files.length).toBeGreaterThanOrEqual(5);
+        // w-rock and w-dwarf are numpy-in-Blender (scripts/blender/gen_world_*.py).
+        expect(files).toEqual(["w-blue.jpg", "w-ringed.jpg", "w-ringed_ring.png", "w-tilted.jpg"]);
         return files.map((f) => `${f}:${createHash("sha256").update(readFileSync(path.join(dir, f))).digest("hex")}`);
       } finally {
         rmSync(dir, { recursive: true, force: true });

@@ -1,13 +1,18 @@
 # Shared numpy surface painting for the texel-painted Blender generators
-# (gen_moon.py, gen_world_rock.py): seeded gradient noise, fbm, domain warp,
-# cellular noise, crater profiles and stamping, ray streaks, colour helpers.
-# Pure numpy, no bpy, no grid globals: each generator owns its equirect grid
-# convention (its window and local_polar) and binds a crater stamper to it
-# with crater_stamper(). Import it from a generator with
+# (gen_moon.py, gen_world_rock.py, gen_world_dwarf.py): seeded gradient noise,
+# fbm, domain warp, cellular noise, crater profiles and stamping, ray streaks,
+# colour helpers, and the new worlds' equirect grid, normal map and writer.
+# Pure numpy, no bpy, no grid globals: each generator owns its grid (the
+# moon's own, or equirect_grid() for the worlds) and binds a crater stamper to
+# it with crater_stamper(). Import it from a generator with
 #   sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 #   from surface_lib import ...
-# Changing anything here changes moon.glb and w-rock*.png: re-run both and
-# update assets-src/MANIFEST.md.
+# Changing anything here changes moon.glb, w-rock*.png and w-dwarf*.png:
+# re-run all three and update assets-src/MANIFEST.md.
+import math
+import struct
+import zlib
+
 import numpy as np
 
 
@@ -146,11 +151,17 @@ def crater_stamper(P, window, local_polar):
     its angular distance and azimuth around c."""
 
     def stamp_crater(Hm, c, r, depth, rim, noise, floor_frac=0.0, peak=0.0, erase=0.85,
-                     irregular=0.08, ext=2.6, ejecta=4.0):
+                     irregular=0.08, ext=2.6, ejecta=4.0, poly=0.0, sides=6, turn=0.0):
         idx = window(c, r * ext)
         Ps = P[idx]
         ang, az = local_polar(Ps, c)
         wob = 1.0 + irregular * noise(Ps * (3.0 / max(r, 0.02)))
+        if poly > 0:
+            # polygonal outline (large craters on fractured crusts, like Ceres's):
+            # the radius of a regular n-gon in direction az, mean ~1
+            seg = 2 * np.pi / sides
+            ngon = np.cos(np.pi / sides) / np.cos(np.mod(az - turn, seg) - np.pi / sides)
+            wob = wob * (1.0 - poly + poly * ngon / (0.5 + 0.5 * np.cos(np.pi / sides)))
         x = ang / (r * wob)
         inside = 1.0 - smoothstep(0.7, 1.08, x)
         taper = 1.0 - smoothstep(0.7, 0.97, ang / (r * ext))     # no step at the window edge
@@ -179,3 +190,119 @@ def rays(noise, x, az, length, k):
     s = s * (0.45 + 0.55 * np.clip(noise(q2) * 2 + 0.5, 0, 1))
     fall = smoothstep(1.0, 1.3, x) * (1.0 - smoothstep(1.2, length, x))
     return s * fall
+
+
+# ------------------------------------------------------------------ the new worlds' equirect maps
+def equirect_grid(W, H):
+    """A W x H grid in THREE.SphereGeometry's convention (row 0 is the north
+    pole; texel (u, v) has phi = u * 2PI, lat = PI/2 - v * PI and
+    x = -cos(phi) cos(lat), y = sin(lat), z = sin(phi) cos(lat)).
+    Returns P (H, W, 3) texel directions, window(c, R) and local_polar(Ps, c)."""
+    lat = (np.pi / 2 - (np.arange(H) + 0.5) / H * np.pi).astype(np.float32)
+    phi = ((np.arange(W) + 0.5) / W * 2 * np.pi).astype(np.float32)
+    cl = np.cos(lat)[:, None]
+    P = np.stack([-np.cos(phi)[None, :] * cl,
+                  np.repeat(np.sin(lat)[:, None], W, 1),
+                  np.sin(phi)[None, :] * cl], -1).astype(np.float32)
+    rows = np.arange(H)
+
+    def window(c, R):
+        """Row and column index arrays of grid texels within ~R rad of c (seam-safe)."""
+        latc = math.asin(max(-1.0, min(1.0, float(c[1]))))
+        phic = math.atan2(float(c[2]), -float(c[0])) % (2 * math.pi)
+        r0 = max(0, int(math.floor((math.pi / 2 - latc - R) / math.pi * H)) - 1)
+        r1 = min(H, int(math.ceil((math.pi / 2 - latc + R) / math.pi * H)) + 1)
+        if abs(latc) + R > 1.45:
+            cols = np.arange(W)
+        else:
+            dl = min(math.pi, R / math.cos(abs(latc) + R))
+            j0 = int(math.floor((phic - dl) / (2 * math.pi) * W)) - 1
+            j1 = int(math.ceil((phic + dl) / (2 * math.pi) * W)) + 1
+            cols = np.arange(j0, j1) % W if j1 - j0 < W else np.arange(W)
+        return np.ix_(rows[r0:r1], cols)
+
+    def local_polar(Ps, c):
+        """Angular distance to c and azimuth around c for points Ps."""
+        dot = np.clip(Ps @ c, -1, 1)
+        ang = np.arccos(dot)
+        t1 = np.cross(c, [0.0, 1.0, 0.0] if abs(c[1]) < 0.9 else [1.0, 0.0, 0.0])
+        t1 = (t1 / np.linalg.norm(t1)).astype(np.float32)
+        t2 = np.cross(c, t1).astype(np.float32)
+        az = np.arctan2(Ps @ t2, Ps @ t1)
+        return ang, az
+
+    return P, window, local_polar
+
+
+def dir_from(lat_deg, lon_deg):
+    """Unit vector at a latitude and longitude (deg), in equirect_grid's convention."""
+    la, lo = math.radians(lat_deg), math.radians(lon_deg)
+    return np.array([-math.cos(lo) * math.cos(la), math.sin(la), math.sin(lo) * math.cos(la)], np.float32)
+
+
+def normal_map(R, strength):
+    """Tangent-space (OpenGL: +X east along u, +Y north) normal map from a height field."""
+    h, w = R.shape
+    lat = (np.pi / 2 - (np.arange(h) + 0.5) / h * np.pi).astype(np.float32)
+    step = 2 * math.pi / w
+    gx = (np.roll(R, -1, 1) - np.roll(R, 1, 1)) / (2 * step * np.maximum(np.cos(lat), 0.08)[:, None])
+    gy = np.zeros_like(R)
+    gy[1:-1] = (R[:-2] - R[2:]) / (2 * step)          # row j-1 is north of row j
+    # the pole triangle fans have degenerate tangents: fade detail out there
+    fade = smoothstep(1.50, 1.36, np.abs(lat))[:, None]
+    nx, ny = -gx * strength * fade, -gy * strength * fade
+    nz = np.ones_like(R)
+    l = np.sqrt(nx * nx + ny * ny + nz * nz)
+    return np.stack([nx / l, ny / l, nz / l], -1) * 0.5 + 0.5
+
+
+def calibrate(alb, target):
+    """Scale in linear light so the linear-luminance texel median is `target`; returns sRGB."""
+    lin = srgb_to_lin(np.clip(alb, 0, 1))
+    lum = 0.2126 * lin[..., 0] + 0.7152 * lin[..., 1] + 0.0722 * lin[..., 2]
+    s = target / float(np.sort(lum.ravel())[lum.size // 2])
+    return lin_to_srgb(lin * s), s
+
+
+def soften(F, sigma):
+    """Small separable Gaussian (texels; wraps in longitude): drops sub-texel relief
+    that would only alias and that WebP cannot carry inside the byte cap."""
+    r = int(math.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k = (k / k.sum()).astype(np.float32)
+    G = sum(k[i + r] * np.roll(F, i, 1) for i in range(-r, r + 1))
+    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
+    return sum(k[i + r] * Gp[r + i:r + i + F.shape[0]] for i in range(-r, r + 1)).astype(np.float32)
+
+
+def soften_sphere(F, sigma):
+    """Gaussian of `sigma` texels of latitude, isotropic on the sphere: each
+    row is blurred in longitude by sigma / cos(lat) texels (FFT, wraps), so
+    detail near the poles is not smeared north-south into radial spokes
+    (soften() blurs in texels, which near a pole is far wider north-south)."""
+    h, w = F.shape
+    lat = np.pi / 2 - (np.arange(h) + 0.5) / h * np.pi
+    s_row = sigma * (w / (2 * h)) / np.maximum(np.cos(lat), 1e-3)     # texels of longitude
+    f = np.fft.rfftfreq(w)
+    G = np.fft.irfft(np.fft.rfft(F, axis=1) * np.exp(-2 * (np.pi * s_row[:, None] * f[None, :]) ** 2), n=w, axis=1)
+    r = int(math.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k = k / k.sum()
+    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
+    return sum(k[i + r] * Gp[r + i:r + i + h] for i in range(-r, r + 1)).astype(np.float32)
+
+
+def write_png(path, rgb01):
+    """Minimal deterministic PNG writer (8-bit RGB)."""
+    a = np.round(np.clip(rgb01, 0, 1) * 255).astype(np.uint8)
+    h, w, _ = a.shape
+    raw = b"".join(b"\x00" + a[y].tobytes() for y in range(h))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) \
+        + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    with open(path, "wb") as f:
+        f.write(png)
+    print("wrote", path)

@@ -10,9 +10,10 @@
  *   w-ringed.jpg        2048  Saturn-type: butterscotch bands, cool polar caps, north polar hexagon
  *   w-tilted.jpg        1024  Uranus-type: pale cyan, almost featureless, faint polar brightening
  *   w-blue.jpg          2048  Neptune-type: deep blue bands, one dark storm, white ammonia-ice streaks
- *   w-dwarf.jpg         1024  Ceres-type: dark grey craters, a few brilliant salt faculae, one lone mountain
  *   w-ringed_ring.png   2048x4 RGBA ring strip: RGB = particle colour, A = tau / RING_TAU_MAX
- * (w-rock, the Mercury-type, is scripts/blender/gen_world_rock.py.)
+ * (w-rock, the Mercury-type, is scripts/blender/gen_world_rock.py and w-dwarf,
+ * the Ceres-type, scripts/blender/gen_world_dwarf.py: both need the shared
+ * crater stamper and a normal map.)
  *
  * --width overrides every equirect map's width (the ring strip stays 2048).
  * Noise, sphere sampling and the JPEG writer are gen_planets.mjs's, so the
@@ -35,7 +36,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const DEG = Math.PI / 180;
 
 /** Target linear-luminance texel medians (spec "Light"; tests/worldMaps.test.ts). */
-export const TARGET_MEDIAN = { "w-ringed": 0.088, "w-tilted": 0.086, "w-blue": 0.078, "w-dwarf": 0.016 };
+export const TARGET_MEDIAN = { "w-ringed": 0.088, "w-tilted": 0.086, "w-blue": 0.078 };
 
 /**
  * The ring strip's alpha is tau / RING_TAU_MAX, so tau = A / 255 * RING_TAU_MAX.
@@ -72,38 +73,6 @@ function frameAt(c) {
   let n = [c[1] * e[2] - c[2] * e[1], c[2] * e[0] - c[0] * e[2], c[0] * e[1] - c[1] * e[0]];
   if (n[1] < 0) n = n.map((q) => -q);
   return { c, e, n };
-}
-
-/**
- * Calls fn(k, ang, x, y, z) for every texel within angular distance `reach`
- * of unit vector p (seam-safe, true angle on the sphere).
- */
-function forEachInCap(G, p, reach, fn) {
-  const { W, H, sinLat, cosLat, cosPhi, sinPhi } = G;
-  const lat = Math.asin(clamp(p[1], -1, 1));
-  const phi = lonOf(p[0], p[2]);
-  const j0 = Math.max(0, Math.floor(((Math.PI / 2 - lat - reach) / Math.PI) * H) - 1);
-  const j1 = Math.min(H - 1, Math.ceil(((Math.PI / 2 - lat + reach) / Math.PI) * H) + 1);
-  const cosReach = Math.cos(reach);
-  const allCols = Math.abs(lat) + reach > 1.4;
-  for (let j = j0; j <= j1; j++) {
-    const c = cosLat[j];
-    let i0 = 0, i1 = W - 1;
-    if (!allCols) {
-      const span = (reach * 1.2) / Math.max(c, 1e-3) + (2 * Math.PI * 2) / W;
-      if (span < Math.PI) {
-        i0 = Math.floor(((phi - span) / (Math.PI * 2)) * W);
-        i1 = Math.ceil(((phi + span) / (Math.PI * 2)) * W);
-      }
-    }
-    for (let ii = i0; ii <= i1; ii++) {
-      const i = ((ii % W) + W) % W;
-      const qx = -cosPhi[i] * c, qy = sinLat[j], qz = sinPhi[i] * c;
-      const d = qx * p[0] + qy * p[1] + qz * p[2];
-      if (d < cosReach) continue;
-      fn(j * W + i, Math.acos(Math.min(1, d)), qx, qy, qz);
-    }
-  }
 }
 
 /** Piecewise-linear profile over sorted [x, y] stops. */
@@ -187,15 +156,21 @@ function genRinged(W) {
 function genTilted(W) {
   const G = sphereGrid(W, W / 2);
   const nB = makeSimplex(701), nW = makeSimplex(702);
-  const pal = ramp([[0, "#8cc2d0"], [0.45, "#acdbe6"], [0.75, "#c6e9ef"], [1, "#e2f6f8"]]);
+  // Voyager 2's pale cyan, a little less saturated (R/G ≈ 0.7) and bluer
+  // (B/G ≈ 1.15) than the image itself: the tone mapping's toe subtracts the
+  // same offset from every channel of a dim pixel, which saturates it, so a
+  // G ≈ B cyan would read teal-green in the game (tests/worldMaps.test.ts).
+  // Paler by chroma only: the median stays the honest albedo target.
+  const pal = ramp([[0, "#a0bcc8"], [0.45, "#b0cedc"], [0.75, "#bddeec"], [1, "#caecfb"]]);
   const rgb = new Float32Array(W * (W / 2) * 3);
   const c = [0, 0, 0];
   forEachPixel(G, (k, x, y, z) => {
     const L = Math.asin(clamp(y, -1, 1)) / DEG + 0.3 * fbm(nW, x * 2, y * 8, z * 2, 3);
-    // faint zonal bands (a few percent), a bright north polar cap with a dim collar
-    let v = 0.45 + 0.025 * Math.sin(L * 0.21) + 0.015 * nB(L * 0.4, 2.2, 7.1);
-    v += 0.28 * smooth(52, 72, L) - 0.05 * Math.exp(-(((L - 50) / 4) ** 2));
-    v += 0.08 * smooth(-62, -82, L);
+    // near-featureless: zonal bands under 1%, a broad faint north polar
+    // brightening with a barely darker collar, a fainter south one
+    let v = 0.45 + 0.006 * Math.sin(L * 0.21) + 0.004 * nB(L * 0.4, 2.2, 7.1);
+    v += 0.16 * smooth(45, 80, L) - 0.015 * Math.exp(-(((L - 45) / 6) ** 2));
+    v += 0.06 * smooth(-55, -85, L);
     pal(clamp(v), c);
     set3(rgb, k, c);
   });
@@ -205,6 +180,9 @@ function genTilted(W) {
 
 // =================================================================
 // w-blue — Neptune-type: deep blue bands, a dark storm, ammonia-ice streaks
+// The bright streaks are ammonia-ice clouds, not methane: at this world's
+// T_eq (~137 K) methane stays gaseous, whereas real Neptune's streaks (at
+// ~55 K) are methane ice.
 // =================================================================
 
 function genBlue(W) {
@@ -269,99 +247,6 @@ function genBlue(W) {
     set3(rgb, k, c);
   });
   calibrate(rgb, TARGET_MEDIAN["w-blue"]);
-  return rgb;
-}
-
-// =================================================================
-// w-dwarf — Ceres-type: dark grey craters, salt faculae, one lone mountain
-// =================================================================
-
-function genDwarf(W) {
-  const H = W / 2;
-  const G = sphereGrid(W, H);
-  const n1 = makeSimplex(901), n2 = makeSimplex(902), n3 = makeSimplex(903);
-  const rand = mulberry32(9090);
-  const N = W * H;
-  // shade: the crater albedo pattern (floors darker, rims and walls paler),
-  // so craters read without a normal map and under any sun angle.
-  const shade = new Float32Array(N), fresh = new Float32Array(N), salt = new Float32Array(N), alb = new Float32Array(N);
-  forEachPixel(G, (k, x, y, z) => {
-    alb[k] = 1 + 0.08 * fbm(n3, x * 2, y * 2, z * 2, 4) + 0.04 * fbm(n3, x * 14 + 5, y * 14, z * 14, 3);
-  });
-  const randDir = () => {
-    const u = rand() * 2 - 1, a = rand() * Math.PI * 2, r = Math.sqrt(1 - u * u);
-    return [r * Math.cos(a), u, r * Math.sin(a)];
-  };
-  const powerLaw = (n, rmin, rmax, alpha) => {
-    const out = [];
-    const a = rmin ** (1 - alpha), b = rmax ** (1 - alpha);
-    for (let i = 0; i < n; i++) out.push({ c: randDir(), r: (a + rand() * (b - a)) ** (1 / (1 - alpha)) });
-    return out.sort((p, q) => q.r - p.r);
-  };
-  /** One crater: later (smaller) craters overprint earlier ones, as on gen_moon.py's surfaces. */
-  const stamp = (cr, floorDark, rimBright, ext, onTexel) => {
-    forEachInCap(G, cr.c, cr.r * ext, (k, ang, x, y, z) => {
-      const wob = 1 + 0.12 * n2((x / cr.r) * 0.9, (y / cr.r) * 0.9, (z / cr.r) * 0.9);
-      const xr = ang / (cr.r * wob);
-      const inside = 1 - smooth(0.75, 1.0, xr);
-      const rim = Math.exp(-(((xr - 0.93) / 0.09) ** 2));
-      const blanket = Math.exp(-Math.max(xr - 1, 0) * 3) * smooth(0.95, 1.05, xr) * smooth(ext, ext * 0.7, xr);
-      const wall = Math.exp(-(((xr - 0.78) / 0.1) ** 2));
-      shade[k] = shade[k] * (1 - 0.8 * inside) - floorDark * (inside * (1 - rim) + 0.6 * wall) + rimBright * (rim + 0.25 * blanket);
-      if (onTexel) onTexel(k, xr, x, y, z);
-    });
-  };
-  // old, relaxed basins (Kerwan/Yalode-like): wide, shallow, barely darker
-  for (const cr of powerLaw(4, 0.16, 0.3, 1.5)) stamp(cr, 0.04, 0.04, 1.6);
-  for (const cr of powerLaw(30, 0.04, 0.13, 1.8)) stamp(cr, 0.05, 0.12, 1.8);
-  for (const cr of powerLaw(600, 0.012, 0.04, 2.2)) stamp(cr, 0.045, 0.1, 1.8);
-  for (const cr of powerLaw(1600, 0.006, 0.012, 2.4)) stamp(cr, 0.035, 0.07, 1.6);
-  // a few young craters with paler, bluish ejecta (Haulani/Oxo-like)
-  for (const cr of [{ c: dirFromLatLon(6, 11), r: 0.035 }, { c: dirFromLatLon(42, 359), r: 0.012 }, { c: dirFromLatLon(-48, 140), r: 0.022 }]) {
-    stamp(cr, 0.05, 0.15, 4, (k, xr, x, y, z) => {
-      fresh[k] = Math.max(fresh[k], Math.exp(-Math.max(xr - 0.9, 0) * 1.6) * (0.55 + 0.45 * smooth(-0.2, 0.4, n1(x * 40, y * 40, z * 40))));
-    });
-  }
-  // Occator-like crater with its faculae: a bright central pit spot and scattered spots on the east floor
-  stamp({ c: dirFromLatLon(20, 239), r: 0.1 }, 0.12, 0.12, 1.8);
-  const fac = (lat, lon, sig, amp) => {
-    const p = dirFromLatLon(lat, lon);
-    forEachInCap(G, p, sig * 3.2, (k, ang) => { salt[k] += amp * Math.exp(-((ang / sig) ** 2) / 2); });
-  };
-  const px = (Math.PI * 2) / 1024; // spot sizes are authored in 1024-px units
-  fac(20, 239, 1.6 * px, 1.0); // Cerealia-like: the brightest, in the central pit
-  fac(20.3, 239.2, 0.7 * px, 0.6);
-  for (let i = 0; i < 7; i++) fac(19 + rand() * 3, 242 + rand() * 3.5, (0.5 + 0.5 * rand()) * px, 0.35 + 0.35 * rand()); // Vinalia-like
-  fac(42, 359, 0.8 * px, 0.45); // Oxo-like
-  // the lone mountain (Ahuna-Mons-like): a steep dome, darker summit, bright streaks down its flanks
-  const ahuna = frameAt(dirFromLatLon(-10.5, 316));
-  const amR = 0.032;
-  forEachInCap(G, ahuna.c, amR * 1.6, (k, ang, x, y, z) => {
-    const xr = ang / amR;
-    shade[k] += 0.1 * Math.exp(-(((xr - 0.85) / 0.15) ** 2)) - 0.06 * smooth(0.5, 0.1, xr);
-    const az = Math.atan2(x * ahuna.n[0] + y * ahuna.n[1] + z * ahuna.n[2], x * ahuna.e[0] + y * ahuna.e[1] + z * ahuna.e[2]);
-    const streak = smooth(0.2, 0.75, n1(Math.cos(az) * 6, Math.sin(az) * 6, 2.5));
-    salt[k] = Math.max(salt[k], 0.3 * streak * smooth(0.25, 0.6, xr) * smooth(1.05, 0.85, xr));
-  });
-
-  // Colour: dark neutral grey (C-type, a flat spectrum).
-  const base = hex("#545558"), freshC = hex("#8d939c");
-  const rgb = new Float32Array(N * 3);
-  const c = [0, 0, 0];
-  forEachPixel(G, (k) => {
-    const a = alb[k] * (1 + clamp(shade[k], -0.3, 0.3));
-    c[0] = base[0] * a; c[1] = base[1] * a; c[2] = base[2] * a;
-    mixInto(c, freshC, 0.6 * fresh[k]);
-    set3(rgb, k, c);
-  });
-  // Calibrate on the dark terrain, then lay the faculae on top: they are the
-  // brightest thing on Ceres (several times its mean), not scaled down with it.
-  calibrate(rgb, TARGET_MEDIAN["w-dwarf"]);
-  const peak = l2s(0.16); // facula core ~10x the median, linear
-  for (let k = 0; k < N; k++) {
-    const s = clamp(salt[k]);
-    if (s > 0) for (let ch = 0; ch < 3; ch++) rgb[k * 3 + ch] = lerp(rgb[k * 3 + ch], peak, s);
-  }
   return rgb;
 }
 
@@ -440,7 +325,6 @@ const MAPS = {
   "w-ringed": { width: 2048, gen: genRinged },
   "w-tilted": { width: 1024, gen: genTilted },
   "w-blue": { width: 2048, gen: genBlue },
-  "w-dwarf": { width: 1024, gen: genDwarf },
 };
 
 async function main() {
