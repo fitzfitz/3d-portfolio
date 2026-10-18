@@ -156,12 +156,14 @@ function genRinged(W) {
 function genTilted(W) {
   const G = sphereGrid(W, W / 2);
   const nB = makeSimplex(701), nW = makeSimplex(702);
-  // Voyager 2's pale cyan, a little less saturated (R/G ≈ 0.7) and bluer
-  // (B/G ≈ 1.15) than the image itself: the tone mapping's toe subtracts the
-  // same offset from every channel of a dim pixel, which saturates it, so a
-  // G ≈ B cyan would read teal-green in the game (tests/worldMaps.test.ts).
-  // Paler by chroma only: the median stays the honest albedo target.
-  const pal = ramp([[0, "#a0bcc8"], [0.45, "#b0cedc"], [0.75, "#bddeec"], [1, "#caecfb"]]);
+  // Voyager 2's pale cyan: about the image's red (shipped mean linear R/G
+  // 0.674; the image 0.66) and bluer (B/G 1.15; the image 1.04), since the
+  // tone mapping's toe subtracts the same offset from every channel of a dim
+  // pixel, which saturates it, so a G ≈ B cyan would read teal-green in the
+  // game (tests/worldMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
+  // little off the shipped means: 8-bit quantization of the calibrated, dim
+  // map. Hue by chroma only: the median stays the honest albedo target.
+  const pal = ramp([[0, "#9bbcc6"], [0.45, "#abceda"], [0.75, "#b8deea"], [1, "#c4ecf9"]]);
   const rgb = new Float32Array(W * (W / 2) * 3);
   const c = [0, 0, 0];
   forEachPixel(G, (k, x, y, z) => {

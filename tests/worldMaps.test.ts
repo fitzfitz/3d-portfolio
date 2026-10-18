@@ -136,15 +136,17 @@ describe("world maps: honest albedo", () => {
 describe("w-tilted: Voyager 2's pale blue-cyan, not teal", () => {
   // The game's tone mapping (Khronos PBR Neutral) subtracts the same toe
   // offset from every channel of a dim pixel, which saturates it and lets a
-  // cyan with G ≈ B read teal-green. So the map carries a bluer hue (B over
-  // G; Voyager's image is 1.04, Task 2's map 1.11) and a paler one (R closer
-  // to G; Voyager 0.66, Task 2's map 0.60).
-  it("has B/G ≥ 1.15 and R/G ≥ 0.68 in mean linear colour", async () => {
+  // cyan with G ≈ B read teal-green. So the map carries a bluer hue than
+  // Voyager's image (B over G; the image is 1.04, Task 2's map 1.11), at
+  // about the image's red (R over G 0.66; Task 2's map 0.60 read teal, Task
+  // 2b's 0.72 grey-slate): bracketed around the reference, not one direction.
+  it("has R/G in 0.64–0.70 and B/G ≥ 1.12 in mean linear colour", async () => {
     const { data, w, h, ch } = await raw("w-tilted");
     const sum = [0, 0, 0];
     for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
-    expect(sum[2] / sum[1]).toBeGreaterThanOrEqual(1.15);
-    expect(sum[0] / sum[1]).toBeGreaterThanOrEqual(0.68);
+    expect(sum[2] / sum[1]).toBeGreaterThanOrEqual(1.12);
+    expect(sum[0] / sum[1]).toBeGreaterThanOrEqual(0.64);
+    expect(sum[0] / sum[1]).toBeLessThanOrEqual(0.7);
   });
 });
 

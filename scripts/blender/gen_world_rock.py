@@ -58,33 +58,56 @@ def lobate_scarp(Hm, rng, noise, height, length):
     Hm += height * face * along
 
 
-def ray_system(c, r, reach, n, rng, noise, skew=0.0):
+def ray_system(c, r, reach, n, rng, noise, skew=0.0, bundles=0):
     """MESSENGER-like rays of a young crater: n long, thin, high-contrast
     streaks along great circles out of c, each its own length (up to `reach`
     rad), broad where they leave the ejecta blanket, then thin and slowly
     widening, broken into patches along their length. Never thinner than
     about one texel, so a ray survives the 2048 map and the WebP encode.
     `skew` is the share of rays bunched around one azimuth (an oblique
-    impact's lopsided pattern). Returns (window index, brightness 0..1)."""
+    impact's lopsided pattern). `bundles` > 0 (the big Hokusai-like systems)
+    clusters the azimuths into that many uneven sprays, each with its own
+    spread, share of rays, reach, width and brightness, rather than a
+    regular starburst; those rays fade with distance and lose whole stretches
+    where later terrain interrupts them. Returns (window index, brightness 0..1)."""
     idx = window(c, reach)
     Ps = P[idx]
     ang, az = local_polar(Ps, c)
     sa = np.sin(ang)
     out = np.zeros(ang.shape, np.float32)
     downrange = float(rng.uniform(-math.pi, math.pi))
+    if bundles:
+        b_az = rng.uniform(-math.pi, math.pi, bundles)
+        b_spread = rng.uniform(0.04, 0.2, bundles)          # rad: a tight jet to a loose spray
+        b_share = rng.dirichlet(np.full(bundles, 1.5))       # some sprays carry most rays
+        b_reach = rng.uniform(0.75, 1.0, bundles)
+        b_wide = rng.uniform(0.7, 1.8, bundles)
+        b_amp = rng.uniform(0.7, 1.0, bundles)
     for _ in range(n):
-        a0 = downrange + float(rng.normal(0, 0.8)) if rng.uniform() < skew else float(rng.uniform(-math.pi, math.pi))
-        L = reach * max(0.25, float(rng.uniform()) ** 0.9)         # many short, a few very long
-        w0 = max(0.0022, r * float(rng.uniform(0.08, 0.2))) * (2.0 if rng.uniform() < 0.15 else 1.0)   # a few broad ones
-        amp = float(rng.uniform(0.65, 1.0))
+        if bundles:
+            k = int(rng.choice(bundles, p=b_share))
+            a0 = float(b_az[k]) + float(rng.normal(0, b_spread[k]))
+            L = reach * float(b_reach[k]) * float(rng.uniform(0.6, 1.0))
+            w0 = max(0.0022, r * float(rng.uniform(0.06, 0.2)) * float(b_wide[k]))
+            amp = float(b_amp[k]) * float(rng.uniform(0.6, 1.0))
+        else:
+            a0 = downrange + float(rng.normal(0, 0.8)) if rng.uniform() < skew else float(rng.uniform(-math.pi, math.pi))
+            L = reach * max(0.25, float(rng.uniform()) ** 0.9)         # many short, a few very long
+            w0 = max(0.0022, r * float(rng.uniform(0.08, 0.2))) * (2.0 if rng.uniform() < 0.15 else 1.0)   # a few broad ones
+            amp = float(rng.uniform(0.65, 1.0))
         da = np.mod(az - a0 + math.pi, 2 * math.pi) - math.pi
         d = sa * np.sin(np.clip(da, -1.2, 1.2))                   # off-ray distance, rad
         wid = w0 * (1.0 + 1.5 * ang / L + 2.0 * np.exp(-ang / (4 * r)))
         along = smoothstep(r * 0.8, r * 1.6, ang) * (1.0 - smoothstep(0.2 * L, L, ang)) * (np.abs(da) < 1.2)
+        if bundles:
+            along = along * np.exp(-0.6 * ang / L)                # fades with distance
         out = np.maximum(out, amp * along * np.exp(-(d / wid) ** 2))
     # patchy along each ray (secondary-crater chains), never a smooth spoke
     q = Ps + np.float32(r * 100)
     brk = smoothstep(-0.2, 0.3, fbm(noise, q, 9.0, 4)) * (0.45 + 0.55 * smoothstep(-0.2, 0.3, fbm(noise, q, 34.0, 3)))
+    if bundles:      # whole stretches gone, ~0.1-0.2 rad across, beyond the ejecta
+        gap = smoothstep(-0.25, 0.0, fbm(noise, q + 5.0, 5.0, 3))
+        brk = brk * np.maximum(gap, 1.0 - smoothstep(3 * r, 6 * r, ang))
     return idx, np.minimum(1.0, 1.3 * out * (0.3 + 0.7 * brk))
 
 
@@ -140,13 +163,15 @@ def mercury():
     for c, r in young:
         idx, x, az, Ps = stamp_crater(Hm, c, r, depth=r * 0.27, rim=r * 0.08, noise=nz, ext=2.4)
         fresh_alb[idx] = np.maximum(fresh_alb[idx], 0.5 * np.exp(-np.maximum(x - 0.7, 0) * 2.2))
-    # (centre, crater radius, stamp extent in radii, ray reach rad, ray count):
-    # three Hokusai-like systems whose rays cross most of a hemisphere, four lesser ones
-    fresh = [((58, 17), 0.045, 15.0, 1.5, 70), ((-11, 31), 0.024, 10.0, 0.6, 30), ((-34, 12), 0.035, 12.0, 1.3, 60),
-             ((3, 250), 0.03, 11.0, 1.3, 60), ((-55, 300), 0.028, 9.0, 0.7, 34), ((40, 95), 0.02, 8.0, 0.55, 26),
-             ((-20, 135), 0.018, 7.0, 0.5, 24)]
+    # (centre, crater radius, stamp extent in radii, ray reach rad, ray count, ray bundles):
+    # three Hokusai-like systems whose few long, uneven sprays cross most of a
+    # hemisphere, four lesser ones
+    fresh = [((58, 17), 0.045, 15.0, 1.5, 38, 5), ((-11, 31), 0.024, 10.0, 0.6, 30, 0),
+             ((-34, 12), 0.035, 12.0, 1.3, 32, 4), ((3, 250), 0.03, 11.0, 1.3, 35, 5),
+             ((-55, 300), 0.028, 9.0, 0.7, 34, 0), ((40, 95), 0.02, 8.0, 0.55, 26, 0),
+             ((-20, 135), 0.018, 7.0, 0.5, 24, 0)]
     ray_rng = np.random.default_rng(SEED + 3)    # its own stream: the relief stays as it was
-    for (la, lo), r, L, reach, n in fresh:
+    for (la, lo), r, L, reach, n, nb in fresh:
         c = dir_from(la, lo)
         idx, x, az, Ps = stamp_crater(Hm, c, r, depth=r * 0.3, rim=r * 0.1, noise=nz,
                                       floor_frac=0.4, peak=r * 0.1 if r > 0.025 else 0.0, ext=L)
@@ -155,7 +180,7 @@ def mercury():
             * (0.7 + 0.3 * smoothstep(-0.3, 0.3, fbm(nz, Ps, 1.0 / r, 3)))
         bright = np.maximum(halo, 0.85 * (1 - smoothstep(0.8, 1.0, x)))
         fresh_alb[idx] = np.maximum(fresh_alb[idx], bright)
-        ridx, ray = ray_system(c, r, reach, n, ray_rng, nz)
+        ridx, ray = ray_system(c, r, reach, n, ray_rng, nz, bundles=nb)
         fresh_alb[ridx] = np.maximum(fresh_alb[ridx], ray)
     for c, r in young[:30]:          # the largest young craters keep short, often lopsided ray systems
         ridx, ray = ray_system(c, r, r * float(ray_rng.uniform(15, 35)), int(ray_rng.integers(6, 17)), ray_rng, nz,
