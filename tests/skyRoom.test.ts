@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   newRoom, onJoin, onMessage, onLeave, onTrailing, buildSnap, randomPilotId, STALE_MS, VISITOR_CAP,
-  type Room, type Outgoing,
+  SHOUT_GAP_MS, SHOUT_VISITOR_MS, type Room, type Outgoing, type Pilot,
 } from "../beacon-api/src/sky";
 import { SKY_CAP } from "../src/utils/liveSkyProtocol";
 
@@ -162,5 +162,87 @@ describe("randomPilotId", () => {
     const ids = new Set(Array.from({ length: 50 }, randomPilotId));
     expect(ids.size).toBe(50);
     for (const id of ids) expect(id).toMatch(/^[a-z0-9]{8}$/);
+  });
+});
+
+describe("charted shout-out", () => {
+  const meCh = (ch: number) => JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch });
+  const claim = '{"t":"charted"}';
+  /** Pilot `id` joins with its own visitor key and reports `ch` worlds charted. */
+  function charted(room: Room, id: string, now: number, ch = 5, visitor: string | null = `v-${id}`, cc: string | null = "ID") {
+    const r = join(room, id, now, cc, visitor);
+    onMessage(room, r.pilot, meCh(ch), now);
+    return r.pilot;
+  }
+
+  it("relays to the others, not the sender", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0);
+    join(room, "b", 0);
+    const r = onMessage(room, a, claim, 1000);
+    expect(r.out).toEqual([{ to: "b", msg: { t: "charted", cc: "ID" } }]);
+    expect(r.close).toBe(false);
+  });
+  it("needs a me with ch 5", () => {
+    const room = newRoom();
+    const silent = join(room, "a", 0, "ID", "v-a").pilot;
+    join(room, "b", 0);
+    expect(onMessage(room, silent, claim, 1000).out).toEqual([]);
+    const four = charted(room, "c", 0, 4);
+    expect(onMessage(room, four, claim, 2000).out).toEqual([]);
+  });
+  it("once per connection", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0);
+    join(room, "b", 0);
+    expect(onMessage(room, a, claim, 1000).out).toHaveLength(1);
+    expect(onMessage(room, a, claim, 1000 + SHOUT_GAP_MS + 1).out).toEqual([]);
+  });
+  it("once per visitor per 24 h", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0, 5, "same");
+    join(room, "b", 0);
+    expect(onMessage(room, a, claim, 1000).out).toHaveLength(1);
+    onLeave(room, "a", 2000);
+    const again = charted(room, "a2", 3000, 5, "same");
+    expect(onMessage(room, again, claim, 1000 + SHOUT_GAP_MS + 1).out).toEqual([]);
+    const later = charted(room, "a3", 4000, 5, "same");
+    expect(onMessage(room, later, claim, 1000 + SHOUT_VISITOR_MS + 1).out.length).toBeGreaterThan(0);
+  });
+  it("a 60 s room-wide gap", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0);
+    const c = charted(room, "c", 0);
+    expect(onMessage(room, a, claim, 1000).out.length).toBeGreaterThan(0);
+    expect(onMessage(room, c, claim, 11_000).out).toEqual([]);
+    expect(onMessage(room, c, claim, 1000 + SHOUT_GAP_MS + 1000).out.length).toBeGreaterThan(0);
+  });
+  it("claims count toward the flood limit", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0);
+    let closed = false;
+    for (let i = 0; i < 11; i++) closed = onMessage(room, a, claim, 5000).close || closed;
+    expect(closed).toBe(true);
+  });
+  it("snapshots carry ch only when above 0", () => {
+    const room = newRoom();
+    charted(room, "zero", 0, 0);
+    charted(room, "two", 0, 2);
+    const snap = buildSnap(room, "nobody", 0);
+    if (snap.t !== "snap") throw new Error("not a snapshot");
+    const row = (id: string) => snap.ships.find((s) => s.id === id)!;
+    expect("ch" in row("zero")).toBe(false);
+    expect(row("two").ch).toBe(2);
+  });
+  it("tolerates a pre-C2 attachment", () => {
+    const room = newRoom();
+    const old = { id: "old", cc: "ID", last: { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" }, lastAt: 0, recent: [], visitor: null } as unknown as Pilot;
+    room.pilots.push(old);
+    join(room, "b", 0);
+    const snap = buildSnap(room, "b", 0);
+    if (snap.t !== "snap") throw new Error("not a snapshot");
+    expect("ch" in snap.ships[0]).toBe(false);
+    expect(() => onMessage(room, old, claim, 1000)).not.toThrow();
+    expect(onMessage(room, old, claim, 2000).out).toEqual([]);
   });
 });

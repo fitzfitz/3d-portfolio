@@ -1,5 +1,5 @@
 import {
-  parseMe, roundState, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
+  parseMe, roundState, isChartedClaim, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
   type ServerMessage, type ShipState, type SnapShip,
 } from "../../src/utils/liveSkyProtocol";
 
@@ -26,16 +26,27 @@ export interface Pilot {
    * sent to anyone and gone when the socket closes.
    */
   visitor: string | null;
+  /** This connection has announced charting every world (absent in pre-C2 attachments: false). */
+  announced?: boolean;
 }
-export interface Room { pilots: Pilot[]; lastSnapAt: number; trailingDue: boolean }
+/**
+ * `lastShoutAt` and `shouted` (visitor key → when it last announced) are the
+ * shout-out's anti-spam. They live in memory only, never stored: a room woken
+ * from hibernation forgets them, which is the accepted cost of storing nothing.
+ */
+export interface Room { pilots: Pilot[]; lastSnapAt: number; trailingDue: boolean; lastShoutAt: number; shouted: Map<string, number> }
 export interface Outgoing { to: string; msg: ServerMessage }
 
 export { STALE_MS };
 
 /** Places one visitor may hold: a few tabs or a household, not the whole room. */
 export const VISITOR_CAP = 3;
+/** Room-wide gap between relayed shout-outs: a burst is dropped, not queued. */
+export const SHOUT_GAP_MS = 60_000;
+/** One shout-out per visitor key per day (best effort: in memory). */
+export const SHOUT_VISITOR_MS = 24 * 60 * 60 * 1000;
 
-export const newRoom = (): Room => ({ pilots: [], lastSnapAt: -Infinity, trailingDue: false });
+export const newRoom = (): Room => ({ pilots: [], lastSnapAt: -Infinity, trailingDue: false, lastShoutAt: -Infinity, shouted: new Map() });
 
 /** 8 random base-36 characters. Never derived from anything about the visitor. */
 export function randomPilotId(): string {
@@ -85,6 +96,7 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   }
   recent.push(now);
   if (recent.length > FLOOD_PER_SECOND) recent.shift();
+  if (isChartedClaim(raw)) return { out: shoutOut(room, pilot, now), close: false, trailingIn: null };
   const state = parseMe(raw);
   if (!state) return { out: [], close: false, trailingIn: null };
   pilot.last = roundState(state);
@@ -99,6 +111,26 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   if (room.trailingDue) return { out: [], close: false, trailingIn: null };
   room.trailingDue = true;
   return { out: [], close: false, trailingIn: wait };
+}
+
+/**
+ * A pilot's "I charted every world", relayed to everyone else only when it
+ * is believable and rare: a pose was seen (that is consent), that pose has
+ * all five charted, this connection has not announced, this visitor has not
+ * announced within a day, and the room has been quiet for SHOUT_GAP_MS.
+ */
+function shoutOut(room: Room, pilot: Pilot, now: number): Outgoing[] {
+  if (!pilot.last || (pilot.last.ch ?? 0) !== CHART_TOTAL || pilot.announced) return [];
+  if (now - room.lastShoutAt < SHOUT_GAP_MS) return [];
+  const shouted = room.shouted ?? (room.shouted = new Map());
+  if (pilot.visitor) {
+    const at = shouted.get(pilot.visitor);
+    if (at !== undefined && now - at < SHOUT_VISITOR_MS) return [];
+    shouted.set(pilot.visitor, now);
+  }
+  pilot.announced = true;
+  room.lastShoutAt = now;
+  return room.pilots.filter((p) => p.id !== pilot.id).map((p) => ({ to: p.id, msg: { t: "charted", cc: pilot.cc } as ServerMessage }));
 }
 
 /** The trailing snapshot a throttled message scheduled; empty if something already sent one. */
