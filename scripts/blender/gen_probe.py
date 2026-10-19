@@ -4,22 +4,30 @@
 #         assets-src/probe.blend (the baked original, for look-dev)
 #
 # Every vertex and texel is generated below (seeded). The layout follows the
-# Voyager / Pioneer family only in kind: a white high-gain dish with a
-# subreflector on a tripod, a ten-bay bus wrapped in gold Kapton blankets, an
-# RTG boom carrying three finned generators, a lattice magnetometer boom, a
-# short science boom with a scan platform, RCS thruster clusters on the aft
-# deck and a gold plate on the bus's +X bay. The plate's engraving is an
-# original seeded design (a starburst of ticked lines, a two-circle glyph,
-# a perimeter tick ring), not a copy of any real plaque.
+# Voyager / Pioneer family only in kind: a white high-gain dish built as
+# engineered hardware (a panelled reflector with seams, rivet rows and per-
+# panel tone and gloss; a thick rim ring with a proud lip; 12 tapered back
+# ribs and a hoop ring; a feed horn with a choke ring; a subreflector on three
+# struts with foot pads and rim clamps), a ten-bay bus wrapped in creased
+# gold Kapton blankets, an RTG boom carrying three finned generators, a
+# lattice magnetometer boom, a short science boom with a scan platform, RCS
+# thruster clusters on the aft deck and a gold plate on the bus's +X bay. The
+# plate's engraving is an original seeded design (a starburst of ticked
+# lines, a two-circle glyph, a perimeter tick ring), not a copy of any real
+# plaque. No add-ons: bmesh and Cycles bakes only.
 #
 # CONTRACT with ProjectProbes.tsx and tests/assetContracts.test.ts (glTF
 # space, +Y up, drawn at scale 1):
 #   one node "Probe", one mesh, one primitive, one material "ProbeBaked"
-#     (baseColor + metallicRoughness + normal maps, no extensions, so three
-#     builds a MeshStandardMaterial); no tangents.
+#     (baseColor 1024 + metallicRoughness 512 + normal 1536 maps, no
+#     extensions, so three builds a MeshStandardMaterial); no tangents.
 #   COLOR_0 is the zone mask, per vertex, each channel 0 or 1:
-#     R = insignia / trim (dish rim stripe, the bus's aft band, the plate's
-#         bezel), painted near-white so a multiplied tint reads true;
+#     R = the painted project stripe: the bus's aft band and the face of
+#         the plate's mounting panel. Satin paint with chipped edges,
+#         authored light neutral grey (~0.7 linear, no hue) so the game's
+#         multiply reads as paint: base x toned colour, where toned = the
+#         project colour pulled 60% toward its own Rec. 709 luminance (see
+#         turntable_probe.py toned()). The R zone must not emit;
 #     G = the two beacon lamps (on the subreflector, under the aft deck);
 #     B = the RCS nozzle throats (a hook for a thruster-puff flash; no
 #         contract on it).
@@ -47,14 +55,21 @@ SEED = 20261020
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUT = os.path.join(ROOT, "assets-src", "probe.glb")
 OUT_BLEND = os.path.join(ROOT, "assets-src", "probe.blend")
-TEX = 1024
+TEX = 1024             # shipped albedo map
+NTEX = 1536            # shipped normal map: the foil crinkle and the dish seams live here
+                       # (NPOT is fine: three r185 is WebGL2-only; 2048 broke the 600 KB budget)
+BAKE = 2 * TEX         # albedo, metal/roughness and AO bake 2x and are box-filtered down
+NBAKE = 2 * NTEX       # the normal map likewise
 LONGEST = 3.0
 PLATE_UV_SIDE = 0.34   # target width of the plate's UV island (fraction of the atlas)
-# Texel density per part, relative to smart-project's uniform one: the dish is
-# near-uniform white paint and would otherwise take half the atlas, while the
-# crumpled foil needs the texels.
-UV_DENSITY = {"paint": 0.45, "foil": 2.0, "foil_dark": 1.2, "fiber": 0.7, "fin": 0.9}
-MR_TEX = 512           # the packed metal/roughness map ships at half size
+# Texel density per part, relative to smart-project's uniform one: the dish's
+# back is near-uniform white paint and would otherwise take a third of the
+# atlas, while the reflector face (panel seams), the crumpled foil and the
+# painted trim (edge wear) need the texels.
+UV_DENSITY = {"reflector": 1.0, "paint": 0.45, "foil": 4.0, "foil_dark": 1.3, "cap": 0.55, "deck": 0.2,
+              "fiber": 0.4, "fin": 0.6, "trim": 1.8, "metal": 0.5, "nozzle": 0.6, "throat": 0.4,
+              "lamp": 0.6, "black": 0.6, "frame": 0.9}
+MR_TEX = 512           # the packed metal/roughness map ships at a quarter of the bake
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 SCENE = bpy.context.scene
@@ -63,8 +78,11 @@ SCENE = bpy.context.scene
 PARTS = {
     "foil": (0, 0, 0),        # gold Kapton blanket
     "foil_dark": (0, 0, 0),   # black blanket
+    "cap": (0, 0, 0),         # black blanket over the aft deck (same material, own texel density)
+    "deck": (0, 0, 0),        # the forward deck, hidden under the dish's hub
     "frame": (0, 0, 0),       # anodised bus frame
-    "paint": (0, 0, 0),       # white dish paint
+    "paint": (0, 0, 0),       # white paint: the dish's back, rim and subreflector
+    "reflector": (0, 0, 0),   # the dish's concave face: same paint, own texel density
     "trim": (1, 0, 0),        # insignia / trim: tinted per instance
     "lamp": (0, 1, 0),        # beacon lamp lens: blinked per instance
     "metal": (0, 0, 0),       # brushed aluminium
@@ -142,17 +160,18 @@ def lathe(profile, seg, M, parts, closed=False, caps=True, phase=0.0):
     return faces
 
 
-def cylinder(p0, p1, r, seg, part, cap_parts=None, spin=0.0):
+def cylinder(p0, p1, r, seg, part, cap_parts=None, spin=0.0, caps=True):
     d = Vector(p1) - Vector(p0)
-    f = lathe([(r, 0.0), (r, d.length)], seg, place(p0, d, spin), part)
+    f = lathe([(r, 0.0), (r, d.length)], seg, place(p0, d, spin), part, caps=caps)
     if cap_parts:
         f[-2][L_PART] = PART_IDS[cap_parts[0]]
         f[-1][L_PART] = PART_IDS[cap_parts[1]]
     return f
 
 
-def rod(p0, p1, r, part, sides=3):
-    return cylinder(p0, p1, r, sides, part)
+def rod(p0, p1, r, part, sides=3, caps=False):
+    """A strut. Uncapped by default: its ends sit inside a joint or a part."""
+    return cylinder(p0, p1, r, sides, part, caps=caps)
 
 
 def box(M, size, part):
@@ -208,8 +227,7 @@ DISH_DEPTH = 0.24
 FOCAL = DISH_R ** 2 / (4 * DISH_DEPTH)
 DISH_Z0 = 0.06          # dish vertex height (the bus deck is at 0)
 SHELL = 0.035
-STRIPE_R = 0.765        # the painted rim stripe (trim) runs STRIPE_R..DISH_R
-SEG_DISH = 32
+SEG_DISH = 48
 
 
 def dish_z(r):
@@ -220,27 +238,39 @@ def dish_back(r):
     return dish_z(r) - SHELL - 0.012 * (1 - r / DISH_R)
 
 
-front = [0.07, 0.21, 0.37, 0.52, 0.64, STRIPE_R, DISH_R]
-prof = [(r, dish_z(r)) for r in front]                       # concave face, centre -> rim
-parts = ["paint"] * 5 + ["trim"]                             # ... stripe on the outer ring
-prof.append((DISH_R + 0.006, dish_z(DISH_R) - SHELL * 0.5))  # rim edge
-parts += ["trim", "trim"]
-for r in reversed(front):                                    # back face, rim -> centre
+def dish_normal(u, r):
+    """Unit normal of the concave face at radius r along the unit radial u."""
+    return (Vector((0, 0, 1)) - u * (r / (2 * FOCAL))).normalized()
+
+
+RIM_Z = dish_z(DISH_R)
+LIP_R = DISH_R + 0.022          # outer face of the rim ring
+# one closed profile: reflector face (centre -> rim), the rim ring (a lip
+# standing proud of the reflector, a deep outer face, a flange underneath),
+# the back face (rim -> centre) and the hub bore closing the loop
+front = [0.075, 0.24, 0.42, 0.58, 0.71, 0.785]
+prof = [(r, dish_z(r)) for r in front]
+parts = ["reflector"] * 5
+prof += [(DISH_R, RIM_Z + 0.014), (LIP_R, RIM_Z + 0.014), (LIP_R, RIM_Z - 0.040), (DISH_R - 0.012, RIM_Z - 0.050)]
+parts += ["paint", "paint", "paint", "paint"]   # lip inner face, lip top, outer face, flange
+for r in (0.68, 0.46, 0.25, 0.075):
     prof.append((r, dish_back(r)))
     parts.append("paint")
-parts[-1] = "metal"                                          # the hub bore closing the loop
+parts.append("metal")                           # the hub bore
 lathe(prof, SEG_DISH, Matrix(), parts, closed=True)
 
-# back ribs: curved plates under the shell
-for k in range(8):
-    a = 2 * math.pi * (k + 0.5) / 8
+# back structure: 12 tapered radial ribs (I-beam section: narrow web at the
+# shell, wider flange below) and a hoop ring tying them at mid-radius
+for k in range(12):
+    a = 2 * math.pi * (k + 0.5) / 12
     u = Vector((math.cos(a), math.sin(a), 0))
-    t = Vector((-math.sin(a), math.cos(a), 0)) * 0.006
-    rs = (0.14, 0.33, 0.52, 0.72)
-    top = [u * r + Vector((0, 0, dish_back(r) + 0.003)) for r in rs]
-    bot = [p - Vector((0, 0, 0.045 * (1 - 0.5 * i / 3))) for i, p in enumerate(top)]
-    vs = [[bm.verts.new(p + s * t) for s in (-1, 1)] for p in top]
-    vb = [[bm.verts.new(p + s * t) for s in (-1, 1)] for p in bot]
+    t = Vector((-math.sin(a), math.cos(a), 0))
+    rs = (0.10, 0.30, 0.52, 0.775)
+    deep = (0.058, 0.050, 0.040, 0.030)
+    top = [u * r + Vector((0, 0, dish_back(r) + 0.004)) for r in rs]
+    bot = [p - Vector((0, 0, dd)) for p, dd in zip(top, deep)]
+    vs = [[bm.verts.new(p + s_ * t * 0.004) for s_ in (-1, 1)] for p in top]
+    vb = [[bm.verts.new(p + s_ * t * 0.011) for s_ in (-1, 1)] for p in bot]
     fs = []
     for i in range(3):
         fs.append(face((vs[i][0], vs[i + 1][0], vb[i + 1][0], vb[i][0]), "metal"))
@@ -249,21 +279,37 @@ for k in range(8):
     fs.append(face((vs[0][0], vb[0][0], vb[0][1], vs[0][1]), "metal"))
     fs.append(face((vs[3][0], vs[3][1], vb[3][1], vb[3][0]), "metal"))
     orient(fs)
+HOOP = (0.47, 0.495)
+lathe([(HOOP[0], dish_back(HOOP[0]) + 0.003), (HOOP[0], dish_back(HOOP[0]) - 0.034),
+       (HOOP[1], dish_back(HOOP[1]) - 0.034), (HOOP[1], dish_back(HOOP[1]) + 0.003)],
+      24, Matrix(), "metal", caps=False, phase=math.pi / 24)
 
-# feed horn at the vertex, subreflector on a tripod near the focus
-lathe([(0.075, DISH_Z0 - 0.01), (0.07, DISH_Z0 + 0.05), (0.05, DISH_Z0 + 0.13), (0.0, DISH_Z0 + 0.135)],
-      12, Matrix(), ["metal", "metal", "black"], caps=True)
+# feed horn at the vertex: a base flange, a conical horn and a choke ring
+# round its aperture, dark inside
+FH = DISH_Z0
+lathe([(0.088, FH - 0.012), (0.088, FH + 0.012), (0.058, FH + 0.014), (0.050, FH + 0.096),
+       (0.063, FH + 0.098), (0.063, FH + 0.114), (0.046, FH + 0.120), (0.0, FH + 0.098)],
+      16, Matrix(), ["metal"] * 6 + ["black"], caps=False)
+# subreflector near the focus: a convex face toward the dish, a machined rim,
+# a domed back; held by three struts on foot pads
 SUB_Z = DISH_Z0 + FOCAL * 0.86
-lathe([(0.0, SUB_Z - 0.012), (0.06, SUB_Z - 0.004), (0.11, SUB_Z + 0.012), (0.11, SUB_Z + 0.026),
-       (0.05, SUB_Z + 0.036), (0.0, SUB_Z + 0.038)], 20, Matrix(), "paint", caps=False)
+SUB_R = 0.122
+lathe([(0.0, SUB_Z - 0.018), (0.05, SUB_Z - 0.011), (0.10, SUB_Z + 0.004), (SUB_R, SUB_Z + 0.012),
+       (SUB_R, SUB_Z + 0.024), (0.095, SUB_Z + 0.031), (0.055, SUB_Z + 0.038), (0.03, SUB_Z + 0.040)],
+      24, Matrix(), ["paint", "paint", "paint", "metal", "paint", "paint", "paint"], caps=False)
+FOOT_R = 0.60
 for k in range(3):
     a = math.pi / 2 + 2 * math.pi * k / 3
-    foot = Vector((math.cos(a) * 0.5, math.sin(a) * 0.5, dish_z(0.5) + 0.004))
-    head = Vector((math.cos(a) * 0.085, math.sin(a) * 0.085, SUB_Z + 0.004))
-    rod(foot, head, 0.009, "metal", sides=6)
+    u = Vector((math.cos(a), math.sin(a), 0))
+    n = dish_normal(u, FOOT_R)
+    foot = u * FOOT_R + Vector((0, 0, dish_z(FOOT_R))) + n * 0.006
+    box(place(foot, n, a), (0.05, 0.034, 0.012), "metal")                     # foot pad
+    head = u * (SUB_R - 0.012) + Vector((0, 0, SUB_Z + 0.018))
+    rod(foot + n * 0.004, head, 0.011, "metal", sides=6)
+    box(place(head + u * 0.012, u, 0.0), (0.03, 0.026, 0.02), "metal")        # clamp on the rim
 # beacon lamp 1 on the subreflector's back
 LAMP_R = 0.042
-lathe([(0.03, SUB_Z + 0.036), (0.03, SUB_Z + 0.06)], 10, Matrix(), "metal")
+lathe([(0.03, SUB_Z + 0.040), (0.03, SUB_Z + 0.06)], 10, Matrix(), "metal", caps=False)
 lathe([(LAMP_R, SUB_Z + 0.06), (LAMP_R, SUB_Z + 0.075), (LAMP_R * 0.8, SUB_Z + 0.098),
        (LAMP_R * 0.42, SUB_Z + 0.112), (0.0, SUB_Z + 0.116)], 12, Matrix(), "lamp")
 
@@ -279,7 +325,7 @@ top_ring = [bm.verts.new((BUS_R * math.cos(a), BUS_R * math.sin(a), BUS_TOP)) fo
 bot_ring = [bm.verts.new((BUS_R * math.cos(a), BUS_R * math.sin(a), BUS_BOT)) for a in VERT_ANG]
 sides = [face((bot_ring[k], bot_ring[(k + 1) % 10], top_ring[(k + 1) % 10], top_ring[k]), "foil")
          for k in range(10)]
-caps = [face(list(reversed(top_ring)), "foil_dark"), face(bot_ring, "foil_dark")]
+caps = [face(list(reversed(top_ring)), "deck"), face(bot_ring, "cap")]
 orient(sides + caps)
 # bays: a recessed blanket inside an anodised frame
 res = bmesh.ops.inset_individual(bm, faces=sides, thickness=0.018, depth=-0.007, use_even_offset=True)
@@ -300,7 +346,7 @@ def bay_frame(k, out=0.0):
 
 # louvres on bay 5 (-X): bright slats over the frame-coloured radiator
 for i in range(6):
-    zc = BUS_BOT + 0.05 + i * 0.034
+    zc = BUS_BOT + 0.078 + i * 0.031
     a = BAY_ANG[5]
     n = Vector((math.cos(a), math.sin(a), 0))
     t = Vector((-math.sin(a), math.cos(a), 0))
@@ -308,12 +354,13 @@ for i in range(6):
     M = M @ Matrix.Rotation(math.radians(-25), 4, "X")
     box(M, (0.19, 0.028, 0.004), "metal")
 
-# aft trim band (insignia): a proud decagonal collar round the bus's aft edge
+# aft trim band (the painted project stripe): a shallow decagonal collar
+# round the bus's aft edge, painted over the frame
 band = []
-for zr in ((BUS_BOT + 0.042, BUS_R + 0.012), (BUS_BOT - 0.004, BUS_R + 0.012)):
+for zr in ((BUS_BOT + 0.056, BUS_R + 0.007), (BUS_BOT - 0.004, BUS_R + 0.007)):
     band.append([bm.verts.new((zr[1] * math.cos(a), zr[1] * math.sin(a), zr[0])) for a in VERT_ANG])
 inner = [[bm.verts.new((BUS_R * 0.97 * math.cos(a), BUS_R * 0.97 * math.sin(a), z)) for a in VERT_ANG]
-         for z in (BUS_BOT + 0.042, BUS_BOT - 0.004)]
+         for z in (BUS_BOT + 0.056, BUS_BOT - 0.004)]
 fs = []
 for k in range(10):
     j = (k + 1) % 10
@@ -340,12 +387,10 @@ lathe([(LAMP_R, LAMP2_Z - 0.018), (LAMP_R, LAMP2_Z - 0.032), (LAMP_R * 0.8, LAMP
 
 
 def nozzle(base, direction):
-    """A bell: closed lathe, dark outside, sooty throat (B zone) inside."""
+    """A bell: dark outside, sooty throat (B zone) inside, its root in the block."""
     M = place(base, direction)
-    prof = [(0.009, 0.0), (0.011, 0.012), (0.018, 0.032), (0.024, 0.046),
-            (0.021, 0.046), (0.015, 0.034), (0.008, 0.016), (0.0, 0.012)]
-    lathe(prof, 8, M, ["nozzle", "nozzle", "nozzle", "nozzle", "throat", "throat", "throat"], caps=False)
-    lathe([(0.0, -0.012), (0.013, -0.01), (0.013, 0.002)], 8, M, "metal", caps=False)
+    prof = [(0.011, -0.004), (0.016, 0.026), (0.024, 0.046), (0.020, 0.046), (0.011, 0.026), (0.0, 0.016)]
+    lathe(prof, 6, M, ["nozzle", "nozzle", "nozzle", "throat", "throat"], caps=False)
 
 
 for k, a in enumerate((math.radians(90), math.radians(270))):
@@ -362,10 +407,13 @@ for k, a in enumerate((math.radians(90), math.radians(270))):
 # ------------------------------------------------------------- the plate ---
 PLATE_R = 0.088
 pf = bay_frame(0)
-box(pf @ Matrix.Translation((0, 0, 0.006)), (0.205, 0.205, 0.012), "frame")
-# bezel (trim) and the gold disc; local +Z = out of the bay (+X)
+# the mounting panel: its face is painted in the project stripe (trim), its
+# edges are bare frame; a machined metal bezel holds the gold disc.
+# local +Z = out of the bay (+X)
+mount = box(pf @ Matrix.Translation((0, 0, 0.006)), (0.205, 0.205, 0.012), "frame")
+mount[5][L_PART] = PART_IDS["trim"]
 lathe([(PLATE_R, 0.012), (PLATE_R + 0.011, 0.012), (PLATE_R + 0.011, 0.024), (PLATE_R + 0.004, 0.026),
-       (PLATE_R, 0.024)], 32, pf, "trim", closed=True)
+       (PLATE_R, 0.024)], 32, pf, "metal", closed=True)
 disc = lathe([(PLATE_R - 0.001, 0.012), (PLATE_R - 0.001, 0.021)], 32, pf, "gold")
 disc[-1][L_KIND] = K_PLATE_FACE          # the outer cap (z = 0.021) carries the engraving
 PLATE_C = pf @ Vector((0, 0, 0.021))
@@ -437,6 +485,11 @@ bmesh.ops.transform(bm, matrix=Matrix.Rotation(math.radians(90), 4, "X") @ Matri
 bm.normal_update()
 plate_c = (Matrix.Rotation(math.radians(90), 4, "X") @ Matrix.Scale(S, 4)) @ PLATE_C
 tris = sum(len(f.verts) - 2 for f in bm.faces)
+by_part = {}
+for f_ in bm.faces:
+    k_ = list(PARTS)[f_[L_PART]]
+    by_part[k_] = by_part.get(k_, 0) + len(f_.verts) - 2
+print("probe: triangles by part", dict(sorted(by_part.items(), key=lambda kv: -kv[1])))
 print(f"probe: scale={S:.4f} glTF extent=({ext[0] * S:.3f}, {ext[1] * S:.3f}, {ext[2] * S:.3f}) triangles={tris}")
 
 # ------------------------------------------------------ mesh + zone mask ---
@@ -564,7 +617,13 @@ def set_mode(mode):
 
 # linear-light values. Metals carry their F0 as albedo.
 def vmath(nt, op, a, b):
+    """Vector math; "SCALE_" scales vector a by the float b."""
     v = nt.nodes.new("ShaderNodeVectorMath")
+    if op == "SCALE_":
+        v.operation = "SCALE"
+        nt.links.new(a, v.inputs[0])
+        v.inputs[3].default_value = b
+        return v.outputs["Vector"]
     v.operation = op
     for i, x in enumerate((a, b)):
         if isinstance(x, tuple):
@@ -574,81 +633,259 @@ def vmath(nt, op, a, b):
     return v.outputs["Value" if op == "DOT_PRODUCT" else "Vector"]
 
 
-def facets(nt, co, scale, offset):
-    """Crumpled sheet: every Voronoi cell is a flat facet tilted its own random
-    way (height = (p - cell point) . (cell colour - 0.5)), so facets meet at
-    sharp creases. Height in object units; slopes up to about +-0.5."""
+def chan(nt, color, i):
+    """One channel (0, 1, 2) of a colour socket, as a float in 0..1."""
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(color, sep.inputs["Color"])
+    return sep.outputs[i]
+
+
+def mapr(nt, x, a, b, c=0.0, d=1.0):
+    """Clamped linear remap of x from [a, b] to [c, d]."""
+    m = nt.nodes.new("ShaderNodeMapRange")
+    m.clamp = True
+    nt.links.new(x, m.inputs[0])
+    for i, v in enumerate((a, b, c, d), 1):
+        m.inputs[i].default_value = v
+    return m.outputs[0]
+
+
+def voronoi(nt, co, scale, offset, feature="F1"):
     v = nt.nodes.new("ShaderNodeTexVoronoi")
+    v.feature = feature
     v.inputs["Scale"].default_value = scale
     v.inputs["Randomness"].default_value = 0.85
     nt.links.new(vmath(nt, "ADD", co, offset), v.inputs["Vector"])
+    return v
+
+
+def facets(nt, co, scale, offset):
+    """Crumpled sheet: every Voronoi cell is a flat facet tilted its own random
+    way (height = (p - cell point) . (cell colour - 0.5)), so facets meet at
+    sharp creases. Height in object units; slopes up to about +-0.5.
+    Returns (height, the cell's random 0..1, crease mask 0..1)."""
+    v = voronoi(nt, co, scale, offset)
     d = vmath(nt, "SUBTRACT", vmath(nt, "ADD", co, offset), v.outputs["Position"])
-    return vmath(nt, "DOT_PRODUCT", d, vmath(nt, "SUBTRACT", v.outputs["Color"], (0.5, 0.5, 0.5)))
+    h = vmath(nt, "DOT_PRODUCT", d, vmath(nt, "SUBTRACT", v.outputs["Color"], (0.5, 0.5, 0.5)))
+    edge = voronoi(nt, co, scale, offset, "DISTANCE_TO_EDGE").outputs["Distance"]
+    return h, chan(nt, v.outputs["Color"], 0), mapr(nt, edge, 0.0, 0.06, 1.0, 0.0)
 
 
-def crinkle(nt, co, cell=24.0, w=0.0):
-    """Hand-wrapped MLI blanket: two scales of creased facets, a fine wrinkle
-    and a soft pillowing between the tie points. Use with bump distance 1."""
-    big = facets(nt, co, cell, (w, 2 * w, 3.0))
-    small = facets(nt, co, cell * 2.4, (5.0 + w, 1.0, -w))
-    fine = noise(nt, co, 140.0, 2.0, 0.5, 0.0, w + 3.0)
-    pillow = noise(nt, co, 4.0, 2.0, 0.5, 0.0, w + 7.0)
-    h = math_(nt, "ADD", big, math_(nt, "MULTIPLY", small, 0.6))
-    h = math_(nt, "ADD", h, math_(nt, "MULTIPLY", fine, 0.0012))
-    return math_(nt, "ADD", h, math_(nt, "MULTIPLY", pillow, 0.02))
+FOIL_CELL = 26.0
+
+
+def crinkle(nt, co, cell=FOIL_CELL, w=0.0, small_k=0.6):
+    """Hand-wrapped MLI blanket: two scales of flat, creased facets and a soft
+    pillowing between the tie points. Use with bump distance 1. The facets
+    sit on a barely warped, stretched copy of the coordinates, so the creases
+    run in long folds yet every facet stays flat: a crisp mirror, not a
+    liquid ripple. Returns (height, big-facet random, small-facet random,
+    crease)."""
+    wn = nd(nt, "ShaderNodeTexNoise", Scale=6.0, Detail=1.0, Roughness=0.5)
+    wn.noise_dimensions = "4D"
+    wn.inputs["W"].default_value = w + 11.0
+    nt.links.new(co, wn.inputs["Vector"])
+    warp = vmath(nt, "SCALE_", wn.outputs["Color"], 0.008)
+    co = vmath(nt, "MULTIPLY", vmath(nt, "ADD", co, warp), (1.0, 0.6, 1.0))
+    big, rb, cb = facets(nt, co, cell, (w, 2 * w, 3.0))
+    small, rs, cs = facets(nt, co, cell * 2.5, (5.0 + w, 1.0, -w))
+    pillow = noise(nt, co, 5.0, 2.0, 0.5, 0.0, w + 7.0)
+    h = math_(nt, "ADD", big, math_(nt, "MULTIPLY", small, small_k))
+    h = math_(nt, "ADD", h, math_(nt, "MULTIPLY", pillow, 0.018))
+    return h, rb, rs, math_(nt, "MAXIMUM", cb, math_(nt, "MULTIPLY", cs, 0.6))
 
 
 def foil_albedo(nt, co):
+    # every facet catches its own tone (the Kapton's amber over the
+    # aluminised back), darker in the creases
+    _, rb, rs, crease = crinkle(nt, co)
     var = noise(nt, co, 14.0, 5.0, 0.6, 0.4, 2.0)
-    tone = math_(nt, "ADD", 0.78, math_(nt, "MULTIPLY", var, 0.36))
-    return rgb_scale(nt, (0.86, 0.54, 0.17), tone)
+    tone = math_(nt, "ADD", 0.76, math_(nt, "MULTIPLY", rb, 0.12))
+    tone = math_(nt, "ADD", tone, math_(nt, "MULTIPLY", rs, 0.08))
+    tone = math_(nt, "ADD", tone, math_(nt, "MULTIPLY", var, 0.14))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", crease, 0.08)))
+    return rgb_scale(nt, (0.86, 0.55, 0.18), tone)
 
 
 def foil_rough(nt, co):
-    # smudges, not grain: low-frequency roughness keeps the packed MR map small
-    return math_(nt, "ADD", 0.26, math_(nt, "MULTIPLY", noise(nt, co, 7.0, 2.0, 0.5, 0.0, 4.0), 0.26))
+    # per-facet gloss: some facets mirror the sun, their neighbours haze it
+    _, rb, rs, crease = crinkle(nt, co)
+    r = math_(nt, "ADD", 0.04, math_(nt, "MULTIPLY", rs, 0.18))
+    r = math_(nt, "ADD", r, math_(nt, "MULTIPLY", rb, 0.06))
+    r = math_(nt, "ADD", r, math_(nt, "MULTIPLY", noise(nt, co, 7.0, 2.0, 0.5, 0.0, 4.0), 0.08))
+    return math_(nt, "ADD", r, math_(nt, "MULTIPLY", crease, 0.16))
+
+
+def foil_height(nt, co):
+    return crinkle(nt, co)[0]
+
+
+DARK_W = 1.5
 
 
 def dark_albedo(nt, co):
-    return rgb_scale(nt, (0.035, 0.034, 0.038), math_(nt, "ADD", 0.8, math_(nt, "MULTIPLY",
-                     noise(nt, co, 20.0, 4.0, 0.6, 0.3, 5.0), 0.4)))
+    _, rb, _, crease = crinkle(nt, co, 16.0, DARK_W, 0.3)
+    tone = math_(nt, "ADD", 0.85, math_(nt, "MULTIPLY", rb, 0.3))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", crease, 0.1)))
+    return rgb_scale(nt, (0.036, 0.035, 0.039), tone)
 
 
-def paint_seams(nt, co):
-    """1 on the dish's panel seams (two rings and 12 gores), 0 elsewhere.
-    The dish axis is Blender -Y, so the radius lives in x/z."""
+def dark_rough(nt, co):
+    _, _, rs, crease = crinkle(nt, co, 16.0, DARK_W, 0.3)
+    return math_(nt, "ADD", math_(nt, "ADD", 0.30, math_(nt, "MULTIPLY", rs, 0.16)),
+                 math_(nt, "MULTIPLY", crease, 0.15))
+
+
+def dark_height(nt, co):
+    return crinkle(nt, co, 16.0, DARK_W, 0.3)[0]
+
+
+# ---- the dish's white paint: an engineered panel layout -----------------
+# The reflector is built from panels: 6 gores inside RING_SEAMS[0], 12 to
+# RING_SEAMS[1], 24 out to the rim. Every panel has its own tone, gloss and
+# a faint oil-can warp; the seams are dark grooves with a rivet row each
+# side of the ring seams. The dish axis is Blender -Y, so the radius lives
+# in x/z. Distances below are in design units (x S in Blender).
+RING_SEAMS = (0.26, 0.52)
+SEAM_W = 0.0024
+RIVET_PITCH, RIVET_OFF, RIVET_R = 0.026, 0.0075, 0.0021
+
+
+def dish_polar(nt, co):
     sep = nd(nt, "ShaderNodeSeparateXYZ")
     nt.links.new(co, sep.inputs[0])
     x, z = sep.outputs[0], sep.outputs[2]
     rad = math_(nt, "SQRT", math_(nt, "ADD", math_(nt, "MULTIPLY", x, x), math_(nt, "MULTIPLY", z, z)))
-    w = 0.0028
-    rings = [math_(nt, "LESS_THAN", math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", rad, r0 * S)), w)
-             for r0 in (0.30, 0.55)]
-    ring = math_(nt, "MAXIMUM", *rings)
-    ang = math_(nt, "ARCTAN2", z, x)
-    g = math_(nt, "MULTIPLY", ang, 12 / (2 * math.pi))
-    arc = math_(nt, "MULTIPLY", math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", g, math_(nt, "ROUND", g))),
-                math_(nt, "MULTIPLY", rad, 2 * math.pi / 12))
-    gore = math_(nt, "MULTIPLY", math_(nt, "LESS_THAN", arc, w), math_(nt, "GREATER_THAN", rad, 0.12 * S))
-    return math_(nt, "MAXIMUM", ring, gore)
+    return math_(nt, "DIVIDE", rad, S), math_(nt, "ARCTAN2", z, x)
+
+
+def dish_panels(nt, co):
+    """(seam mask, rivet mask, per-panel random 0..1) on the dish's paint."""
+    rad, ang = dish_polar(nt, co)
+    zone = math_(nt, "ADD", math_(nt, "GREATER_THAN", rad, RING_SEAMS[0]),
+                 math_(nt, "GREATER_THAN", rad, RING_SEAMS[1]))
+    n_gore = math_(nt, "MULTIPLY", math_(nt, "POWER", 2.0, zone), 6.0)
+    g = math_(nt, "DIVIDE", math_(nt, "MULTIPLY", ang, n_gore), 2 * math.pi)
+    arc = math_(nt, "DIVIDE", math_(nt, "MULTIPLY", math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", g, math_(nt, "ROUND", g))),
+                                    math_(nt, "MULTIPLY", rad, 2 * math.pi)), n_gore)
+    gore = math_(nt, "MULTIPLY", mapr(nt, arc, SEAM_W, SEAM_W * 0.5), math_(nt, "GREATER_THAN", rad, 0.13))
+    seam = gore
+    rivet = None
+    for r0 in RING_SEAMS + (0.776,):
+        dr = math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", rad, r0))
+        if r0 in RING_SEAMS:
+            seam = math_(nt, "MAXIMUM", seam, mapr(nt, dr, SEAM_W, SEAM_W * 0.5))
+        row = math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", dr, RIVET_OFF if r0 in RING_SEAMS else 0.0))
+        s_ = math_(nt, "DIVIDE", math_(nt, "MULTIPLY", ang, rad), RIVET_PITCH)
+        ds = math_(nt, "MULTIPLY", math_(nt, "ABSOLUTE", math_(nt, "SUBTRACT", s_, math_(nt, "ROUND", s_))), RIVET_PITCH)
+        dot = mapr(nt, math_(nt, "SQRT", math_(nt, "ADD", math_(nt, "MULTIPLY", row, row), math_(nt, "MULTIPLY", ds, ds))),
+                   RIVET_R, RIVET_R * 0.55)
+        rivet = dot if rivet is None else math_(nt, "MAXIMUM", rivet, dot)
+    cx = nd(nt, "ShaderNodeCombineXYZ")
+    nt.links.new(zone, cx.inputs[0])
+    nt.links.new(math_(nt, "FLOOR", g), cx.inputs[1])
+    wn = nt.nodes.new("ShaderNodeTexWhiteNoise")
+    wn.noise_dimensions = "3D"
+    nt.links.new(cx.outputs[0], wn.inputs["Vector"])
+    return seam, rivet, wn.outputs["Value"]
+
+
+def pits(nt, co):
+    """Sparse micrometeoroid pits and scuffs: 0..1."""
+    v = voronoi(nt, co, 55.0, (11.0, 3.0, 7.0))
+    sparse = math_(nt, "GREATER_THAN", chan(nt, v.outputs["Color"], 1), 0.82)
+    return math_(nt, "MULTIPLY", sparse, mapr(nt, v.outputs["Distance"], 0.10, 0.05))
 
 
 def paint_albedo(nt, co):
+    seam, rivet, pid = dish_panels(nt, co)
     mott = noise(nt, co, 9.0, 5.0, 0.6, 0.0, 6.0)
-    tone = math_(nt, "ADD", 0.93, math_(nt, "MULTIPLY", mott, 0.08))
-    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", paint_seams(nt, co), 0.2)))
-    return rgb_scale(nt, (0.70, 0.70, 0.68), tone)
+    tone = math_(nt, "ADD", 0.90, math_(nt, "MULTIPLY", mott, 0.08))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "ADD", 0.955, math_(nt, "MULTIPLY", pid, 0.09)))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", seam, 0.28)))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", rivet, 0.30)))
+    tone = math_(nt, "MULTIPLY", tone, math_(nt, "SUBTRACT", 1.0, math_(nt, "MULTIPLY", pits(nt, co), 0.45)))
+    # years of UV: the white has gone faintly warm, patchily
+    age = mapr(nt, noise(nt, co, 2.5, 3.0, 0.5, 0.0, 19.0), 0.3, 0.72)
+    mix = nd(nt, "ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(age, mix.inputs[0])
+    mix.inputs[6].default_value = (0.74, 0.74, 0.72, 1.0)
+    mix.inputs[7].default_value = (0.72, 0.69, 0.61, 1.0)
+    v = nt.nodes.new("ShaderNodeVectorMath")
+    v.operation = "SCALE"
+    nt.links.new(mix.outputs[2], v.inputs[0])
+    nt.links.new(tone, v.inputs[3])
+    return v.outputs[0]
+
+
+def paint_rough(nt, co):
+    seam, rivet, pid = dish_panels(nt, co)
+    r = math_(nt, "ADD", 0.40, math_(nt, "MULTIPLY", pid, 0.24))
+    r = math_(nt, "ADD", r, math_(nt, "MULTIPLY", noise(nt, co, 8.0, 2.0, 0.5, 0.0, 20.0), 0.10))
+    r = math_(nt, "ADD", r, math_(nt, "MULTIPLY", seam, 0.25))
+    return math_(nt, "SUBTRACT", r, math_(nt, "MULTIPLY", rivet, 0.2))
 
 
 def paint_height(nt, co):
-    return math_(nt, "ADD", math_(nt, "MULTIPLY", noise(nt, co, 60.0, 3.0, 0.5, 0.0, 8.0), 0.15),
-                 math_(nt, "MULTIPLY", paint_seams(nt, co), -1.0))
+    seam, rivet, pid = dish_panels(nt, co)
+    warp = nd(nt, "ShaderNodeTexNoise", Scale=7.0, Detail=1.0, Roughness=0.5)
+    warp.noise_dimensions = "4D"
+    nt.links.new(co, warp.inputs["Vector"])
+    nt.links.new(math_(nt, "MULTIPLY", pid, 40.0), warp.inputs["W"])
+    h = math_(nt, "MULTIPLY", warp.outputs["Fac"], 0.5)
+    h = math_(nt, "SUBTRACT", h, seam)
+    h = math_(nt, "ADD", h, math_(nt, "MULTIPLY", rivet, 0.5))
+    return math_(nt, "SUBTRACT", h, math_(nt, "MULTIPLY", pits(nt, co), 0.6))
+
+
+# ---- the trim: satin paint with chipped edges -----------------------------
+# Authored light neutral (no hue): the game multiplies it by a toned-down
+# project colour. Chips show a dark primer, not bare metal, so they take the
+# tint as a darker shade of the same paint instead of a coloured metal.
+def edge_mask(nt):
+    """0 on flat paint rising to 1 on a sharp edge, over the bevel radius."""
+    bev = nd(nt, "ShaderNodeBevel", Radius=0.009 * S)
+    bev.samples = 16
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    return mapr(nt, vmath(nt, "DOT_PRODUCT", bev.outputs["Normal"], geo.outputs["Normal"]), 0.999, 0.86)
+
+
+def trim_wear(nt, co):
+    """Chipped edges: the edge mask pushed in and out by a noise, so chips
+    come and go along an edge instead of drawing an outline; plus a few
+    scuffs on the flat."""
+    n = noise(nt, co, 45.0, 8.0, 0.7, 0.0, 16.0)
+    w = math_(nt, "ADD", edge_mask(nt), math_(nt, "MULTIPLY", math_(nt, "SUBTRACT", n, 0.5), 2.4))
+    edge = mapr(nt, w, 0.97, 1.05)
+    scuff = mapr(nt, noise(nt, co, 140.0, 3.0, 0.6, 0.0, 18.0), 0.70, 0.73, 0.0, 0.8)
+    return math_(nt, "MAXIMUM", edge, scuff)
+
+
+def trim_albedo(nt, co):
+    mott = noise(nt, co, 12.0, 4.0, 0.6, 0.0, 21.0)
+    mix = nd(nt, "ShaderNodeMix")
+    mix.data_type = "RGBA"
+    nt.links.new(trim_wear(nt, co), mix.inputs[0])
+    nt.links.new(rgb_scale(nt, (0.70, 0.70, 0.685), math_(nt, "ADD", 0.93, math_(nt, "MULTIPLY", mott, 0.1))),
+                 mix.inputs[6])
+    mix.inputs[7].default_value = (0.16, 0.16, 0.155, 1.0)
+    return mix.outputs[2]
+
+
+def trim_rough(nt, co):
+    r = math_(nt, "ADD", 0.36, math_(nt, "MULTIPLY", noise(nt, co, 20.0, 3.0, 0.5, 0.0, 22.0), 0.14))
+    return math_(nt, "ADD", r, math_(nt, "MULTIPLY", trim_wear(nt, co), 0.28))
+
+
+def trim_height(nt, co):
+    return math_(nt, "MULTIPLY", trim_wear(nt, co), -0.6)
 
 
 def brushed_albedo(base):
     def f(nt, co):
         return rgb_scale(nt, base, math_(nt, "ADD", 0.9, math_(nt, "MULTIPLY",
-                         noise(nt, co, 40.0, 6.0, 0.7, 0.0, 9.0), 0.18)))
+                         noise(nt, co, 40.0, 3.0, 0.6, 0.0, 9.0), 0.18)))
     return f
 
 
@@ -660,7 +897,7 @@ def brushed_rough(lo, hi):
 
 def fin_albedo(nt, co):
     return rgb_scale(nt, (0.085, 0.082, 0.078), math_(nt, "ADD", 0.75, math_(nt, "MULTIPLY",
-                     noise(nt, co, 25.0, 5.0, 0.6, 0.0, 11.0), 0.5)))
+                     noise(nt, co, 25.0, 3.0, 0.5, 0.0, 11.0), 0.5)))
 
 
 def nozzle_albedo(nt, co):
@@ -674,16 +911,19 @@ def nozzle_albedo(nt, co):
     return mix.outputs[2]
 
 
-material("foil", foil_albedo, foil_rough, 0.72, lambda nt, co: crinkle(nt, co), (0.8, 1.0))
-material("foil_dark", dark_albedo, 0.42, 0.15, lambda nt, co: crinkle(nt, co, 20.0, 1.5), (0.6, 1.0))
-material("frame", brushed_albedo((0.30, 0.30, 0.31)), brushed_rough(0.35, 0.5), 0.85)
-material("paint", paint_albedo, 0.58, 0.0, paint_height, (0.25, 0.002))
-material("trim", (0.80, 0.80, 0.78), 0.42, 0.0, lambda nt, co: noise(nt, co, 80.0, 2.0, 0.5, 0.0, 13.0),
-         (0.05, 0.001))
+material("foil", foil_albedo, foil_rough, 0.75, foil_height, (1.0, 1.0))
+for _p in ("foil_dark", "cap"):
+    material(_p, dark_albedo, dark_rough, 0.2, dark_height, (0.3, 1.0))
+for _p in ("frame", "deck"):
+    material(_p, brushed_albedo((0.30, 0.30, 0.31)), brushed_rough(0.35, 0.5), 0.85)
+for _p in ("paint", "reflector"):
+    material(_p, paint_albedo, paint_rough, 0.0, paint_height, (0.45, 0.0022 * S))
+material("trim", trim_albedo, trim_rough, 0.0, trim_height, (0.4, 0.0012 * S))
 material("lamp", (0.85, 0.83, 0.78), 0.12, 0.0)
-material("metal", brushed_albedo((0.80, 0.80, 0.81)), brushed_rough(0.26, 0.42), 1.0,
-         lambda nt, co: noise(nt, co, 120.0, 2.0, 0.5, 0.0, 14.0), (0.08, 0.001))
-material("fin", fin_albedo, 0.62, 0.3, lambda nt, co: noise(nt, co, 90.0, 3.0, 0.5, 0.0, 15.0), (0.15, 0.001))
+# (no sub-texel grain in any height: it reads as nothing on screen and
+# costs the normal map's WebP most of its bytes)
+material("metal", brushed_albedo((0.80, 0.80, 0.81)), brushed_rough(0.26, 0.42), 1.0)
+material("fin", fin_albedo, 0.62, 0.3)
 material("gold", (1.0, 0.72, 0.30), 0.2, 1.0)
 material("nozzle", nozzle_albedo, 0.35, 0.9)
 material("throat", (0.05, 0.045, 0.04), 0.65, 0.4)
@@ -773,42 +1013,52 @@ world.light_settings.distance = 0.10
 SCENE.render.engine = "CYCLES"
 SCENE.cycles.device = "CPU"
 SCENE.cycles.seed = 0
-SCENE.render.bake.margin = 4
 
 
-def new_img(name, noncolor=False, raw=False):
-    """raw: a float bake target (linear values, no 8-bit banding in the darks)."""
-    img = bpy.data.images.new(name, width=TEX, height=TEX, alpha=False, float_buffer=raw)
-    if noncolor or raw:
-        img.colorspace_settings.name = "Non-Color"
+def new_img(name, size, raw=True):
+    """A float bake target (linear values, no 8-bit banding in the darks)."""
+    img = bpy.data.images.new(name, width=size, height=size, alpha=False, float_buffer=raw)
+    img.colorspace_settings.name = "Non-Color"
     return img
 
 
-def bake(kind, img, samples, **kw):
+def bake(kind, img, samples, margin, **kw):
     bake_utils._attach_bake_target([ob], img)
     SCENE.cycles.samples = samples
+    SCENE.render.bake.margin = margin
     activate(ob)
     bpy.ops.object.bake(type=kind, use_clear=True, **kw)
     bake_utils._detach_bake_targets([ob])
 
 
 def pixels(img):
-    a = np.empty(TEX * TEX * 4, np.float32)
+    n = img.size[0]
+    a = np.empty(n * n * 4, np.float32)
     img.pixels.foreach_get(a)
-    return a.reshape(TEX, TEX, 4)
+    return a.reshape(n, n, 4)
 
 
-alb_raw, mr_raw = new_img("probe_albedo_raw", raw=True), new_img("probe_mr_raw", raw=True)
-ao_raw, nrm_img = new_img("probe_ao_raw", raw=True), new_img("probe_normal_raw", raw=True)
+def down(a, size):
+    """Box-filter a square float image down to size (supersampled bakes)."""
+    f = a.shape[0] // size
+    return a.reshape(size, f, size, f, a.shape[-1]).mean(axis=(1, 3))
+
+
+alb_raw, mr_raw = new_img("probe_albedo_raw", BAKE), new_img("probe_mr_raw", BAKE)
+nrm_img, ao_raw = new_img("probe_normal_raw", NBAKE), new_img("probe_ao_raw", BAKE)
 set_mode("albedo")
-bake("EMIT", alb_raw, 8)
+bake("EMIT", alb_raw, 8, 8)
 set_mode("mr")
-bake("EMIT", mr_raw, 8)
+bake("EMIT", mr_raw, 8, 8)
 set_mode("normal")
-bake("NORMAL", nrm_img, 8)
-bake("AO", ao_raw, 96)
+bake("NORMAL", nrm_img, 4, 12)
+bake("AO", ao_raw, 64, 8)
 
-alb, mr, ao, nrm = pixels(alb_raw), pixels(mr_raw), pixels(ao_raw), pixels(nrm_img)
+alb, mr = down(pixels(alb_raw), TEX), down(pixels(mr_raw), TEX)   # MR shrinks to MR_TEX at the end
+ao = down(pixels(ao_raw), TEX)                  # supersampled AO: less noise per texel
+nrm = down(pixels(nrm_img) * 2 - 1, NTEX)       # supersampled normals: crisp, not aliased
+nrm[..., :3] /= np.linalg.norm(nrm[..., :3], axis=-1, keepdims=True)
+nrm = nrm * 0.5 + 0.5
 # The raw bakes are linear floats; the shipped albedo is 8-bit sRGB.
 
 
@@ -818,74 +1068,78 @@ def to_srgb(c):
 
 
 lin = alb[..., :3].copy()
-occl = 0.3 + 0.7 * ao[..., :1]
+occl = 0.4 + 0.6 * ao[..., :1]
 lin *= occl
 
+
 # --------------------------------------------- the plate: engraved gold ---
-nrng = np.random.default_rng(SEED)
-x0, y0 = int(PU0 * TEX), int(PV0 * TEX)
-x1 = min(TEX, int(math.ceil((PU0 + PSIDE) * TEX)) + 1)
-y1 = min(TEX, int(math.ceil((PV0 + PSIDE) * TEX)) + 1)
-ys_, xs_ = np.mgrid[y0:y1, x0:x1].astype(np.float32)
-P = ((xs_ + 0.5) / TEX - PU0) / PSIDE * 2 - 1
-Q = ((ys_ + 0.5) / TEX - PV0) / PSIDE * 2 - 1
-Rr = np.hypot(P, Q)
-px = 2.0 / (PSIDE * TEX)          # one texel in plate units
+def plate_fields(res):
+    """The plate's engraving at a map resolution: (slice, inside mask, etch,
+    turn, radius). Re-seeded per call, so every map gets the same design."""
+    nrng = np.random.default_rng(SEED)
+    x0, y0 = int(PU0 * res), int(PV0 * res)
+    x1 = min(res, int(math.ceil((PU0 + PSIDE) * res)) + 1)
+    y1 = min(res, int(math.ceil((PV0 + PSIDE) * res)) + 1)
+    ys_, xs_ = np.mgrid[y0:y1, x0:x1].astype(np.float32)
+    P = ((xs_ + 0.5) / res - PU0) / PSIDE * 2 - 1
+    Q = ((ys_ + 0.5) / res - PV0) / PSIDE * 2 - 1
+    Rr = np.hypot(P, Q)
+    px = 2.0 / (PSIDE * res)          # one texel in plate units
+
+    def seg_d(ax, ay, bx, by):
+        dx, dy = bx - ax, by - ay
+        t = np.clip(((P - ax) * dx + (Q - ay) * dy) / (dx * dx + dy * dy + 1e-9), 0, 1)
+        return np.hypot(P - ax - t * dx, Q - ay - t * dy)
+
+    def stroke(d, w):
+        return np.clip(1 - (d - w) / (1.2 * px), 0, 1)
+
+    etch = np.zeros_like(P)
+    LW = 0.012
+    # starburst: 13 ticked lines out of one point
+    cx, cy = -0.30, -0.12
+    for i in range(13):
+        a = 2 * math.pi * i / 13 + nrng.uniform(-0.12, 0.12)
+        ln = nrng.uniform(0.25, 0.62)
+        bx, by = cx + ln * math.cos(a), cy + ln * math.sin(a)
+        etch = np.maximum(etch, stroke(seg_d(cx, cy, bx, by), LW * 0.8))
+        for t in np.linspace(0.3, 0.92, int(nrng.integers(3, 6))):
+            if nrng.random() < 0.55:
+                mx, my = cx + t * ln * math.cos(a), cy + t * ln * math.sin(a)
+                nx_, ny_ = -math.sin(a) * 0.03, math.cos(a) * 0.03
+                etch = np.maximum(etch, stroke(seg_d(mx - nx_, my - ny_, mx + nx_, my + ny_), LW * 0.7))
+    # two-circle glyph
+    for gx in (0.30, 0.58):
+        etch = np.maximum(etch, stroke(np.abs(np.hypot(P - gx, Q - 0.52) - 0.075), LW * 0.8))
+    etch = np.maximum(etch, stroke(seg_d(0.375, 0.52, 0.505, 0.52), LW * 0.6))
+    # a concentric "disc and stylus" figure, lower right
+    for rr in (0.10, 0.17, 0.24):
+        etch = np.maximum(etch, stroke(np.abs(np.hypot(P - 0.42, Q + 0.42) - rr), LW * 0.6))
+    etch = np.maximum(etch, stroke(seg_d(0.42, -0.42, 0.72, -0.12), LW * 0.7))
+    # perimeter ring and ticks
+    etch = np.maximum(etch, stroke(np.abs(Rr - 0.88), LW * 0.7))
+    ang = np.arctan2(Q, P)
+    ticks = (np.abs(((ang / (2 * math.pi) * 72) % 1) - 0.5) > 0.42) & (Rr > 0.88) & (Rr < 0.95)
+    etch = np.maximum(etch, ticks.astype(np.float32) * stroke(np.abs(Rr - 0.915), 0.035))
+    etch *= (Rr < 0.97)
+    turn = 0.5 + 0.5 * np.sin(Rr * 2 * math.pi * 38 + nrng.uniform(0, 6.28))   # lathe-turned finish
+    return (slice(y0, y1), slice(x0, x1)), Rr <= 1.03, etch, turn, Rr
 
 
-def seg_d(ax, ay, bx, by):
-    dx, dy = bx - ax, by - ay
-    t = np.clip(((P - ax) * dx + (Q - ay) * dy) / (dx * dx + dy * dy + 1e-9), 0, 1)
-    return np.hypot(P - ax - t * dx, Q - ay - t * dy)
-
-
-def stroke(d, w):
-    return np.clip(1 - (d - w) / (1.2 * px), 0, 1)
-
-
-etch = np.zeros_like(P)
-LW = max(0.012, 1.3 * px)
-# starburst: 13 ticked lines out of one point
-cx, cy = -0.30, -0.12
-for i in range(13):
-    a = 2 * math.pi * i / 13 + nrng.uniform(-0.12, 0.12)
-    ln = nrng.uniform(0.25, 0.62)
-    bx, by = cx + ln * math.cos(a), cy + ln * math.sin(a)
-    etch = np.maximum(etch, stroke(seg_d(cx, cy, bx, by), LW * 0.8))
-    for t in np.linspace(0.3, 0.92, int(nrng.integers(3, 6))):
-        if nrng.random() < 0.55:
-            mx, my = cx + t * ln * math.cos(a), cy + t * ln * math.sin(a)
-            nx_, ny_ = -math.sin(a) * 0.03, math.cos(a) * 0.03
-            etch = np.maximum(etch, stroke(seg_d(mx - nx_, my - ny_, mx + nx_, my + ny_), LW * 0.7))
-# two-circle glyph
-for gx in (0.30, 0.58):
-    etch = np.maximum(etch, stroke(np.abs(np.hypot(P - gx, Q - 0.52) - 0.075), LW * 0.8))
-etch = np.maximum(etch, stroke(seg_d(0.375, 0.52, 0.505, 0.52), LW * 0.6))
-# a concentric "disc and stylus" figure, lower right
-for rr in (0.10, 0.17, 0.24):
-    etch = np.maximum(etch, stroke(np.abs(np.hypot(P - 0.42, Q + 0.42) - rr), LW * 0.6))
-etch = np.maximum(etch, stroke(seg_d(0.42, -0.42, 0.72, -0.12), LW * 0.7))
-# perimeter ring and ticks
-etch = np.maximum(etch, stroke(np.abs(Rr - 0.88), LW * 0.7))
-ang = np.arctan2(Q, P)
-ticks = (np.abs(((ang / (2 * math.pi) * 72) % 1) - 0.5) > 0.42) & (Rr > 0.88) & (Rr < 0.95)
-etch = np.maximum(etch, ticks.astype(np.float32) * stroke(np.abs(Rr - 0.915), 0.035))
-etch *= (Rr < 0.97)
-
-turn = 0.5 + 0.5 * np.sin(Rr * 2 * math.pi * 38 + nrng.uniform(0, 6.28))   # lathe-turned finish
+# albedo and metal/roughness at TEX
+sl, inside, etch, turn, Rr = plate_fields(TEX)
 gold = np.array([1.0, 0.70, 0.30], np.float32)
 g_lin = gold[None, None] * (0.9 + 0.08 * turn)[..., None]
 g_lin = g_lin * (1 - 0.6 * etch)[..., None]
-rim = (Rr > 0.97)
-g_lin[rim] *= 0.85
-inside = Rr <= 1.03
-sl = (slice(y0, y1), slice(x0, x1))
+g_lin[Rr > 0.97] *= 0.85
 lin[sl][inside] = (g_lin * (0.75 + 0.25 * ao[sl][..., :1]))[inside]
 mr[sl][..., 1][inside] = (0.34 + 0.06 * turn + 0.22 * etch)[inside]
 mr[sl][..., 2][inside] = 1.0
+# the engraving's normals at NTEX (gradients per texel: scale with resolution)
+sl, inside, etch, turn, Rr = plate_fields(NTEX)
 height = -etch * 1.0 + 0.04 * turn - 0.6 * np.clip((Rr - 0.97) / 0.03, 0, 1)
 gy, gx = np.gradient(height)
-strength = 0.9
+strength = 0.9 * NTEX / 1024
 nv = np.stack([-gx * strength, -gy * strength, np.ones_like(gx)], -1)
 nv /= np.linalg.norm(nv, axis=-1, keepdims=True)
 nrm[sl][..., :3][inside] = (nv * 0.5 + 0.5)[inside]
@@ -905,11 +1159,9 @@ alb[..., 3] = 1.0
 mr[..., 0] = 1.0
 mr[..., 3] = 1.0
 nrm[..., 3] = 1.0
-f = TEX // MR_TEX
-mr_small = mr.reshape(MR_TEX, f, MR_TEX, f, 4).mean(axis=(1, 3))
 img_alb = to_image("probe_albedo", alb)
-img_mr = to_image("probe_metal_rough", mr_small, True, MR_TEX)
-img_nrm = to_image("probe_normal_map", nrm, True)
+img_mr = to_image("probe_metal_rough", down(mr, MR_TEX), True, MR_TEX)
+img_nrm = to_image("probe_normal_map", nrm, True, NTEX)
 
 final = bpy.data.materials.new("ProbeBaked")
 final.use_nodes = True

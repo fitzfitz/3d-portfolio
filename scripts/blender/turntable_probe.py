@@ -8,14 +8,18 @@
 # WebP re-encoding).
 #
 # The zone mask is shaded the way ProjectProbes is meant to: COLOR_0's R
-# zone multiplies the albedo by the project colour, its G zone (the beacon
-# lamps) emits the project colour. Light is a hard sun (no atmosphere in
-# space), a faint cool fill for reflections only (the camera sees black) and
-# a weak warm rim, under Khronos PBR Neutral like the game's tone mapping.
+# zone (the painted stripe) multiplies the albedo by a toned-down project
+# colour -- the colour desaturated 60% toward its own luminance, no
+# emission, so it reads as paint; its G zone (the beacon lamps) emits the
+# project colour. Light is a hard key sun (0.53 deg, as at 1 AU; no
+# atmosphere in space) raking in about 45 degrees off the camera, and a dim
+# neutral-cool fill (about 5% of the key) for the shadow side; the camera
+# sees black. Tone mapping is Khronos PBR Neutral, like the game's.
 #
 # Output: DIR/probe_a030.png, _a120, _a210, _a300 (azimuth about glTF +Y,
-# 18 degrees up), DIR/probe_plate.png (close-up of the gold plate) and
-# DIR/probe_trio.png (the three project colours side by side).
+# 18 degrees up), DIR/probe_plate.png (close-up of the gold plate),
+# DIR/probe_dish.png (the reflector face-on) and DIR/probe_trio.png (the
+# three project colours side by side).
 import math
 import os
 import sys
@@ -33,7 +37,8 @@ GLB = os.path.abspath(OPT.get("glb", os.path.join(ROOT, "assets-src", "probe.glb
 SAMPLES = int(OPT.get("samples", 128))
 RES = int(OPT.get("res", 1024))
 TINTS = ["00ff87", "00f0ff", "bd00ff"]   # projects.json colours
-BEACON = 6.0                              # lamp emission strength at full blink
+BEACON = 4.0                              # lamp emission strength at full blink
+DESAT = 0.6                               # how far the trim tint is pulled to grey
 
 
 def lin(h):
@@ -76,8 +81,8 @@ w.use_nodes = True
 nt = w.node_tree
 nt.nodes.clear()
 fill = nt.nodes.new("ShaderNodeBackground")
-fill.inputs["Color"].default_value = (*lin("3a4a8f"), 1)
-fill.inputs["Strength"].default_value = 0.35
+fill.inputs["Color"].default_value = (*lin("c4ccdc"), 1)
+fill.inputs["Strength"].default_value = 0.075
 black = nt.nodes.new("ShaderNodeBackground")
 black.inputs["Color"].default_value = (*lin("050310"), 1)
 lp = nt.nodes.new("ShaderNodeLightPath")
@@ -94,7 +99,7 @@ def light(name, kind, energy, direction, colour=(1, 1, 1), size=None):
     ld.energy = energy
     ld.color = colour
     if kind == "SUN":
-        ld.angle = math.radians(0.5)
+        ld.angle = math.radians(0.53)
     if size:
         ld.size = size
     ob = bpy.data.objects.new(name, ld)
@@ -105,10 +110,9 @@ def light(name, kind, energy, direction, colour=(1, 1, 1), size=None):
     return ob
 
 
-# the sun and a warm rim; shoot() turns them with the camera (a turntable
-# spins the model, not the lighting)
-SUN = light("Sun", "SUN", 4.5, (0, 0, -1))
-RIM = light("Rim", "SUN", 0.8, (0, 0, -1), colour=lin("ffb070"))
+# the key sun; shoot() turns it with the camera (a turntable spins the
+# model, not the lighting)
+SUN = light("Sun", "SUN", 3.6, (0, 0, -1), colour=(1.0, 0.975, 0.94))
 
 
 def aim(ob, d):
@@ -131,8 +135,17 @@ IMG_ALB, IMG_MR, IMG_NRM = find("albedo"), find("metal_rough"), find("normal")
 COLOR_ATTR = probe.data.color_attributes[0].name
 
 
+def toned(tint):
+    """The trim's multiply colour: the project colour pulled DESAT of the way
+    to its own luminance (linear Rec. 709), so the stripe reads as paint."""
+    c = lin(tint)
+    y = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    return tuple(v + DESAT * (y - v) for v in c)
+
+
 def probe_material(tint):
-    """The game's look: albedo x (tint on R), MR, normal map, G zone glowing tint."""
+    """The game's look: albedo x (toned tint on R), MR, normal map, G zone
+    glowing the tint. The R zone never emits."""
     m = bpy.data.materials.new("Probe_" + tint)
     m.use_nodes = True
     t = m.node_tree
@@ -152,7 +165,7 @@ def probe_material(tint):
     tinted.blend_type = "MULTIPLY"
     t.links.new(zones.outputs["Red"], tinted.inputs[0])
     t.links.new(ta.outputs["Color"], tinted.inputs[6])
-    tinted.inputs[7].default_value = (*lin(tint), 1)
+    tinted.inputs[7].default_value = (*toned(tint), 1)
     t.links.new(tinted.outputs[2], bsdf.inputs["Base Color"])
     sep = t.nodes.new("ShaderNodeSeparateColor")
     t.links.new(tm.outputs["Color"], sep.inputs["Color"])
@@ -200,7 +213,8 @@ hi = Vector([max(v.co[i] for v in probe.data.vertices) for i in range(3)])
 BODY = (lo + hi) / 2               # bbox centre, so the long boom fits
 
 
-def shoot(name, target, az_deg, el_deg, dist, lens=50):
+def shoot(name, target, az_deg, el_deg, dist, lens=50, key=1):
+    """key=1 lights from the camera's upper left, -1 from its upper right."""
     cd.lens = lens
     az, el = math.radians(az_deg), math.radians(el_deg)
     # azimuth about glTF +Y from glTF +Z (the dish face) toward glTF +X
@@ -210,16 +224,18 @@ def shoot(name, target, az_deg, el_deg, dist, lens=50):
     f = -d
     right = f.cross(Vector((0, 0, 1))).normalized()
     up = right.cross(f).normalized()
-    aim(SUN, f + right * 0.18 - up * 0.38)            # key from just above-left of the camera
-    aim(RIM, -f * 0.85 - right * 0.35 - up * 0.25)    # rim from behind, upper right
+    aim(SUN, f * 0.75 + right * 0.55 * key - up * 0.45)   # key ~45 deg off the camera, raking
     sc.render.filepath = os.path.join(OUT, name + ".png")
     bpy.ops.render.render(write_still=True)
     print("wrote", sc.render.filepath)
 
 
-for az in (30, 120, 210, 300):
-    shoot(f"probe_a{az:03d}", BODY, az, 18, 5.6)
+for az, key in ((30, 1), (120, 1), (210, 1), (300, -1)):
+    shoot(f"probe_a{az:03d}", BODY, az, 18, 5.6, key=key)
 shoot("probe_plate", PLATE, 90, 6, 0.62)
+# the reflector face-on, a few degrees off axis so the rim's depth shows
+DISH_C = gl(0, 0, 0.22)
+shoot("probe_dish", DISH_C, 4, 5, 2.55)
 
 # the three colours side by side, spaced along the camera's right
 TRIO_AZ = math.radians(150)

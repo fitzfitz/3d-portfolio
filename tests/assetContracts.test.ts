@@ -552,6 +552,17 @@ describe("project probe (probe.glb)", () => {
     }
   });
 
+  it("probe.glb: the trim is paint, not light (no emissive), and the maps are all there", async () => {
+    // The R zone is a painted stripe the game tints by multiplying the base
+    // colour; only the G zone (the beacon) is ever lit, by ProjectProbes.
+    const mat = (await load("probe")).getRoot().listMaterials()[0];
+    expect(mat.getEmissiveFactor()).toEqual([0, 0, 0]);
+    expect(mat.getEmissiveTexture()).toBeNull();
+    expect(mat.getBaseColorTexture()).not.toBeNull();
+    expect(mat.getMetallicRoughnessTexture()).not.toBeNull();
+    expect(mat.getNormalTexture()).not.toBeNull();
+  });
+
   it("probe.glb: triangles <= 6000", async () => {
     expect(triangles(await load("probe"))).toBeLessThanOrEqual(6000);
   });
