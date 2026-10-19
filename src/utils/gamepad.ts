@@ -1,5 +1,5 @@
 import type { FlightInput } from "../store/spaceStore";
-import { planets } from "../constants";
+import { PROBE_IDS } from "../data/probes";
 
 /**
  * Gamepad mapping, pure. Indices follow the W3C "standard" layout, which every
@@ -74,12 +74,12 @@ export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook
 
 /**
  * Jumps by destination id, never by table index, so a new destination row
- * cannot silently remap a button. D-pad clockwise from up: the three planets,
+ * cannot silently remap a button. D-pad clockwise from up: the three probes,
  * then the career station (keys 1–4). Menu: the contact portal. View: the
  * shipyard.
  */
 export const PAD_JUMPS: readonly (readonly [number, string])[] = [
-  [DPAD_UP, planets[0].name], [DPAD_RIGHT, planets[1].name], [DPAD_DOWN, planets[2].name], [DPAD_LEFT, "career"],
+  [DPAD_UP, PROBE_IDS[0]], [DPAD_RIGHT, PROBE_IDS[1]], [DPAD_DOWN, PROBE_IDS[2]], [DPAD_LEFT, "career"],
   [MENU, "contact"], [VIEW, "shipyard"],
 ];
 

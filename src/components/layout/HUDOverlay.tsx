@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { speedKmS, distanceAU } from "../../utils/realUnits";
-import { SYSTEM_RADIUS, SHIP_MAX_SPEED, planets } from "../../constants";
-import { DESTINATIONS, afterPlanets, jumpKey, destinationById } from "../../data/destinations";
-import { flight, useSpaceStore, selectModalOpen, bodies } from "../../store/spaceStore";
+import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
+import { PROBES } from "../../data/probes";
+import { probePos } from "../../store/probeState";
+import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
+import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { beamState } from "../../store/beamState";
@@ -19,7 +21,7 @@ import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 
-/** Planet rows only; destination rows take their colour from the table. */
+/** Probe rows only (keyed by probe id); destination rows take their colour from the table. */
 const ZONE_COLORS: Record<string, string> = {
   ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent",
 };
@@ -57,6 +59,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const fuelEmpty = useSpaceStore((s) => s.fuelEmpty);
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const requestJump = useSpaceStore((s) => s.requestJump);
+  const probeNear = useSpaceStore((s) => s.probeNear);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
   const changelogSeen = useSpaceStore((s) => s.changelogSeen);
@@ -90,7 +93,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
   const oreRef = useRef<HTMLDivElement>(null);
-  const planetRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+  const probeRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
   useEffect(() => {
@@ -120,11 +123,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         oreRef.current.style.display = show ? "" : "none";
         if (show) oreRef.current.textContent = oreReadout(beamState.ore);
       }
-      for (const p of planets) {
-        const el = planetRowRefs.current[p.name];
-        const b = bodies[p.name];
+      for (const def of PROBES) {
+        const el = probeRowRefs.current[def.id];
+        const b = probePos[def.id];
         if (el && b) el.textContent =
-          `PLANET_${p.name.toUpperCase()} ([${b.x.toFixed(0)}, ${b.y.toFixed(0)}, ${b.z.toFixed(0)}])`;
+          `PROBE_${def.id.toUpperCase()} ([${b.x.toFixed(0)}, ${b.y.toFixed(0)}, ${b.z.toFixed(0)}])`;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -153,15 +156,15 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   // Once every dossier is read, point the pilot at the next destination (the
   // career station, then the contact portal), announced on leaving the last
   // dossier, when the chatter line is actually visible.
-  const allRead = visitedDossiers.length >= planets.length;
+  const allRead = visitedDossiers.length >= PROBES.length;
   useEffect(() => {
     if (!allRead || modalOpen || completionAnnounced) return;
     completionAnnounced = true;
-    const next = destinationById(afterPlanets(useSpaceStore.getState().badges));
+    const next = destinationById(afterProbes(useSpaceStore.getState().badges));
     if (!next) return;
     const key = jumpKey(next.id);
     useSpaceStore.getState().sendBroadcast(
-      `ALL ${planets.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
+      `ALL ${PROBES.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
   }, [allRead, modalOpen]);
 
@@ -202,7 +205,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         </div>
         <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
-          DOSSIERS: {visitedDossiers.length}/{planets.length}
+          DOSSIERS: {visitedDossiers.length}/{PROBES.length}
         </div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
         <LogbookTracker />
@@ -222,8 +225,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         </div>
         <div className="text-[11px] font-bold">
           TARGET:{" "}
-          <span className={activeZone ? "text-primary animate-pulse" : "text-white/20"}>
-            {activeZone ? (destinationById(activeZone)?.scanLabel ?? `PLANET_${activeZone.toUpperCase()}`) : "DEEP_SPACE"}
+          <span className={probeNear || activeZone ? "text-primary animate-pulse" : "text-white/20"}>
+            {probeNear ? `PROBE_${probeNear.toUpperCase()}` : activeZone ? (destinationById(activeZone)?.scanLabel ?? `PLANET_${activeZone.toUpperCase()}`) : "DEEP_SPACE"}
           </span>
         </div>
         {activeZone && (
@@ -368,26 +371,26 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
 
       {/* Sector map derived from real data (fixes stale hardcoded coordinates) */}
       <div className="absolute bottom-10 right-6 hidden md:flex flex-col gap-2 items-end">
-        <div className="text-[9px] text-white/30">{"// SECTOR_PLANETS — CLICK TO JUMP"}</div>
+        <div className="text-[9px] text-white/30">{"// SECTOR_PROBES — CLICK TO JUMP"}</div>
         {/* Rows double as jump buttons (same as the number keys). */}
-        {planets.map((p, i) => (
-          <button key={p.name} onClick={() => requestJump(p.name)}
-            title={`Jump to ${p.name} [${i + 1}]`}
-            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${activeZone === p.name ? ZONE_COLORS[p.name] : "text-white/40"}`}>
+        {PROBES.map((def, i) => (
+          <button key={def.id} onClick={() => requestJump(def.id)}
+            title={`Jump to the ${def.id} probe [${i + 1}]`}
+            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? ZONE_COLORS[def.id] : "text-white/40"}`}>
             <span className="text-white/30">[{i + 1}]</span>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-            <span ref={(el) => { planetRowRefs.current[p.name] = el; }}>
-              PLANET_{p.name.toUpperCase()}
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projectById(def.id)?.color }} />
+            <span ref={(el) => { probeRowRefs.current[def.id] = el; }}>
+              PROBE_{def.id.toUpperCase()}
             </span>
-            <span className="w-3 text-primary">{visitedDossiers.includes(p.name) ? "✓" : ""}</span>
+            <span className="w-3 text-primary">{visitedDossiers.includes(def.id) ? "✓" : ""}</span>
           </button>
         ))}
         {DESTINATIONS.map((d, i) => (
           <button key={d.id} onClick={() => requestJump(d.id)}
-            title={`Jump to the ${d.label.toLowerCase()} [${planets.length + i + 1}]`}
+            title={`Jump to the ${d.label.toLowerCase()} [${PROBES.length + i + 1}]`}
             className="pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white text-white/40"
             style={activeZone === d.id ? { color: d.color } : undefined}>
-            <span className="text-white/30">[{planets.length + i + 1}]</span>
+            <span className="text-white/30">[{PROBES.length + i + 1}]</span>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: d.color }} />
             <span>{d.scanLabel} ([{d.pos.join(", ")}])</span>
             <span className="w-3" />

@@ -1,8 +1,10 @@
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { planets, projectById } from "../../constants";
-import { DESTINATIONS, WAYPOINT_PLANET_NAMES, afterPlanets, destinationById } from "../../data/destinations";
-import { bodies, flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
+import { projectById } from "../../constants";
+import { DESTINATIONS, afterProbes, destinationById } from "../../data/destinations";
+import { PROBE_IDS } from "../../data/probes";
+import { probePos } from "../../store/probeState";
+import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { nextWaypoint } from "../../utils/navigation";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
@@ -28,10 +30,10 @@ export default function WaypointDriver() {
     const s = useSpaceStore.getState();
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
-    const id = race ? "" : nextWaypoint(flight, WAYPOINT_PLANET_NAMES, bodies, s.visitedDossiers, afterPlanets(s.badges));
+    const id = race ? "" : nextWaypoint(flight, PROBE_IDS, probePos, s.visitedDossiers, afterProbes(s.badges));
     // Nothing to point at while docked there or already inside its pull.
-    if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
-    const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? bodies[id];
+    if (selectModalOpen(s) || (!race && s.activeZone === id && !PROBE_IDS.includes(id))) { waypointState.active = false; return; }
+    const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? probePos[id];
     if (!t) { waypointState.active = false; return; }
 
     v.set(t.x, t.y, t.z).project(camera);
@@ -60,8 +62,9 @@ export default function WaypointDriver() {
       return;
     }
     const dest = destinationById(id);
-    waypointState.label = dest ? dest.label : (projectById(id)?.title ?? id).toUpperCase();
-    waypointState.color = dest ? dest.color : (planets.find((p) => p.name === id)?.color ?? "#00ff87");
+    const proj = dest ? undefined : projectById(id);
+    waypointState.label = dest ? dest.label : `${(proj?.title ?? id).toUpperCase()} PROBE`;
+    waypointState.color = dest ? dest.color : (proj?.color ?? "#00ff87");
   });
   return null;
 }

@@ -6,9 +6,10 @@ import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADI
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
-import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
+import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
-import { interceptAim } from "../../utils/intercept";
+import { PROBES, PROBE_JUMP_STANDOFF } from "../../data/probes";
+import { probePos } from "../../store/probeState";
 import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
@@ -66,13 +67,6 @@ const ESCAPE_MARGIN = 1.15;
 const ESCAPE_SPEED = 4;
 
 /**
- * Jump standoff for planets: inside the lock radius (1.3x size) and outside
- * the body, so the lock engages on the frame the ship arrives. Destinations
- * carry their own standoff (`jumpR`, src/data/destinations.ts).
- */
-const JUMP_PLANET_FACTOR = 1.2;
-
-/**
  * Nozzle exit centres in ship space: the GLB's Engine_Emissive clusters at
  * model (±0.582, -0.05, 3.25) with exit lips at z 3.5, scaled 0.35 and
  * turned π about Y.
@@ -82,8 +76,8 @@ const JUMP_PLANET_FACTOR = 1.2;
 const _camTarget = new THREE.Vector3();
 const _camSide = new THREE.Vector3();
 
-/** The first planet the ship faces from the spawn point (src/data/spawn.ts). */
-const FIRST_TARGET = planets[0];
+/** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
+const FIRST_PROBE_HOME = PROBES[0].home;
 
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
@@ -213,13 +207,9 @@ export default function Spaceship() {
     return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; fitzDebug.fuelDebug = null; };
   }, []);
 
-  // Spawn nose-on to the first planet, so the first W press flies toward a
-  // project rather than into empty space. bodies[] is seeded at t=0 at import.
-  const angle = useRef(
-    FIRST_TARGET
-      ? headingToward(SPAWN.x, SPAWN.z, bodies[FIRST_TARGET.name].x, bodies[FIRST_TARGET.name].z)
-      : 0
-  );
+  // Spawn nose-on to the first probe, so the first W press flies toward a
+  // project rather than into empty space.
+  const angle = useRef(headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
   const roll = useRef(0);
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
@@ -533,16 +523,16 @@ export default function Spaceship() {
       return;
     }
 
-    // Jump: drop in nose-on at the target's lock standoff. SpacePlanets runs
-    // after this component each frame, so the lock (and dossier) engage on
-    // this same frame. The post-break cooldown would block that, so clear it.
+    // Jump: drop in nose-on, level with the target, at its standoff. A probe
+    // has no lock and opens nothing: the pilot grabs it with the beam. The
+    // post-break cooldown is cleared so a destination's lock engages at once.
     if (pendingJump.current) {
       const id = pendingJump.current;
       pendingJump.current = null;
-      const planet = planets.find((p) => p.name === id);
-      const dest = planet ? undefined : destinationById(id);
-      const target = planet ? bodies[planet.name] : dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] };
-      const standoff = planet ? planet.size * JUMP_PLANET_FACTOR : dest?.jumpR;
+      const probe = probePos[id];
+      const dest = probe ? undefined : destinationById(id);
+      const target = probe ?? (dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] });
+      const standoff = probe ? PROBE_JUMP_STANDOFF : dest?.jumpR;
       if (target && standoff !== undefined) {
         const j = jumpPoint(pos.current, target, standoff);
         pos.current.set(j.x, j.y, j.z);
@@ -561,27 +551,28 @@ export default function Spaceship() {
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
-    // before touching anything, and the planets drift meanwhile, so a heading
-    // fixed at spawn goes stale. Track an intercept (with orbital lead) until
-    // the first input, then hand over and never touch the controls again.
+    // before touching anything. Probe 1 is static, so aim straight at it
+    // (yaw and pitch) until the first input, then hand over and never touch
+    // the controls again.
     if (!hasFlown.current) {
       const touched = input.forward || input.backward || input.left || input.right
         || input.ascend || input.descend || input.boost || input.beam || input.steer !== 0 || input.thrust !== 0;
       // Leaving the spawn pad by any other route (a dev/e2e teleport, a
       // collision push) also ends the auto-aim: it only exists to point a
-      // parked, untouched ship at a planet.
+      // parked, untouched ship at the first probe.
       if (touched || !store.isNearSpawn) {
         hasFlown.current = true;
         flight.hasFlown = true;
       } else {
-        const aim = interceptAim(pos.current, planets, ambient, MAX_SPEED, COLLIDERS, !store.reducedMotion);
-        if (aim) {
-          const k = frameLerp(0.04, dt);
-          // Shortest way round, so the nose never spins the long way.
-          const dYaw = Math.atan2(Math.sin(aim.yaw - angle.current), Math.cos(aim.yaw - angle.current));
-          angle.current += dYaw * k;
-          pitch.current += (aim.pitch - pitch.current) * k;
-        }
+        const home = probePos[PROBES[0].id];
+        const aimYaw = headingToward(pos.current.x, pos.current.z, home.x, home.z);
+        const aimPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX,
+          Math.atan2(home.y - pos.current.y, Math.hypot(home.x - pos.current.x, home.z - pos.current.z))));
+        const k = frameLerp(0.04, dt);
+        // Shortest way round, so the nose never spins the long way.
+        const dYaw = Math.atan2(Math.sin(aimYaw - angle.current), Math.cos(aimYaw - angle.current));
+        angle.current += dYaw * k;
+        pitch.current += (aimPitch - pitch.current) * k;
       }
     }
 

@@ -132,7 +132,7 @@ export default function App() {
         s.setChangelogOpen(!s.changelogOpen);
         return;
       }
-      // Number keys jump to JUMP_TARGETS in order: planets, then destinations.
+      // Number keys jump to JUMP_TARGETS in order: probes, then destinations.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
         const target = JUMP_TARGETS[Number(digit[1]) - 1];
