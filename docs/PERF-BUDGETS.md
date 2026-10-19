@@ -66,23 +66,27 @@ used as the baseline, so the derived ceiling already covers the observed
 variance.
 
 **Re-derived 2026-10-19 (New Worlds C1: the five worlds, detail by distance).**
-Every ceiling in `transition.probe.mjs` now comes from this table by the rule
-above. Each figure is the highest of 11 serial runs of
+Every calls, triangles and lights ceiling in `transition.probe.mjs` now
+comes from this table by the rule above. The programs ceilings do not: they
+stay at the deliberate 79 (deep-space family) and 84 (planet states), for the
+low-perf-before-warm-up path described below. Each figure is the highest of 11 serial runs of
 `npm run test:e2e transition`, with the worlds in the scene and the LOD in
 place; see the dated note at the end of this section for what was added and
 what is in frame in each state.
 
 | State | calls | triangles | programs | lights | ceilings (calls / triangles / programs / lights) |
 |---|---|---|---|---|---|
-| Deep space, facing away from the sun | 35 | 241916 | 57 | 4 | 50 / 278210 / 58 / `LIGHT_BUDGET` (4) |
-| Deep space, facing the sun | 118 | 401672 | 57 | 4 | 140 / 461930 / 58 / 5 |
-| Near the ringed giant, rings in frame | 39 | 251836 | 57 | 4 | 50 / 289620 / 58 / 5 |
-| Close approach | 116 | 373512 | 57 | 4 | 140 / 429540 / 58 / 5 |
-| Modal open | 128 | 464488 | 57 | 4 | 150 / 534170 / 58 / 5 |
-| 40 anomalies, facing away | 35 | 241916 | 58 | 4 | 50 / 278210 / 59 / 5 |
+| Deep space, facing away from the sun | 35 | 241916 | 57 | 4 | 50 / 278210 / 79 / `LIGHT_BUDGET` (4) |
+| Deep space, facing the sun | 118 | 401672 | 57 | 4 | 140 / 461930 / 79 / 5 |
+| Near the ringed giant, rings in frame | 39 | 251836 | 57 | 4 | 50 / 289620 / 79 / 5 |
+| Close approach | 116 | 373512 | 57 | 4 | 140 / 429540 / 84 / 5 |
+| Modal open | 128 | 464488 | 57 | 4 | 150 / 534170 / 84 / 5 |
+| 40 anomalies, facing away | 35 | 241916 | 58 | 4 | 50 / 278210 / 79 / 5 |
 
-Programs is the page's cumulative count, so the five states read on one page
-before the anomalies share one ceiling. The table this replaced (kept for
+Programs is the page's cumulative count. Its ceilings are the deliberate
+79 / 84, not baseline + 1 (see "The ceilings above were deliberately not
+lowered" below); the guard that a program is never added in play is the
+tour in `programs.probe.mjs`, which must add 0. The table this replaced (kept for
 history; the ceilings had not moved with the later re-measurements below):
 deep space 32 / 217892 / 78 / 4, close approach 93 / 365726 / 83 / 4, modal
 open 94 / 365738 / 83 / 4, 40 anomalies 32 / 217892 / 78 / 4, facing the sun
@@ -176,9 +180,9 @@ scene render reads cheaper than in the F4 table above (3.12 against 4.43 ms
 with 8 on). The cause was not investigated. The tables come from separate
 sessions on different branches, so compare within a table, not across.
 
-The ceilings above were deliberately **not** lowered to match (superseded
-2026-10-19: the programs ceilings follow the rule again; see the New Worlds
-note at the end of this section). Under headless
+The ceilings above were deliberately **not** lowered to match (still true
+after New Worlds C1: Task 10 briefly set them to baseline + 1, 58 / 59, and
+they were restored to 79 / 84 on 2026-10-19). Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,
 before warm-up runs; warm-up then rightly compiles for the screen, and the
 harness's later switch back to PostFX compiles the real variants on top, which
@@ -251,11 +255,13 @@ the intended hard limit; the other states use `LIGHT_BUDGET + 1` (5) per
 the derivation rule above, as slack for measurement noise rather than as
 license to add a light.
 
-Programs climbs from 74 (deep space, the very first state measured after
-page load) to 78 in the planet states, regardless of which is measured
-second. `ShaderWarmup` compiles nearly everything up front; the remaining four
-compile once, lazily, on the first close approach. That is why the planet
-states carry their own baselines rather than sharing deep space's.
+*Superseded (2026-10-15 onward):* programs used to climb from 74 (deep space,
+the first state measured after page load) to 78 in the planet states, the
+last four compiling lazily on the first close approach. Warm-up now compiles
+them all up front (see "Programs measured 2026-10-15" above), and every state
+before the anomalies reads the same count (57 since New Worlds C1). The
+planet states' higher ceiling (84) is kept only as the deliberate slack
+described above, not because they still compile more.
 
 **Detail by distance and the worlds in view, re-derived 2026-10-19 (New Worlds C1, Task 10).**
 What was added since the last re-derivation: the five worlds (Tasks 1-9: five
@@ -298,20 +304,25 @@ Before / after on the same probe, same machine: the commit before the LOD
 close approach 97-106 / 351,076-371,244, modal 124-125 / 409,028-456,860; with
 the LOD (11 runs) 115-118 / 349,292-401,672, 113-116 / 365,920-373,512 and
 126-128 / 455,528-464,488. Facing the sun is 26,344 triangles lighter in both
-of its readings (distant bodies on 24 or 12 segments). Close approach and
-modal move with the orbital phase at the moment of the read (the planets and
-worlds keep orbiting through the probe), so their spread is the view, not the
-LOD; the old modal ceiling (420,600) was already broken before the LOD by the
+of its readings (distant bodies on 24 or 12 segments). Close approach
+read 97-106 calls before and 113-116 after. That shift is not attributed to
+the LOD, and it is not measured to any one cause: between the two sets the
+probe's sequence changed (the new ringed-giant state, then `toDeepSpace` and
+`faceFromSun` again before the approach), so the approach and the modal are
+read later and after a different path, and nothing isolated which part moved
+the count. Treat it as following the changed sequence and timing, otherwise
+unexplained. The old modal ceiling (420,600) was already broken before the LOD by the
 worlds (456,860 on one of the four runs). Deep space and 40 anomalies are
 bit-for-bit what they were before the worlds. Lights 4 in every state.
 Programs 57 in every state but the anomalies' 58, on all 22 baseline runs.
 
-Programs ceilings follow the rule again (58, and 59 for the anomalies, from
-79 / 84). The old ones kept slack for the performance monitor declining to
-low-perf before warm-up; `withPage` locks low-perf off as soon as the store
-exists, before the lazily loaded Canvas and its monitor can mount, and no run
-since has read anything but 57 / 58. If that race ever comes back, this is
-where it shows. `programs.probe.mjs` now tours all five worlds (asserted)
+Programs ceilings stay at the deliberate 79 (deep space, facing the sun, the
+ringed giant, 40 anomalies) and 84 (close approach, modal), not the rule's
+58 / 59. Task 10 lowered them to 58 / 59, since `withPage` locks low-perf off
+as soon as the store exists and no run read anything but 57 / 58; they were
+restored on 2026-10-19 because a headless run can still decline to low-perf
+before warm-up, and then reads near the old counts. The guard against a new
+program in play is the tour below adding 0, not these ceilings. `programs.probe.mjs` now tours all five worlds (asserted)
 and runs twice, full fidelity (57 programs at start-up) and with low-perf
 pinned on before load (44): both add 0.
 

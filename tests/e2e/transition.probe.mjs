@@ -16,25 +16,29 @@ import { withPage, settle, toDeepSpace } from "./harness.mjs";
 //
 // Re-derived 2026-10-19 from 11 runs with the five worlds in the scene (New
 // Worlds C1) and detail by distance (sphereLod.ts); each baseline is the
-// highest of the 11. Programs is the page's cumulative count, so every state
-// read on the same page before the anomalies shares deep space's ceiling.
+// highest of the 11. Programs is the exception to the rule above: its
+// ceilings stay at the deliberate 79 (the deep-space family) and 84 (the
+// planet states), well above the 57-58 measured, because a headless run can
+// decline to low-perf before warm-up and then compile both variants (see
+// docs/PERF-BUDGETS.md). The real program guard is programs.probe.mjs's tour,
+// which must add 0.
 const DEEP_CALLS_CEILING = 50; // baseline 35
 const DEEP_TRIS_CEILING = 278210; // baseline 241916
-const DEEP_PROGRAMS_CEILING = 58; // baseline 57
+const DEEP_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
 
 const APPROACH_CALLS_CEILING = 140; // baseline 116
 const APPROACH_TRIS_CEILING = 429540; // baseline 373512
-const APPROACH_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
+const APPROACH_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
 const MODAL_CALLS_CEILING = 150; // baseline 128
 const MODAL_TRIS_CEILING = 534170; // baseline 464488
-const MODAL_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
+const MODAL_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
 const ANOMALIES_CALLS_CEILING = 50; // baseline 35
 const ANOMALIES_TRIS_CEILING = 278210; // baseline 241916
-const ANOMALIES_PROGRAMS_CEILING = 59; // baseline 58
+const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 58, deliberately high (above)
 const ANOMALIES_LIGHTS_CEILING = 5;
 
 // Deep space again, nose on the sun: the disc, its corona and the six lens
