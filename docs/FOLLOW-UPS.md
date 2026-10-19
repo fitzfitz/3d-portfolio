@@ -42,11 +42,6 @@ Delete an entry when it is fixed.
   in `src/data/worlds.ts`; give `PLANET_PROPS` the same field and scale
   Portfolio's polar axis, with its atmosphere and limb shells. Its occluder
   and clearance stay on the equatorial radius (L36).
-- **C2, the cartographer in the live sky (PR #37).** The `ch` field on the
-  wire, the AURUM plume, the shout-out and the consent update. It touches
-  `beacon-api/`, `src/utils/liveSkyProtocol.ts` and `src/data/plumeColors.ts`,
-  so the Worker is deployed and verified first, then the site merges (spec
-  `docs/superpowers/specs/2026-10-17-new-worlds-design.md`, "Shipping").
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen):
   - Comments: `DistantGalaxies.tsx` and `RadarMap.tsx` still say the system
