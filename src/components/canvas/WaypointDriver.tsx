@@ -2,7 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { planets, projectById } from "../../constants";
 import { DESTINATIONS, WAYPOINT_PLANET_NAMES, afterPlanets, destinationById } from "../../data/destinations";
-import { bodies, flight, useSpaceStore } from "../../store/spaceStore";
+import { bodies, flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { nextWaypoint } from "../../utils/navigation";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
@@ -30,7 +30,7 @@ export default function WaypointDriver() {
     const race = s.race.phase === "running" ? s.race : null;
     const id = race ? "" : nextWaypoint(flight, WAYPOINT_PLANET_NAMES, bodies, s.visitedDossiers, afterPlanets(s.badges));
     // Nothing to point at while docked there or already inside its pull.
-    if (s.isOrbitLocked || (!race && s.activeZone === id)) { waypointState.active = false; return; }
+    if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
     const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? bodies[id];
     if (!t) { waypointState.active = false; return; }
 

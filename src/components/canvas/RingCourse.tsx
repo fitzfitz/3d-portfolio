@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { RACE_GATES, RING_GATES, RING_RADIUS, PAR_SECONDS } from "../../data/ringCourse";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import {
   advanceRaceClock, raceStep, sampleGhost, encodeGhost, decodeGhost, formatRaceTime, isNewBest,
   GHOST_HZ, type Ghost, type GhostSample, type RaceEvent, type RaceState, type Vec3,
@@ -164,12 +164,12 @@ export default function RingCourse() {
     prevPos.current = cur;
     let race = s.race;
 
-    if (race.phase === "running" && (s.isOrbitLocked || s.showClassicCV
+    if (race.phase === "running" && (selectModalOpen(s) || s.showClassicCV
       || raceClock.now - race.startClock > MAX_RUN_SECONDS)) {
       abort();
       race = useSpaceStore.getState().race;
     }
-    if (prev && !s.isOrbitLocked && !s.showClassicCV && !s.photoMode) {
+    if (prev && !selectModalOpen(s) && !s.showClassicCV && !s.photoMode) {
       const r = raceStep(race, prev, cur, raceClock.now, RACE_GATES, RING_RADIUS);
       if (r.event) {
         s.setRace(r.state);

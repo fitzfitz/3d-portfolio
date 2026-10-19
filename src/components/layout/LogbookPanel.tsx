@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Lock, Check, X } from "lucide-react";
-import { useSpaceStore } from "../../store/spaceStore";
+import { useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { LOGBOOK, entryDone, logbookCount, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
@@ -25,7 +25,7 @@ export default function LogbookPanel() {
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const plumeColor = useSpaceStore((s) => s.plumeColor);
-  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const liveSky = useSpaceStore((s) => s.liveSky);
@@ -37,8 +37,8 @@ export default function LogbookPanel() {
   const opener = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open && (isOrbitLocked || photoMode || showClassicCV)) useSpaceStore.getState().setLogbookOpen(false);
-  }, [open, isOrbitLocked, photoMode, showClassicCV]);
+    if (open && (modalOpen || photoMode || showClassicCV)) useSpaceStore.getState().setLogbookOpen(false);
+  }, [open, modalOpen, photoMode, showClassicCV]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +52,7 @@ export default function LogbookPanel() {
       // itself because a dossier opened (or photo mode / the résumé), focus
       // belongs to that, and pulling it back would strand a screen reader.
       const s = useSpaceStore.getState();
-      if (!s.isOrbitLocked && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
+      if (!selectModalOpen(s) && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
     };
   }, [open]);
 

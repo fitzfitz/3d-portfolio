@@ -492,6 +492,18 @@ describe("dossier progress", () => {
     expect(selectSceneFrozen(useSpaceStore.getState())).toBe(false);
   });
 
+  it("setShowClassicCV(true) with a probe-origin dossier advances that probe's spot, persists fitz-probes and sets relocation", () => {
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem });
+    useSpaceStore.getState().openProjectDossier("fuxx", "probe");
+    useSpaceStore.getState().setShowClassicCV(true);
+    vi.unstubAllGlobals();
+    const st = useSpaceStore.getState();
+    expect(st).toMatchObject({ openDossier: null, dossierVia: null, relocation: { id: "fuxx", seq: 1 } });
+    expect(st.probeSpots).toEqual({ ruangrapi: 0, portfolio: 0, fuxx: 1 });
+    expect(setItem).toHaveBeenCalledWith("fitz-probes", JSON.stringify({ ruangrapi: 0, portfolio: 0, fuxx: 1 }));
+  });
+
   it("a reload after close starts the probe at its new spot", async () => {
     const stored: Record<string, string> = {};
     vi.stubGlobal("localStorage", { getItem: (k: string) => stored[k] ?? null, setItem: (k: string, v: string) => { stored[k] = v; } });

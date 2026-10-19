@@ -3,7 +3,7 @@ import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, R
 import { speedKmS, distanceAU } from "../../utils/realUnits";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, planets } from "../../constants";
 import { DESTINATIONS, afterPlanets, jumpKey, destinationById } from "../../data/destinations";
-import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen, bodies } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { beamState } from "../../store/beamState";
@@ -46,6 +46,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const setLowPerf = useSpaceStore((s) => s.setLowPerf);
   const isMuted = useSpaceStore((s) => s.isMuted);
@@ -154,7 +155,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   // dossier, when the chatter line is actually visible.
   const allRead = visitedDossiers.length >= planets.length;
   useEffect(() => {
-    if (!allRead || isOrbitLocked || completionAnnounced) return;
+    if (!allRead || modalOpen || completionAnnounced) return;
     completionAnnounced = true;
     const next = destinationById(afterPlanets(useSpaceStore.getState().badges));
     if (!next) return;
@@ -162,7 +163,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     useSpaceStore.getState().sendBroadcast(
       `ALL ${planets.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
-  }, [allRead, isOrbitLocked]);
+  }, [allRead, modalOpen]);
 
   return (
     <div ref={hudRootRef} data-quiet="false" className="group/hud fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/60 select-none">
@@ -178,9 +179,9 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       <RaceHUD />
       {/* The Scanner stops with the frozen scene, so its last label would
           otherwise hang over the dossier. */}
-      {!isOrbitLocked && <ScanRing />}
+      {!modalOpen && <ScanRing />}
       {/* Frozen with the scene while docked, so hidden then too. */}
-      {!isOrbitLocked && <BuoyCard />}
+      {!modalOpen && <BuoyCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
       {/* items-start: each row is only as wide as its text. Stretched rows took

@@ -4,8 +4,8 @@ import { padActions } from "../src/utils/gamepad";
 
 function store(over: Record<string, unknown> = {}) {
   return {
-    showClassicCV: false, beaconPickerOpen: false, photoMode: false, isOrbitLocked: false, logbookOpen: false,
-    setPhotoMode: vi.fn(), breakOrbit: vi.fn(), setLogbookOpen: vi.fn(), requestJump: vi.fn(),
+    showClassicCV: false, beaconPickerOpen: false, photoMode: false, isOrbitLocked: false, openDossier: null, logbookOpen: false,
+    setPhotoMode: vi.fn(), breakOrbit: vi.fn(), closeDossier: vi.fn(), setLogbookOpen: vi.fn(), requestJump: vi.fn(),
     ...over,
   };
 }

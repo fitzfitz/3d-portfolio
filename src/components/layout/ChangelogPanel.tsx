@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import { useSpaceStore } from "../../store/spaceStore";
+import { useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { CHANGELOG, PR_URL } from "../../data/changelog";
 
 /**
@@ -10,15 +10,15 @@ import { CHANGELOG, PR_URL } from "../../data/changelog";
  */
 export default function ChangelogPanel() {
   const open = useSpaceStore((s) => s.changelogOpen);
-  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open && (isOrbitLocked || photoMode || showClassicCV)) useSpaceStore.getState().setChangelogOpen(false);
-  }, [open, isOrbitLocked, photoMode, showClassicCV]);
+    if (open && (modalOpen || photoMode || showClassicCV)) useSpaceStore.getState().setChangelogOpen(false);
+  }, [open, modalOpen, photoMode, showClassicCV]);
 
   useEffect(() => {
     if (!open) return;
@@ -31,7 +31,7 @@ export default function ChangelogPanel() {
       window.removeEventListener("keydown", onKey);
       // Only on the visitor's own close (see LogbookPanel).
       const s = useSpaceStore.getState();
-      if (!s.isOrbitLocked && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
+      if (!selectModalOpen(s) && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
     };
   }, [open]);
 
