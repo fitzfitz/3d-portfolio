@@ -128,6 +128,38 @@ export default async function run() {
       `broadcast=${after.broadcast?.text}`);
     checks.check("a ghost scan earns no badge", !after.badges.some((b) => b.id === "comet"));
 
+    // --- C2: the cartographer in the live sky ---
+    // This pilot charts all five worlds (in memory only: setState skips the
+    // store's persistence) with the shout-out due, and flies AURUM.
+    await inPage(page, () => {
+      const st = window.__fitz.store;
+      const at = new Date().toISOString().slice(0, 10);
+      st.setState({ charted: ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at })), chartShoutAt: Date.now() });
+      st.getState().setPlumeColor("cartographer");
+    });
+    await hold(page, ["KeyW"], 1500); // moving keeps poses going out after the first
+    const c2 = await inPage(page, () => window.__fakeSky.sent);
+    const pose = c2.filter((m) => m.t === "me" && m.ch === 5).at(-1);
+    checks.check("a cartographer's pose carries ch 5 and the AURUM plume", pose?.plume === "cartographer",
+      JSON.stringify(pose));
+    const claims = c2.filter((m) => m.t === "charted").length;
+    const cleared = (await readStore(page)).chartShoutAt === null;
+    checks.check("the shout-out is sent once", claims === 1 && cleared, `claims=${claims} cleared=${cleared}`);
+    await settle(page, 2000);
+
+    await inPage(page, () => window.__fakeSky.serve({ t: "charted", cc: "ID" }));
+    const shout = await pollUntil(async () => (await chatterText(page)).includes("A PILOT FROM ID HAS CHARTED EVERY WORLD"), { timeoutMs: 15_000 });
+    checks.check("a shout-out from the room plays on the radio", shout.ok);
+
+    const ship2 = await inPage(page, () => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
+    await inPage(page, (s) => window.__fakeSky.serve({ t: "snap", ships: [
+      { id: "g1", p: [s.x + 6, s.y, s.z], q: [0, 0, 0, 1], plume: "cartographer", cc: "ID", ch: 5 },
+    ] }), ship2);
+    await settle(page, 1500);
+    await hold(page, ["KeyE"], 2600);
+    const scanned = await pollUntil(async () => (await readStore(page)).broadcast?.text === "CARTOGRAPHER · ID", { timeoutMs: 3000 });
+    checks.check("a charted ghost scans as CARTOGRAPHER · ID", scanned.ok, `broadcast=${(await readStore(page)).broadcast?.text}`);
+
     await page.evaluate(() => window.__fitz.store.getState().setLogbookOpen(true));
     await page.click('[data-testid="livesky-toggle"]');
     const off = await page.$eval('[data-testid="livesky-toggle"]', (el) => el.getAttribute("aria-checked"));
@@ -146,6 +178,8 @@ export default async function run() {
       localStorage.removeItem("fitz-live-sky-dev");
       localStorage.removeItem("fitz-live-sky");
       localStorage.removeItem("fitz-live-seen-2");
+      localStorage.removeItem("fitz-plume");
+      localStorage.removeItem("fitz-charted-shout");
     });
   });
 }
