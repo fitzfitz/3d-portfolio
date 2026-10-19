@@ -1,3 +1,5 @@
+import { packedUrl } from "./assetPack";
+
 /**
  * Composes a path to a file in `public/` against Vite's configured base URL.
  *
@@ -16,6 +18,10 @@
  * without stubbing `import.meta.env`. Production callers pass one argument.
  */
 export function assetUrl(path: string, base: string = import.meta.env.BASE_URL): string {
+  // A production build ships public/models as one asset pack
+  // (utils/assetPack.ts); its files are answered from memory.
+  const packed = packedUrl(path);
+  if (packed) return packed;
   // Normalise both sides rather than trusting one: Vite's BASE_URL always
   // carries a trailing slash, but a hand-set `base` in config or an env var
   // may not, and `//models/x.glb` is a protocol-relative URL — it would try to
