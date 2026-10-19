@@ -1,7 +1,7 @@
 # Project probes: design
 
 **Date:** 2026-10-20 · **Branch:** `feat/project-probes` · **PR:** #39 (next free number; changelog `pr: 39`)
-**Status:** awaiting owner approval
+**Status:** approved by the owner 2026-10-20 (all §7 calls accepted)
 
 ## 1. Intent
 
