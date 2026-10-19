@@ -11,7 +11,10 @@ import {
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
 import { CHART_TOTAL, type ShipState } from "../../utils/liveSkyProtocol";
-import { shoutDue, shoutLine } from "../../utils/charting";
+import { createShoutGate, shoutDue, shoutLine } from "../../utils/charting";
+
+/** Plays another pilot's shout-out at most once per SHOUT_HEAR_GAP_MS. */
+const hearShout = createShoutGate();
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
@@ -82,7 +85,7 @@ export default function Ghosts() {
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (h) => window.clearTimeout(h as number),
     random: Math.random,
-    onCharted: (cc) => useSpaceStore.getState().announceLogbook(shoutLine(cc)),
+    onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
   }), []);
   const noticeQueued = useRef(false);
   const wanted = useRef(false);

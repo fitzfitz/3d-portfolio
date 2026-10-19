@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  loadCharted, chartLine, SURVEY_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, type ChartRecord,
+  loadCharted, chartLine, SURVEY_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
+  createShoutGate, type ChartRecord,
 } from "../src/utils/charting";
 import { useSpaceStore } from "../src/store/spaceStore";
 import { WORLDS, WORLD_IDS } from "../src/data/worlds";
@@ -115,5 +116,18 @@ describe("the cartographer shout-out", () => {
     expect(st().chartShoutAt).toBe(armed);
     st().clearChartShout();
     expect(st().chartShoutAt).toBeNull();
+  });
+});
+
+describe("hearing shout-outs", () => {
+  it("plays at most one per SHOUT_HEAR_GAP_MS, whatever the room remembers", () => {
+    // The room's anti-spam lives in memory and a hibernated room forgets it;
+    // this gate on the listener holds regardless and stores nothing.
+    const play = createShoutGate();
+    expect(play(0)).toBe(true);
+    expect(play(10_000)).toBe(false);
+    expect(play(SHOUT_HEAR_GAP_MS - 1)).toBe(false);
+    expect(play(SHOUT_HEAR_GAP_MS)).toBe(true);
+    expect(SHOUT_HEAR_GAP_MS).toBeGreaterThanOrEqual(5 * 60_000);
   });
 });

@@ -63,3 +63,20 @@ export function shoutDue(pendingAt: number | null, now: number): boolean {
 /** The radio line for another pilot's shout-out: a fixed template, no free text. */
 export const shoutLine = (cc: string | null): string =>
   `A PILOT ${cc ? `FROM ${cc} ` : ""}HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.`;
+
+/**
+ * Shortest gap between two shout-outs this page plays. The room's own limits
+ * live in memory and a hibernated room forgets them, so the listener holds
+ * its own line too: a replayed claim can't flood anyone's radio.
+ */
+export const SHOUT_HEAR_GAP_MS = 5 * 60_000;
+
+/** A gate for incoming shout-outs: true when one may play at `now` (and records it). */
+export function createShoutGate(gapMs = SHOUT_HEAR_GAP_MS): (now: number) => boolean {
+  let last = -Infinity;
+  return (now) => {
+    if (now - last < gapMs) return false;
+    last = now;
+    return true;
+  };
+}
