@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Lock, Check, X } from "lucide-react";
 import { useSpaceStore, selectModalOpen } from "../../store/spaceStore";
-import { LOGBOOK, entryDone, logbookCount, type LogbookProgress } from "../../utils/logbook";
+import { LOGBOOK, entryDone, isDossierEntry, logbookCount, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
 import { ORRERY_NOTE } from "../../utils/realUnits";
 import { WORLDS, WORLD_COUNT } from "../../data/worlds";
 import { isCartographer } from "../../utils/charting";
+import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
 
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
+
+/** "Read the RuangRapi dossier" -> "RuangRapi". */
+const dossierName = (title: string) => title.replace(/^Read the /, "").replace(/ dossier$/, "");
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
@@ -69,7 +73,15 @@ export default function LogbookPanel() {
           {isDone ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
         </span>
         <span className="flex-1">
-          <span className={isDone ? "text-white" : "text-white/60"}>{e.title}</span>
+          {isDone && isDossierEntry(e.id) ? (
+            <button type="button" data-testid={`logbook-reopen-${e.id}`} aria-label={`Re-open the ${dossierName(e.title)} dossier`}
+              onClick={() => reopenDossier(e.id)}
+              className="text-white underline decoration-white/30 underline-offset-2 hover:decoration-primary focus-visible:ring-1 focus-visible:ring-primary outline-none cursor-pointer text-left">
+              {e.title}
+            </button>
+          ) : (
+            <span className={isDone ? "text-white" : "text-white/60"}>{e.title}</span>
+          )}
           <span className="sr-only">{isDone ? ", done." : ", not yet."}</span>
           <span className="block text-[9px] text-white/40">{isDone ? (at ? `EARNED ${at}` : "DONE") : e.hint}</span>
         </span>
