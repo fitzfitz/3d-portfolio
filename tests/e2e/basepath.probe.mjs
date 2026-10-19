@@ -209,6 +209,67 @@ export default async function basepathProbe() {
 
     await page.screenshot({ path: `${OUT_DIR}/basepath-render.png` });
     checks.note("subpath render captured", `${OUT_DIR}/basepath-render.png`);
+
+    // --- the asset-pack paths: a return visit, offline, and a broken pack ---
+
+    // "Renders the scene": the spawn banner (gated on sceneReady, i.e. every
+    // model and texture in and warmed) plus the full-size WebGL canvas.
+    const sceneUp = async (p) => {
+      try {
+        await p.waitForFunction(() => document.body.innerText.includes("SPACE FLIGHT CV"), { timeout: CANVAS_READY_TIMEOUT_MS });
+        return await p.evaluate(() => [...document.querySelectorAll("canvas")].some((el) => !!el.getContext("webgl2") && el.width >= 1280));
+      } catch {
+        return false;
+      }
+    };
+    // Resource timing, not puppeteer events: the service worker answers most
+    // requests by now, and those never reach page events.
+    const loaded = (p, re) => p.evaluate((src) => performance.getEntriesByType("resource")
+      .map((e) => e.name).filter((n) => new RegExp(src).test(n)).length, re.source);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const returnUp = await sceneUp(page);
+    const returnPacks = await loaded(page, /\.pack$/);
+    checks.check("return visit downloads no pack and renders the scene", returnUp && returnPacks === 0,
+      `scene=${returnUp} pack downloads=${returnPacks}`);
+
+    await page.setOfflineMode(true);
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      checks.check("offline reload renders the scene", await sceneUp(page));
+    } catch (e) {
+      checks.check("offline reload renders the scene", false, String(e).slice(0, 200));
+    } finally {
+      await page.setOfflineMode(false);
+    }
+
+    // Cloudflare's SPA fallback answers a missing or stale pack name with
+    // index.html and a 200. A fresh profile (no worker, no cached packs)
+    // gets exactly that for the common pack and must fall back to the loose
+    // files that every build still ships.
+    const fresh = await browser.createBrowserContext();
+    try {
+      const p2 = await fresh.newPage();
+      await p2.setViewport({ width: 1280, height: 800 });
+      const errors = [];
+      p2.on("pageerror", (e) => errors.push(e.message));
+      await p2.setRequestInterception(true);
+      p2.on("request", (req) => {
+        const url = req.url();
+        if (isFontHost(url)) return respondInertFont(req);
+        if (/world-common\.[0-9a-f]{10}\.pack$/.test(url)) {
+          return req.respond({ status: 200, contentType: "text/html", body: "<!doctype html><title>x</title>" });
+        }
+        return req.continue();
+      });
+      await p2.goto(URL_UNDER_TEST, { waitUntil: "domcontentloaded" });
+      const up = await sceneUp(p2);
+      const loose = await loaded(p2, /\/models\//);
+      checks.check("a pack answered by the SPA fallback falls back to loose files", up && loose > 0 && errors.length === 0,
+        `scene=${up} loose /models/ loads=${loose} errors=${errors.slice(0, 2).join(" | ")}`);
+    } finally {
+      await fresh.close();
+    }
   } finally {
     await browser.close();
     server.kill("SIGTERM");
