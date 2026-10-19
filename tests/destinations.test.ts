@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, ZONE_PLANETS, destinationById, escapeR, afterProbes, jumpKey,
+  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterProbes, jumpKey,
 } from "../src/data/destinations";
 import { WORLDS, WORLD_IDS, isWorld } from "../src/data/worlds";
 import { bodies } from "../src/store/spaceStore";
@@ -151,8 +151,10 @@ describe("the worlds stay off the recruiter path", () => {
     }
   });
 
-  it("the zone/lock loop checks the planets only", () => {
-    expect(ZONE_PLANETS.map((p) => p.name)).toEqual(planets.map((p) => p.name));
-    for (const p of ZONE_PLANETS) expect(isWorld(p.name), p.name).toBe(false);
+  // Was "the zone/lock loop checks the planets only": the planets left it
+  // with the project probes (spec §4.4); only destinations dock.
+  it("no planet or world is a dock", () => {
+    for (const p of planets) expect(destinationById(p.name), p.name).toBeUndefined();
+    for (const w of WORLDS) expect(destinationById(w.id), w.id).toBeUndefined();
   });
 });

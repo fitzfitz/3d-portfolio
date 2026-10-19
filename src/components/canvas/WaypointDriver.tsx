@@ -31,8 +31,9 @@ export default function WaypointDriver() {
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
     const id = race ? "" : nextWaypoint(flight, PROBE_IDS, probePos, s.visitedDossiers, afterProbes(s.badges));
-    // Nothing to point at while docked there or already inside its pull.
-    if (selectModalOpen(s) || (!race && s.activeZone === id && !PROBE_IDS.includes(id))) { waypointState.active = false; return; }
+    // Nothing to point at while docked at a destination or inside its zone
+    // (only destinations have one; a probe never sets activeZone).
+    if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
     const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? probePos[id];
     if (!t) { waypointState.active = false; return; }
 

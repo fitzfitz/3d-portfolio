@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { ChatterScheduler, type ChatterPools } from "../src/utils/chatterScheduler";
+import { ChatterScheduler, chatterZone, type ChatterPools } from "../src/utils/chatterScheduler";
+import { chatterPools } from "../src/data/chatterLines";
+import { PROBE_IDS } from "../src/data/probes";
+import { DESTINATIONS } from "../src/data/destinations";
 
 const pools: ChatterPools = {
   deepSpace: ["ds-1", "ds-2", "ds-3"],
@@ -54,5 +57,24 @@ describe("ChatterScheduler", () => {
   it("picks from the impact pool", () => {
     const s = new ChatterScheduler(pools, () => 0);
     expect(s.pick("impact")).toBe("imp-1");
+  });
+});
+
+// The project pools fire when a probe comes in range (probeNear), not on a
+// planet's zone: planets have none now (project probes, spec §4.4).
+describe("zone chatter: probes and destinations", () => {
+  it("has a pool per probe and per destination, and nothing else", () => {
+    expect(Object.keys(chatterPools.zones).sort()).toEqual([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id)].filter((id) => id in chatterPools.zones).sort());
+    for (const id of PROBE_IDS) expect(chatterPools.zones[id]?.length, id).toBeGreaterThan(0);
+    for (const id of Object.keys(chatterPools.zones)) expect([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id)], id).toContain(id);
+  });
+  it("each probe pool opens with \"<X> PROBE IN RANGE\", and no line announces a sector", () => {
+    for (const id of PROBE_IDS) expect(chatterPools.zones[id][0].startsWith(`${id.toUpperCase()} PROBE IN RANGE`), id).toBe(true);
+    for (const lines of Object.values(chatterPools.zones)) for (const l of lines) expect(l).not.toMatch(/SECTOR/);
+  });
+  it("chatterZone: a docked destination's zone wins, then the probe in range, else none", () => {
+    expect(chatterZone("career", "fuxx")).toBe("career");
+    expect(chatterZone(null, "fuxx")).toBe("fuxx");
+    expect(chatterZone(null, null)).toBeNull();
   });
 });

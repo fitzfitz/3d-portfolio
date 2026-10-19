@@ -1,12 +1,11 @@
-import {
-  PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById, type PlanetData,
-} from "../constants";
+import { PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, projectById } from "../constants";
 import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
 import { PROBE_IDS } from "./probes";
 import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
 
 /**
- * Places you can jump to and dock at that are not project planets
+ * Places you can jump to and dock at: the only bodies that dock (planets
+ * are solid and scan-only, project probes spec §4.4)
  * (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §2). Every
  * consumer that used to special-case "contact" reads this table instead:
  * zone detection and lock (SpacePlanets), lock geometry and jumps
@@ -64,22 +63,15 @@ export const DESTINATIONS: readonly Destination[] = [
 ];
 
 /**
- * Zone ids the engine reserves. A project may not claim one: `activeZone` is
- * the project id for planets, so a project named "contact" would make flying
- * to the portal open a project dossier instead (tests/projects.test.ts).
+ * Zone ids the engine reserves. A project may not claim one: a project id
+ * keys its probe's jump target and radio pool beside these, so a project
+ * named "contact" would collide with the portal (tests/projects.test.ts).
  */
 export const RESERVED_ZONE_IDS: readonly DestinationId[] = DESTINATIONS.map((d) => d.id);
 
-/**
- * The bodies the zone/lock loop (SpacePlanets) checks before the
- * destinations: the project planets only. A world there would soft-lock the
- * loop, with no dossier to open (spec, "Separate table").
- */
-export const ZONE_PLANETS: readonly PlanetData[] = planets;
-
 const byId = new Map<string, Destination>(DESTINATIONS.map((d) => [d.id, d]));
 
-/** The destination with this zone id; undefined for planets, null and unknowns. */
+/** The destination with this zone id; undefined for probes, planets, null and unknowns. */
 export function destinationById(id: string | null | undefined): Destination | undefined {
   return id ? byId.get(id) : undefined;
 }

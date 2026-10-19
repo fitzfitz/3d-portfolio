@@ -5,13 +5,10 @@ import { useGLTF, useTexture } from "@react-three/drei";
 import PortalRing from "./PortalRing";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
-import {
-  PORTAL_POS, planets, PROGRADE,
-  ZONE_FACTOR, LOCK_RETAIN_FACTOR, SUN_RADIUS,
-} from "../../constants";
-import { DESTINATIONS, ZONE_PLANETS } from "../../data/destinations";
+import { PORTAL_POS, planets, PROGRADE, SUN_RADIUS } from "../../constants";
+import { DESTINATIONS } from "../../data/destinations";
+import { PLANET_ATMOSPHERES } from "../../data/planetAtmospheres";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { canCapture } from "../../utils/capture";
 import { orbitPosition } from "../../utils/orbits";
 import { ambientTime } from "../../utils/ambientTime";
 import { driftedHue } from "../../utils/nebulaHue";
@@ -307,7 +304,7 @@ function useNightSideEmissive() {
 }
 
 /**
- * Maps with a 4096-wide variant (assets-src/4k/). In orbit lock the planet
+ * Maps with a 4096-wide variant (assets-src/4k/). Up close the planet
  * fills the screen and the hard-edged worlds' 2048 texels show as blocks; the
  * soft-banded gas giant and the sparse city lights don't need it.
  */
@@ -324,19 +321,16 @@ export default function SpacePlanets() {
   const planetGroupRefs = useRef<(THREE.Group | null)[]>([null, null, null]);
   const saasRingRef = useRef<THREE.Mesh>(null);
   /** Orbit-path ring materials, one per planet, for the opacity breathe. */
-  // Thin dashed orbit paths that fade out near the camera (guideLine.ts).
+  // Thin dashed orbit paths that fade out near the camera (guideLine.ts), in
+  // each planet's neutral UI colour (PLANET_PROPS), never a project's.
   const orbitRingMats = useMemo(() => planets.map((p) => makeGuideLineMaterial({
     color: p.color, opacity: ORBIT_RING_OPACITY, dashes: 220, fadeIn: [10, 55],
-  })), []);
-  // Gravity-field circles: only shown on approach, faded in near and out far.
-  const gravityMats = useMemo(() => planets.map((p) => makeGuideLineMaterial({
-    color: p.color, opacity: 0.4, dashes: 48, fadeIn: [4, 9], fadeOut: [28, 55],
   })), []);
   // Lit by the sunlight at its orbit (L19): Ruangrapi's is 1 AU, so ×1.
   const planetRingMat = useMemo(() => makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6,
     PLANET_SLOT0, { irradiance: irradianceVsAU(planets[0].orbit.radius) }), []);
-  useEffect(() => () => [...orbitRingMats, ...gravityMats, planetRingMat].forEach((m) => m.dispose()),
-    [orbitRingMats, gravityMats, planetRingMat]);
+  useEffect(() => () => [...orbitRingMats, planetRingMat].forEach((m) => m.dispose()),
+    [orbitRingMats, planetRingMat]);
   // The ring's umbra floor is measured per tier (guideLine.ts): the PostFX
   // buffer is linear, the low-perf tier draws display-encoded colour.
   useEffect(() => {
@@ -391,7 +385,7 @@ export default function SpacePlanets() {
   useEffect(() => () => planetMats.forEach((m) => m.dispose()), [planetMats]);
   // Detail by distance (sphereLod.ts): 64 segments near, as before, then 24
   // and 12 once the coarser silhouette is within half a pixel of the limb.
-  // 64 is what keeps the limb smooth at lock distance, where a planet fills
+  // 64 is what keeps the limb smooth up close, where a planet fills
   // half the screen. The LOD is what spins.
   const planetLods = useMemo(() => planetMats.map((m, i) =>
     makeSphereLOD(m, planets[i].size, { name: `Planet_${planets[i].name}` })), [planetMats]);
@@ -454,7 +448,7 @@ export default function SpacePlanets() {
       b.x = pos.x; b.y = pos.y; b.z = pos.z;
       const g = planetGroupRefs.current[i];
       if (g) g.position.set(pos.x, pos.y, pos.z);
-      setScannable(p.name, pos.x, pos.y, pos.z, "PLANET_" + p.name.toUpperCase(), p.size);
+      setScannable(p.name, pos.x, pos.y, pos.z, p.label, p.size);
       setOccluder(PLANET_SLOT0 + i, pos.x, pos.y, pos.z, p.size);
     }
 
@@ -538,36 +532,23 @@ export default function SpacePlanets() {
     }
 
     // 2. Proximity: read mutable telemetry, write store only on change.
-    // Hysteresis: once locked onto a body, retain the zone/lock at a wider
-    // radius than the one that engaged it, so the orbit ring (which sits
-    // further out than the engage threshold) doesn't immediately break the
-    // lock it just entered — see tests/orbitInvariant.test.ts.
+    // Only the destinations dock: the planets are solid, scan-only bodies
+    // (project probes, spec §4.4; Spaceship's SOLID_BODIES collider).
+    // Hysteresis: once locked onto a destination, retain the zone/lock at a
+    // wider radius than the one that engaged it, so the orbit ring (which
+    // sits further out than the engage threshold) doesn't immediately break
+    // the lock it just entered — see tests/orbitInvariant.test.ts.
     const { isOrbitCooldown, isOrbitLocked: lockedNow, activeZone: zoneNow, setActiveZone, setOrbitLocked, photoMode } = useSpaceStore.getState();
-    // Photo mode freezes the ship but bodies/scannables above keep orbiting; if we
-    // let a moving planet drift past LOCK_RETAIN while frozen, the lock breaks and
-    // Spaceship's escape-push effect (Spaceship.tsx:96-100) jolts the ship mid-photo.
-    // Skip only the zone/lock writes here — mirrors Scanner.tsx:22's self-gate.
+    // Photo mode freezes the ship but bodies/scannables above keep orbiting.
+    // Skip only the zone/lock writes here, so nothing breaks a lock (and
+    // Spaceship's escape push jolts the ship) mid-photo — mirrors
+    // Scanner.tsx:22's self-gate.
     if (photoMode) return;
     let activeZone: string | null = null;
     let lockActive = false;
 
-    ZONE_PLANETS.forEach((p) => {
-      const b = bodies[p.name];
-      const dist = Math.hypot(flight.x - b.x, flight.z - b.z, flight.y - b.y);
-      if (lockedNow && zoneNow === p.name) {
-        if (dist < p.size * LOCK_RETAIN_FACTOR) {
-          activeZone = p.name;
-          lockActive = true;
-        }
-      } else if (dist < p.size * ZONE_FACTOR) {
-        activeZone = p.name;
-        // A fast pass skims; a slow one (or one about to touch the surface) docks.
-        if (canCapture(dist, p.size, flight.speed) && !isOrbitCooldown) lockActive = true;
-      }
-    });
-
     // Destinations (src/data/destinations.ts): fixed points with their own
-    // radii, checked after the planets exactly as the portal always was.
+    // radii, checked exactly as the portal always was.
     for (const d of DESTINATIONS) {
       const dist = Math.hypot(flight.x - d.pos[0], flight.z - d.pos[2], flight.y - d.pos[1]);
       if (lockedNow && zoneNow === d.id) {
@@ -587,11 +568,11 @@ export default function SpacePlanets() {
 
   return (
     <group>
-      {/* 1. RUANGRAPI PLANET (Neon Green, Rings) */}
+      {/* 1. OCEAN WORLD (ruangrapi: rings) */}
       <group ref={(g) => { planetGroupRefs.current[0] = g; }}>
         {/* Planet Sphere */}
         <primitive object={planetLods[0]} dispose={null} />
-        <Atmosphere radius={planets[0].size} color="#7dffd0" planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
+        <Atmosphere radius={planets[0].size} color={PLANET_ATMOSPHERES.ruangrapi.color} thickness={PLANET_ATMOSPHERES.ruangrapi.thickness} planetPos={bodies[planets[0].name]} orbitRadius={planets[0].orbit.radius} intensity={1.1} />
         <CloudLayer radius={planets[0].size} tint="#ffffff" speed={PROGRADE * 0.168} sunShadow />
         {MOONS.filter((m) => m.planet === 0).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
 
@@ -599,38 +580,23 @@ export default function SpacePlanets() {
         <mesh ref={saasRingRef} name={`PlanetRing_${planets[0].name}`} rotation={[Math.PI / 2.3, 0, 0]} material={planetRingMat}>
           <ringGeometry args={[planets[0].size * 1.15, planets[0].size * 1.6, 160, 1]} />
         </mesh>
-
-        {/* Proximity gravity-field circle: dashed, shown only on approach */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[0]}>
-          <ringGeometry args={[planets[0].size * ZONE_FACTOR, planets[0].size * (ZONE_FACTOR + 0.02), 192]} />
-        </mesh>
       </group>
 
-      {/* 2. PORTFOLIO PLANET (Neon Cyan, Moon) */}
+      {/* 2. BANDED GIANT (portfolio: cyan atmosphere, moons) */}
       <group ref={(g) => { planetGroupRefs.current[1] = g; }}>
         {/* Planet Sphere */}
         <primitive object={planetLods[1]} dispose={null} />
         <LimbDarkening radius={planets[1].size} strength={0.8} />
-        <Atmosphere radius={planets[1].size} color={planets[1].color} planetPos={bodies[planets[1].name]} orbitRadius={planets[1].orbit.radius} intensity={0.55} thickness={1.06} />
+        <Atmosphere radius={planets[1].size} color={PLANET_ATMOSPHERES.portfolio.color} thickness={PLANET_ATMOSPHERES.portfolio.thickness} planetPos={bodies[planets[1].name]} orbitRadius={planets[1].orbit.radius} intensity={0.55} />
         {MOONS.filter((m) => m.planet === 1).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
-
-        {/* Proximity gravity-field circle: dashed, shown only on approach */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[1]}>
-          <ringGeometry args={[planets[1].size * ZONE_FACTOR, planets[1].size * (ZONE_FACTOR + 0.02), 192]} />
-        </mesh>
       </group>
 
-      {/* 3. FUXX PLANET (Neon Purple, Banded Grid Clouds) */}
+      {/* 3. RUST WORLD (fuxx: violet rifts) */}
       <group ref={(g) => { planetGroupRefs.current[2] = g; }}>
         {/* Planet Sphere */}
         <primitive object={planetLods[2]} dispose={null} />
-        <Atmosphere radius={planets[2].size} color="#c77dff" planetPos={bodies[planets[2].name]} orbitRadius={planets[2].orbit.radius} intensity={0.5} thickness={1.05} />
+        <Atmosphere radius={planets[2].size} color={PLANET_ATMOSPHERES.fuxx.color} thickness={PLANET_ATMOSPHERES.fuxx.thickness} planetPos={bodies[planets[2].name]} orbitRadius={planets[2].orbit.radius} intensity={0.5} />
         {MOONS.filter((m) => m.planet === 2).map((m) => <OrbitingMoon key={m.id} moon={m} />)}
-
-        {/* Proximity gravity-field circle: dashed, shown only on approach */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} material={gravityMats[2]}>
-          <ringGeometry args={[planets[2].size * ZONE_FACTOR, planets[2].size * (ZONE_FACTOR + 0.02), 192]} />
-        </mesh>
       </group>
 
       {/* Faint orbit architecture: one inclined ring per planet (spec §3) */}

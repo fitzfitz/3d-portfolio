@@ -49,3 +49,12 @@ export class ChatterScheduler {
     return 18000 + Math.floor(this.random() * 17000);
   }
 }
+
+/**
+ * The zone pool a radio line draws from: a destination's zone (`activeZone`)
+ * wins, then the probe in range (`probeNear`), else none. Planets have no
+ * zone (project probes, spec §4.4).
+ */
+export function chatterZone(activeZone: string | null, probeNear: string | null): string | null {
+  return activeZone ?? probeNear;
+}

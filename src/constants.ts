@@ -4,8 +4,11 @@ import projectsData from "./data/projects.json";
 
 export interface Project {
   /**
-   * Stable identity, and also the planet's `name` and the store's `activeZone`
-   * value. Changing it renames the planet and breaks any saved reference to it.
+   * Stable identity: the project's probe id (data/probes.ts), the store's
+   * `openDossier`/`probeNear` value, and also its planet's internal `name`
+   * (moons, maps, orbits key on it). It is no longer a zone: planets do not
+   * dock. Changing it renames the probe and the planet and breaks any saved
+   * reference to it.
    */
   id: string;
   title: string; role: string; duration: string; short: string;
@@ -14,7 +17,12 @@ export interface Project {
   repo?: string;
 }
 export interface PlanetData {
-  name: string; orbit: OrbitalElements; color: string; size: number;
+  name: string; orbit: OrbitalElements;
+  /** Display name, descriptive like the worlds' (P2): what the scanner and its report show. */
+  label: string;
+  /** Neutral UI colour from the surface map (orbit ring, radar, chart). Not a project colour: those are the probes'. */
+  color: string;
+  size: number;
   type: PlanetType; mass: number;
   /** The shipped map's median linear luminance: what the display curve reads (utils/displayAlbedo.ts). */
   texelMedianLinear: number;
@@ -45,12 +53,16 @@ export const SHIP_MAX_SPEED = 10.8;
 /** Warp velocity while boost is held. 3.6x cruise; fuel endurance is tuned against it. */
 export const SHIP_WARP_SPEED = 39;
 
-// Orbit-lock geometry: ORBIT must stay well inside RETAIN or the lock
-// self-destructs one frame after engaging (see tests/orbitInvariant.test.ts).
-export const ZONE_FACTOR = 1.8;        // gravity-tip radius = size * this
-export const LOCK_ENGAGE_FACTOR = 1.3; // lock engages inside size * this
-export const LOCK_RETAIN_FACTOR = 1.9; // once locked, retained until size * this
-export const ORBIT_RADIUS_FACTOR = 1.5; // orbit-entry ring = size * this
+// Planet keep-out radii, in planet sizes. They were the orbit-lock radii
+// until the projects moved onto probes (planets no longer dock); what is
+// placed around the planets (crystals, convoys, jellyfish, the clearance
+// tests) is still spaced by them.
+export const ZONE_FACTOR = 1.8;        // the old proximity zone
+export const LOCK_ENGAGE_FACTOR = 1.3; // the old lock-engage radius
+export const LOCK_RETAIN_FACTOR = 1.9; // the old lock-retain radius
+// Destination (contact portal) lock geometry: ORBIT must stay well inside
+// RETAIN or the lock self-destructs one frame after engaging
+// (see tests/orbitInvariant.test.ts).
 export const PORTAL_ZONE_R = 2.2;
 export const PORTAL_LOCK_R = 1.5;
 export const PORTAL_RETAIN_R = 3.4;
@@ -64,21 +76,29 @@ export const PORTAL_ORBIT_R = 2.6;
 export const projects: Project[] = projectsData;
 
 /**
- * Planet size, type and relative mass, by project id (2026-10-17, sub-project B):
+ * Planet size, type, relative mass, label and UI colour, by planet name (2026-10-17, sub-project B):
  * size follows type — gas giant 16 > earth 12 > mars 8 — so the sun can outsize
  * every planet (L35/L36). Masses are compressed but correctly ordered (P3).
- * Size was a uniform 16 (4.8 before 2026-10-12); every lock radius scales off
+ * Size was a uniform 16 (4.8 before 2026-10-12); every keep-out radius scales off
  * it, and tests/planetClearance.test.ts guards what is placed around the orbits.
  * Keyed like PLANET_ORBITS: a planet added there needs an entry here too
  * (tests/projects.test.ts checks the two key sets match).
  * texelMedianLinear is the shipped map's median linear luminance, the one
  * statistic the dark-surface display curve reads (utils/displayAlbedo.ts);
  * tests/displayAlbedo.test.ts holds it to the map within 3%.
+ *
+ * label and color (project probes, 2026-10-20): the planets stopped being
+ * projects. The labels are interim descriptive names, replaced by real ones
+ * in the real-solar-system stage. Each colour is the hue of the brightest
+ * quarter of the planet's 2048 map (its lit surface), at saturation ≤ 0.45
+ * and value 0.75, so it reads on the HUD and never matches a project
+ * colour (tests/projects.test.ts). The atmospheres keep their own colours
+ * (data/planetAtmospheres.ts), so the planets look the same.
  */
-export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number; texelMedianLinear: number }> = {
-  ruangrapi: { type: "earth", size: 12, mass: 1, texelMedianLinear: 0.0533 },
-  portfolio: { type: "gas-giant", size: 16, mass: 3, texelMedianLinear: 0.095 },
-  fuxx: { type: "mars", size: 8, mass: 0.3, texelMedianLinear: 0.0138 },
+export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number; texelMedianLinear: number; label: string; color: string }> = {
+  ruangrapi: { type: "earth", size: 12, mass: 1, texelMedianLinear: 0.0533, label: "OCEAN WORLD", color: "#6dbf98" },
+  portfolio: { type: "gas-giant", size: 16, mass: 3, texelMedianLinear: 0.095, label: "BANDED GIANT", color: "#69b5bf" },
+  fuxx: { type: "mars", size: 8, mass: 0.3, texelMedianLinear: 0.0138, label: "RUST WORLD", color: "#9469bf" },
 };
 
 /**
@@ -114,13 +134,13 @@ export const gmOf = (p: PlanetData): number => GM_RUANGRAPI * p.mass;
 export const PROGRADE = -1;
 
 /**
- * Inclined living orbits around the sun at origin (spec §3), keyed by project id.
+ * Inclined living orbits around the sun at origin (spec §3), keyed by planet
+ * name (each project's id, which is also its probe's).
  * Speeds follow Kepler's third law (sunOmega), so outer planets are slower.
- * Periods are minutes-slow: orbital speed stays ≪ ship speed so orbit-lock
- * tracking is trivial (tests/orbitInvariant.test.ts).
+ * Periods are minutes-slow: orbital speed stays ≪ ship speed.
  *
  * These stay in code rather than the content JSON because they are tuning
- * constants, balanced against the lock radii above, the belt (r 40-70), the
+ * constants, balanced against the keep-out radii above, the belt (r 40-70), the
  * polar halo (80-95) and the portal at y=95. Adding a project therefore forces
  * a deliberate orbital decision — `tests/projects.test.ts` fails on a project
  * with no entry here, and on an entry with no project.
@@ -133,15 +153,15 @@ export const PLANET_ORBITS: Record<string, OrbitalElements> = {
 
 const byId = new Map(projects.map((p) => [p.id, p]));
 
-/** Resolves a zone id to its project. Undefined for the portal and unknowns. */
-export function projectById(zoneId: string | null): Project | undefined {
-  return zoneId === null ? undefined : byId.get(zoneId);
+/** Resolves a project (probe) id to its project. Undefined for destinations and unknowns. */
+export function projectById(id: string | null): Project | undefined {
+  return id === null ? undefined : byId.get(id);
 }
 
 /**
- * The planets the engine flies through, derived by joining each project to its
- * orbital elements. Colour is single-sourced from the project — it used to be
- * duplicated here and had to be kept in sync by hand.
+ * The planets the engine flies past, derived by joining each project id to
+ * its orbital elements and PLANET_PROPS. Colour and label come from
+ * PLANET_PROPS, not the project: a project's colour is its probe's.
  *
  * A project with no orbit is dropped rather than crashing at import time, since
  * throwing here would take down the whole 3D canvas; the test suite is what
@@ -149,7 +169,7 @@ export function projectById(zoneId: string | null): Project | undefined {
  */
 export const planets: PlanetData[] = projects
   .filter((p) => p.id in PLANET_ORBITS)
-  .map((p) => ({ name: p.id, color: p.color, ...PLANET_PROPS[p.id], orbit: PLANET_ORBITS[p.id] }));
+  .map((p) => ({ name: p.id, ...PLANET_PROPS[p.id], orbit: PLANET_ORBITS[p.id] }));
 
 /**
  * Hard ceiling on simultaneous lights in the scene.

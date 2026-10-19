@@ -30,6 +30,15 @@ describe("generateScanReport", () => {
   });
 });
 
+it("planet scans are titled by the planet's label, not its project", async () => {
+  const { planets } = await import("../src/constants");
+  for (const p of planets) {
+    expect(generateScanReport(p.name).startsWith(`SCAN[${p.label}] // `), p.name).toBe(true);
+    expect(generateScanReport(p.name)).not.toMatch(/PLANET_/);
+  }
+  expect(generateScanReport("ruangrapi")).toMatch(/^SCAN\[OCEAN WORLD\] \/\/ CORE: SUPABASE/);
+});
+
 it("planet scans end with the orbit in real units", () => {
   expect(generateScanReport("portfolio")).toMatch(/ \/\/ ORBIT 1\.30 AU · YEAR 1\.49 EARTH-YR$/);
   expect(generateScanReport("ruangrapi")).toContain("SUPABASE");

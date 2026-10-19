@@ -20,8 +20,8 @@ function dot(key: string, r: number): { cx: number; cy: number } {
 
 /**
  * The system chart (spec "Charting, logbook and title"): top-down, DOM SVG
- * (no WebGL cost), to scale in orbital radius. The sun, the three project
- * planets on their orbits, and the five worlds' orbits: dashed while
+ * (no WebGL cost), to scale in orbital radius. The sun, the three planets
+ * on their orbits (in their neutral UI colours, not the projects'), and the five worlds' orbits: dashed while
  * uncharted, solid with the world's dot once charted. Inclinations are
  * flattened: each orbit draws as its circle of radius r. The bearings are a
  * snapshot taken when the logbook renders; the caption and the accessible
