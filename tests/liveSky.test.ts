@@ -29,6 +29,22 @@ describe("liveSkyUrl", () => {
 
 describe("parseServerMessage", () => {
   const j = (o: unknown) => JSON.stringify(o);
+  it("reads the charted count and checks the AURUM plume against it", () => {
+    const row = (o: Record<string, unknown>) => {
+      const m = parseServerMessage(j({ t: "snap", ships: [{ id: "a", p: [1, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: "ID", ago: 0, ...o }] }));
+      if (m?.t !== "snap") throw new Error("not a snapshot");
+      return m.ships[0];
+    };
+    expect(row({ ch: 5, plume: "cartographer" })).toMatchObject({ ch: 5, plume: "cartographer" });
+    expect(row({ ch: 2, plume: "cartographer" })).toMatchObject({ ch: 2, plume: "stock" });
+    expect(row({ ch: "x" }).ch).toBe(0);
+    expect(row({}).ch).toBe(0);
+  });
+  it("parses a shout-out from the room", () => {
+    expect(parseServerMessage(j({ t: "charted", cc: "ID" }))).toEqual({ t: "charted", cc: "ID" });
+    expect(parseServerMessage(j({ t: "charted", cc: "XX" }))).toEqual({ t: "charted", cc: null });
+    expect(parseServerMessage(j({ t: "charted" }))).toEqual({ t: "charted", cc: null });
+  });
   it("parses every message type", () => {
     expect(parseServerMessage(j({ t: "hello", id: "a", peers: 2 }))).toEqual({ t: "hello", id: "a", peers: 2 });
     expect(parseServerMessage(j({ t: "peers", n: 0 }))).toEqual({ t: "peers", n: 0 });
@@ -51,7 +67,7 @@ describe("parseServerMessage", () => {
     expect(Math.hypot(...a.p)).toBeCloseTo(VALIDATION_RADIUS, 6);
     expect(a.p[0]).toBeCloseTo(-a.p[2], 6);
     expect(a.p[1]).toBeCloseTo(0, 6);
-    expect((m as { ships: unknown[] }).ships[1]).toEqual({ id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 });
+    expect((m as { ships: unknown[] }).ships[1]).toEqual({ id: "b", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0, ch: 0 });
     expect((m as { ships: unknown[] }).ships).toHaveLength(2);
   });
   it("reads a row's ago, treating anything odd as 0 and capping it", () => {
@@ -71,6 +87,15 @@ describe("parseServerMessage", () => {
 });
 
 describe("GhostBuffer", () => {
+  it("keeps each ghost's charted count current", () => {
+    const b = new GhostBuffer();
+    b.push([ship("a", 0, { ch: 2 })], 0);
+    expect(b.sample(RENDER_DELAY_MS)[0].ch).toBe(2);
+    b.push([ship("a", 1, { ch: 5 })], 250);
+    expect(b.sample(250 + RENDER_DELAY_MS)[0].ch).toBe(5);
+    b.push([ship("a", 2)], 500);
+    expect(b.sample(500 + RENDER_DELAY_MS)[0].ch).toBe(0);
+  });
   it("renders RENDER_DELAY_MS in the past, blending between snapshots", () => {
     const b = new GhostBuffer();
     b.push([ship("a", 0)], 0);
@@ -251,11 +276,19 @@ describe("hudShowsRadio", () => {
 
 describe("ghost scan reports", () => {
   it("name the country, or just the pilot", () => {
-    expect(ghostReport("ID")).toBe("PILOT FROM ID · LIVE");
-    expect(ghostReport(null)).toBe("PILOT · LIVE");
+    expect(ghostReport("ID", 0)).toBe("PILOT FROM ID · LIVE");
+    expect(ghostReport(null, 0)).toBe("PILOT · LIVE");
+  });
+  it("show the charted count, and the title at five", () => {
+    expect(ghostReport("ID", 5)).toBe("CARTOGRAPHER · ID");
+    expect(ghostReport("ID", 3)).toBe("3/5 CHARTED · ID");
+    expect(ghostReport(null, 5)).toBe("CARTOGRAPHER · LIVE");
+    expect(ghostReport(null, 2)).toBe("2/5 CHARTED · LIVE");
   });
   it("generateScanReport answers for a registered ghost", () => {
-    ghostRegistry.set(ghostScanId("ab12cd34"), "SG");
+    ghostRegistry.set(ghostScanId("ab12cd34"), { cc: "SG", ch: 0 });
     expect(generateScanReport("ghost_ab12cd34")).toBe("PILOT FROM SG · LIVE");
+    ghostRegistry.set(ghostScanId("ab12cd34"), { cc: "SG", ch: 5 });
+    expect(generateScanReport("ghost_ab12cd34")).toBe("CARTOGRAPHER · SG");
   });
 });

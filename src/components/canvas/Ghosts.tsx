@@ -162,7 +162,7 @@ export default function Ghosts() {
       slot.flame.uniforms.uPower.value = GHOST_PLUME_POWER * g.alpha;
       slot.flame.uniforms.uTime.value = t;
       slot.scanId = g.scanId;
-      ghostRegistry.set(slot.scanId, g.cc);
+      ghostRegistry.set(slot.scanId, { cc: g.cc, ch: g.ch });
       setScannable(slot.scanId, g.p[0], g.p[1], g.p[2], GHOST_LABEL);
     }
   });
