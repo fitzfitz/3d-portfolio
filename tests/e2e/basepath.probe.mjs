@@ -15,7 +15,7 @@
 import puppeteer from "puppeteer-core";
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
-import { Checks, isFontHost, respondInertFont, settle, pollUntil, CANVAS_READY_TIMEOUT_MS } from "./harness.mjs";
+import { Checks, isFontHost, respondInertFont, settle, pollUntil, CANVAS_READY_TIMEOUT_MS, chromeArgs } from "./harness.mjs";
 
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -92,7 +92,7 @@ export default async function basepathProbe() {
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: true,
-    args: ["--enable-unsafe-swiftshader", "--use-gl=swiftshader"],
+    args: chromeArgs(),
   });
 
   const failed = [];       // requests that 404'd or errored

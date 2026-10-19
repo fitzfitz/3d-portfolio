@@ -371,6 +371,22 @@ the edit at 19.9 s, falling to 10.4 s by the fourth), then 10,730-12,906 and
 does not move start-up; the 19.9 s first run is the load the 20 s ceiling sits
 closest to, and it held. Ceiling unchanged: 20,000 ms.
 
+**Asserted once, best of three, from 2026-10-19 (e2e speed-up).** `withPage`
+now records every page's start-up in the timing report but no longer asserts
+it: under load a single page reached 15-37 s and failed at random, on `main`
+too. `tests/e2e/startup.probe.mjs` asserts the ceiling on the best of up to
+three fresh SwiftShader loads (stopping at the first inside it), run first and
+alone. A real doubling still fails, since it slows every load. The other probes
+run on the GPU (ANGLE/Metal), where start-up reads 1.9-5.1 s with four pages
+loading at once: those figures are not budgets. Ceiling unchanged: 20,000 ms.
+Suite wall time, same Mac: 1,909 s serial on SwiftShader before; 995 s serial
+on the GPU; 324-347 s with the parallel runner (four runs, 483/483). With six of
+the ten cores held busy by CPU burners: 380 s at base load ~5 (green apart from
+a transition window since fixed) and 553 s at base load ~9 (load ~14 during),
+where startup's best of three read 21.9 s and failed. The ceiling is a CPU-time
+budget on SwiftShader, so an oversubscribed machine can still trip it; best of
+three absorbs ordinary load (14.9 s at load 14 without the burners).
+
 **B2 landmarks measured 2026-10-16 (shipyard, dormant gate, freighter rebake).**
 `shipyard.glb` (4,332 tris, 4 draw calls) and `dormant_gate.glb` (2,440 tris, 2 draw
 calls) joined the scene; both reuse the freighter's HullBaked / NavRed

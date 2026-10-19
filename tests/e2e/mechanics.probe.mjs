@@ -30,8 +30,9 @@ async function edge(page, checks) {
   // (40 u/s^2 against 25.2), so the ship is still brought back. The in-page
   // recorder (harness.mjs) timestamps crossing and return per frame, reads the
   // haze opacity in the frame of maximum radius, and remembers any RETURN BURN
-  // broadcast. No sim clock is exposed, so "within 6 simulated seconds" is
-  // asserted as <= 18 s wall (headless ~3x slow); the 60 s polls are hang guards.
+  // broadcast, and sums simulated time (clamped frame dt) from the crossing,
+  // so "within 6 simulated seconds" is asserted directly; the 60 s polls are
+  // hang guards.
   let flashed = false;
   await page.keyboard.down("KeyW");
   const done = await pollUntil(async () => {
@@ -46,7 +47,8 @@ async function edge(page, checks) {
     `opacity=${rec.opAtMax} read in the frame of max r=${rec.maxR.toFixed(1)}`);
   checks.check("holding thrust outward at the edge, the ship is still brought back", done.ok && rec.tBack !== null,
     `max r=${rec.maxR.toFixed(1)}, back after ${backS.toFixed(1)}s wall`);
-  checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18, `${backS.toFixed(1)}s wall`);
+  checks.check("the return takes at most 6 simulated seconds", rec.tBack !== null && rec.simBack <= 6,
+    `${rec.simBack.toFixed(2)}s simulated, ${backS.toFixed(1)}s wall`);
   checks.check("the ship stays well inside the validation bounds", rec.maxR < 500, `max r=${rec.maxR.toFixed(1)}`);
   checks.check("the edge fires no teleport flash", !flashed);
   // The haze line (depth 0.3) plays first on the way out, the burn line a moment

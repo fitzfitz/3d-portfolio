@@ -1,20 +1,5 @@
-import { withPage, hold, settle, readStore, pollUntil, chatterText } from "./harness.mjs";
+import { withPage, hold, settle, readStore, pollUntil, chatterText, nextFrames } from "./harness.mjs";
 
-/**
- * Ticks real rAF frames forward via repeated CDP round-trips rather than one
- * blind settle() — see harness.mjs's settle() warning and ogimage.mjs's own
- * `pump`. RadarMap draws from its own rAF loop reading live `flight.x/y/z`
- * directly (no lerp), but that loop still only advances on an actual paint,
- * and headless SwiftShader barely services rAF during an idle setTimeout
- * with zero CDP traffic. Verified empirically: sampling the radar canvas
- * right after `teleport()` + a single settle() intermittently caught a
- * stale pre-teleport frame (a real, but out-of-range, crystal blip still
- * on-screen); pumping a few frames first made the canvas catch up before
- * every sample.
- */
-async function pump(page, n) {
-  for (let i = 0; i < n; i++) await page.evaluate(() => true);
-}
 
 export default async function run() {
   return withPage({ label: "fuel" }, async (page, checks) => {
@@ -40,8 +25,8 @@ export default async function run() {
       };
       // A capture can land between the lock check and the teleport (the ship
       // is coasting through a planet's zone), so retry: break any lock, teleport,
-      // then poll for the arrival. flight.x/y/z only republish on a real frame
-      // and headless rAF lags under load, so a fixed pump is not enough.
+      // then poll for an unlocked arrival. teleport sets flight.x/y/z at once,
+      // so the poll's real job is to catch a lock that engaged around the jump.
       let attempts = 0, broke = false;
       const tries = [];
       for (; attempts < 3; attempts++) {
@@ -51,11 +36,11 @@ export default async function run() {
           await pollUntil(async () => !(await locked()), { timeoutMs: 5000, intervalMs: 100 });
         }
         await page.evaluate(([tx, ty, tz]) => window.__fitz.teleport(tx, ty, tz), [x, y, z]);
-        const arrived = await pollUntil(async () => (await distTo()) <= tolerance, { timeoutMs: 3000, intervalMs: 100 });
+        const arrived = await pollUntil(async () => !(await locked()) && (await distTo()) <= tolerance, { timeoutMs: 3000, intervalMs: 100 });
         if (arrived.ok) break;
         tries.push(`#${attempts + 1} missed by ${(await distTo()).toFixed(1)} locked=${await locked()}`);
       }
-      await pump(page, 10); // let the radar's rAF loop repaint at the new position
+      await nextFrames(page); // let the radar's rAF loop repaint at the new position
       const dist = await distTo();
       const stillLocked = await locked();
       checks.check(`${label}: teleport landed (within ${tolerance} unit${tolerance === 1 ? "" : "s"}, not orbit-locked)`,

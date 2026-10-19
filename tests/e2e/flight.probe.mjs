@@ -94,16 +94,16 @@ export default async function run() {
     // must never reach the edge bound (EDGE_BOUND) and must come
     // back inside. Start 20u inside the edge facing +X (yaw pi/2 points the
     // nose down +X), hold warp until the edge is crossed, release, then poll
-    // generously: headless sim time runs ~3x slower than wall time.
+    // generously in case the machine is slow.
     await page.evaluate(() => {
       window.__fitz.teleport(460, 0, 0);
       window.__fitz.setAttitude(Math.PI / 2, 0);
     });
     // The in-page recorder (harness.mjs) timestamps the crossing and the return
     // per animation frame and remembers any "RETURN BURN" broadcast, so none of
-    // this depends on poll timing. No sim clock is exposed, so the spec's
-    // "back inside within 6 simulated seconds" is asserted as <= 18 s wall
-    // (headless runs ~3x slow); the poll ceilings below are only hang guards.
+    // this depends on poll timing. It also sums simulated time (clamped frame
+    // dt) from the crossing, so the spec's "back inside within 6 simulated
+    // seconds" is asserted directly; the poll ceilings below are hang guards.
     await installEdgeRecorder(page, SYSTEM_RADIUS);
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
@@ -132,8 +132,8 @@ export default async function run() {
       `cut seen=${rec.cutSeen}, warp frames after the cut=${rec.rewarp}`);
     checks.check("the ship is returned inside the system", rec.tBack !== null,
       rec.tBack !== null ? `back inside ${SYSTEM_RADIUS}` : "never came back inside");
-    checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18,
-      `${backS.toFixed(1)}s wall`);
+    checks.check("the return takes at most 6 simulated seconds", rec.tBack !== null && rec.simBack <= 6,
+      `${rec.simBack.toFixed(2)}s simulated, ${backS.toFixed(1)}s wall`);
     checks.check("the return-burn radio line was broadcast", rec.burn);
     await stopEdgeRecorder(page);
 

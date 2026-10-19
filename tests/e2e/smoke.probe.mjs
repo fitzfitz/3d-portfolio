@@ -56,7 +56,18 @@ export default async function run() {
       camMax !== null && camMax.n >= 5 && camMax.max < 30,
       camMax ? `max distance to SPAWN=${camMax.max.toFixed(1)} over ${camMax.n} renders` : "no renders recorded");
 
-    await page.evaluate(() => window.__fitz.teleport(-230, -210, -230));
+    // Probes read `flight` straight after a teleport (to measure drift, or to
+    // aim from the new spot), so the telemetry must move in the same call, not
+    // a frame later: a stale read once aimed the mining beam ~150° off and
+    // counted the jump itself as 8u of idle drift (mechanics, on the GPU).
+    const same = await page.evaluate(() => {
+      window.__fitz.teleport(-230, -210, -230);
+      const f = window.__fitz.flight;
+      return { x: f.x, y: f.y, z: f.z, speed: f.speed };
+    });
+    checks.check("teleport updates flight telemetry in the same call",
+      same.x === -230 && same.y === -210 && same.z === -230 && same.speed === 0,
+      `flight=(${same.x.toFixed(1)}, ${same.y.toFixed(1)}, ${same.z.toFixed(1)}) speed=${same.speed.toFixed(2)}`);
     await new Promise((r) => setTimeout(r, 1200));
     const p = await page.evaluate(() => {
       const f = window.__fitz.flight;

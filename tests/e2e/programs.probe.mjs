@@ -1,4 +1,4 @@
-import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
 // system must not compile any more. Before ShaderWarmup compiled for the
@@ -75,10 +75,21 @@ function tour({ label, init, tier }) {
     const worldIds = await page.evaluate(async () => (await import("/src/data/worlds.ts")).WORLD_IDS);
     checks.check(`${tier}: the tour stops at every world`, worldIds.every((id) => stops.some(([name]) => name === id)),
       `stops=${stops.map(([name]) => name).join(", ")}`);
-    for (const [, x, y, z] of stops) {
+    // A stop that orbit-locks freezes the render loop (frameloop "never"),
+    // so nothing there would be drawn or compiled and the check below would
+    // pass without looking: every stop must stay unlocked.
+    const lockedAt = [];
+    for (const [name, x, y, z] of stops) {
       await page.evaluate((p) => window.__fitz.teleport(p[0], p[1], p[2]), [x, y, z]);
-      await settle(page, 2500);
+      await settle(page, 1000); // ~60 frames on the GPU
+      await nextFrames(page, 3); // and real frames on any backend (E2E_BACKEND=swiftshader draws ~1 a second)
+      if (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked)) {
+        lockedAt.push(name);
+        await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
+      }
     }
+    checks.check(`${tier}: no tour stop orbit-locked (a lock freezes rendering, so nothing there would compile)`,
+      lockedAt.length === 0, lockedAt.length ? `locked at ${lockedAt.join(", ")}` : "");
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
     await settle(page, 2500);

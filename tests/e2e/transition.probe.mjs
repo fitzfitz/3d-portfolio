@@ -1,4 +1,4 @@
-import { withPage, settle, toDeepSpace } from "./harness.mjs";
+import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
 // Measured on headless Chrome / SwiftShader (software rendering) -- see that
@@ -281,7 +281,7 @@ async function approachPlanet(page) {
 }
 
 export default async function run() {
-  return withPage({ label: "transition" }, async (page, checks) => {
+  return withPage({ label: "transition", backend: "swiftshader" }, async (page, checks) => {
     await toDeepSpace(page);
     await settle(page, 1000);
     await faceFromSun(page, false);
@@ -499,10 +499,17 @@ export default async function run() {
       frame1 !== null, `frame1=${frame1}`);
 
     if (frame1 !== null) {
-      await settle(page, 1000);
-      const frame2 = await page.evaluate(() => window.__fitz.gl.info.render.frame);
+      // The regression is a canvas that paints zero frames forever, so poll
+      // for the next frame up to the scene-ready timeout instead of a fixed
+      // 1 s: the fresh renderer recompiles its shaders first, which on a
+      // loaded machine under SwiftShader outlasted the window (35 -> 35).
+      const t0 = Date.now();
+      const next = await pollUntil(async () => {
+        const f = await page.evaluate(() => window.__fitz.gl.info.render.frame);
+        return f > frame1 ? f : null;
+      }, { timeoutMs: SCENE_READY_TIMEOUT_MS, intervalMs: 250 });
       checks.check("canvas resumes rendering after a classic-CV round trip while orbit-locked",
-        frame2 > frame1, `frame ${frame1} -> ${frame2}`);
+        next.ok, `frame ${frame1} -> ${next.value ?? frame1} after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     }
 
     await page.evaluate(() => window.__fitz.store.getState().breakOrbit());

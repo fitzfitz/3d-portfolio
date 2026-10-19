@@ -42,7 +42,7 @@ Delete an entry when it is fixed.
   in `src/data/worlds.ts`; give `PLANET_PROPS` the same field and scale
   Portfolio's polar axis, with its atmosphere and limb shells. Its occluder
   and clearance stay on the equatorial radius (L36).
-- **C2, the cartographer in the live sky (PR #35).** The `ch` field on the
+- **C2, the cartographer in the live sky (PR #36).** The `ch` field on the
   wire, the AURUM plume, the shout-out and the consent update. It touches
   `beacon-api/`, `src/utils/liveSkyProtocol.ts` and `src/data/plumeColors.ts`,
   so the Worker is deployed and verified first, then the site merges (spec
@@ -82,3 +82,24 @@ Delete an entry when it is fixed.
     push-out can briefly clip the near plane's corners into a world after a
     bounce; the slingshot badge's short hint still says "SLINGSHOT A PLANET"
     (its long hint says "PLANET OR WORLD").
+- **E2E checks that cannot fail as written** (read-only probe audit during the
+  e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
+  fixed there, to keep that branch about speed):
+  - `gameplay.probe.mjs:162-175`, the ring check runs while the scene loop is
+    frozen, so it reads the same frame it set up.
+  - `shipyard.probe.mjs:65`, the same: it reads a frozen frame.
+  - `gamepad.probe.mjs:50-57`, "left stick turns the ship" passes on residual
+    turn from the earlier steer, so a dead stick still passes. Settle the
+    heading first, or raise the bar above 0.5 rad.
+  - `touch.probe.mjs` RISE: coasting alone beats its +0.01 pitch bar. Wait
+    for pitch to settle before `pitchBefore`, then assert it rises or reaches
+    1.45.
+- **E2E timing gambles the GPU does not remove:** `transition.probe.mjs`'s two
+  orbit-lock setups miss at 25–46% of orbital phases (1–2.5 s of drift), and
+  the 1800 ms `breakOrbit` cooldown can block the second lock (:676/:684).
+  Pinning orbital phase with a debug hook would make its counters
+  pose-determined. `logbook.probe.mjs:28` reads the badge line 400 ms after
+  `recordBadge`; if any broadcast (silent chatter too) went out in the 3 s
+  before (`BADGE_LINE_HOLD_MS`), `announceLogbook` defers the line by 4.5 s
+  (`BADGE_LINE_DELAY_MS`) and the read misses it. Poll the aria-live text for
+  SLINGSHOT EARNED (about 6 s) instead of a fixed settle.
