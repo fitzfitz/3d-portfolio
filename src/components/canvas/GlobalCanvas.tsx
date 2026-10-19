@@ -6,6 +6,7 @@ import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
+import ProjectProbes from "./ProjectProbes";
 import SpacePlanets from "./SpacePlanets";
 import SpaceWorlds from "./SpaceWorlds";
 import Sun from "./Sun";
@@ -582,6 +583,8 @@ function GlobalCanvas() {
             {/* Spaceship craft */}
             <Spaceship />
             <TractorBeam />
+            {/* The three project probes: grabbed by the beam, so after it */}
+            <ProjectProbes />
 
             {/* Orbiting planets */}
             <SpacePlanets />

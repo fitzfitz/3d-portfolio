@@ -4,6 +4,9 @@ import * as THREE from "three";
 import { beamState } from "../../store/beamState";
 import { crystalSlots, flight, useSpaceStore } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
+import { PROBE_IDS } from "../../data/probes";
+import { probePos, probeRelocating } from "../../store/probeState";
+import { grabbableProbe } from "../../utils/probes";
 import { BEAM_MAX_TARGETS, BEAM_RANGE, BEAM_HALF_ANGLE, clearSelection, consider, inCone, nearestShardInCone } from "../../utils/tractorBeam";
 import { tetherCount, tetherPos } from "../../utils/mining";
 import { makeBeamGeometry, makePlumeMaterial } from "./enginePlume";
@@ -26,7 +29,7 @@ function putTether(arr: Float32Array, n: number, ox: number, oy: number, oz: num
 }
 
 /**
- * Tractor beam (spec §6): picks this frame's crystal and shard targets
+ * Tractor beam (spec §6): picks this frame's probe, crystal and shard targets
  * (nearest first, sharing the 3-target budget with tethered pebbles), sets the
  * shard reel, and draws a soft cone plus one tether per target. The cone
  * reuses the engine plume's shader with a teal uColor, and the tethers reuse
@@ -65,6 +68,12 @@ export default function TractorBeam() {
     // Tethered pebbles hold their slots; crystals and shards share the rest.
     const budget = BEAM_MAX_TARGETS - tetherCount();
     const { ox, oy, oz, dx, dy, dz } = beamState;
+    // A project probe first, so it holds its slot on a tie (ProjectProbes pulls it).
+    const probe = grabbableProbe(ox, oy, oz, dx, dy, dz, probePos, probeRelocating);
+    if (probe !== null) {
+      const p = probePos[probe];
+      consider(sel, budget, "probe", PROBE_IDS.indexOf(probe), -1, Math.hypot(p.x - ox, p.y - oy, p.z - oz), p.x, p.y, p.z);
+    }
     for (let i = 0; i < crystalSlots.length; i++) {
       const s = crystalSlots[i];
       if (!s.active) continue;

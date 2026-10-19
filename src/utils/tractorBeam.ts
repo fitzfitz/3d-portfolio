@@ -14,7 +14,7 @@ export const CRYSTAL_PULL_SPEED = 20;
 export const PEBBLE_PULL_SPEED = 8;
 export const REEL_ACCEL = 15;
 
-export type BeamKind = "crystal" | "shard" | "pebble";
+export type BeamKind = "crystal" | "shard" | "pebble" | "probe";
 
 /** Up to BEAM_MAX_TARGETS targets, nearest first. Parallel arrays: no allocation per frame. */
 export interface BeamSelection {

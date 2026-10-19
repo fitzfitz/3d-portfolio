@@ -229,6 +229,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             {probeNear ? `PROBE_${probeNear.toUpperCase()}` : (destinationById(activeZone)?.scanLabel ?? "DEEP_SPACE")}
           </span>
         </div>
+        {probeNear && !modalOpen && (
+          <div data-testid="hud-probe-tip" className="text-[9px] text-primary/80">
+            PROBE IN RANGE // HOLD {pad ? "LB" : isCoarse ? "BEAM" : "F"} TO GRAB
+          </div>
+        )}
         {activeZone && (
           <div className="text-[9px] text-primary/70 animate-pulse">
             {isOrbitLocked ? "> [GRAVITY LOCK] ENTERING ORBIT..." : "> [WARNING] GRAVITY FIELD DETECTED"}
