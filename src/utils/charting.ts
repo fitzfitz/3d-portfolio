@@ -51,3 +51,15 @@ export function chartLine(id: WorldId, count: number): string {
 
 /** The rarer line, once, when the last world is charted. */
 export const SURVEY_LINE = "SYSTEM SURVEY COMPLETE — EVERY WORLD CHARTED. YOU HOLD THE TITLE CARTOGRAPHER.";
+
+/** How long a shout-out waits for company after the fifth world: a day, then it is dropped. */
+export const SHOUT_PENDING_MS = 24 * 60 * 60 * 1000;
+
+/** Whether the "new cartographer" shout-out armed at `pendingAt` may still go out. */
+export function shoutDue(pendingAt: number | null, now: number): boolean {
+  return pendingAt !== null && now - pendingAt < SHOUT_PENDING_MS;
+}
+
+/** The radio line for another pilot's shout-out: a fixed template, no free text. */
+export const shoutLine = (cc: string | null): string =>
+  `A PILOT ${cc ? `FROM ${cc} ` : ""}HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.`;

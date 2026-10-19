@@ -10,7 +10,8 @@ import {
   liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, hudShowsRadio, writeRadarBlips,
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
-import type { ShipState } from "../../utils/liveSkyProtocol";
+import { CHART_TOTAL, type ShipState } from "../../utils/liveSkyProtocol";
+import { shoutDue, shoutLine } from "../../utils/charting";
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
@@ -81,6 +82,7 @@ export default function Ghosts() {
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (h) => window.clearTimeout(h as number),
     random: Math.random,
+    onCharted: (cc) => useSpaceStore.getState().announceLogbook(shoutLine(cc)),
   }), []);
   const noticeQueued = useRef(false);
   const wanted = useRef(false);
@@ -128,7 +130,8 @@ export default function Ghosts() {
       me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
       shipQuat(flight.heading, flight.pitch, me.q);
       me.plume = s.plumeColor;
-      conn.tick(me);
+      me.ch = Math.min(s.charted.length, CHART_TOTAL);
+      if (conn.tick(me, shoutDue(s.chartShoutAt, Date.now()))) s.clearChartShout();
     }
 
     const all = conn.ghosts.size ? conn.ghosts.sample(performance.now(), s.reducedMotion ? 0 : FADE_IN_MS) : NONE;

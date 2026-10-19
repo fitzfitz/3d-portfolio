@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { loadCharted, chartLine, SURVEY_LINE, isCartographer, type ChartRecord } from "../src/utils/charting";
+import {
+  loadCharted, chartLine, SURVEY_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, type ChartRecord,
+} from "../src/utils/charting";
+import { useSpaceStore } from "../src/store/spaceStore";
 import { WORLDS, WORLD_IDS } from "../src/data/worlds";
 import { ALL_LINE, logbookCount, plumeAllowed } from "../src/utils/logbook";
 import { hasPlumeColour } from "../src/data/plumeColors";
@@ -87,5 +90,30 @@ describe("the cartographer plume", () => {
     expect(plumeAllowed("cartographer", none, hasPlumeColour, [])).toBe(false);
     expect(plumeAllowed("cartographer", none, hasPlumeColour, all.slice(0, 4))).toBe(false);
     expect(plumeAllowed("cartographer", none, hasPlumeColour, all)).toBe(true);
+  });
+});
+
+describe("the cartographer shout-out", () => {
+  it("is due for 24 h after the fifth world, then never", () => {
+    expect(shoutDue(null, 1000)).toBe(false);
+    expect(shoutDue(1000, 2000)).toBe(true);
+    expect(shoutDue(1000, 1000 + SHOUT_PENDING_MS)).toBe(false);
+  });
+  it("reads as a fixed line, with or without a country", () => {
+    expect(shoutLine("ID")).toBe("A PILOT FROM ID HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.");
+    expect(shoutLine(null)).toBe("A PILOT HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.");
+  });
+  it("charting the fifth world arms it once", () => {
+    useSpaceStore.setState({ charted: [], chartShoutAt: null });
+    const st = () => useSpaceStore.getState();
+    for (const id of WORLD_IDS.slice(0, 4)) st().chartWorld(id);
+    expect(st().chartShoutAt).toBeNull();
+    st().chartWorld(WORLD_IDS[4]);
+    const armed = st().chartShoutAt;
+    expect(typeof armed).toBe("number");
+    st().chartWorld(WORLD_IDS[4]);
+    expect(st().chartShoutAt).toBe(armed);
+    st().clearChartShout();
+    expect(st().chartShoutAt).toBeNull();
   });
 });

@@ -188,7 +188,13 @@ describe("nearestGhosts", () => {
 });
 
 describe("shouldSend", () => {
-  const ME: ShipState = { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" };
+  const ME: ShipState = { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
+  it("sends when only the charted count changed", () => {
+    const s = newSendState();
+    markSent(s, 1000, ME);
+    expect(shouldSend(s, 1, 1500, ME)).toBe(false);
+    expect(shouldSend(s, 1, 1500, { ...ME, ch: 1 })).toBe(true);
+  });
   it("never sends while alone", () => {
     expect(shouldSend(newSendState(), 0, 1000, ME)).toBe(false);
   });

@@ -258,6 +258,10 @@ export const bodies: Record<string, { x: number; y: number; z: number }> = Objec
 
 /** Charted worlds from fitz-charted, read once at import (sanitised). */
 const initialCharted = loadCharted(safeGetJSON<unknown>("fitz-charted", []));
+const initialShout = (() => {
+  const v = safeGetJSON<unknown>("fitz-charted-shout", null);
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+})();
 
 /**
  * Which worlds are charted, for what draws only once a world is: module-level
@@ -410,6 +414,13 @@ export interface SpaceState {
    * report; the fifth also announces the survey.
    */
   chartWorld: (id: WorldId) => void;
+  /**
+   * When the fifth world was charted, until the live sky has announced it
+   * (persisted as fitz-charted-shout; see shoutDue). Null when nothing is due.
+   */
+  chartShoutAt: number | null;
+  /** The shout-out went out (or is dropped): stop offering it. */
+  clearChartShout: () => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -505,7 +516,18 @@ export const useSpaceStore = create<SpaceState>()(
       set({ charted: next });
       worldVisibility[id].charted = true;
       get().announceLogbook(chartLine(id, next.length));
-      if (isCartographer(next)) get().announceLogbook(SURVEY_LINE);
+      if (isCartographer(next)) {
+        get().announceLogbook(SURVEY_LINE);
+        // The live sky tells everyone else, once (Ghosts.tsx).
+        const at = Date.now();
+        safeSetJSON("fitz-charted-shout", at);
+        set({ chartShoutAt: at });
+      }
+    },
+    chartShoutAt: initialShout,
+    clearChartShout: () => {
+      safeSetJSON("fitz-charted-shout", null);
+      set({ chartShoutAt: null });
     },
     changelogOpen: false,
     changelogSeen: initialChangelogSeen,

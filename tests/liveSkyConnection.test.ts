@@ -21,7 +21,7 @@ class FakeSocket implements SocketLike {
   drop() { this.readyState = 3; this.onclose?.(); }
 }
 
-function harness(createSocket: (url: string) => SocketLike = (u) => new FakeSocket(u)) {
+function harness(createSocket: (url: string) => SocketLike = (u) => new FakeSocket(u), onCharted?: (cc: string | null) => void) {
   let clock = 0;
   let nextId = 1;
   const timers: { at: number; fn: () => void; id: number }[] = [];
@@ -32,6 +32,7 @@ function harness(createSocket: (url: string) => SocketLike = (u) => new FakeSock
     setTimer: (fn, ms) => { const id = nextId++; timers.push({ at: clock + ms, fn, id }); return id; },
     clearTimer: (h) => { const i = timers.findIndex((t) => t.id === h); if (i >= 0) timers.splice(i, 1); },
     random: () => 0.5,
+    onCharted,
   });
   const advance = (ms: number) => {
     const end = clock + ms;
@@ -49,7 +50,7 @@ function harness(createSocket: (url: string) => SocketLike = (u) => new FakeSock
   return { conn, advance, last };
 }
 
-const ME: ShipState = { p: [1.234, 2, 3], q: [0, 0, 0, 1], plume: "stock" };
+const ME: ShipState = { p: [1.234, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
 const ship = (id: string) => ({ id, p: [5, 0, 0], q: [0, 0, 0, 1], plume: "ring", cc: "ID", ago: 0 });
 
 beforeEach(() => { FakeSocket.all = []; });
@@ -240,5 +241,50 @@ describe("LiveSkyConnection", () => {
     conn.setWanted(false);
     conn.setWanted(true);
     expect(FakeSocket.all).toHaveLength(2);
+  });
+});
+
+describe("LiveSkyConnection: the charted count (C2)", () => {
+  const company = () => {
+    const h = harness();
+    h.conn.setWanted(true);
+    h.last().open();
+    h.last().serve({ t: "hello", id: "me1", peers: 1 });
+    return h;
+  };
+  const sent = (h: ReturnType<typeof harness>) => h.last().sent.map((s) => JSON.parse(s));
+  it("sends ch only when above 0", () => {
+    const h = company();
+    h.conn.tick(ME);
+    expect("ch" in sent(h)[0]).toBe(false);
+    h.advance(300);
+    h.conn.tick({ ...ME, ch: 3 });
+    expect(sent(h)[1].ch).toBe(3);
+  });
+  it("claims the title right after a pose with all five charted", () => {
+    const h = company();
+    expect(h.conn.tick({ ...ME, ch: 5, plume: "cartographer" }, true)).toBe(true);
+    expect(sent(h)).toEqual([
+      { t: "me", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "cartographer", ch: 5 },
+      { t: "charted" },
+    ]);
+  });
+  it("makes no claim below five", () => {
+    const h = company();
+    expect(h.conn.tick({ ...ME, ch: 4 }, true)).toBe(false);
+    expect(sent(h).some((m) => m.t === "charted")).toBe(false);
+  });
+  it("makes no claim on a tick that sent no pose", () => {
+    const h = company();
+    h.conn.tick({ ...ME, ch: 5 });
+    expect(h.conn.tick({ ...ME, ch: 5 }, true)).toBe(false);
+  });
+  it("hands a shout-out from the room to onCharted", () => {
+    const heard: (string | null)[] = [];
+    const h = harness(undefined, (cc) => heard.push(cc));
+    h.conn.setWanted(true);
+    h.last().open();
+    h.last().serve({ t: "charted", cc: "ID" });
+    expect(heard).toEqual(["ID"]);
   });
 });

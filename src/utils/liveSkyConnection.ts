@@ -1,5 +1,5 @@
 import { GhostBuffer, markSent, newSendState, parseServerMessage, shouldSend } from "./liveSky";
-import { roundState, type ShipState } from "./liveSkyProtocol";
+import { roundState, CHART_TOTAL, type ShipState } from "./liveSkyProtocol";
 
 /**
  * The live sky socket's lifecycle (spec §4.2): connect when wanted, back off on
@@ -24,6 +24,8 @@ export interface ConnectionDeps {
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(handle: unknown): void;
   random(): number;
+  /** Another pilot just charted every world (the room's relayed shout-out). */
+  onCharted?: (cc: string | null) => void;
 }
 
 const OPEN = 1;
@@ -88,18 +90,29 @@ export class LiveSkyConnection {
     if (this.hiddenLong) { this.hiddenLong = false; this.reconcile(); }
   }
 
-  /** Per frame. `me` is null while the ship may not be shared yet (the notice has not been shown). */
-  tick(me: ShipState | null): void {
+  /**
+   * Per frame. `me` is null while the ship may not be shared yet (the notice
+   * has not been shown). With `shout`, a tick that sends a pose with every
+   * world charted follows it with the title claim, which the room only
+   * relays after such a pose. Returns whether the claim went out.
+   */
+  tick(me: ShipState | null, shout = false): boolean {
     const ws = this.socket;
-    if (!me || !ws || ws.readyState !== OPEN) return;
+    if (!me || !ws || ws.readyState !== OPEN) return false;
     const r = roundState(me, this.rounded);
     const now = this.deps.now();
-    if (!shouldSend(this.sendState, this.peers, now, r)) return;
+    if (!shouldSend(this.sendState, this.peers, now, r)) return false;
     try {
-      ws.send(JSON.stringify({ t: "me", p: r.p, q: r.q, plume: r.plume }));
+      // `ch` only when above 0: a pilot who charted nothing sends what it always did.
+      ws.send(JSON.stringify(r.ch > 0 ? { t: "me", p: r.p, q: r.q, plume: r.plume, ch: r.ch } : { t: "me", p: r.p, q: r.q, plume: r.plume }));
       this.sent++;
       markSent(this.sendState, now, r);
+      if (shout && r.ch === CHART_TOTAL) {
+        ws.send('{"t":"charted"}');
+        return true;
+      }
     } catch { /* closing; onclose follows */ }
+    return false;
   }
 
   dispose(): void {
@@ -169,6 +182,7 @@ export class LiveSkyConnection {
       case "hello": this.selfId = m.id; this.peers = m.peers; break;
       case "peers": this.peers = m.n; if (m.n === 0) this.ghosts.clear(); break;
       case "sync": this.sendState.syncPending = true; break;
+      case "charted": this.deps.onCharted?.(m.cc); break;
       case "snap": this.ghosts.push(m.ships.filter((s) => s.id !== this.selfId && !this.formerIds.has(s.id)), this.deps.now()); break;
       case "full":
         this.full = true;

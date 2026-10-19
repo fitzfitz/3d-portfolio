@@ -206,13 +206,13 @@ export function writeRadarBlips(poses: readonly GhostPose[]): void {
   liveRadar.count = poses.length;
 }
 
-export interface SendState { lastAt: number; lastP: Vec3 | null; lastQ: Quat | null; lastPlume: string | null; syncPending: boolean }
-export const newSendState = (): SendState => ({ lastAt: -Infinity, lastP: null, lastQ: null, lastPlume: null, syncPending: false });
+export interface SendState { lastAt: number; lastP: Vec3 | null; lastQ: Quat | null; lastPlume: string | null; lastCh: number; syncPending: boolean }
+export const newSendState = (): SendState => ({ lastAt: -Infinity, lastP: null, lastQ: null, lastPlume: null, lastCh: 0, syncPending: false });
 
 /** Spec §3.2: only with company, at most every 200 ms, and only when something changed or the room asked. */
 export function shouldSend(s: SendState, peers: number, now: number, me: ShipState): boolean {
   if (peers <= 0 || now - s.lastAt < SEND_INTERVAL_MS) return false;
-  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || now - s.lastAt >= KEEPALIVE_MS) return true;
+  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || s.lastCh !== me.ch || now - s.lastAt >= KEEPALIVE_MS) return true;
   const moved = Math.hypot(
     (me.p[0] - s.lastP[0]),
     (me.p[1] - s.lastP[1]),
@@ -228,6 +228,7 @@ export function markSent(s: SendState, now: number, me: ShipState): void {
   s.lastP = [...me.p];
   s.lastQ = [...me.q];
   s.lastPlume = me.plume;
+  s.lastCh = me.ch;
   s.syncPending = false;
 }
 
