@@ -188,12 +188,16 @@ export default function Spaceship() {
   // Dev-only: e2e probes and the QA checklist need to reposition the ship.
   // `flight` cannot be used for this — it is written FROM pos every frame, so
   // assigning to it is a no-op. Registering here is the only way to reach pos.
+  // The telemetry is mirrored at once too: a probe reading `flight` before the
+  // next frame would otherwise see the old spot.
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.teleport = (x: number, y: number, z: number) => {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
       zeroGravity();
+      flight.x = x; flight.y = y; flight.z = z;
+      flight.speed = 0;
     };
     fitzDebug.setAttitude = (yaw: number, nosePitch: number) => {
       angle.current = yaw;
