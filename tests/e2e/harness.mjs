@@ -7,6 +7,19 @@ import { DEEP_SPACE_POINT } from "./deepSpacePoint.mjs";
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PORT = 5199;
+
+/**
+ * Which WebGL backend withPage launches Chrome with. "swiftshader" (the CPU
+ * rasterizer) is what every ceiling in docs/PERF-BUDGETS.md was measured on;
+ * "gpu" is headless Chrome's default ANGLE/Metal path on this Mac, ~4x faster
+ * to scene-ready and ~60 fps instead of ~1. A probe can pin its own backend;
+ * otherwise E2E_BACKEND picks.
+ */
+export const DEFAULT_BACKEND = process.env.E2E_BACKEND ?? "swiftshader";
+const BACKEND_ARGS = {
+  swiftshader: ["--enable-unsafe-swiftshader", "--use-gl=swiftshader"],
+  gpu: [],
+};
 export const BASE_URL = `http://localhost:${PORT}`;
 
 /**
@@ -105,6 +118,14 @@ export const isFontHost = (url) => {
 export const respondInertFont = (req) =>
   req.respond({ status: 200, contentType: "text/css", body: "" });
 
+/**
+ * Per-page phase timings (wall ms), one record per `withPage` call, read by
+ * run.mjs for its timing report. `current` is the page being driven, so
+ * `settle()` can charge its blind waits to it.
+ */
+export const timings = [];
+let current = null;
+
 let server = null;
 
 export async function startServer() {
@@ -168,13 +189,20 @@ export class Checks {
  * reduce` OS preference before navigation, so the app's own media-query
  * detection sees it on its very first render.
  */
-export async function withPage({ label, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false, expectedErrors = [], initScript = null }, fn) {
+export async function withPage({ label, backend = DEFAULT_BACKEND, device = null, viewport = { width: 1280, height: 800 }, emulateReducedMotion = false, expectedErrors = [], initScript = null }, fn) {
   await startServer();
+  if (!BACKEND_ARGS[backend]) throw new Error(`unknown e2e backend "${backend}"`);
+  const t = { label, backend, settleMs: 0 };
+  let mark = Date.now();
+  const lap = (phase) => { const now = Date.now(); t[phase] = now - mark; mark = now; };
+  timings.push(t);
+  current = t;
   const browser = await puppeteer.launch({
     executablePath: CHROME,
     headless: true,
-    args: ["--enable-unsafe-swiftshader", "--use-gl=swiftshader"],
+    args: BACKEND_ARGS[backend],
   });
+  lap("launch");
   const checks = new Checks(label);
   const errors = [];
   try {
@@ -206,6 +234,17 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     };
     page.on("request", offlineFonts);
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+    lap("goto");
+    // A GPU run that silently fell back to SwiftShader would pass every check
+    // at the wrong speed, so the renderer string is asserted, not assumed.
+    const renderer = await page.evaluate(() => {
+      const gl = document.createElement("canvas").getContext("webgl2");
+      const ext = gl?.getExtension("WEBGL_debug_renderer_info");
+      return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "unknown";
+    });
+    if (/swiftshader/i.test(renderer) !== (backend === "swiftshader")) {
+      throw new Error(`asked for the ${backend} backend but Chrome rendered with "${renderer}"`);
+    }
     // Lock low-perf off as early as possible: `window.__fitz` exists from
     // main.tsx's module evaluation, before React renders and so before the
     // (lazily loaded) Canvas and its PerformanceMonitor can mount. Locking it
@@ -216,9 +255,11 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     // 105 on consecutive runs).
     await page.waitForFunction(() => !!window.__fitz?.store, { timeout: CANVAS_READY_TIMEOUT_MS });
     await page.evaluate(() => window.__fitz.store.getState().setLowPerf(false, true));
+    lap("store");
     // See CANVAS_READY_TIMEOUT_MS / SCENE_READY_TIMEOUT_MS above for why
     // these are this large — eager Preload compile, not a slow app.
     await page.waitForSelector("canvas", { timeout: CANVAS_READY_TIMEOUT_MS });
+    lap("canvas");
     const sceneReadyStart = Date.now();
     // "Ready" is the store's sceneReady, set by ShaderWarmup once shaders are
     // linked and textures uploaded — not window.__fitz.scene, which DebugBridge
@@ -227,6 +268,7 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     await page.waitForFunction(() => !!window.__fitz?.scene && window.__fitz.store.getState().sceneReady,
       { timeout: SCENE_READY_TIMEOUT_MS });
     const sceneReadyMs = Date.now() - sceneReadyStart;
+    lap("compile");
     // A real regression assertion, not just a generous outer timeout: see
     // STARTUP_DURATION_CEILING_MS above for why 60s alone lets a 2x slowdown
     // through silently.
@@ -245,9 +287,15 @@ export async function withPage({ label, device = null, viewport = { width: 1280,
     await settle(page, 4000); // let GLBs load and the first frames run
     page.off("request", offlineFonts);
     await page.setRequestInterception(false);
+    lap("warm");
+    t.settleMs = 0; // count only the probe body's blind waits below
     await fn(page, checks);
+    lap("body");
   } finally {
+    if (!("body" in t)) lap("body");
     await browser.close();
+    lap("close");
+    current = null;
     checks.check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   }
   return checks;
@@ -289,6 +337,7 @@ export async function tap(page, testId, ms = 400) {
 // for a currently-nonexistent problem. touch.probe.mjs's local interleaving
 // remains the only place this trap has actually bitten.)
 export function settle(page, ms) {
+  if (current) current.settleMs += ms;
   return new Promise((r) => setTimeout(r, ms));
 }
 
