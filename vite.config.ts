@@ -34,7 +34,7 @@ function assetPack(): Plugin {
         packs[t] = { file: `world-${t}.${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}.pack`, bytes }
       }
       const refs = Object.fromEntries(Object.entries(packs).map(([t, p]) => [t, { file: p.file, size: p.bytes.length }]))
-      return { define: { 'import.meta.env.VITE_ASSET_PACKS': JSON.stringify(refs) } }
+      return { define: { 'import.meta.env.VITE_ASSET_PACKS': JSON.stringify(JSON.stringify(refs)) } }
     },
     configResolved(c) {
       outDir = resolve(c.root, c.build.outDir)
