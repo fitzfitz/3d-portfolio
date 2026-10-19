@@ -434,3 +434,7 @@ verification runs read the same: deep space 35 / 241,916, 40 anomalies 35 / 241,
 39 and 36 before were view-dependent), programs 54 / 55. Facing the sun read 108 on every
 run but one independent re-run, which read 107 with the same triangles (a points or lines
 draw that comes and goes); the 130 ceiling has 22 to spare. Ceilings changed: none; one added.
+
+**Probe dossiers (PR 39).** The "modal open" state now means an open probe dossier (the
+tractor beam reels the probe in, then the dossier freezes the frame). The three probes are
+small models; no load-program ceiling changes from this note, and the table figures above stand.

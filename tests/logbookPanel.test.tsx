@@ -15,9 +15,13 @@ describe("LogbookPanel dossier re-open", () => {
   it("renders a re-open button for a done dossier only", () => {
     seed({ logbookOpen: true, showClassicCV: false, visitedDossiers: ["ruangrapi"] });
     const html = renderToStaticMarkup(<LogbookPanel />);
-    expect(html).toContain('aria-label="Re-open the RuangRapi dossier"');
-    expect(html).not.toContain("Re-open the fuxx dossier");
-    expect(html).not.toContain("Re-open the Flight-Sim CV dossier");
+    // WCAG 2.5.3: the accessible name starts with the visible text, then adds the cue.
+    const btn = html.match(/<button[^>]*data-testid="logbook-reopen-ruangrapi"[^>]*>(.*?)<\/button>/)?.[1] ?? "";
+    expect(html).not.toContain("aria-label=\"Re-open");
+    expect(btn.replace(/<[^>]+>/g, "")).toBe("Read the RuangRapi dossier, re-open");
+    expect(btn.startsWith("Read the RuangRapi dossier")).toBe(true);
+    expect(html).not.toContain("logbook-reopen-fuxx");
+    expect(html).not.toContain("logbook-reopen-portfolio");
   });
   it("reopenDossier opens it with via logbook; closing leaves probeSpots alone", () => {
     seed({ visitedDossiers: ["fuxx"] });

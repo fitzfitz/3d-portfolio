@@ -11,10 +11,7 @@ import { isCartographer } from "../../utils/charting";
 import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
 
-const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
-/** "Read the RuangRapi dossier" -> "RuangRapi". */
-const dossierName = (title: string) => title.replace(/^Read the /, "").replace(/ dossier$/, "");
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
@@ -74,10 +71,10 @@ export default function LogbookPanel() {
         </span>
         <span className="flex-1">
           {isDone && isDossierEntry(e.id) ? (
-            <button type="button" data-testid={`logbook-reopen-${e.id}`} aria-label={`Re-open the ${dossierName(e.title)} dossier`}
+            <button type="button" data-testid={`logbook-reopen-${e.id}`}
               onClick={() => reopenDossier(e.id)}
               className="text-white underline decoration-white/30 underline-offset-2 hover:decoration-primary focus-visible:ring-1 focus-visible:ring-primary outline-none cursor-pointer text-left">
-              {e.title}
+              {e.title}<span className="sr-only">, re-open</span>
             </button>
           ) : (
             <span className={isDone ? "text-white" : "text-white/60"}>{e.title}</span>

@@ -1,7 +1,7 @@
 # Fitzgeral — 3D Flight-Sim CV
 
-An interactive CV you fly through. Three planets are three projects; fly close
-enough and the ship locks into orbit and opens the dossier. There is a classic
+An interactive CV you fly through. Three probes are three projects; fly close
+and hold `F` to reel one in with the tractor beam and open its dossier. There is a classic
 resume view too, for people who would rather read than fly.
 
 **Live:** https://fitzfitz.github.io/3d-portfolio/
@@ -18,10 +18,11 @@ Tailwind, on Vite.
 | `Space` | Pitch up |
 | `C` / `X` | Pitch down |
 | `E` (hold) | Scan a nearby object |
+| `F` (hold) | Tractor beam: reel in crystals, belt pebbles and project probes |
 | `P` | Photo mode |
 | `B` | Drop a beacon (only when a beacon API is configured) |
 | `J` | Summon the space jellyfish |
-| `1`–`3` | Jump straight into a project's orbit (opens its dossier) |
+| `1`–`3` | Jump next to a project probe (grab it with `F` to open its dossier) |
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
 | `6` | Jump to the contact portal |
@@ -29,7 +30,7 @@ Tailwind, on Vite.
 
 No flying required: the spawn card has jump buttons for each project, the
 sector list (bottom right) jumps on click, and a waypoint marks the next unread
-dossier. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
+probe. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
 **Time trial.** The amber ring in the inner belt, near the sun, starts a lap of nine rings
@@ -45,7 +46,7 @@ text, and later visitors can scan it. Without the API the feature is absent. See
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
-photo mode, `B` closes a dossier, the d-pad (clockwise from up) jumps like
+photo mode, `B` closes a dossier, `LB` grabs a probe, the d-pad (clockwise from up) jumps like
 `1`–`4`, View jumps to the shipyard, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
 Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
