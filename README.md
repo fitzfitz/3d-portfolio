@@ -63,6 +63,14 @@ npm install
 npm run dev
 ```
 
+A production build (`npm run build`) ships `public/models` as three asset
+packs at the site root, the way a Unity or Godot web build ships its data:
+`world-common.<hash>.pack`, plus `world-hd.<hash>.pack` (the planets' 4096
+maps) or `world-sd.<hash>.pack` (their 2048 originals), one tier per device.
+The loose `models/` files still ship as the fallback for a pack that fails.
+`ASSET_PACK=0 npm run build` builds without packs, for comparisons. Dev and
+the e2e harness always use the loose files.
+
 The contact form relays through [Web3Forms](https://web3forms.com). Copy
 `.env.example` to `.env` and set `VITE_FORM_KEY` to enable it; with the key
 empty the form degrades to a `mailto:` link rather than rendering a form that
@@ -94,6 +102,13 @@ runs on the real GPU, four at a time; the full suite takes about five minutes.
 unpinned probe back on the CPU rasterizer, and `E2E_TIMING_OUT=file.json`
 saves per-page phase timings.
 
+Load speed is compared outside the suite, between two production builds:
+`node scripts/perf/first-frame-ab.mjs <dirA> <dirB>` serves both through
+`scripts/perf/shared-link-server.mjs`, which gives every response one shared
+bandwidth budget like a home connection (DevTools throttling limits each
+request on its own and flatters many small files), and prints the time to the
+spawn banner at 2 and 6 MB/s.
+
 Two things to know before running the whole suite:
 
 - It needs a real Chrome at the path hardcoded in `tests/e2e/harness.mjs`, so
@@ -116,6 +131,11 @@ every model and planet texture comes from a deterministic script in this repo.
 npm run assets:generate   # regenerate everything (Blender headless + scripts/textures/)
 npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public/
 ```
+
+Every file in `public/models/` goes into an asset pack automatically
+(`vite.config.ts`, `src/utils/packFormat.ts`). Naming decides the tier: an
+`x_4k.*` file is HD, the `x.*` it replaces is SD, and everything else is in
+the common pack every device downloads.
 
 | Asset | Generator |
 | --- | --- |
@@ -169,6 +189,16 @@ image URLs in `index.html` are deliberately absolute — scrapers do not reliabl
 resolve relative `og:image`, and Vite's HTML rewriting covers `og:image` but not
 `twitter:image`. A custom domain later means updating `og:url`, `canonical`,
 `og:image` and `twitter:image` by hand.
+
+### The service worker
+
+Production builds register `public/sw.js`. It fetches pages network first (a
+deploy shows on the next visit, the cached page only when offline), serves the
+hashed `assets/*` files from its cache, and leaves the asset packs to
+`src/utils/assetPack.ts`, which keeps them in Cache Storage. The build stamps
+the worker with its own file list, and the worker drops cached files from
+older builds. To retire the worker, deploy the kill-switch version written out
+in the header of `public/sw.js`.
 
 ### `beacon-api` shares bounds with the client
 

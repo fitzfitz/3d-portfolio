@@ -1,4 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { loadAssetPack } from "./utils/assetPack";
+import { registerServiceWorker } from "./utils/serviceWorker";
 import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
@@ -17,8 +19,13 @@ import HangarPanel from "./components/layout/HangarPanel";
 import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
-// `?cv` or no-WebGL visitor never downloads it at all.
-const GlobalCanvas = lazy(() => import("./components/canvas/GlobalCanvas"));
+// `?cv` or no-WebGL visitor never downloads it at all. In a build, the asset
+// packs start downloading alongside it; the canvas mounts as soon as its code
+// is in, and only the scene inside waits for the packs (GlobalCanvas PackGate).
+const GlobalCanvas = lazy(() => {
+  void loadAssetPack();
+  return import("./components/canvas/GlobalCanvas");
+});
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
@@ -39,7 +46,7 @@ import PerfOverlay from "./debug/PerfOverlay";
 /**
  * Shown while the engine chunk downloads. Matches index.html's pre-React
  * overlay, so the hand-off from HTML to React to the canvas's own progress
- * readout doesn't flash.
+ * readout (which also shows the asset packs streaming) doesn't flash.
  */
 function EngineLoading() {
   return (
@@ -60,6 +67,12 @@ export default function App() {
   useGamepadInput();
   useSound();
   useReducedMotion();
+  // After the first render, not at module load: that render is what starts
+  // the asset-pack download (the lazy GlobalCanvas), and the worker must see
+  // it started and wait, or its hand-over re-fetch competes with the packs.
+  useEffect(() => {
+    if (import.meta.env.PROD) registerServiceWorker();
+  }, []);
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);

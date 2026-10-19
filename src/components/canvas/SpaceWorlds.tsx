@@ -73,14 +73,18 @@ const ringNormal = { value: new THREE.Vector3(0, 1, 0) };
 const ORBIT_LINE_OPACITY = 0.2;
 
 const mapUrl = (file: string) => assetUrl(`/models/${file}.webp`);
-const COLOR_URLS = WORLDS.map((w) => mapUrl(w.map));
 const NORMAL_WORLDS = WORLDS.filter((w) => NORMAL_MAPPED.has(w.id));
-const NORMAL_URLS = NORMAL_WORLDS.map((w) => mapUrl(`${w.map}_normal`));
-const RING_URL = mapUrl(`${WORLDS[RINGED].map}_ring`);
-const RING_TEX = COLOR_URLS.length + NORMAL_URLS.length;
+const RING_TEX = WORLDS.length + NORMAL_WORLDS.length;
+// Resolved at render, not at import: in a build, assetUrl answers from the
+// asset pack, which can still be downloading while this module loads.
+const mapUrls = () => [
+  ...WORLDS.map((w) => mapUrl(w.map)),
+  ...NORMAL_WORLDS.map((w) => mapUrl(`${w.map}_normal`)),
+  mapUrl(`${WORLDS[RINGED].map}_ring`),
+];
 
 export default function SpaceWorlds() {
-  const textures = useTexture([...COLOR_URLS, ...NORMAL_URLS, RING_URL]);
+  const textures = useTexture(mapUrls());
   const gl = useThree((s) => s.gl);
 
   // The ring strip: colour in RGB (sRGB, decoded on sampling; alpha stays
@@ -108,7 +112,7 @@ export default function SpaceWorlds() {
     const n = NORMAL_WORLDS.indexOf(w);
     const m = new THREE.MeshStandardMaterial({
       map: textures[i], roughness: 0.95, metalness: 0,
-      normalMap: n >= 0 ? textures[COLOR_URLS.length + n] : null,
+      normalMap: n >= 0 ? textures[WORLDS.length + n] : null,
     });
     // The shared dark-surface display curve (displayAlbedo.ts, P3): it lifts
     // the rock and the dwarf, keeps their order and leaves the giants as they are.
@@ -151,7 +155,7 @@ export default function SpaceWorlds() {
       if (i === RING_TEX) return; // set up with ringMap
       tex.anisotropy = maxAniso;
       // Normal maps are data, not colour: they stay linear.
-      tex.colorSpace = i < COLOR_URLS.length ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      tex.colorSpace = i < WORLDS.length ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       tex.needsUpdate = true;
     });
   }, [textures, gl]);

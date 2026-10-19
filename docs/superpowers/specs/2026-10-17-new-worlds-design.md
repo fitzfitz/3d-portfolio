@@ -363,7 +363,7 @@ Two PRs, each shipped before the next.
    - The AURUM plume waits for C2, because a plume id goes on the wire.
    - No Worker change.
    - Changelog: "New Worlds".
-2. **C2 — The cartographer in the live sky (PR #35).**
+2. **C2 — The cartographer in the live sky (PR #37; #35 went to the e2e speed-up and #36 to the asset packs).**
    - Covers `ch`, the plume, the shout-out and the consent update.
    - **Worker deployed first and verified, then the site merged.**
    - Changelog entry.

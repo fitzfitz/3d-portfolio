@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
-import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
-import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
+import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
+import { Suspense, use, useRef, useMemo, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
 import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
@@ -46,6 +46,15 @@ import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
 import { SPAWN } from "../../data/spawn";
+import { HAS_ASSET_PACK, loadAssetPack, onPackEntry, packProgress } from "../../utils/assetPack";
+
+// Parse each model the moment the asset pack delivers it (utils/assetPack.ts),
+// while the rest still streams, so the scene's own useGLTF finds it cached.
+// Keyed by the same blob: URL assetUrl() returns. Textures are not preloaded:
+// useTexture caches by the whole URL list a component asks for.
+onPackEntry((path, url) => {
+  if (path.endsWith(".glb")) useGLTF.preload(url);
+});
 
 interface StarLayerProps {
   count: number;
@@ -237,6 +246,16 @@ function LoadProgress() {
 
     let raf = 0;
     const tick = () => {
+      // While the asset packs stream, they are the whole wait: show their
+      // bytes. The loading manager only sees the instant blob: loads after.
+      if (HAS_ASSET_PACK && !packProgress.done) {
+        const { loaded, total } = packProgress;
+        const mb = (n: number) => (n / 1048576).toFixed(1);
+        if (barRef.current) barRef.current.style.width = `${total ? ((loaded / total) * 100).toFixed(0) : 0}%`;
+        if (labelRef.current) labelRef.current.textContent = `${mb(loaded)} / ${mb(total)} MB`;
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const { progress, item } = stateRef.current;
       if (barRef.current) barRef.current.style.width = `${progress.toFixed(0)}%`;
       if (labelRef.current) {
@@ -265,6 +284,18 @@ function LoadProgress() {
       <div ref={labelRef} className="font-mono text-[9px] text-primary/50 mt-2" />
     </Html>
   );
+}
+
+/**
+ * Holds the scene until the asset packs settle (utils/assetPack.ts), so every
+ * assetUrl() inside answers from the packs, never with a loose /models URL.
+ * Everything outside it (the Canvas, its WebGL context, PostFX) mounts at
+ * once and gets ready while the packs download. loadAssetPack() is one
+ * cached promise that never rejects, which use() requires.
+ */
+function PackGate({ children }: { children: ReactNode }) {
+  use(loadAssetPack());
+  return children;
 }
 
 function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void }) {
@@ -511,117 +542,119 @@ function GlobalCanvas() {
           }}
         />
         <Suspense fallback={<LoadProgress />}>
-          {import.meta.env.DEV && <DebugBridge />}
-          {import.meta.env.DEV && <PerfSampler />}
+          <PackGate>
+            {import.meta.env.DEV && <DebugBridge />}
+            {import.meta.env.DEV && <PerfSampler />}
 
-          {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
-          <Environment resolution={64} frames={1}>
-            <color attach="background" args={["#050310"]} />
-            <Lightformer form="rect" intensity={1.1} color="#3a4a8f" position={[0, 8, -10]} scale={[14, 7, 1]} />
-            <Lightformer form="rect" intensity={0.7} color="#ff5500" position={[9, -3, 4]} scale={[8, 4, 1]} />
-            <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
-          </Environment>
+            {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
+            <Environment resolution={64} frames={1}>
+              <color attach="background" args={["#050310"]} />
+              <Lightformer form="rect" intensity={1.1} color="#3a4a8f" position={[0, 8, -10]} scale={[14, 7, 1]} />
+              <Lightformer form="rect" intensity={0.7} color="#ff5500" position={[9, -3, 4]} scale={[8, 4, 1]} />
+              <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
+            </Environment>
 
-          {/* Ambient galactic backdrop lighting; with the IBL above it falls
-              off like the sunlight past 1 AU (ExposureDriver, L19) */}
-          <ambientLight ref={registerFillAmbient} intensity={AMBIENT_BASE} />
-          {/* The sun: single dominant light at the origin — gives every body a
-              real day side and terminator (realistic-planets spec G2) */}
-          {/* 2.1 at 1 AU, up from 2.0: absorbs Sun.tsx's second light at the
-              origin (4.8, decay 0.8), which added only ~5% at planet distance
-              and cost a full light in every lit fragment. Falls off as 1/d²
-              since F3 (sunLight.ts). */}
-          <SunLight />
-          {/* The camera's exposure and the sun/overlay compensation (F3) */}
-          <ExposureDriver />
+            {/* Ambient galactic backdrop lighting; with the IBL above it falls
+                off like the sunlight past 1 AU (ExposureDriver, L19) */}
+            <ambientLight ref={registerFillAmbient} intensity={AMBIENT_BASE} />
+            {/* The sun: single dominant light at the origin — gives every body a
+                real day side and terminator (realistic-planets spec G2) */}
+            {/* 2.1 at 1 AU, up from 2.0: absorbs Sun.tsx's second light at the
+                origin (4.8, decay 0.8), which added only ~5% at planet distance
+                and cost a full light in every lit fragment. Falls off as 1/d²
+                since F3 (sunLight.ts). */}
+            <SunLight />
+            {/* The camera's exposure and the sun/overlay compensation (F3) */}
+            <ExposureDriver />
 
-          {/* Painted galactic sky (scene.background, rendered once) */}
-          <SkyBackdrop />
+            {/* Painted galactic sky (scene.background, rendered once) */}
+            <SkyBackdrop />
 
-          {/* Starfield particles */}
-          <GalaxyStarfield isLowPerf={isLowPerf} />
+            {/* Starfield particles */}
+            <GalaxyStarfield isLowPerf={isLowPerf} />
 
-          {/* Distant procedural spiral galaxies */}
-          <DistantGalaxies />
+            {/* Distant procedural spiral galaxies */}
+            <DistantGalaxies />
 
-          {/* Schedules comet passes, solar flares and cargo convoys (world events) */}
-          <WorldEventDirector />
+            {/* Schedules comet passes, solar flares and cargo convoys (world events) */}
+            <WorldEventDirector />
 
-          {/* Spaceship craft */}
-          <Spaceship />
-          <TractorBeam />
+            {/* Spaceship craft */}
+            <Spaceship />
+            <TractorBeam />
 
-          {/* Orbiting planets */}
-          <SpacePlanets />
-          {/* The five worlds: textures load here, so ShaderWarmup compiles them */}
-          <SpaceWorlds />
+            {/* Orbiting planets */}
+            <SpacePlanets />
+            {/* The five worlds: textures load here, so ShaderWarmup compiles them */}
+            <SpaceWorlds />
 
-          {/* Central sun core + corona/flare shell */}
-          <Sun />
+            {/* Central sun core + corona/flare shell */}
+            <Sun />
 
-          {/* Scattered Deep Space Asteroids */}
-          <Asteroids />
+            {/* Scattered Deep Space Asteroids */}
+            <Asteroids />
 
-          {/* Asteroid Belt */}
-          <AsteroidBelt />
+            {/* Asteroid Belt */}
+            <AsteroidBelt />
 
-          {/* NPC Cargo Traffic */}
-          <CargoTraffic />
+            {/* NPC Cargo Traffic */}
+            <CargoTraffic />
 
-          {/* Energy Plasma particles spawner */}
-          <PlasmaAnomalies ref={anomaliesRef} />
+            {/* Energy Plasma particles spawner */}
+            <PlasmaAnomalies ref={anomaliesRef} />
 
-          {/* Pooled shooting star streaks */}
-          {!isLowPerf && !reducedMotion && <ShootingStars />}
+            {/* Pooled shooting star streaks */}
+            {!isLowPerf && !reducedMotion && <ShootingStars />}
 
-          {/* Warp tunnel around the ship during boost */}
-          {!isLowPerf && !reducedMotion && <WarpTunnel />}
+            {/* Warp tunnel around the ship during boost */}
+            {!isLowPerf && !reducedMotion && <WarpTunnel />}
 
-          {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
-          <SpaceJellyfish />
+            {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
+            <SpaceJellyfish />
 
-          {/* Comets with anti-sunward tails */}
-          <Comets />
+            {/* Comets with anti-sunward tails */}
+            <Comets />
 
-          {/* Collectible data shards scattered across the system */}
-          <DataShards />
+            {/* Collectible data shards scattered across the system */}
+            <DataShards />
 
-          {/* Career station (dock for the Career dossier) and its buoy trail */}
-          <CareerStation />
-          <CareerTrail />
-          <Shipyard />
-          <DormantGate />
+            {/* Career station (dock for the Career dossier) and its buoy trail */}
+            <CareerStation />
+            <CareerTrail />
+            <Shipyard />
+            <DormantGate />
 
-          {/* Time-trial ring course through the inner belt, with a ghost of the best lap */}
-          <RingCourse />
+            {/* Time-trial ring course through the inner belt, with a ghost of the best lap */}
+            <RingCourse />
 
-          {/* Visitors' beacons — only when the beacon API is configured */}
-          {BEACONS_ENABLED && <Beacons />}
+            {/* Visitors' beacons — only when the beacon API is configured */}
+            {BEACONS_ENABLED && <Beacons />}
 
-          {/* Other pilots flying now — only when the live sky URL is configured */}
-          {LIVE_SKY_ENABLED && <Ghosts />}
+            {/* Other pilots flying now — only when the live sky URL is configured */}
+            {LIVE_SKY_ENABLED && <Ghosts />}
 
-          {/* Floating warp-fuel crystals */}
-          <FuelCrystals />
+            {/* Floating warp-fuel crystals */}
+            <FuelCrystals />
 
-          {/* Headless: drives proximity scan targeting/progress/report dispatch */}
-          <Scanner />
+            {/* Headless: drives proximity scan targeting/progress/report dispatch */}
+            <Scanner />
 
-          {/* Headless: projects the next unread dossier for the HUD waypoint */}
-          <WaypointDriver />
+            {/* Headless: projects the next unread dossier for the HUD waypoint */}
+            <WaypointDriver />
 
-          {/* Clickable space trigger plane (follows ship and expanded to cover viewport).
-              Unmounted in photo mode: R3F synthetic pointer events and OrbitControls
-              share the same eventSource, so a drag-to-orbit pointerdown would also
-              spawn a plasma anomaly into the clean frame — stopPropagation doesn't
-              help across sibling listeners. */}
-          {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
+            {/* Clickable space trigger plane (follows ship and expanded to cover viewport).
+                Unmounted in photo mode: R3F synthetic pointer events and OrbitControls
+                share the same eventSource, so a drag-to-orbit pointerdown would also
+                spawn a plasma anomaly into the clean frame — stopPropagation doesn't
+                help across sibling listeners. */}
+            {!photoMode && <FollowingClickPlane onSpawn={(p) => anomaliesRef.current?.spawn(p)} />}
 
-          {/* Inside Suspense deliberately: the warm-up compiles the scene as
-              it exists when it mounts, so as a sibling of the boundary it
-              would run before any GLTF-dependent component had resolved and
-              warm a near-empty scene. */}
-          <ShaderWarmup />
+            {/* Inside Suspense deliberately: the warm-up compiles the scene as
+                it exists when it mounts, so as a sibling of the boundary it
+                would run before any GLTF-dependent component had resolved and
+                warm a near-empty scene. */}
+            <ShaderWarmup />
+          </PackGate>
         </Suspense>
 
         {/* Photo mode: free orbit around the ship's position at the moment of toggle */}
