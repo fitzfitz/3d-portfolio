@@ -11,7 +11,7 @@ import { isCartographer } from "../../utils/charting";
 import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
 
-
+const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
