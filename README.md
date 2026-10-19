@@ -63,6 +63,14 @@ npm install
 npm run dev
 ```
 
+A production build (`npm run build`) ships `public/models` as three asset
+packs at the site root, the way a Unity or Godot web build ships its data:
+`world-common.<hash>.pack`, plus `world-hd.<hash>.pack` (the planets' 4096
+maps) or `world-sd.<hash>.pack` (their 2048 originals), one tier per device.
+The loose `models/` files still ship as the fallback for a pack that fails.
+`ASSET_PACK=0 npm run build` builds without packs, for comparisons. Dev and
+the e2e harness always use the loose files.
+
 The contact form relays through [Web3Forms](https://web3forms.com). Copy
 `.env.example` to `.env` and set `VITE_FORM_KEY` to enable it; with the key
 empty the form degrades to a `mailto:` link rather than rendering a form that
@@ -117,6 +125,11 @@ npm run assets:generate   # regenerate everything (Blender headless + scripts/te
 npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public/
 ```
 
+Every file in `public/models/` goes into an asset pack automatically
+(`vite.config.ts`, `src/utils/packFormat.ts`). Naming decides the tier: an
+`x_4k.*` file is HD, the `x.*` it replaces is SD, and everything else is in
+the common pack every device downloads.
+
 | Asset | Generator |
 | --- | --- |
 | Hero ship, contact portal, fuel crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
@@ -169,6 +182,16 @@ image URLs in `index.html` are deliberately absolute — scrapers do not reliabl
 resolve relative `og:image`, and Vite's HTML rewriting covers `og:image` but not
 `twitter:image`. A custom domain later means updating `og:url`, `canonical`,
 `og:image` and `twitter:image` by hand.
+
+### The service worker
+
+Production builds register `public/sw.js`. It fetches pages network first (a
+deploy shows on the next visit, the cached page only when offline), serves the
+hashed `assets/*` files from its cache, and leaves the asset packs to
+`src/utils/assetPack.ts`, which keeps them in Cache Storage. The build stamps
+the worker with its own file list, and the worker drops cached files from
+older builds. To retire the worker, deploy the kill-switch version written out
+in the header of `public/sw.js`.
 
 ### `beacon-api` shares bounds with the client
 
