@@ -57,8 +57,10 @@ function inWorld(p: unknown): p is Vec3 {
   return Array.isArray(p) && p.length === 3 && p.every(finite) && Math.hypot(p[0], p[1], p[2]) <= VALIDATION_RADIUS;
 }
 
-/** A client's `me` message, as the room sees it. Null for anything invalid. */
-export function parseMe(raw: unknown): ShipState | null {
+/** A client message, as the room sees it: a pose, the title claim, or null for anything else. Parsed once. */
+export type ClientMessage = { t: "me"; state: ShipState } | { t: "charted" };
+
+export function parseClient(raw: unknown): ClientMessage | null {
   // A UTF-8 string is never shorter in bytes than in characters, so the cheap
   // length check turns away an oversized frame before it is encoded.
   if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return null;
@@ -66,8 +68,26 @@ export function parseMe(raw: unknown): ShipState | null {
   let m: unknown;
   try { m = JSON.parse(raw); } catch { return null; }
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
-  const { t, p, q, plume, ch } = m as Record<string, unknown>;
-  if (t !== "me" || !inWorld(p) || typeof plume !== "string" || !hasPlumeColour(plume)) return null;
+  const o = m as Record<string, unknown>;
+  if (o.t === "charted") return { t: "charted" };
+  if (o.t !== "me") return null;
+  const state = poseFrom(o);
+  return state ? { t: "me", state } : null;
+}
+
+/** A client's `me` message, as the room sees it. Null for anything invalid. */
+export function parseMe(raw: unknown): ShipState | null {
+  const m = parseClient(raw);
+  return m?.t === "me" ? m.state : null;
+}
+
+/** A client's `{t:"charted"}`: it has just charted every world (the room decides whether to relay it). */
+export function isChartedClaim(raw: unknown): boolean {
+  return parseClient(raw)?.t === "charted";
+}
+
+function poseFrom({ p, q, plume, ch }: Record<string, unknown>): ShipState | null {
+  if (!inWorld(p) || typeof plume !== "string" || !hasPlumeColour(plume)) return null;
   const nq = normQuat(q);
   if (!nq) return null;
   // A bad count never hides a pilot: it reads as 0. AURUM needs all five in
@@ -81,16 +101,6 @@ export function chartCount(v: unknown): number {
   return Number.isInteger(v) && (v as number) >= 0 && (v as number) <= CHART_TOTAL ? (v as number) : 0;
 }
 
-/** A client's `{t:"charted"}`: it has just charted every world (the room decides whether to relay it). */
-export function isChartedClaim(raw: unknown): boolean {
-  if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return false;
-  try {
-    const m: unknown = JSON.parse(raw);
-    return !!m && typeof m === "object" && !Array.isArray(m) && (m as Record<string, unknown>).t === "charted";
-  } catch {
-    return false;
-  }
-}
 
 /** Rounded for the wire: positions to 0.01, quaternion components to 0.001. Pass `out` to reuse an object. */
 export function roundState(s: ShipState, out: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 }): ShipState {

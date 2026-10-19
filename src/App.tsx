@@ -139,6 +139,8 @@ export default function App() {
   // The sky's beacons load once the scene is up, off the critical path.
   useEffect(() => {
     if (sceneReady && BEACONS_ENABLED) void loadBeacons();
+    // A pilot who charted all five before AURUM existed hears about it once.
+    if (sceneReady) useSpaceStore.getState().tellAurumOnce();
   }, [sceneReady]);
 
   // `activeZone` IS the project id, so this is a lookup rather than a mapping.

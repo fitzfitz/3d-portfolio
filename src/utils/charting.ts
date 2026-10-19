@@ -51,6 +51,8 @@ export function chartLine(id: WorldId, count: number): string {
 
 /** The rarer line, once, when the last world is charted. */
 export const SURVEY_LINE = "SYSTEM SURVEY COMPLETE — EVERY WORLD CHARTED. YOU HOLD THE TITLE CARTOGRAPHER.";
+/** Follows the survey line: the title's reward and where to fit it. */
+export const AURUM_LINE = "AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR";
 
 /** How long a shout-out waits for company after the fifth world: a day, then it is dropped. */
 export const SHOUT_PENDING_MS = 24 * 60 * 60 * 1000;

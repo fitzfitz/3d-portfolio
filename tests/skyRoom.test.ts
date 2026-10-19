@@ -245,4 +245,14 @@ describe("charted shout-out", () => {
     expect(() => onMessage(room, old, claim, 1000)).not.toThrow();
     expect(onMessage(room, old, claim, 2000).out).toEqual([]);
   });
+  it("forgets visitors past their 24 h when it records a new one", () => {
+    const room = newRoom();
+    const a = charted(room, "a", 0, 5, "old");
+    join(room, "b", 0);
+    expect(onMessage(room, a, claim, 1000).out.length).toBeGreaterThan(0);
+    const later = 1000 + SHOUT_VISITOR_MS + 1;
+    const c = charted(room, "c", later, 5, "new");
+    expect(onMessage(room, c, claim, later).out.length).toBeGreaterThan(0);
+    expect([...room.shouted.keys()]).toEqual(["new"]);
+  });
 });

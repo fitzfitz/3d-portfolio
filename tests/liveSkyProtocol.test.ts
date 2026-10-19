@@ -1,13 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, CHART_TOTAL, MAX_MESSAGE_BYTES,
+  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, MAX_MESSAGE_BYTES,
 } from "../src/utils/liveSkyProtocol";
+import { WORLD_COUNT } from "../src/data/worlds";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
 
 describe("the charted count (C2)", () => {
   it("is 5 worlds at most", () => expect(CHART_TOTAL).toBe(5));
+  it("is every world there is: a sixth world must raise it, or 5/6 would fly AURUM", () => {
+    expect(CHART_TOTAL).toBe(WORLD_COUNT);
+  });
   it("defaults to 0, so a client that never sends it stays visible", () => {
     expect(parseMe(me())?.ch).toBe(0);
   });
@@ -37,6 +41,23 @@ describe("the charted count (C2)", () => {
   });
   it("roundState carries the count", () => {
     expect(roundState({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 4 }).ch).toBe(4);
+  });
+});
+
+describe("parseClient: the room reads each message once", () => {
+  it("tells a pose from a claim", () => {
+    expect(parseClient(me({ ch: 2 }))).toEqual({ t: "me", state: { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 2 } });
+    expect(parseClient('{"t":"charted"}')).toEqual({ t: "charted" });
+  });
+  it.each([["broken JSON", "{x"], ["an unknown type", '{"t":"hi"}'], ["a bad pose", me({ q: [0, 0, 0, 0] })], ["a binary frame", new ArrayBuffer(4)]])(
+    "returns null for %s",
+    (_n, raw) => expect(parseClient(raw)).toBeNull(),
+  );
+  it("parses JSON once per message", () => {
+    const spy = vi.spyOn(JSON, "parse");
+    parseClient(me());
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });
 

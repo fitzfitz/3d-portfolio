@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  loadCharted, chartLine, SURVEY_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
+  loadCharted, chartLine, SURVEY_LINE, AURUM_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
   createShoutGate, type ChartRecord,
 } from "../src/utils/charting";
 import { useSpaceStore } from "../src/store/spaceStore";
@@ -129,5 +129,35 @@ describe("hearing shout-outs", () => {
     expect(play(SHOUT_HEAR_GAP_MS - 1)).toBe(false);
     expect(play(SHOUT_HEAR_GAP_MS)).toBe(true);
     expect(SHOUT_HEAR_GAP_MS).toBeGreaterThanOrEqual(5 * 60_000);
+  });
+});
+
+describe("the AURUM radio line", () => {
+  const st = () => useSpaceStore.getState();
+  const all = () => WORLD_IDS.map((id) => ({ id, at: "2026-10-19" }));
+  it("says where to fit the plume", () => {
+    expect(AURUM_LINE).toBe("AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR");
+  });
+  it("plays when the fifth world is charted, and is remembered as told", () => {
+    useSpaceStore.setState({ charted: [], chartShoutAt: null, aurumTold: false });
+    const lines: string[] = [];
+    const real = st().announceLogbook;
+    useSpaceStore.setState({ announceLogbook: (l: string) => { lines.push(l); } });
+    for (const id of WORLD_IDS) st().chartWorld(id);
+    expect(lines.slice(-2)).toEqual([SURVEY_LINE, AURUM_LINE]);
+    expect(st().aurumTold).toBe(true);
+    useSpaceStore.setState({ announceLogbook: real });
+  });
+  it("tells a pilot who already held the title, once", () => {
+    const lines: string[] = [];
+    const real = st().announceLogbook;
+    useSpaceStore.setState({ charted: all(), aurumTold: false, announceLogbook: (l: string) => { lines.push(l); } });
+    st().tellAurumOnce();
+    st().tellAurumOnce();
+    expect(lines).toEqual([AURUM_LINE]);
+    useSpaceStore.setState({ charted: all().slice(0, 4), aurumTold: false });
+    st().tellAurumOnce();
+    expect(lines).toEqual([AURUM_LINE]);
+    useSpaceStore.setState({ announceLogbook: real });
   });
 });
