@@ -9,16 +9,44 @@
 // - Anything else same-origin (favicon, og image): the cached copy, refreshed
 //   in the background.
 // - The asset pack (*.pack) is skipped: src/utils/assetPack.ts caches it itself.
+//
+// On activate, cached /assets/* files that are not in this build are dropped.
+// The list comes from the build (vite.config.ts writes it into BUILD_ASSETS),
+// never from what a page loaded: a ?cv visit never loads the 3D engine chunk,
+// and pruning by that would break flying offline later.
+//
+// Kill switch: to retire this worker, deploy this file instead and every
+// visitor's next page load removes it:
+//
+//   self.addEventListener("install", () => self.skipWaiting());
+//   self.addEventListener("activate", (e) => e.waitUntil((async () => {
+//     for (const k of await caches.keys()) if (k.startsWith("fitz-shell-")) await caches.delete(k);
+//     await self.registration.unregister();
+//     for (const c of await self.clients.matchAll({ type: "window" })) c.navigate(c.url);
+//   })()));
 const CACHE = "fitz-shell-v1";
+const BUILD_ASSETS = /*__BUILD_ASSETS__*/[];
+
+/** Cached URLs under <scope>assets/ that this build does not ship. */
+function staleAssetUrls(cachedUrls, buildAssets, scope) {
+  const assets = scope + "assets/";
+  const keep = new Set(buildAssets.map((f) => scope + f));
+  return cachedUrls.filter((u) => u.startsWith(assets) && !keep.has(u));
+}
 
 self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("fitz-shell-") && k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
-  );
+  event.waitUntil((async () => {
+    for (const k of await caches.keys()) if (k.startsWith("fitz-shell-") && k !== CACHE) await caches.delete(k);
+    // An un-stamped worker (no list) prunes nothing rather than everything.
+    if (BUILD_ASSETS.length) {
+      const cache = await caches.open(CACHE);
+      const cached = (await cache.keys()).map((r) => r.url);
+      for (const u of staleAssetUrls(cached, BUILD_ASSETS, self.registration.scope)) await cache.delete(u);
+    }
+    await self.clients.claim();
+  })());
 });
 
 // The page lists what it loaded before this worker took control.

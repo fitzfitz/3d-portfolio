@@ -18,6 +18,7 @@ import { encodePack, packTier } from './src/utils/packFormat.ts'
 function assetPack(): Plugin {
   const packs: Record<string, { file: string; bytes: Uint8Array }> = {}
   let outDir = ''
+  let assets: string[] = []
   return {
     name: 'fitz-asset-pack',
     apply: 'build',
@@ -37,7 +38,14 @@ function assetPack(): Plugin {
     configResolved(c) {
       outDir = resolve(c.root, c.build.outDir)
     },
+    generateBundle(_, bundle) {
+      assets = Object.keys(bundle).filter((f) => f.startsWith('assets/')).sort()
+    },
     closeBundle() {
+      // Stamp the service worker with this build's files (public/sw.js prunes
+      // the rest). The bytes change every build, so browsers install it anew.
+      const sw = join(outDir, 'sw.js')
+      writeFileSync(sw, readFileSync(sw, 'utf8').replace('/*__BUILD_ASSETS__*/[]', JSON.stringify(assets)))
       for (const p of Object.values(packs)) {
         writeFileSync(join(outDir, p.file), p.bytes)
         this.info(`asset pack ${p.file}: ${(p.bytes.length / 1048576).toFixed(2)} MB`)
