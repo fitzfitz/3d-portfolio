@@ -15,8 +15,12 @@ export interface Occluder extends Point { r: number }
  * cover is a linear ramp across the sun's width, and a body smaller than the
  * sun can hide at most its own share of the disc's area. Cover from several
  * bodies compounds.
+ *
+ * `skipWithin` > 0 ignores a body whose centre is closer than `skipWithin`
+ * radii: the point lies on that body (sunShadow.ts's self-skip). The default,
+ * 0, skips nothing, and a point inside a body is fully hidden.
  */
-export function sunVisibility(cam: Point, bodies: readonly Occluder[], sunRadius: number): number {
+export function sunVisibility(cam: Point, bodies: readonly Occluder[], sunRadius: number, skipWithin = 0): number {
   const sx = -cam.x, sy = -cam.y, sz = -cam.z;
   const sunDist = Math.hypot(sx, sy, sz);
   if (sunDist <= sunRadius) return 1;
@@ -27,6 +31,7 @@ export function sunVisibility(cam: Point, bodies: readonly Occluder[], sunRadius
   for (const b of bodies) {
     const bx = b.x - cam.x, by = b.y - cam.y, bz = b.z - cam.z;
     const d = Math.hypot(bx, by, bz);
+    if (d < skipWithin * b.r) continue;
     if (d >= sunDist || d === 0) continue;
     const cos = (bx * ux + by * uy + bz * uz) / d;
     if (cos <= 0) continue; // behind the camera

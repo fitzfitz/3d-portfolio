@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSpaceStore } from "../../store/spaceStore";
-import { logbookCount, nextGoal, milestoneFor, type LogbookProgress } from "../../utils/logbook";
+import { logbookCount, nextGoal, milestoneFor, ALL_LINE, type LogbookProgress } from "../../utils/logbook";
+import { isCartographer } from "../../utils/charting";
+import { WORLD_COUNT } from "../../data/worlds";
 import { soundManager } from "../../audio/soundManager";
 
 const TOUR_LINE = "TOUR COMPLETE // THE PILOT'S RÉSUMÉ AND CONTACT ARE ONE CLICK AWAY";
-const ALL_LINE = "LOGBOOK COMPLETE // ALL PLUMES UNLOCKED. FLY PRETTY, PILOT";
 
 /**
  * HUD line: progress and the next goal (spec §4.1). Re-renders only when
  * progress changes. Also fires the two milestones, once, and only on a
  * transition during this visit: a returning visitor's stored progress is the
- * starting point, never an announcement.
+ * starting point, never an announcement. The worlds charted ride along as a
+ * suffix, outside the 11, with the CARTOGRAPHER title once all are.
  */
 export default function LogbookTracker() {
   const badges = useSpaceStore((s) => s.badges);
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
+  const charted = useSpaceStore((s) => s.charted);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
   const { done, total } = logbookCount(progress);
@@ -46,10 +49,12 @@ export default function LogbookTracker() {
   }, [progress, reducedMotion]);
 
   const complete = goal === null;
+  const cartographer = isCartographer(charted);
+  const worlds = `WORLDS ${charted.length}/${WORLD_COUNT}`;
   return (
     <button type="button" data-testid="logbook-tracker"
       onClick={() => useSpaceStore.getState().setLogbookOpen(true)}
-      aria-label={complete ? `Logbook complete, ${done} of ${total}. Open logbook` : `Logbook ${done} of ${total}. Next: ${goal.title}. Open logbook`}
+      aria-label={`${complete ? `Logbook complete, ${done} of ${total}.` : `Logbook ${done} of ${total}. Next: ${goal.title}.`} Worlds charted ${charted.length} of ${WORLD_COUNT}${cartographer ? ", cartographer" : ""}. Open logbook`}
       className={`pointer-events-auto text-left cursor-pointer hover:text-white transition-colors ${complete ? "text-accent" : "text-white/70"} ${pulse ? "animate-pulse text-primary" : ""}`}>
       <span className="hidden sm:inline">LOGBOOK {done}/{total}</span>
       <span className="sm:hidden">LOG {done}/{total}</span>
@@ -59,6 +64,7 @@ export default function LogbookTracker() {
             <span className="hidden sm:inline">  &gt; NEXT: {goal.hint}</span>
             <span className="sm:hidden"> &gt; {goal.hintShort}</span>
           </>}
+      <span data-testid="logbook-tracker-worlds"> · {worlds}{cartographer && <span className="hidden sm:inline"> · CARTOGRAPHER</span>}</span>
     </button>
   );
 }

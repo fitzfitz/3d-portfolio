@@ -23,6 +23,10 @@ mkdir -p assets-src
 # Shipyard and dormant gate (2026-10-16).
 "$BLENDER" --background --python scripts/blender/gen_shipyard.py
 "$BLENDER" --background --python scripts/blender/gen_dormant_gate.py
-# Planet colour + glow maps (pure Node + sharp, no Blender).
+# The new worlds (2026-10-17): the airless rock's and the dwarf's albedo + normal (numpy in Blender).
+"$BLENDER" --background --python scripts/blender/gen_world_rock.py
+"$BLENDER" --background --python scripts/blender/gen_world_dwarf.py
+# Planet colour + glow maps and the other worlds' maps (pure Node + sharp, no Blender).
 node scripts/textures/gen_planets.mjs
+node scripts/textures/gen_worlds.mjs
 npm run assets:optimize

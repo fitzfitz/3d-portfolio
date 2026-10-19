@@ -1,5 +1,4 @@
-import { planets } from "../../src/constants";
-import { orbitPosition } from "../../src/utils/orbits";
+import { orbitPosition, type OrbitalElements } from "../../src/utils/orbits";
 
 /**
  * Clearance helpers shared by the landmark placement tests
@@ -17,8 +16,8 @@ export const MARGIN = 4;
 
 export const d3 = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-/** Closest approach of a planet's centre, over a full orbit, to a fixed point. */
-export function closestApproach(planet: (typeof planets)[number], p: readonly number[]): number {
+/** Closest approach of an orbiting body's centre (a planet or a world), over a full orbit, to a fixed point. */
+export function closestApproach(planet: { orbit: OrbitalElements }, p: readonly number[]): number {
   let min = Infinity;
   const period = (Math.PI * 2) / planet.orbit.angularSpeed;
   for (let k = 0; k < SAMPLES; k++) {

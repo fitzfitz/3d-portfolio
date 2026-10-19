@@ -62,15 +62,19 @@ const SHIP_KEEP_OUT = 30;
  * Spheres a crystal spawn must avoid. A planet's keep-out follows its size:
  * its lock-retain radius plus the pickup radius, so collecting a crystal never
  * drags the ship into orbit lock. A fixed radius here went stale the moment
- * planets grew past it.
+ * planets grew past it. A body whose `reach` (the ringed giant's rings) lies
+ * beyond that radius keeps crystals out to its reach instead, so none sits
+ * in its rings.
  */
 export function crystalAvoidPoints(
-  planetBodies: readonly { x: number; y: number; z: number; size: number }[],
+  planetBodies: readonly { x: number; y: number; z: number; size: number; reach?: number }[],
   landmarks: readonly (readonly [number, number, number])[],
   ship: { x: number; y: number; z: number },
 ): AvoidPoint[] {
   return [
-    ...planetBodies.map((b) => ({ x: b.x, y: b.y, z: b.z, r: b.size * LOCK_RETAIN_FACTOR + CRYSTAL_PICKUP_RADIUS })),
+    ...planetBodies.map((b) => ({
+      x: b.x, y: b.y, z: b.z, r: Math.max(b.size * LOCK_RETAIN_FACTOR, b.reach ?? 0) + CRYSTAL_PICKUP_RADIUS,
+    })),
     ...landmarks.map((p) => ({ x: p[0], y: p[1], z: p[2], r: LANDMARK_KEEP_OUT })),
     { x: ship.x, y: ship.y, z: ship.z, r: SHIP_KEEP_OUT },
   ];

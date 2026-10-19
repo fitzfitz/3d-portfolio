@@ -28,7 +28,7 @@ export const LOGBOOK: readonly LogbookEntry[] = [
   { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "READ THE FUXX DOSSIER", hintShort: "FUXX DOSSIER", plume: false },
   { id: "career", section: "essential", title: "Read the career dossier", hint: "DOCK AT THE CAREER STATION", hintShort: "CAREER DOSSIER", plume: false },
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
-  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET FAST FOR A GRAVITY ASSIST", hintShort: "SLINGSHOT A PLANET", plume: true },
+  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR WORLD", hintShort: "SLINGSHOT A PLANET", plume: true },
   { id: "comet", section: "badge", title: "Comet chaser", hint: "SCAN A VISITING COMET (HOLD E)", hintShort: "SCAN A COMET", plume: true },
   { id: "ring", section: "badge", title: "Ring runner", hint: "LAP THE RING COURSE UNDER 1:00", hintShort: "RING LAP < 1:00", plume: true },
   { id: "ore", section: "badge", title: "Prospector", hint: "MINE A CRYSTAL'S WORTH OF ORE (HOLD F)", hintShort: "MINE 16 ORE", plume: true },
@@ -94,6 +94,12 @@ export function plumeAllowed(id: string, p: LogbookProgress, hasColour: (id: str
   const e = LOGBOOK.find((x) => x.id === id);
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }
+
+/**
+ * The everything-done milestone line. It claims only the badge plumes, so it
+ * stays true once a plume is earned by charting the worlds, outside the 11.
+ */
+export const ALL_LINE = "LOGBOOK COMPLETE // ALL BADGE PLUMES UNLOCKED. FLY PRETTY, PILOT";
 
 /** The milestone a progress change crosses (everything-done wins); null if none was newly crossed. */
 export function milestoneFor(prev: LogbookProgress, next: LogbookProgress): "essentials" | "all" | null {

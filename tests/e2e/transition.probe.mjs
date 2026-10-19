@@ -2,45 +2,58 @@ import { withPage, settle, toDeepSpace } from "./harness.mjs";
 
 // ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
 // Measured on headless Chrome / SwiftShader (software rendering) -- see that
-// file for the full baseline table, the five states these were captured in
-// (deep space facing away from the sun, deep space facing it, close
-// approach, modal open, 40 anomalies facing away; faceFromSun pins the
-// heading, so whether the sun is in frame is set, not left to chance),
-// and the derivation rule repeated here in short: calls/triangles are
-// baseline + 15%, rounded up to the nearest ten; programs and lights are
-// baseline + 1, since neither should grow at all during ordinary play -- the
-// +1 is slack for a driver-dependent variant, not headroom for a new
-// material. A ceiling going up without a matching, deliberate scene change
-// is the regression this file exists to catch.
-const DEEP_CALLS_CEILING = 40;
-const DEEP_TRIS_CEILING = 250580;
-const DEEP_PROGRAMS_CEILING = 79;
+// file for the full baseline table, the six states these were captured in
+// (deep space facing away from the sun, deep space facing it, near the
+// ringed giant with its rings in frame, close approach, modal open, 40
+// anomalies facing away; faceFromSun and nearRingedGiant pin the heading, so
+// what is in frame is set, not left to chance), and the derivation rule
+// repeated here in short: calls/triangles are baseline + 15%, rounded up to
+// the nearest ten; programs and lights are baseline + 1, since neither should
+// grow at all during ordinary play -- the +1 is slack for a driver-dependent
+// variant, not headroom for a new material. A ceiling going up without a
+// matching, deliberate scene change is the regression this file exists to
+// catch.
+//
+// Re-derived 2026-10-19 from 11 runs with the five worlds in the scene (New
+// Worlds C1) and detail by distance (sphereLod.ts); each baseline is the
+// highest of the 11. Programs is the exception to the rule above: its
+// ceilings stay at the deliberate 79 (the deep-space family) and 84 (the
+// planet states), well above the 57-58 measured, because a headless run can
+// decline to low-perf before warm-up and then compile both variants (see
+// docs/PERF-BUDGETS.md). The real program guard is programs.probe.mjs's tour,
+// which must add 0.
+const DEEP_CALLS_CEILING = 50; // baseline 35
+const DEEP_TRIS_CEILING = 278210; // baseline 241916
+const DEEP_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
 
-const APPROACH_CALLS_CEILING = 110;
-const APPROACH_TRIS_CEILING = 420590;
-const APPROACH_PROGRAMS_CEILING = 84;
+const APPROACH_CALLS_CEILING = 140; // baseline 116
+const APPROACH_TRIS_CEILING = 429540; // baseline 373512
+const APPROACH_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
-const MODAL_CALLS_CEILING = 130;
-const MODAL_TRIS_CEILING = 420600;
-const MODAL_PROGRAMS_CEILING = 84;
+const MODAL_CALLS_CEILING = 150; // baseline 128
+const MODAL_TRIS_CEILING = 534170; // baseline 464488
+const MODAL_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
-const ANOMALIES_CALLS_CEILING = 40;
-const ANOMALIES_TRIS_CEILING = 250580;
-const ANOMALIES_PROGRAMS_CEILING = 79;
+const ANOMALIES_CALLS_CEILING = 50; // baseline 35
+const ANOMALIES_TRIS_CEILING = 278210; // baseline 241916
+const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 58, deliberately high (above)
 const ANOMALIES_LIGHTS_CEILING = 5;
 
 // Deep space again, nose on the sun: the disc, its corona and the six lens
 // sprites in frame, counted on purpose (the deep-space and 40-anomalies states
-// face away from it). Baseline 108 / 418490 / 54 / 4 on 11 runs; one later
-// run read 107 calls (same triangles: a points or lines draw), inside the ceiling.
-// Programs is the page's cumulative count, read seconds after deep space on
-// the same page, so it shares deep space's ceiling rather than a tighter one.
-const FACING_SUN_CALLS_CEILING = 130;
-const FACING_SUN_TRIS_CEILING = 481270;
+// face away from it), with the inner system and three worlds.
+const FACING_SUN_CALLS_CEILING = 140; // baseline 118
+const FACING_SUN_TRIS_CEILING = 461930; // baseline 401672
 const FACING_SUN_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const FACING_SUN_LIGHTS_CEILING = 5;
+
+// Near the ringed giant, nose on it, rings in frame (nearRingedGiant).
+const RINGED_CALLS_CEILING = 50; // baseline 39
+const RINGED_TRIS_CEILING = 289620; // baseline 251836
+const RINGED_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
+const RINGED_LIGHTS_CEILING = 5;
 
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
@@ -81,8 +94,9 @@ const readPerfCounters = (page) => page.evaluate(() => {
  * and nose = (sin yaw * cos pitch, sin pitch, cos yaw * cos pitch), so a unit
  * direction n is yaw = atan2(n.x, n.z), pitch = asin(n.y). Away from the sun,
  * n is the ship's position normalised; toward it, the negation. From
- * toDeepSpace's (-170, -150, -170) that is yaw -135 deg / pitch -31.4 deg
- * away and yaw 45 deg / pitch +31.4 deg toward, both inside PITCH_MAX (83 deg).
+ * toDeepSpace's DEEP_SPACE_POINT (260, -50, 140) that is yaw 61.7 deg / pitch
+ * -9.6 deg away and yaw -118.3 deg / pitch +9.6 deg toward, both inside
+ * PITCH_MAX (83 deg).
  *
  * The chase camera (Spaceship.tsx, applyChaseCam) eases toward a point 4.6u
  * behind the nose and 1.8u up by frameLerp(0.05) a frame, 14% a frame at the
@@ -95,16 +109,25 @@ const readPerfCounters = (page) => page.evaluate(() => {
  * faster frame rates. At least 20 frames and 1 s covers both.
  */
 async function faceFromSun(page, toward) {
-  await page.evaluate((toward) => {
+  await faceFrom(page, [0, 0, 0], toward);
+}
+
+/**
+ * faceFromSun's turn and wait, about any point: the nose straight away from
+ * `target` (`toward` false) or straight at it (`toward` true).
+ */
+async function faceFrom(page, target, toward) {
+  await page.evaluate(([t, toward]) => {
     const d = window.__fitz;
     const f = d.flight;
-    const r = Math.hypot(f.x, f.y, f.z);
+    const dx = f.x - t[0], dy = f.y - t[1], dz = f.z - t[2];
+    const r = Math.hypot(dx, dy, dz);
     const s = toward ? -1 : 1;
-    const n = { x: (s * f.x) / r, y: (s * f.y) / r, z: (s * f.z) / r };
+    const n = { x: (s * dx) / r, y: (s * dy) / r, z: (s * dz) / r };
     d.setAttitude(Math.atan2(n.x, n.z), Math.asin(n.y));
     // applyChaseCam's resting chase point: camDistance 4.6 (speed 0), camHeight 1.8.
     d.camera.position.set(f.x - n.x * 4.6, f.y - n.y * 4.6 + 1.8, f.z - n.z * 4.6);
-  }, toward);
+  }, [target, toward]);
   await page.evaluate(() => new Promise((resolve) => {
     const t0 = performance.now();
     let n = 0;
@@ -135,6 +158,93 @@ const sunInView = (page) => page.evaluate(() => {
     ndc: `(${ndc.x.toFixed(2)}, ${ndc.y.toFixed(2)})`,
     glare: glare ? glare.visible : null,
   };
+});
+
+/**
+ * Parks the ship near the ringed giant with its rings in frame, nose on the
+ * planet, and returns where it parked, for the precondition below.
+ *
+ * The ship goes RINGED_VIEW_DISTANCE from the planet's centre (outside its
+ * 2.3-size ring reach and its 3.5-size well, so nothing pulls it while the
+ * probe reads), RINGED_VIEW_ELEVATION_DEG above the ring plane on the side
+ * the sun lights, and on the sun's side of the planet: the sun is behind the
+ * camera, so the lens glare cannot add its sprites. From 80u the A ring's
+ * edge (34u) spans about 24 deg of the 29 deg half-height, so the whole ring
+ * system is in frame. The ring's plane comes from its mesh (RingGeometry
+ * lies in its local XY, so its world +Z is the ring normal). The world moves
+ * along its orbit while the teleport lands, so the nose is aimed at its
+ * centre afterwards, from where the ship actually is.
+ */
+const RINGED_VIEW_DISTANCE = 80;
+const RINGED_VIEW_ELEVATION_DEG = 35;
+async function nearRingedGiant(page) {
+  await page.evaluate(([dist, elevDeg]) => {
+    const d = window.__fitz;
+    const c = d.bodies["w-ringed"];
+    const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+    ring.updateWorldMatrix(true, false);
+    const n = ring.getWorldDirection(d.camera.position.clone());
+    const r = Math.hypot(c.x, c.y, c.z);
+    const sun = { x: -c.x / r, y: -c.y / r, z: -c.z / r };
+    let k = n.x * sun.x + n.y * sun.y + n.z * sun.z;
+    if (k < 0) { n.multiplyScalar(-1); k = -k; } // the lit face
+    // The sunward direction laid into the ring plane.
+    const h = d.camera.position.clone().set(sun.x - n.x * k, sun.y - n.y * k, sun.z - n.z * k).normalize();
+    const e = (elevDeg * Math.PI) / 180;
+    const u = h.multiplyScalar(Math.cos(e)).addScaledVector(n, Math.sin(e));
+    d.teleport(c.x + u.x * dist, c.y + u.y * dist, c.z + u.z * dist);
+  }, [RINGED_VIEW_DISTANCE, RINGED_VIEW_ELEVATION_DEG]);
+  await settle(page, 1500);
+  const c = await page.evaluate(() => { const b = window.__fitz.bodies["w-ringed"]; return [b.x, b.y, b.z]; });
+  await faceFrom(page, c, true);
+}
+
+/**
+ * Whether the ringed giant's rings are in frame, read from the live camera on
+ * one frame: the planet's centre on screen, the camera outside the A ring, the
+ * rings opened toward it (|cos| of the view to the ring normal) rather than
+ * edge-on, the ring mesh drawn, and the sun behind the camera.
+ */
+const ringsInView = (page) => page.evaluate(() => {
+  const d = window.__fitz;
+  const cam = d.camera;
+  cam.updateMatrixWorld();
+  const b = d.bodies["w-ringed"];
+  const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+  ring.updateWorldMatrix(true, false);
+  const n = ring.getWorldDirection(cam.position.clone());
+  const c = cam.position.clone().set(b.x, b.y, b.z);
+  const ndc = c.clone().project(cam);
+  const toCam = cam.position.clone().sub(c);
+  const dist = toCam.length();
+  const opening = Math.abs(toCam.normalize().dot(n));
+  const outer = ring.geometry.parameters.outerRadius;
+  const sunLocal = cam.worldToLocal(cam.position.clone().set(0, 0, 0));
+  return {
+    onScreen: Math.abs(ndc.x) < 0.6 && Math.abs(ndc.y) < 0.6 && ndc.z < 1,
+    ndc: `(${ndc.x.toFixed(2)}, ${ndc.y.toFixed(2)})`,
+    outside: dist > outer, dist: dist.toFixed(1), outer: outer.toFixed(1),
+    opening: opening.toFixed(2), open: opening > 0.3,
+    drawn: ring.visible, sunBehind: sunLocal.z > 0,
+  };
+});
+
+/**
+ * Every planet and world draws through a LOD on the shared unit spheres
+ * (src/utils/sphereLod.ts), its levels all on that body's one material.
+ */
+const bodiesUseLods = (page) => page.evaluate(async () => {
+  const { planets } = await import("/src/constants.ts");
+  const { WORLD_IDS } = await import("/src/data/worlds.ts");
+  const names = [...planets.map((p) => `Planet_${p.name}`), ...WORLD_IDS.map((id) => `World_${id}`)];
+  return names.map((name) => {
+    const mesh = window.__fitz.scene.getObjectByName(name);
+    const lod = mesh?.parent;
+    const ok = !!lod?.isLOD && lod.levels.length === 3
+      && lod.levels.every((l) => l.object.material === mesh.material)
+      && new Set(lod.levels.map((l) => l.object.geometry.parameters.widthSegments)).size === 3;
+    return { name, ok };
+  });
 });
 
 /**
@@ -213,6 +323,31 @@ export default async function run() {
       `programs=${facing.programs} ceiling=${FACING_SUN_PROGRAMS_CEILING}`);
     checks.check("facing-sun light count within budget", facing.lights <= FACING_SUN_LIGHTS_CEILING,
       `lights=${facing.lights} ceiling=${FACING_SUN_LIGHTS_CEILING}`);
+
+    // ---- renderer counter budgets: near the ringed giant, rings in frame (docs/PERF-BUDGETS.md) ----
+    const lods = await bodiesUseLods(page);
+    checks.check("every planet and world draws through a 64/24/12 LOD on its one material",
+      lods.every((l) => l.ok), lods.filter((l) => !l.ok).map((l) => l.name).join(", ") || "all");
+    await nearRingedGiant(page);
+    const ringed = await readPerfCounters(page);
+    const ringedView = await ringsInView(page);
+    checks.check("ringed-giant state has the planet and its rings in frame, opened, sun behind (precondition)",
+      ringedView.onScreen && ringedView.outside && ringedView.open && ringedView.drawn && ringedView.sunBehind,
+      JSON.stringify(ringedView));
+    checks.check("ringed-giant draw calls within budget", ringed.calls <= RINGED_CALLS_CEILING,
+      `calls=${ringed.calls} ceiling=${RINGED_CALLS_CEILING}`);
+    checks.check("ringed-giant triangles within budget", ringed.triangles <= RINGED_TRIS_CEILING,
+      `triangles=${ringed.triangles} ceiling=${RINGED_TRIS_CEILING}`);
+    checks.check("ringed-giant programs within budget", ringed.programs <= RINGED_PROGRAMS_CEILING,
+      `programs=${ringed.programs} ceiling=${RINGED_PROGRAMS_CEILING}`);
+    checks.check("ringed-giant light count within budget", ringed.lights <= RINGED_LIGHTS_CEILING,
+      `lights=${ringed.lights} ceiling=${RINGED_LIGHTS_CEILING}`);
+    // Back to the facing-sun pose: the approach teleport keeps the heading, so
+    // leaving the nose on the ringed giant would change what the close-approach
+    // and modal states have in frame (it halved close approach's draw calls).
+    await toDeepSpace(page);
+    await settle(page, 1000);
+    await faceFromSun(page, true);
 
     // ---- approach: activeZone flips, canvas must not re-render ----
     const beforeApproach = await canvasRenders(page);

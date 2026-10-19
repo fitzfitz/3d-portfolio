@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
+import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp, worldVisibility } from "../src/store/spaceStore";
+import { WORLD_IDS } from "../src/data/worlds";
+import { SURVEY_LINE, chartLine } from "../src/utils/charting";
 import { CHANGELOG } from "../src/data/changelog";
 import { DESTINATIONS } from "../src/data/destinations";
 
@@ -14,7 +16,9 @@ beforeEach(() => {
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
     badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false, logbookLineAt: 0,
+    charted: [],
   });
+  for (const id of WORLD_IDS) worldVisibility[id].charted = false;
 });
 
 describe("spaceStore", () => {
@@ -501,5 +505,117 @@ describe("visitedDossiers at module load", () => {
   it("survives a stored value that isn't an array", async () => {
     expect(await loadWith(JSON.stringify({ saas: true }))).toEqual([]);
     expect(await loadWith(JSON.stringify("fuxx"))).toEqual([]);
+  });
+});
+
+describe("charting", () => {
+  const original = useSpaceStore.getState();
+  let stored: Record<string, string>;
+  let announced: string[];
+  let broadcast: string[];
+  beforeEach(() => {
+    stored = { "fitz-logbook": JSON.stringify([{ id: "comet", at: "2026-10-13" }]) };
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => stored[k] ?? null,
+      setItem: (k: string, v: string) => { stored[k] = v; },
+    });
+    announced = [];
+    broadcast = [];
+    useSpaceStore.setState({
+      announceLogbook: (line) => { announced.push(line); },
+      sendBroadcast: (text) => { broadcast.push(text); },
+    });
+    return () => {
+      useSpaceStore.setState({ announceLogbook: original.announceLogbook, sendBroadcast: original.sendBroadcast });
+      vi.unstubAllGlobals();
+    };
+  });
+
+  it("chartWorld records once with today's date, persists to fitz-charted and announces once", () => {
+    const s = useSpaceStore.getState();
+    s.chartWorld("w-rock");
+    s.chartWorld("w-rock");
+    const st = useSpaceStore.getState();
+    expect(st.charted).toEqual([{ id: "w-rock", at: todayStamp() }]);
+    expect(JSON.parse(stored["fitz-charted"])).toEqual([{ id: "w-rock", at: todayStamp() }]);
+    expect(announced).toEqual([chartLine("w-rock", 1)]);
+    expect(broadcast).toEqual([]);
+  });
+
+  it("chartWorld writes worldVisibility, so the orbit line and radar arrow show", () => {
+    useSpaceStore.getState().chartWorld("w-dwarf");
+    expect(worldVisibility["w-dwarf"].charted).toBe(true);
+    expect(worldVisibility["w-rock"].charted).toBe(false);
+  });
+
+  it("never touches fitz-logbook", () => {
+    const before = stored["fitz-logbook"];
+    for (const id of WORLD_IDS) useSpaceStore.getState().chartWorld(id);
+    expect(stored["fitz-logbook"]).toBe(before);
+    expect(useSpaceStore.getState().badges).toEqual([]);
+  });
+
+  it("ignores ids that are not worlds", () => {
+    // @ts-expect-error: a planet id is not a WorldId
+    useSpaceStore.getState().chartWorld("fuxx");
+    expect(useSpaceStore.getState().charted).toEqual([]);
+    expect(announced).toEqual([]);
+  });
+
+  it("charting all five queues five charting lines, then exactly one survey line, last", () => {
+    for (const id of WORLD_IDS) useSpaceStore.getState().chartWorld(id);
+    for (const id of WORLD_IDS) useSpaceStore.getState().chartWorld(id); // repeat scans
+    expect(announced).toEqual([...WORLD_IDS.map((id, i) => chartLine(id, i + 1)), SURVEY_LINE]);
+    expect(broadcast).toEqual([]);
+  });
+});
+
+it("charting lines queue behind the scan report on the radio", async () => {
+  // chartWorld persists to fitz-charted: stub storage as the charting describe
+  // does, so the test never writes the real (or a missing) localStorage.
+  const stored: Record<string, string> = {};
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => stored[k] ?? null,
+    setItem: (k: string, v: string) => { stored[k] = v; },
+  });
+  vi.useFakeTimers();
+  try {
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("SCAN[WORLD_AIRLESS ROCK]");
+    s.chartWorld("w-rock");
+    await Promise.resolve();
+    expect(useSpaceStore.getState().broadcast?.text).toBe("SCAN[WORLD_AIRLESS ROCK]");
+    vi.advanceTimersByTime(4500);
+    expect(useSpaceStore.getState().broadcast?.text).toBe(chartLine("w-rock", 1));
+    expect(JSON.parse(stored["fitz-charted"])).toEqual([{ id: "w-rock", at: todayStamp() }]);
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
+
+describe("charted at module load", () => {
+  const loadWith = async (stored: string) => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => (k === "fitz-charted" ? stored : null),
+      setItem: () => {},
+    });
+    const fresh = await import("../src/store/spaceStore");
+    vi.unstubAllGlobals();
+    return fresh;
+  };
+
+  it("a returning visitor's charted worlds show at once (orbit lines, radar arrows)", async () => {
+    const fresh = await loadWith(JSON.stringify([{ id: "w-blue", at: "2026-10-18" }]));
+    expect(fresh.useSpaceStore.getState().charted).toEqual([{ id: "w-blue", at: "2026-10-18" }]);
+    expect(fresh.worldVisibility["w-blue"].charted).toBe(true);
+    expect(fresh.worldVisibility["w-rock"].charted).toBe(false);
+  });
+
+  it("survives corrupt storage", async () => {
+    const fresh = await loadWith("{not json");
+    expect(fresh.useSpaceStore.getState().charted).toEqual([]);
+    for (const id of WORLD_IDS) expect(fresh.worldVisibility[id].charted).toBe(false);
   });
 });

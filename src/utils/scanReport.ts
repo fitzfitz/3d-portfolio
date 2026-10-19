@@ -3,6 +3,8 @@ import { ghostRegistry, ghostReport } from "./liveSky";
 import { BUOYS } from "../data/careerTrail";
 import { planets } from "../constants";
 import { formatOrbit } from "./realUnits";
+import { WORLDS } from "../data/worlds";
+import { worldReport } from "./worldReports";
 
 /** One report per career buoy: the posting it marks, from src/data/career.ts. */
 const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
@@ -44,6 +46,8 @@ export function generateScanReport(id: string): string {
     const planet = planets.find((p) => p.name === id);
     return planet ? `${table} // ${formatOrbit(planet.orbit)}` : table;
   }
+  const world = WORLDS.find((w) => w.id === id);
+  if (world) return worldReport(world);
   const h = hash(id);
   const e1 = ELEMENTS[h % ELEMENTS.length];
   const e2 = ELEMENTS[(h >> 3) % ELEMENTS.length];

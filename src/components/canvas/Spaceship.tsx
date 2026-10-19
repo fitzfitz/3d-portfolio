@@ -9,7 +9,7 @@ import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
-import { cutExposure } from "../../utils/sunLight";
+import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -32,8 +32,11 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
-import { occluders, patchSunShadow } from "./sunShadow";
-import { sunVisibility } from "../../utils/sunOcclusion";
+import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
+import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
+import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
+import { resolveWorldContact, keepCameraOutsideWorlds } from "../../utils/worldCollide";
+import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
 const ACCEL = 25.2;         // was 0.007/frame
@@ -86,15 +89,15 @@ const FIRST_TARGET = planets[0];
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 
 /**
- * Gravity wells, one per planet plus the sun, reused every frame: planet
- * entries are refreshed from `bodies`, and the active ones are copied to the
- * front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
+ * Gravity wells, one per planet and world plus the sun, reused every frame:
+ * body entries are refreshed from `bodies`, and the active ones are copied to
+ * the front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
-const PLANET_WELLS: Well[] = planets.map(planetWell);
-/** Well radius by planet name, for the per-frame escape-grace check. */
-const WELL_RADIUS_BY_NAME = new Map(planets.map((p, i) => [p.name, PLANET_WELLS[i].radius]));
+const BODY_WELLS: Well[] = PLANETS_AND_WORLDS.map(planetWell);
+/** Well radius by planet name, for the per-frame escape-grace check (only a planet's lock arms it). */
+const WELL_RADIUS_BY_NAME = new Map(planets.map((p) => [p.name, planetWell(p).radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
-const ACTIVE_WELLS: Well[] = Array.from({ length: planets.length + 1 }, () => ({ ...SUN_WELL }));
+const ACTIVE_WELLS: Well[] = Array.from({ length: PLANETS_AND_WORLDS.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
 /**
  * The engine material's original emissive colour, captured the first time the
@@ -117,6 +120,14 @@ const _total = new THREE.Vector3();
  * trip): a patch is applied once and keeps the uniform it was given.
  */
 const SHIP_SUN_VIS = { value: 1 };
+/**
+ * What shadows the ship: every GPU occluder slot, plus the worlds that have
+ * none (the outermost, w-blue: it shadows nothing the GPU draws, but the ship
+ * can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
+ */
+const CPU_ONLY_WORLDS = WORLDS.filter((w) => worldSlot(w.id) < 0);
+const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_WORLDS.map((w) => ({ x: 0, y: 0, z: 0, r: w.size }));
+const SHIP_OCCLUDERS: readonly Occluder[] = [...occluders, ...CPU_ONLY_OCCLUDERS];
 
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
@@ -212,6 +223,17 @@ export default function Spaceship() {
   const shake = useRef(0);
   const lastImpactAt = useRef(-1);
   const warpSuppressUntil = useRef(-1);
+  /** After a bounce off the sun, an asteroid or a world: the ship's position and velocity are already resolved. */
+  const impact = (time: number) => {
+    zeroGravity(); // momentum into the body would just hit it again
+    warpSuppressUntil.current = time + 0.45; // let the reflection push us away
+    if (time - lastImpactAt.current > 0.5) {
+      lastImpactAt.current = time;
+      shake.current = 0.5; // the camera skips it under reduced motion
+      soundManager.impact();
+      useSpaceStore.getState().bumpImpact();
+    }
+  };
   const edgeCut = useRef(false);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on an intercept course, so the first W press flies into a planet.
@@ -425,8 +447,8 @@ export default function Spaceship() {
       // Speed-driven framing: the camera eases back and the lens widens a
       // little with throttle, more at warp — the "push" of acceleration.
       const speedNorm = Math.min(1, _total.length() / MAX_SPEED);
-      const camDistance = warpActive ? 6.8 : 4.6 + 0.6 * speedNorm;
-      const camHeight = warpActive ? 2.8 : 1.8;
+      const camDistance = warpActive ? CHASE_CAM.warpDistance : CHASE_CAM.distance + CHASE_CAM.speedGain * speedNorm;
+      const camHeight = (warpActive ? CHASE_CAM.warpHeight : CHASE_CAM.height) + (orbiting && !rm ? 0.8 : 0);
       const targetFov = warpActive ? 86 : 58 + (rm ? 0 : 6 * speedNorm);
       const perspCam = state.camera as THREE.PerspectiveCamera;
       if (Math.abs(perspCam.fov - targetFov) > 0.01) {
@@ -439,20 +461,25 @@ export default function Spaceship() {
       // Orbit lock adds a slow cinematic offset to one side.
       const swing = rm ? 0 : (orbiting ? 1.6 : -turnVelocity.current * 0.55);
       _camSide.set(nose.z, 0, -nose.x).normalize().multiplyScalar(swing);
-      _camTarget.set(
-        pos.current.x - nose.x * camDistance + _camSide.x,
-        pos.current.y - nose.y * camDistance + camHeight + (orbiting && !rm ? 0.8 : 0),
-        pos.current.z - nose.z * camDistance + _camSide.z
-      );
+      chaseCamTarget(_camTarget, pos.current, nose, camDistance, camHeight, _camSide);
       // A jump snaps the camera with the ship: easing across ~150u would swing
       // it through the sun, and is exactly the motion reduced motion avoids.
       const cut = snapCamera.current;
       const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
-      // The exposure is re-metered with the camera (I2): ExposureDriver ran
-      // earlier this frame, so without this the cut frame is mis-exposed.
-      if (cut) cutExposure(state.gl, state.camera.position.length(), !store.isLowPerf);
+      // The ship rests only half a length off a world's surface, so the
+      // camera behind it would sit inside: keep it out (worldCollide.ts).
+      keepCameraOutsideWorlds(state.camera.position, bodies);
+      // The exposure, the fill and the backdrop are re-metered with the camera (I2):
+      // ExposureDriver ran earlier this frame, so without this the cut frame
+      // is mis-exposed.
+      if (cut) {
+        const d = state.camera.position.length();
+        cutExposure(state.gl, d, !store.isLowPerf);
+        applyFill(state.scene, d);
+        applyBackdrop(state.scene, d);
+      }
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,
         pos.current.y + nose.y * 1.5 + 0.2,
@@ -631,9 +658,9 @@ export default function Spaceship() {
       else grace.clear();
     }
     let wellCount = 0;
-    for (let i = 0; i < planets.length; i++) {
-      if (planets[i].name === grace.skip) continue;
-      const b = bodies[planets[i].name], src = PLANET_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
+    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
+      if (PLANETS_AND_WORLDS[i].key === grace.skip) continue;
+      const b = bodies[PLANETS_AND_WORLDS[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
       dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
     }
     const sunDst = ACTIVE_WELLS[wellCount++];
@@ -658,27 +685,25 @@ export default function Spaceship() {
       if (hit) {
         pos.current.set(hit.px, hit.py, hit.pz);
         vel.current.set(hit.vx, hit.vy, hit.vz);
-        zeroGravity(); // momentum into the sun would just hit it again
-        warpSuppressUntil.current = time + 0.45; // let the reflection push us away
-        if (time - lastImpactAt.current > 0.5) {
-          lastImpactAt.current = time;
-          shake.current = 0.5;
-          soundManager.impact();
-          store.bumpImpact();
-        }
+        impact(time);
         break;
       }
+    }
+    // The worlds' solid surfaces (worldCollide.ts): they move, so each is
+    // read from `bodies`, at its equatorial size. The rings are fly-through.
+    for (let i = 0; i < WORLDS.length; i++) {
+      if (resolveWorldContact(pos.current, vel.current, bodies[WORLDS[i].id], WORLDS[i].size)) { impact(time); break; }
     }
 
     _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);
     const totalSpeed = _total.length();
     beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
-    // Which planet well the ship is in now; leaving one fast is a slingshot.
+    // Which planet or world well the ship is in now; leaving one fast is a slingshot.
     let wellNow: string | null = null;
-    for (let i = 0; i < planets.length; i++) {
-      const b = bodies[planets[i].name];
-      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < PLANET_WELLS[i].radius) { wellNow = planets[i].name; break; }
+    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
+      const b = bodies[PLANETS_AND_WORLDS[i].key];
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = PLANETS_AND_WORLDS[i].key; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
@@ -800,11 +825,16 @@ export default function Spaceship() {
     store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
   });
 
-  // The ship in a planet's or moon's shadow. Runs after the flight loop above,
-  // so it sees this frame's position. The occluder slots are SpacePlanets',
-  // which runs after this component: a frame old, a few hundredths of a unit.
+  // The ship in a planet's, moon's or world's shadow. Runs after the flight
+  // loop above, so it sees this frame's position. The occluder slots and
+  // `bodies` are SpacePlanets' and SpaceWorlds', which run after this
+  // component: a frame old, a few hundredths of a unit.
   useFrame(() => {
-    SHIP_SUN_VIS.value = sunVisibility(pos.current, occluders, SUN_RADIUS);
+    for (let i = 0; i < CPU_ONLY_WORLDS.length; i++) {
+      const b = bodies[CPU_ONLY_WORLDS[i].id], o = CPU_ONLY_OCCLUDERS[i];
+      o.x = b.x; o.y = b.y; o.z = b.z;
+    }
+    SHIP_SUN_VIS.value = sunVisibility(pos.current, SHIP_OCCLUDERS, SUN_RADIUS);
   });
 
   return (

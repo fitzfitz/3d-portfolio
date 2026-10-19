@@ -65,13 +65,32 @@ close approach and modal-open were bit-for-bit identical on every run. The
 used as the baseline, so the derived ceiling already covers the observed
 variance.
 
-| State | calls | triangles | programs | lights |
-|---|---|---|---|---|
-| Deep space | 32 | 217892 | 78 | 4 |
-| Close approach | 93 | 365726 | 83 | 4 |
-| Modal open | 94 | 365738 | 83 | 4 |
-| 40 anomalies | 32 | 217892 | 78 | 4 |
-| Deep space, facing the sun | 108 | 418490 | 78 | 4 |
+**Re-derived 2026-10-19 (New Worlds C1: the five worlds, detail by distance).**
+Every calls, triangles and lights ceiling in `transition.probe.mjs` now
+comes from this table by the rule above. The programs ceilings do not: they
+stay at the deliberate 79 (deep-space family) and 84 (planet states), for the
+low-perf-before-warm-up path described below. Each figure is the highest of 11 serial runs of
+`npm run test:e2e transition`, with the worlds in the scene and the LOD in
+place; see the dated note at the end of this section for what was added and
+what is in frame in each state.
+
+| State | calls | triangles | programs | lights | ceilings (calls / triangles / programs / lights) |
+|---|---|---|---|---|---|
+| Deep space, facing away from the sun | 35 | 241916 | 57 | 4 | 50 / 278210 / 79 / `LIGHT_BUDGET` (4) |
+| Deep space, facing the sun | 118 | 401672 | 57 | 4 | 140 / 461930 / 79 / 5 |
+| Near the ringed giant, rings in frame | 39 | 251836 | 57 | 4 | 50 / 289620 / 79 / 5 |
+| Close approach | 116 | 373512 | 57 | 4 | 140 / 429540 / 84 / 5 |
+| Modal open | 128 | 464488 | 57 | 4 | 150 / 534170 / 84 / 5 |
+| 40 anomalies, facing away | 35 | 241916 | 58 | 4 | 50 / 278210 / 79 / 5 |
+
+Programs is the page's cumulative count. Its ceilings are the deliberate
+79 / 84, not baseline + 1 (see "The ceilings above were deliberately not
+lowered" below); the guard that a program is never added in play is the
+tour in `programs.probe.mjs`, which must add 0. The table this replaced (kept for
+history; the ceilings had not moved with the later re-measurements below):
+deep space 32 / 217892 / 78 / 4, close approach 93 / 365726 / 83 / 4, modal
+open 94 / 365738 / 83 / 4, 40 anomalies 32 / 217892 / 78 / 4, facing the sun
+108 / 418490 / 78 / 4.
 
 **Programs measured 2026-10-15 (warm-up compiles for the PostFX target).**
 `ShaderWarmup` used to compile with no render target bound, so every program
@@ -133,7 +152,37 @@ measured again: 4.43-4.44 vs 3.57 ms, no change on the M5, whose trig units are
 fast. It is kept for slower GPUs because it is exact (unit-tested against
 `sunVisibility`). The low-perf frame keeps about 5.5 ms of headroom at 100 Hz.
 
-The ceilings above are deliberately **not** lowered to match. Under headless
+**Sixteen occluder slots, measured 2026-10-18 (New Worlds C1, L20).**
+`MAX_OCCLUDERS` went 8 → 16 with fixed slots (planets 0-2, moons 3-7, worlds
+8-11; the outermost world has none), and the per-body `SUN_SHADOW_SELF` define
+became a distance skip in the loop, so bodies share programs. Programs: the
+`programs.probe.mjs` tour read 54 before and 54 after, adding 0 both times;
+the ring's slot is now a uniform. Same method and machine as above (Apple M5,
+ANGLE Metal, Chrome 155, Playwright, 1512x806 at DPR 1, 100 Hz, low-perf
+forced, the ship parked 25u from Ruangrapi's centre on its day side, facing
+it). Slots 8-15 were filled by hand with the four slotted worlds at their
+orbits and the same four a quarter-orbit on, so 16 means sixteen live
+occluders. Each count ran 10 s after a 1.5 s settle, alternated 8/16 three
+times, then 0/8/16 twice for 6 s each.
+
+| `countOverride` | frame p50 / p99 (rAF) | GPU p50 / p99 (scene render, timer query) |
+|---|---|---|
+| 0 (shadows off) | — | 2.58 / 2.68-2.89 ms |
+| 8 (today's planets and moons) | 10.0 / 12.0 ms | 3.12-3.13 / 3.20-3.23 ms |
+| 16 (every slot) | 10.0 / 12.0 ms | 3.67-3.68 / 3.82-4.42 ms |
+
+Frame time stays pinned to vsync. Going from 8 to 16 occluders costs +0.55 ms
+GPU p50, steady in every alternation. That is 0.05 ms over the spec's
+≤ +0.5 ms estimate, and well under the 1 ms trigger. The p99 tail grows by up
+to 1.2 ms in some windows (one 0/8/16 repeat read +0.6 ms). Play still writes
+8 for now: the worlds' slots stay unwritten until the worlds render. The
+scene render reads cheaper than in the F4 table above (3.12 against 4.43 ms
+with 8 on). The cause was not investigated. The tables come from separate
+sessions on different branches, so compare within a table, not across.
+
+The ceilings above were deliberately **not** lowered to match (still true
+after New Worlds C1: Task 10 briefly set them to baseline + 1, 58 / 59, and
+they were restored to 79 / 84 on 2026-10-19). Under headless
 SwiftShader the performance monitor can decline to low-perf while assets load,
 before warm-up runs; warm-up then rightly compiles for the screen, and the
 harness's later switch back to PostFX compiles the real variants on top, which
@@ -202,15 +251,80 @@ see the comment on `LIGHT_BUDGET`). The whole point of Task 4's plasma-pool fix
 is that this number does not move across gameplay. `transition.probe.mjs`'s
 deep-space check asserts directly against the imported `LIGHT_BUDGET` constant
 rather than a separately-derived ceiling, since that constant already **is**
-the intended hard limit; the other three states use `LIGHT_BUDGET + 1` (5) per
+the intended hard limit; the other states use `LIGHT_BUDGET + 1` (5) per
 the derivation rule above, as slack for measurement noise rather than as
 license to add a light.
 
-Programs climbs from 74 (deep space, the very first state measured after
-page load) to 78 in the planet states, regardless of which is measured
-second. `ShaderWarmup` compiles nearly everything up front; the remaining four
-compile once, lazily, on the first close approach. That is why the planet
-states carry their own baselines rather than sharing deep space's.
+*Superseded (2026-10-15 onward):* programs used to climb from 74 (deep space,
+the first state measured after page load) to 78 in the planet states, the
+last four compiling lazily on the first close approach. Warm-up now compiles
+them all up front (see "Programs measured 2026-10-15" above), and every state
+before the anomalies reads the same count (57 since New Worlds C1). The
+planet states' higher ceiling (84) is kept only as the deliberate slack
+described above, not because they still compile more.
+
+**Detail by distance and the worlds in view, re-derived 2026-10-19 (New Worlds C1, Task 10).**
+What was added since the last re-derivation: the five worlds (Tasks 1-9: five
+64-segment spheres, the ringed giant's 256-segment ring, two ice-giant limb
+and atmosphere shells, five orbit lines), then detail by distance
+(`src/utils/sphereLod.ts`). Every planet and world now draws through one
+three.js `LOD` on three shared unit spheres (64 / 24 / 12 segments), scaled to
+the body, every level on the body's one material (geometry is not part of a
+program's key, so no program is added). A body drops to 24 segments at 12.42
+sizes and to 12 at 49.31 sizes: where that polygon's silhouette sags at most
+half a pixel inside the true limb at 1512x802 and FOV 58 (a 16 gas giant at
+199 and 789 u, the 3.5 dwarf at 43 and 173 u). The atmosphere, limb and
+cloud shells follow their body's levels, so a shell is always a scaled copy of
+its surface's polygon, and are culled where their on-screen extent falls under
+one pixel: the atmosphere's band beyond the limb, (thickness - 1) x radius
+(Ruangrapi 1,042 u, Portfolio 694, Fuxx 289, the ice giants 391 and 376).
+Limb darkening and clouds cover the disc, so theirs is their whole radius,
+about 9,000 u, past the 1,500 far plane: in practice they are never culled.
+Near the camera a shell costs more than before: level 0 is 8,064 triangles
+where the old fixed 32x32 shell was 1,984.
+
+What is in frame (read from the live camera on one run): deep space and 40
+anomalies face away from the sun from (260, -50, 140), so the whole system,
+worlds included, is behind the camera, as it was before the worlds; the
+states were not moved. Facing the sun has Ruangrapi, the airless rock, the
+blue ice giant and the dwarf in or at the edge of frame; the modal view has
+Ruangrapi, Portfolio, the rock, the blue ice giant and the dwarf; close
+approach has the tilted ice giant at the frame's edge. The new state parks
+80 u from the ringed giant, 35 deg above its lit ring face, sunward of it, nose
+on the planet: the planet at level 0 and the whole ring in frame, asserted by
+a precondition (on screen, outside the A ring, ring opened toward the camera
+with |cos| > 0.3, ring drawn, sun behind the camera, so the lens sprites cannot
+come and go). The probe then returns to the facing-sun pose before the
+approach, which keeps its heading: left on the ringed giant, that heading
+changed what the close-approach and modal states had in frame (11 runs read
+close approach 48-49 calls, against 113-116 from the facing-sun heading).
+
+Before / after on the same probe, same machine: the commit before the LOD
+(4c5e764, worlds in, 4 runs) read facing the sun 117-119 / 375,636-428,016,
+close approach 97-106 / 351,076-371,244, modal 124-125 / 409,028-456,860; with
+the LOD (11 runs) 115-118 / 349,292-401,672, 113-116 / 365,920-373,512 and
+126-128 / 455,528-464,488. Facing the sun is 26,344 triangles lighter in both
+of its readings (distant bodies on 24 or 12 segments). Close approach
+read 97-106 calls before and 113-116 after. That shift is not attributed to
+the LOD, and it is not measured to any one cause: between the two sets the
+probe's sequence changed (the new ringed-giant state, then `toDeepSpace` and
+`faceFromSun` again before the approach), so the approach and the modal are
+read later and after a different path, and nothing isolated which part moved
+the count. Treat it as following the changed sequence and timing, otherwise
+unexplained. The old modal ceiling (420,600) was already broken before the LOD by the
+worlds (456,860 on one of the four runs). Deep space and 40 anomalies are
+bit-for-bit what they were before the worlds. Lights 4 in every state.
+Programs 57 in every state but the anomalies' 58, on all 22 baseline runs.
+
+Programs ceilings stay at the deliberate 79 (deep space, facing the sun, the
+ringed giant, 40 anomalies) and 84 (close approach, modal), not the rule's
+58 / 59. Task 10 lowered them to 58 / 59, since `withPage` locks low-perf off
+as soon as the store exists and no run read anything but 57 / 58; they were
+restored on 2026-10-19 because a headless run can still decline to low-perf
+before warm-up, and then reads near the old counts. The guard against a new
+program in play is the tour below adding 0, not these ceilings. `programs.probe.mjs` now tours all five worlds (asserted)
+and runs twice, full fidelity (57 programs at start-up) and with low-perf
+pinned on before load (44): both add 0.
 
 ## Changing these
 
@@ -243,6 +357,19 @@ which would have dropped compile from the measurement entirely. Measured:
 **10.6-11.8s**. The ceiling is **20,000ms**: ~1.7x the slowest run, under 2x,
 so a doubling fails red. Same caveat as every other number in this file:
 a real-GPU-irrelevant, CI-only guard.
+
+**New Worlds start-up measured 2026-10-18 and 2026-10-19.** Tasks 6-8 saw
+start-ups over 20 s. Measured against `main` (8a120ff) in clean detached
+checkouts, alternating, 10 runs each of the programs probe's start-up check:
+`main` 10,101-10,312 ms (median about 10.2 s), the worlds (4c5e764)
+10,474-10,712 ms (median about 10.56 s), +3.5%, no run near the ceiling; 18
+more mechanics-probe start-ups read 10.1-12.1 s. The earlier outliers were
+machine load, not the worlds. With detail by distance (2026-10-19, load
+average 8-11): 10,427-19,917 ms in the first block of five (the first run after
+the edit at 19.9 s, falling to 10.4 s by the fourth), then 10,730-12,906 and
+10,786-11,662 ms, against 10,635-11,522 ms for 4c5e764 between them. The LOD
+does not move start-up; the 19.9 s first run is the load the 20 s ceiling sits
+closest to, and it held. Ceiling unchanged: 20,000 ms.
 
 **B2 landmarks measured 2026-10-16 (shipyard, dormant gate, freighter rebake).**
 `shipyard.glb` (4,332 tris, 4 draw calls) and `dormant_gate.glb` (2,440 tris, 2 draw

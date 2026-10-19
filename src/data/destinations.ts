@@ -1,5 +1,5 @@
 import {
-  PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById,
+  PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById, type PlanetData,
 } from "../constants";
 import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
 import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
@@ -68,6 +68,20 @@ export const DESTINATIONS: readonly Destination[] = [
  * to the portal open a project dossier instead (tests/projects.test.ts).
  */
 export const RESERVED_ZONE_IDS: readonly DestinationId[] = DESTINATIONS.map((d) => d.id);
+
+/**
+ * The bodies the zone/lock loop (SpacePlanets) checks before the
+ * destinations: the project planets only. A world there would soft-lock the
+ * loop, with no dossier to open (spec, "Separate table").
+ */
+export const ZONE_PLANETS: readonly PlanetData[] = planets;
+
+/**
+ * The bodies the guided waypoint (WaypointDriver) walks before the
+ * destinations: the project planets' names only, never `Object.keys(bodies)`,
+ * which also holds the worlds (spec, "Separate table").
+ */
+export const WAYPOINT_PLANET_NAMES: readonly string[] = planets.map((p) => p.name);
 
 const byId = new Map<string, Destination>(DESTINATIONS.map((d) => [d.id, d]));
 

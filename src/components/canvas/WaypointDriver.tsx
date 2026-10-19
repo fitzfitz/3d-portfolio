@@ -1,14 +1,12 @@
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { planets, projectById } from "../../constants";
-import { DESTINATIONS, afterPlanets, destinationById } from "../../data/destinations";
+import { DESTINATIONS, WAYPOINT_PLANET_NAMES, afterPlanets, destinationById } from "../../data/destinations";
 import { bodies, flight, useSpaceStore } from "../../store/spaceStore";
 import { nextWaypoint } from "../../utils/navigation";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
 
-
-const PLANET_NAMES = planets.map((p) => p.name);
 /** Destinations are fixed points; built once so the frame loop allocates nothing. */
 const DESTINATION_POINTS = new Map<string, { x: number; y: number; z: number }>(
   DESTINATIONS.map((d) => [d.id, { x: d.pos[0], y: d.pos[1], z: d.pos[2] }]),
@@ -30,7 +28,7 @@ export default function WaypointDriver() {
     const s = useSpaceStore.getState();
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
-    const id = race ? "" : nextWaypoint(flight, PLANET_NAMES, bodies, s.visitedDossiers, afterPlanets(s.badges));
+    const id = race ? "" : nextWaypoint(flight, WAYPOINT_PLANET_NAMES, bodies, s.visitedDossiers, afterPlanets(s.badges));
     // Nothing to point at while docked there or already inside its pull.
     if (s.isOrbitLocked || (!race && s.activeZone === id)) { waypointState.active = false; return; }
     const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? bodies[id];

@@ -20,8 +20,8 @@ async function edge(page, checks) {
   });
   await page.keyboard.press("KeyW"); // first input
   // Installed before the teleport: the haze line fires on arrival at depth 0.5.
-  await installEdgeRecorder(page, 400);
-  await page.evaluate(() => { window.__fitz.teleport(380, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
+  await installEdgeRecorder(page, 480);
+  await page.evaluate(() => { window.__fitz.teleport(460, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
   checks.check("haze thickens near the edge", op > 0.3, `opacity=${op} at r=${(await radius()).toFixed(1)}`);
@@ -42,12 +42,12 @@ async function edge(page, checks) {
   const rec = await readEdgeRecorder(page);
   const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
   checks.check("holding thrust outward, the ship reaches the edge", rec.tCross !== null, `max r=${rec.maxR.toFixed(1)}`);
-  checks.check("the haze is full at 400 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 400 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
+  checks.check("the haze is full at 480 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 480 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
     `opacity=${rec.opAtMax} read in the frame of max r=${rec.maxR.toFixed(1)}`);
   checks.check("holding thrust outward at the edge, the ship is still brought back", done.ok && rec.tBack !== null,
     `max r=${rec.maxR.toFixed(1)}, back after ${backS.toFixed(1)}s wall`);
   checks.check("the return takes at most 18 s wall (~6 simulated seconds)", backS <= 18, `${backS.toFixed(1)}s wall`);
-  checks.check("the ship stays well inside the validation bounds", rec.maxR < 440, `max r=${rec.maxR.toFixed(1)}`);
+  checks.check("the ship stays well inside the validation bounds", rec.maxR < 500, `max r=${rec.maxR.toFixed(1)}`);
   checks.check("the edge fires no teleport flash", !flashed);
   // The haze line (depth 0.3) plays first on the way out, the burn line a moment
   // later; the recorder catches the burn line whatever replaces it afterwards.
@@ -170,7 +170,7 @@ async function photoMode(page, checks) {
 
 async function reducedMotion(page, checks) {
   await page.keyboard.press("KeyW");
-  await page.evaluate(() => window.__fitz.teleport(390, 0, 0));
+  await page.evaluate(() => window.__fitz.teleport(470, 0, 0)); // haze depth ~0.84 (u 0.75 of 440..480)
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);
@@ -210,48 +210,50 @@ async function eclipses(page, checks) {
       }),
     };
   });
-  checks.check("all eight occluder slots are in use", moons.count === 8, `count=${moons.count}`);
+  checks.check("all twelve GPU occluder slots are in use (planets, moons, the four inner worlds)", moons.count === 12, `count=${moons.count}`);
   checks.check("occluder slots track the moons", moons.moons.every((m) => m.err < 0.01 && m.dr < 1e-6),
     moons.moons.map((m) => `${m.id} ${m.err.toFixed(4)}`).join(", "));
 
-  // Each planet's own slot is skipped: its compiled program says so. Reading
-  // the program in use (not the material's key function) also proves the
-  // patch survived React and is what three actually compiled.
+  // Each planet skips its own body by distance, in one program per material
+  // kind: its compiled program says so. Reading the program in use (not the
+  // material's key function) also proves the patch survived React and is
+  // what three actually compiled.
   const programs = await page.evaluate(async () => {
     const { planets } = await import("/src/constants.ts");
     const { MOONS } = await import("/src/data/moons.ts");
     const gl = window.__fitz.gl, ctx = gl.getContext();
+    const SKIP = "if ( length( uOccluders[ k ].xyz - p ) < SUN_SHADOW_SELF_SKIP * uOccluders[ k ].w ) continue;";
     const used = (mat) => {
       const prog = gl.properties.get(mat).currentProgram;
       return prog ? { key: prog.cacheKey, src: ctx.getShaderSource(prog.fragmentShader) ?? "" } : { key: "", src: "" };
     };
     return {
-      planets: planets.map((p, i) => {
+      planets: planets.map((p) => {
         const mesh = window.__fitz.scene.getObjectByName(`Planet_${p.name}`);
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return { name: p.name, key: key.includes(`|sunShadow:fragment:${i}`), self: src.includes(`#define SUN_SHADOW_SELF ${i}\n`),
+        return { name: p.name, key: key.endsWith("|sunShadow:fragment"), self: src.includes(SKIP),
           gate: src.includes("sunShadowCoverage( sunShadowWorld( geometryPosition ) )"), cityLights: src.includes("uniform vec3 uSunView;") };
       }),
       clouds: (() => {
         const mesh = window.__fitz.scene.getObjectByName("CloudLayer");
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return key.includes("|sunShadow:fragment:0") && src.includes("#define SUN_SHADOW_SELF 0\n");
+        return key.endsWith("|sunShadow:fragment") && src.includes(SKIP);
       })(),
       moons: MOONS.map((m) => {
         const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+        return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
       }),
       ship: window.__fitz.shipShadow.materials.map((mat) => {
         const { key, src } = used(mat);
-        return key.includes("|sunShadow:object:-1") && src.includes("directLight.color *= uSunVis;");
+        return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
       }),
     };
   });
-  checks.check("a planet does not shadow itself (its own slot is compiled out)",
+  checks.check("a planet does not shadow itself (its own body is skipped by distance)",
     programs.planets.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.planets));
   checks.check("Ruangrapi keeps its night-side city lights alongside the shadow", programs.planets[0]?.cityLights === true);
-  checks.check("Ruangrapi's clouds darken in the same shadows (its slot skipped)", programs.clouds === true);
+  checks.check("Ruangrapi's clouds darken in the same shadows (their planet skipped)", programs.clouds === true);
   checks.check("every moon draws with its object-mode shadow program", programs.moons.every(Boolean), JSON.stringify(programs.moons));
   checks.check("every ship hull material draws with its shadow program",
     programs.ship.length > 0 && programs.ship.every(Boolean), `materials=${programs.ship.length} ${JSON.stringify(programs.ship)}`);

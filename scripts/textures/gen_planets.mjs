@@ -18,17 +18,20 @@
  * Sphere convention matches THREE.SphereGeometry: for pixel (u, v) with
  * phi = u * 2PI and lat = PI/2 - v * PI,
  *   x = -cos(phi) cos(lat),  y = sin(lat),  z = sin(phi) cos(lat).
+ *
+ * The utilities (noise, sphere sampling, writer) are exported for
+ * gen_worlds.mjs; main() runs only when this file is the script.
  */
 import sharp from "sharp";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // ---------------------------------------------------------------- utilities
 
-function mulberry32(a) {
+export function mulberry32(a) {
   return function () {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
@@ -38,21 +41,21 @@ function mulberry32(a) {
   };
 }
 
-const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
-const lerp = (a, b, t) => a + (b - a) * t;
-const smooth = (e0, e1, x) => {
+export const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+export const lerp = (a, b, t) => a + (b - a) * t;
+export const smooth = (e0, e1, x) => {
   const t = clamp((x - e0) / (e1 - e0));
   return t * t * (3 - 2 * t);
 };
-const hex = (h) => [
+export const hex = (h) => [
   parseInt(h.slice(1, 3), 16) / 255,
   parseInt(h.slice(3, 5), 16) / 255,
   parseInt(h.slice(5, 7), 16) / 255,
 ];
-const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+export const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
 
 /** Piecewise-linear colour ramp over sorted [pos, "#rrggbb"] stops. */
-function ramp(stops) {
+export function ramp(stops) {
   const pos = stops.map((s) => s[0]);
   const col = stops.map((s) => hex(s[1]));
   return (t, out) => {
@@ -80,7 +83,7 @@ const GY = [1, 1, -1, -1, 0, 0, 0, 0, 1, -1, 1, -1];
 const GZ = [0, 0, 0, 0, 1, 1, -1, -1, 1, 1, -1, -1];
 
 /** Seeded 3D simplex noise (Gustavson), range ~[-1, 1]. */
-function makeSimplex(seed) {
+export function makeSimplex(seed) {
   const rand = mulberry32(seed);
   const p = new Uint8Array(256);
   for (let i = 0; i < 256; i++) p[i] = i;
@@ -125,7 +128,7 @@ function makeSimplex(seed) {
 }
 
 /** Fractal sum, normalised to roughly [-1, 1]. */
-function fbm(n, x, y, z, oct, lac = 2.0, gain = 0.5) {
+export function fbm(n, x, y, z, oct, lac = 2.0, gain = 0.5) {
   let sum = 0, amp = 1, norm = 0;
   for (let o = 0; o < oct; o++) {
     sum += amp * n(x, y, z);
@@ -139,7 +142,7 @@ function fbm(n, x, y, z, oct, lac = 2.0, gain = 0.5) {
 }
 
 /** Ridged multifractal in [0, 1] (sharp crests). */
-function ridged(n, x, y, z, oct, lac = 2.0, gain = 0.5) {
+export function ridged(n, x, y, z, oct, lac = 2.0, gain = 0.5) {
   let sum = 0, amp = 1, norm = 0, w = 1;
   for (let o = 0; o < oct; o++) {
     let r = 1 - Math.abs(n(x, y, z));
@@ -173,7 +176,7 @@ const U32 = 1 / 4294967296;
  * [0,1) (stable per cell pair), [3] F1 cell hash in [0,1), [4..6] unit
  * normal of the nearest border plane, [7] activity hash of the second border.
  */
-function makeVoronoi(seed) {
+export function makeVoronoi(seed) {
   const pt = (X, Y, Z, o) => {
     o[0] = X + 0.15 + 0.7 * (hash3(X, Y, Z, seed + 1) * U32);
     o[1] = Y + 0.15 + 0.7 * (hash3(X, Y, Z, seed + 2) * U32);
@@ -223,7 +226,7 @@ function makeVoronoi(seed) {
 
 // ------------------------------------------------------------ sphere frame
 
-function sphereGrid(W, H) {
+export function sphereGrid(W, H) {
   const sinLat = new Float64Array(H), cosLat = new Float64Array(H);
   const cosPhi = new Float64Array(W), sinPhi = new Float64Array(W);
   for (let j = 0; j < H; j++) {
@@ -238,12 +241,12 @@ function sphereGrid(W, H) {
 }
 
 /** Unit vector for a given latitude/longitude (degrees), same convention. */
-function dirFromLatLon(latDeg, lonDeg) {
+export function dirFromLatLon(latDeg, lonDeg) {
   const lat = (latDeg * Math.PI) / 180, phi = (lonDeg * Math.PI) / 180;
   return [-Math.cos(phi) * Math.cos(lat), Math.sin(lat), Math.sin(phi) * Math.cos(lat)];
 }
 
-function forEachPixel(G, fn) {
+export function forEachPixel(G, fn) {
   const { W, H, sinLat, cosLat, cosPhi, sinPhi } = G;
   for (let j = 0; j < H; j++) {
     const y = sinLat[j], c = cosLat[j];
@@ -255,7 +258,7 @@ function forEachPixel(G, fn) {
  * Additive gaussian splat on the equirect, measured as true angle on the
  * sphere so dots stay round at every latitude and wrap across the seam.
  */
-function splat(buf, G, p, sigma, r, g, b) {
+export function splat(buf, G, p, sigma, r, g, b) {
   const { W, H, sinLat, cosLat, cosPhi, sinPhi } = G;
   const lat = Math.asin(clamp(p[1], -1, 1));
   let phi = Math.atan2(p[2], -p[0]);
@@ -286,7 +289,7 @@ function splat(buf, G, p, sigma, r, g, b) {
 }
 
 /** Rotate v about unit axis a by angle t (Rodrigues), in place. */
-function rotateAbout(v, a, t) {
+export function rotateAbout(v, a, t) {
   const c = Math.cos(t), s = Math.sin(t);
   const d = a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
   const cx = a[1] * v[2] - a[2] * v[1], cy = a[2] * v[0] - a[0] * v[2], cz = a[0] * v[1] - a[1] * v[0];
@@ -301,7 +304,7 @@ function rotateAbout(v, a, t) {
  * the sphere (longitude spacing scaled by cos(lat)) and returns per-pixel
  * gradient components in a consistent north/east tangent frame.
  */
-function sphereGradient(h, G, scale) {
+export function sphereGradient(h, G, scale) {
   const { W, H, cosLat } = G;
   const gE = new Float32Array(W * H), gN = new Float32Array(W * H);
   const step = (Math.PI * 2) / W;
@@ -318,14 +321,14 @@ function sphereGradient(h, G, scale) {
   return { gE, gN };
 }
 
-function quantile(arr, q, stride = 7) {
+export function quantile(arr, q, stride = 7) {
   const s = [];
   for (let i = 0; i < arr.length; i += stride) s.push(arr[i]);
   s.sort((a, b) => a - b);
   return s[Math.floor(q * (s.length - 1))];
 }
 
-async function writeJpeg(rgb, W, H, file) {
+export async function writeJpeg(rgb, W, H, file) {
   const out = Buffer.alloc(W * H * 3);
   for (let k = 0; k < out.length; k++) out[k] = Math.round(clamp(rgb[k]) * 255);
   await sharp(out, { raw: { width: W, height: H, channels: 3 } })
@@ -823,4 +826,7 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// Run only as a script: gen_worlds.mjs imports the utilities above.
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}

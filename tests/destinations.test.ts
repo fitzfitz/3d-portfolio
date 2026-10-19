@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterPlanets, jumpKey,
+  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, ZONE_PLANETS, WAYPOINT_PLANET_NAMES, destinationById, escapeR, afterPlanets, jumpKey,
 } from "../src/data/destinations";
+import { WORLDS, WORLD_IDS, isWorld } from "../src/data/worlds";
+import { bodies } from "../src/store/spaceStore";
 import { STATION_POS } from "../src/data/careerTrail";
 import { SHIPYARD_POS } from "../src/data/shipyard";
 import { nextWaypoint } from "../src/utils/navigation";
@@ -115,5 +117,40 @@ describe("career station row", () => {
     expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "contact" }]))).toBe("career");
     expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }]))).toBe("contact");
     expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }, { id: "contact" }]))).toBe("contact");
+  });
+});
+
+/**
+ * The recruiter path (planets, then the career station, then the contact
+ * portal) is unchanged by the worlds: no jump key, no waypoint, no zone.
+ */
+describe("the worlds stay off the recruiter path", () => {
+  it("JUMP_TARGETS names no world, and keys 1-6 map exactly as before", () => {
+    for (const t of JUMP_TARGETS) expect(isWorld(t.id), t.id).toBe(false);
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual(["ruangrapi", "portfolio", "fuxx", "career", "shipyard", "contact"]);
+    for (const id of WORLD_IDS) expect(jumpKey(id)).toBe(0);
+  });
+
+  it("the waypoint's planet list (WaypointDriver's) is the planets only, no world", () => {
+    expect(WAYPOINT_PLANET_NAMES).toEqual(planets.map((p) => p.name));
+    for (const n of WAYPOINT_PLANET_NAMES) expect(isWorld(n), n).toBe(false);
+    expect(Object.keys(bodies).filter(isWorld).length).toBe(WORLDS.length); // why the list must not be bodies' keys
+  });
+
+  it("nextWaypoint over that list never returns a world, even with the ship at one", () => {
+    const names = WAYPOINT_PLANET_NAMES;
+    for (const w of WORLDS) {
+      const ship = { ...bodies[w.id] };
+      for (const visited of [[], names]) {
+        for (const fallback of [afterPlanets([]), afterPlanets([{ id: "career" }])]) {
+          expect(isWorld(nextWaypoint(ship, names, bodies, visited, fallback))).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("the zone/lock loop checks the planets only", () => {
+    expect(ZONE_PLANETS.map((p) => p.name)).toEqual(planets.map((p) => p.name));
+    for (const p of ZONE_PLANETS) expect(isWorld(p.name), p.name).toBe(false);
   });
 });

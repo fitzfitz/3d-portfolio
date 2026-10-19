@@ -228,16 +228,25 @@ async function exposureChecks(page, checks, tier) {
   // that alone barely moves without compensation; the mean over the inner
   // disc is held to 3%. Measured: compensated, the means agree within 1%;
   // with the compensation forced to 1, the d=48 mean fell 6% (243 -> 228).
+  // Re-checked 2026-10-19 under full adaptation (exposure 0.174 at d=48, 4.0
+  // at d=230): compensated, d=48 +0.2% and d=230 -2.9% (bloom runs before the
+  // exposure, so the compensated far disc blooms less; -2.4% at power 1.5);
+  // forced to 1, d=48 -13% (238 -> 207) and d=230 +3.2% (238 -> 246).
+  // So the d=230 mean is not compared: -2.9% correct against +3.2% broken
+  // leaves ~0.1-0.2% either side of a 3% bar, which neither passes reliably
+  // nor separates the two. d=230 keeps the 10% max arm; its direction is
+  // held by the exact compensation value above and, on the composer tier, by
+  // the corona's k230 band [0.4, 0.8] below (0.466 correct vs 1.555 forced).
   const fmt = (d) => `max=${d.max.toFixed(1)} mean=${d.mean.toFixed(1)} (${d.n}px, r=${d.rpx.toFixed(0)}px)`;
   const discsOk = [disc115, discNear, disc230].every((d) => d.onScreen && d.n > 50);
   checks.check(`[${tier}] the sun's disc looks the same at every exposure`,
-    discsOk && near(disc115.max, disc230.max, 0.1) && near(disc115.mean, disc230.mean, 0.03)
+    discsOk && near(disc115.max, disc230.max, 0.1)
       && near(disc115.max, discNear.max, 0.1) && near(disc115.mean, discNear.mean, 0.03),
     `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; dNear ${fmt(discNear)}`);
 
   // The corona is not saturated, so it catches a wrong compensation either
-  // way: too little at d=48 (exposure 0.27) dims it, too much at d=230
-  // (exposure 2.5) washes it out. Composer tier only: low-perf has no corona.
+  // way: too little at d=48 (exposure 0.174) dims it, too much at d=230
+  // (exposure 4.0) washes it out. Composer tier only: low-perf has no corona.
   // Read as the corona's own light (shot minus a corona-hidden shot) in a
   // band at 0.70-0.78 of the billboard, where its direct glow is strongest.
   // Calibrated 2026-10-17 (24-unit sun, corona on the limb, breathing frozen
@@ -251,6 +260,10 @@ async function exposureChecks(page, checks, tier) {
   //   d=230: 0.59 vs 1.38 (0.54-0.55 vs 1.18-1.32 at the bottom). The
   //   corona's own bloom shrinks with its pre-exposure brightness (x0.4
   //   here). Bound [0.4, 0.8], under the geometric midpoints of every pair.
+  // Re-checked 2026-10-19 under full adaptation (power 2: exposure 0.174 at
+  // d=48, 4.0 at d=230), same method: d=48 0.650 vs 0.250, d=230 0.466 vs
+  // 1.555 (power 1.5 had 0.620 and 0.520 compensated). The geometric
+  // midpoints are 0.403 and 0.851, so the bounds still separate every pair.
   if (!lowPerf) {
     const cfmt = (d) => `${d.corona.toFixed(1)} over ${d.coronaBg?.toFixed(1)} (${d.coronaN}px)`;
     const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
@@ -509,8 +522,12 @@ export default async function run() {
         const cut = await page.evaluate(async () => {
           const d = window.__fitz;
           const { targetExposure } = await import("/src/utils/sunLight.ts");
+          const { planets } = await import("/src/constants.ts");
           // The farthest planet from the sun is a real jump target ~185+ out.
-          const far = Object.entries(d.bodies).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
+          // bodies also holds the outer worlds, which are not jump targets
+          // (requestJump ignores them), so pick among the planets only.
+          const jumpable = new Set(planets.map((p) => p.name));
+          const far = Object.entries(d.bodies).filter(([name]) => jumpable.has(name)).sort((a, b) => Math.hypot(b[1].x, b[1].y, b[1].z) - Math.hypot(a[1].x, a[1].y, a[1].z))[0][0];
           const log = [];
           const orig = d.gl.render.bind(d.gl);
           d.gl.render = (...a) => {

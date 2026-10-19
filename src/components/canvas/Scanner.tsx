@@ -7,6 +7,7 @@ import { soundManager } from "../../audio/soundManager";
 import { scanState } from "../../utils/scanState";
 import { gameTime } from "../../utils/ambientTime";
 import { buoyCardState, buoyIndex, BUOY_SCAN_HOLD_S } from "../../utils/buoyCard";
+import { isWorld } from "../../data/worlds";
 
 
 /** Headless: drives scan targeting/progress/report dispatch each frame. Renders nothing. */
@@ -43,6 +44,7 @@ export default function Scanner() {
         store.sendBroadcast(generateScanReport(near.id));
         soundManager.scanBeep();
         if (near.id === "comet_visitor") store.recordBadge("comet"); // logbook: Comet chaser
+        if (isWorld(near.id)) store.chartWorld(near.id); // the first scan charts a world
         // A scanned career buoy keeps its HUD card up for a while (CareerTrail shows it).
         const buoy = buoyIndex(near.id);
         if (buoy >= 0) buoyCardState.scan = { index: buoy, until: gameTime(state.clock.getElapsedTime()) + BUOY_SCAN_HOLD_S };

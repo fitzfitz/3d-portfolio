@@ -2,11 +2,12 @@ import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
 import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
-import { makeStarMaterial } from "./starLayer";
+import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
 import SpacePlanets from "./SpacePlanets";
+import SpaceWorlds from "./SpaceWorlds";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
@@ -39,6 +40,7 @@ import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../
 import { flareLevel } from "../../utils/worldEvents";
 import {
   SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
+  AMBIENT_BASE, applyFill, applyBackdrop, fillLight,
 } from "../../utils/sunLight";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
@@ -95,7 +97,7 @@ function StarLayer({ count, radiusMin, radiusMax, maxPx, opacity }: StarLayerPro
   });
 
   return (
-    <points ref={pointsRef} name="StarLayer" material={material}>
+    <points ref={pointsRef} name="StarLayer" material={material} renderOrder={STAR_RENDER_ORDER}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} count={count} array={positions} itemSize={3} />
         <bufferAttribute attach="attributes-color" args={[colors, 3]} count={count} array={colors} itemSize={3} />
@@ -408,20 +410,30 @@ function SunLight() {
  * which both tiers read: the composer's ToneMapping pass in the full tier,
  * the renderer's own tone mapping of built-in materials in low-perf. Then it
  * sets the sun's and the overlays' compensation (sunLight.ts) for the tier
- * actually rendering. Mounted in both tiers; allocates nothing per frame.
+ * actually rendering, and the fill (ambient light and IBL), which falls off
+ * like the sunlight with no easing, and the unlit backdrop's single tone-down
+ * factor (applyBackdrop). Mounted in both tiers; allocates nothing per frame.
  */
 function ExposureDriver() {
   const gl = useThree((s) => s.gl);
   const first = useRef(true);
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, scene }, delta) => {
     const s = useSpaceStore.getState();
-    const target = targetExposure(camera.position.length());
+    const d = camera.position.length();
+    applyFill(scene, d);
+    applyBackdrop(scene, d);
+    const target = targetExposure(d);
     const e = stepExposure(gl.toneMappingExposure, target, delta, s.reducedMotion || first.current);
     first.current = false;
     gl.toneMappingExposure = e;
     setExposureCompensation(e, !s.isLowPerf);
   });
   return null;
+}
+
+/** Hands GlobalCanvas's ambient light to the fill law (sunLight.ts); null on unmount. */
+function registerFillAmbient(light: THREE.AmbientLight | null) {
+  fillLight.ambient = light;
 }
 
 function GlobalCanvas() {
@@ -479,7 +491,9 @@ function GlobalCanvas() {
           alpha: true,
           powerPreference: "high-performance",
         }}
-        camera={{ position: [SPAWN.x, SPAWN.y + 5, SPAWN.z + 8], fov: 60 }}
+        // far 1500, not R3F's default 1000: from the edge (SYSTEM_RADIUS 480)
+        // a body on the far side of the system is up to ~960 away.
+        camera={{ position: [SPAWN.x, SPAWN.y + 5, SPAWN.z + 8], fov: 60, far: 1500 }}
         // Neutral rather than R3F's ACES default: it leaves in-gamut neon
         // colours nearly untouched and only rolls off highlights. PostFX's
         // ToneMapping pass uses the same curve, so the grade no longer shifts
@@ -508,8 +522,9 @@ function GlobalCanvas() {
             <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
           </Environment>
 
-          {/* Ambient galactic backdrop lighting */}
-          <ambientLight intensity={0.15} />
+          {/* Ambient galactic backdrop lighting; with the IBL above it falls
+              off like the sunlight past 1 AU (ExposureDriver, L19) */}
+          <ambientLight ref={registerFillAmbient} intensity={AMBIENT_BASE} />
           {/* The sun: single dominant light at the origin — gives every body a
               real day side and terminator (realistic-planets spec G2) */}
           {/* 2.1 at 1 AU, up from 2.0: absorbs Sun.tsx's second light at the
@@ -538,6 +553,8 @@ function GlobalCanvas() {
 
           {/* Orbiting planets */}
           <SpacePlanets />
+          {/* The five worlds: textures load here, so ShaderWarmup compiles them */}
+          <SpaceWorlds />
 
           {/* Central sun core + corona/flare shell */}
           <Sun />

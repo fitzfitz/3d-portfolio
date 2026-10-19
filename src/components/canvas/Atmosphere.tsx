@@ -1,51 +1,8 @@
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { irradianceVsAU } from "../../utils/sunLight";
-
-const vertexShader = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  varying vec3 vWorldNormal;
-  void main() {
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    vNormal = normalize(normalMatrix * normal);
-    vWorldNormal = normalize(mat3(modelMatrix) * normal);
-    vViewDir = normalize(-mvPos.xyz);
-    gl_Position = projectionMatrix * mvPos;
-  }
-`;
-
-const fragmentShader = /* glsl */ `
-  uniform vec3 uColor;
-  uniform vec3 uSunDir;
-  uniform float uIntensity;
-  uniform float uLimbFacing;
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  varying vec3 vWorldNormal;
-  void main() {
-    // The shell is drawn from its back faces, so what is visible is the ring
-    // between the planet's limb and the shell's silhouette. "facing" is
-    // uLimbFacing at the planet's limb and 0 at the outer edge. The old
-    // fresnel term peaked at the OUTER edge — an even glass-bubble halo.
-    // Real scattering is densest at the limb and thins outward.
-    // clamp: |dot| can exceed 1.0 by float epsilon.
-    float facing = clamp(abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0);
-    float h = clamp(facing / uLimbFacing, 0.0, 1.0);  // 1 at limb, 0 at edge
-    float density = pow(h, 2.2);
-    // Sunlit side only, with a soft terminator; the night side keeps a
-    // faint airglow rather than a quarter of the day-side glow.
-    float sunCos = dot(normalize(vWorldNormal), uSunDir);
-    float lit = smoothstep(-0.25, 0.45, sunCos);
-    // Warm, sunset-tinted band right at the terminator.
-    float du = sunCos / 0.18;  // squared explicitly: pow(neg, 2.0) is undefined in GLSL
-    float dusk = exp(-du * du);
-    vec3 col = mix(uColor, vec3(1.0, 0.62, 0.38), dusk * 0.55);
-    float a = density * (0.04 + 0.96 * lit) * uIntensity * 1.15;
-    gl_FragColor = vec4(col, a);
-  }
-`;
+import { ATMOSPHERE_VERT, makeAtmosphereMaterial } from "./atmosphereMaterial";
+import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
 
 interface AtmosphereProps {
   radius: number;
@@ -67,34 +24,21 @@ interface AtmosphereProps {
   orbitRadius?: number;
   /** shell thickness multiplier (1.12 = earth-like, 1.05 = thin haze) */
   thickness?: number;
+  /** The terminator band's tint; omit for the sunset orange (atmosphereMaterial.ts). */
+  dusk?: THREE.ColorRepresentation;
+  /** Explicit draw order among a world's transparent shells (SpaceWorlds' WORLD_RENDER_ORDER). */
+  renderOrder?: number;
 }
 
 /** Sun-aware fresnel scattering shell. Place inside a planet group. */
-export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius }: AtmosphereProps) {
-  const material = useMemo(() => {
-    const sunDir = planetPos
-      ? new THREE.Vector3(-planetPos.x, -planetPos.y, -planetPos.z).normalize()
-      : new THREE.Vector3(0, 1, 0);
-    return new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(color) },
-        uSunDir: { value: sunDir },
-        uIntensity: { value: intensity * (orbitRadius ? irradianceVsAU(orbitRadius) : 1) },
-        // facing (|N·V|) of the shell's back face where it passes the
-        // planet's limb: sqrt(1 - (r/R)²) for shell radius R = r·thickness.
-        uLimbFacing: { value: Math.sqrt(1 - 1 / (thickness * thickness)) },
-      },
-      vertexShader,
-      fragmentShader,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
-      depthWrite: false,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- planetPos is a
-    // stable mutated-in-place object; only its identity (not its contents)
-    // should retrigger material creation.
-  }, [color, intensity, thickness, orbitRadius]);
+export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk, renderOrder = 0 }: AtmosphereProps) {
+  const material = useMemo(
+    () => makeAtmosphereMaterial({ color, planetPos, intensity, thickness, orbitRadius, dusk }),
+    // planetPos is a stable mutated-in-place object; only its identity (not
+    // its contents) should retrigger material creation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [color, intensity, thickness, orbitRadius, dusk],
+  );
 
   // Planet moves every frame (SpacePlanets writes into the same object) — the
   // sun-facing gradient must track it live rather than freeze at mount time.
@@ -105,11 +49,14 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
       .normalize();
   });
 
-  return (
-    <mesh material={material}>
-      <sphereGeometry args={[radius * thickness, 32, 32]} />
-    </mesh>
-  );
+  // Detail by distance with its planet (sphereLod.ts). Drawn from its back
+  // faces behind the planet's depth, the shell shows only the band beyond the
+  // limb, (thickness − 1) × radius wide: culled once that is under a pixel.
+  const lod = useMemo(() => makeSphereLOD(material, radius, {
+    radius: radius * thickness, renderOrder, cullBeyond: shellCullDistance((thickness - 1) * radius),
+  }), [material, radius, thickness, renderOrder]);
+
+  return <primitive object={lod} dispose={null} />;
 }
 
 const limbFragment = /* glsl */ `
@@ -123,15 +70,18 @@ const limbFragment = /* glsl */ `
   }
 `;
 
+/** The limb-darkening shell's radius, in planet radii: just over the surface. */
+const LIMB_SHELL = 1.005;
+
 /** Gas-giant limb darkening: the disk dims toward the edge (deeper atmosphere
  * path = more absorption) — the visual signature that separates a gas giant
  * from a rocky body. Normal-blended dark fresnel overlay. */
-export function LimbDarkening({ radius, strength = 0.75 }: { radius: number; strength?: number }) {
+export function LimbDarkening({ radius, strength = 0.75, renderOrder = 0 }: { radius: number; strength?: number; renderOrder?: number }) {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
         uniforms: { uStrength: { value: strength } },
-        vertexShader,
+        vertexShader: ATMOSPHERE_VERT,
         fragmentShader: limbFragment,
         transparent: true,
         side: THREE.FrontSide,
@@ -139,9 +89,10 @@ export function LimbDarkening({ radius, strength = 0.75 }: { radius: number; str
       }),
     [strength]
   );
-  return (
-    <mesh material={material}>
-      <sphereGeometry args={[radius * 1.005, 32, 32]} />
-    </mesh>
-  );
+  // Detail by distance with its planet (sphereLod.ts); it covers the whole
+  // disc, so it is culled only once the disc itself is under a pixel.
+  const lod = useMemo(() => makeSphereLOD(material, radius, {
+    radius: radius * LIMB_SHELL, renderOrder, cullBeyond: shellCullDistance(radius * LIMB_SHELL),
+  }), [material, radius, renderOrder]);
+  return <primitive object={lod} dispose={null} />;
 }

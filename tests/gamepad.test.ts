@@ -4,6 +4,7 @@ import {
 } from "../src/utils/gamepad";
 import { planets } from "../src/constants";
 import { JUMP_TARGETS } from "../src/data/destinations";
+import { isWorld } from "../src/data/worlds";
 
 /** A standard-mapping pad at rest: 4 axes, 17 buttons. */
 function pad(over: { axes?: Record<number, number>; buttons?: Record<number, number> } = {}): PadLike {
@@ -125,5 +126,9 @@ describe("PAD_JUMPS", () => {
   it("only names ids that exist in JUMP_TARGETS", () => {
     const ids = new Set(JUMP_TARGETS.map((t) => t.id));
     for (const [, id] of PAD_JUMPS) expect(ids.has(id)).toBe(true);
+  });
+  it("names no world: the d-pad, Menu and View stay on the recruiter path", () => {
+    for (const [, id] of PAD_JUMPS) expect(isWorld(id), id).toBe(false);
+    expect(PAD_JUMPS.map(([, id]) => id)).toEqual(["ruangrapi", "portfolio", "fuxx", "career", "contact", "shipyard"]);
   });
 });

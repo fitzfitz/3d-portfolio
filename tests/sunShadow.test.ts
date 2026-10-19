@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
+import { SUN_RADIUS } from "../src/constants";
+import { WORLD_IDS } from "../src/data/worlds";
+import { sunVisibility } from "../src/utils/sunOcclusion";
 import {
   MAX_OCCLUDERS,
+  OCCLUDER_SLOTS,
   SUN_SHADOW_GLSL,
   patchSunShadow,
+  sunShadowCoverage,
+  worldSlot,
   setOccluder,
   sunShadowUniforms,
   updateSunView,
@@ -46,8 +52,8 @@ function pointLoopBody(frag: string): string {
 }
 
 describe("sunShadowUniforms / setOccluder", () => {
-  it("holds MAX_OCCLUDERS = 8 Vector4 slots, a count and the sun's view position", () => {
-    expect(MAX_OCCLUDERS).toBe(8);
+  it("holds MAX_OCCLUDERS = 16 Vector4 slots, a count and the sun's view position", () => {
+    expect(MAX_OCCLUDERS).toBe(16);
     expect(sunShadowUniforms.uOccluders.value).toHaveLength(MAX_OCCLUDERS);
     for (const v of sunShadowUniforms.uOccluders.value) expect(v).toBeInstanceOf(THREE.Vector4);
     expect(typeof sunShadowUniforms.uOccluderCount.value).toBe("number");
@@ -97,7 +103,7 @@ describe("patchSunShadow", () => {
         .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
         .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n// PREVIOUS_PATCH");
     };
-    patchSunShadow(mat, "fragment", { selfIndex: 2 });
+    patchSunShadow(mat, "fragment");
     const shader = stubShader();
     mat.onBeforeCompile(shader, renderer);
 
@@ -112,7 +118,8 @@ describe("patchSunShadow", () => {
     expect(shader.uniforms.uSunShadowView).toBe(sunShadowUniforms.uSunView);
     expect(shader.fragmentShader).not.toContain("#include <lights_fragment_begin>");
     expect(shader.fragmentShader).toContain("float sunShadowCoverage(");
-    expect(shader.fragmentShader).toContain("#define SUN_SHADOW_SELF 2");
+    // No body is compiled out: the loop skips its own body by distance.
+    expect(shader.fragmentShader).not.toMatch(/#define SUN_SHADOW_SELF /);
     const body = pointLoopBody(shader.fragmentShader);
     expect(body).toMatch(/isSunLight\(\s*pointLight\.position\s*\)/);
     expect(body).toContain("directLight.color *=");
@@ -149,15 +156,20 @@ describe("patchSunShadow", () => {
     expect(patchSunShadow(new THREE.MeshStandardMaterial(), "fragment").sunVis).toBeUndefined();
   });
 
-  it("cache keys differ by mode and by selfIndex, and keep the previous key", () => {
-    const key = (mode: "fragment" | "object", selfIndex?: number) => {
+  it("cache keys differ by mode only, never by body, and keep the previous key", () => {
+    const key = (mode: "fragment" | "object") => {
       const m = new THREE.MeshStandardMaterial();
-      patchSunShadow(m, mode, { selfIndex });
+      patchSunShadow(m, mode);
       return m.customProgramCacheKey();
     };
-    expect(key("fragment", 0)).not.toBe(key("object", 0));
-    expect(key("fragment", 0)).not.toBe(key("fragment", 1));
-    expect(key("fragment", 1)).toBe(key("fragment", 1));
+    expect(key("fragment")).not.toBe(key("object"));
+    // Two planet surfaces with identical features: one program, whichever slots they fill.
+    const a = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    const b = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    patchSunShadow(a, "fragment");
+    patchSunShadow(b, "fragment");
+    expect(a.customProgramCacheKey()).toBe(b.customProgramCacheKey());
+    expect(a.customProgramCacheKey()).not.toMatch(/sunShadow:fragment:/);
 
     const m = new THREE.MeshStandardMaterial();
     m.customProgramCacheKey = () => "previous-key";
@@ -193,7 +205,7 @@ describe("patchSunShadow: patch once, shared sunVis", () => {
     const shader = stubShader();
     m.onBeforeCompile(shader, renderer);
     expect(shader.fragmentShader.match(/float sunShadowCoverage\(/g)).toHaveLength(1);
-    expect(shader.fragmentShader.match(/#define SUN_SHADOW_SELF/g)).toHaveLength(1);
+    expect(shader.fragmentShader.match(/#define SUN_SHADOW_SELF_SKIP/g)).toHaveLength(1);
     expect(shader.fragmentShader.match(/uniform float uSunVis;/g)).toHaveLength(1);
   });
 
@@ -240,5 +252,53 @@ describe("the coverage early-out (lateral distance before the trig)", () => {
       }
     }
     expect(rejected).toBeGreaterThan(1000);
+  });
+});
+
+describe("the self-skip (a body never shadows its own surface)", () => {
+  it("is in the GLSL occluder loop, by distance, before the cover", () => {
+    const loop = SUN_SHADOW_GLSL.slice(SUN_SHADOW_GLSL.indexOf("float sunShadowCoverage("));
+    expect(SUN_SHADOW_GLSL).toContain("#define SUN_SHADOW_SELF_SKIP 1.05");
+    const skip = loop.search(/if \( length\( uOccluders\[ k \]\.xyz - p \) < SUN_SHADOW_SELF_SKIP \* uOccluders\[ k \]\.w \) continue;/);
+    expect(skip).toBeGreaterThan(-1);
+    expect(skip).toBeLessThan(loop.indexOf("sunShadowCoverFrom("));
+  });
+
+  // The CPU mirror of that loop, so the skip is tested on real numbers.
+  const body = { x: 100, y: 0, z: 0, r: 10 };
+  const nightSide = (radii: number) => ({ x: 100 + radii * body.r, y: 0, z: 0 });
+
+  it("a point on the occluder's own surface, or on a cloud shell at 1.03 R, is not self-shadowed", () => {
+    expect(sunVisibility(nightSide(1), [body], SUN_RADIUS)).toBe(0); // without the skip: inside its own umbra
+    expect(sunShadowCoverage(nightSide(1), [body])).toBe(1);
+    expect(sunVisibility(nightSide(1.03), [body], SUN_RADIUS)).toBe(0);
+    expect(sunShadowCoverage(nightSide(1.03), [body])).toBe(1);
+  });
+
+  it("stops at 1.05 R: beyond it the body shadows as before", () => {
+    expect(sunShadowCoverage(nightSide(1.06), [body])).toBe(sunVisibility(nightSide(1.06), [body], SUN_RADIUS));
+    expect(sunShadowCoverage(nightSide(1.06), [body])).toBeLessThan(0.01);
+  });
+
+  it("still lets every other occluder shadow the surface", () => {
+    const moon = { x: 60, y: 0, z: 0, r: 4 }; // between the sun and the body's day side
+    const daySide = { x: 90, y: 0, z: 0 };
+    expect(sunShadowCoverage(daySide, [body, moon])).toBe(sunVisibility(daySide, [moon], SUN_RADIUS));
+    expect(sunShadowCoverage(daySide, [body, moon])).toBeLessThan(1);
+  });
+});
+
+describe("OCCLUDER_SLOTS (fixed, no per-frame selection)", () => {
+  it("planets 0-2, moons 3-7, worlds 8-11, all inside MAX_OCCLUDERS", () => {
+    expect(OCCLUDER_SLOTS.planets).toEqual({ first: 0, count: 3 });
+    expect(OCCLUDER_SLOTS.moons).toEqual({ first: 3, count: 5 });
+    expect(OCCLUDER_SLOTS.worlds).toEqual({ first: 8, count: 4 });
+    expect(OCCLUDER_SLOTS.worlds.first + OCCLUDER_SLOTS.worlds.count).toBeLessThanOrEqual(MAX_OCCLUDERS);
+  });
+
+  it("worldSlot gives the four inner worlds 8-11 in WORLDS order and the outermost, w-blue, no GPU slot", () => {
+    expect(Object.fromEntries(WORLD_IDS.map((id) => [id, worldSlot(id)]))).toEqual({
+      "w-rock": 8, "w-ringed": 9, "w-tilted": 10, "w-blue": -1, "w-dwarf": 11,
+    });
   });
 });

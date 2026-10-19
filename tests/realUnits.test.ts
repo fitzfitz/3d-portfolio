@@ -28,15 +28,15 @@ describe("real units", () => {
     expect(formatOrbit(planets[1].orbit)).toBe("ORBIT 1.30 AU · YEAR 1.49 EARTH-YR");
     expect(formatOrbit(planets[2].orbit)).toBe("ORBIT 1.61 AU · YEAR 2.04 EARTH-YR");
   });
-  it("the orrery note states the real enlargement and clock", () => {
+  it("the orrery note states the real enlargement, the clock and the dark-surface display curve", () => {
     expect(SIZE_ENLARGEMENT).toBe(290);
-    expect(ORRERY_NOTE).toBe("TWO ORRERY CONVENTIONS: PLANETS DRAWN ~290× JUPITER'S SIZE · 1 S ≈ 21 H, MOON SYSTEMS ON THEIR OWN SLOWER CLOCK");
+    expect(ORRERY_NOTE).toBe("THREE ORRERY CONVENTIONS: PLANETS DRAWN ~290× JUPITER'S SIZE · 1 S ≈ 21 H, MOON SYSTEMS ON THEIR OWN SLOWER CLOCK · DARK SURFACES DRAWN BRIGHTER THAN TRUE");
   });
 });
 
 describe("sector range readout", () => {
-  it("the sector is 4.35 AU across", () => {
-    expect(distanceAU(SYSTEM_RADIUS * 2).toFixed(2)).toBe("6.96");
+  it("the sector is 8.35 AU across", () => {
+    expect(distanceAU(SYSTEM_RADIUS * 2).toFixed(2)).toBe("8.35");
   });
 });
 

@@ -31,6 +31,15 @@ const GENERATORS: Record<string, string> = {
   "ruangrapi_4k.webp": "scripts/textures/gen_planets.mjs",
   "fuxx_4k.webp": "scripts/textures/gen_planets.mjs",
   "fuxx_glow_4k.webp": "scripts/textures/gen_planets.mjs",
+  // The new worlds (2026-10-17). NASA imagery was reference only (MANIFEST).
+  "w-rock.webp": "scripts/blender/gen_world_rock.py",
+  "w-rock_normal.webp": "scripts/blender/gen_world_rock.py",
+  "w-ringed.webp": "scripts/textures/gen_worlds.mjs",
+  "w-ringed_ring.webp": "scripts/textures/gen_worlds.mjs",
+  "w-tilted.webp": "scripts/textures/gen_worlds.mjs",
+  "w-blue.webp": "scripts/textures/gen_worlds.mjs",
+  "w-dwarf.webp": "scripts/blender/gen_world_dwarf.py",
+  "w-dwarf_normal.webp": "scripts/blender/gen_world_dwarf.py",
 };
 
 describe("asset provenance", () => {

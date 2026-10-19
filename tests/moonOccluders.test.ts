@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { planets } from "../src/constants";
 import { MOONS, moonOffset } from "../src/data/moons";
-import { MAX_OCCLUDERS, occluders, setOccluder, sunShadowUniforms } from "../src/components/canvas/sunShadow";
+import { MAX_OCCLUDERS, OCCLUDER_SLOTS, occluders, setOccluder, sunShadowUniforms } from "../src/components/canvas/sunShadow";
 
 describe("moon occluders (F4, L20)", () => {
-  it("every planet and moon has an occluder slot", () => {
-    expect(planets.length + MOONS.length).toBeLessThanOrEqual(MAX_OCCLUDERS);
+  it("every planet and moon has its own fixed occluder slot", () => {
+    expect(OCCLUDER_SLOTS.planets).toEqual({ first: 0, count: planets.length });
+    expect(OCCLUDER_SLOTS.moons).toEqual({ first: planets.length, count: MOONS.length });
+    expect(OCCLUDER_SLOTS.moons.first + OCCLUDER_SLOTS.moons.count).toBeLessThanOrEqual(MAX_OCCLUDERS);
   });
 
   it("moonOffset is where OrbitingMoon's groups put the moon", () => {

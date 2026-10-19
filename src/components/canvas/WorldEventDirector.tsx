@@ -8,16 +8,17 @@ import { convoySighted } from "../../utils/logbook";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
 import { orbitPosition } from "../../utils/orbits";
+import { PLANETS_AND_WORLDS } from "../../data/worlds";
 import { eventLines } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 
 /**
- * Pad on each planet for a comet line cleared against where the planets are at
- * the start: the fastest planet's drift over the whole pass (fuxx ~1.94u/s),
- * plus the visitor's coma (~4.2u) and a margin.
+ * Pad on each planet and world for a comet line cleared against where they
+ * are at the start: the fastest one's drift over the whole pass (fuxx
+ * ~1.94u/s), plus the visitor's coma (~4.2u) and a margin.
  */
 const COMET_PLANET_PAD =
-  Math.max(...planets.map((p) => p.orbit.radius * Math.abs(p.orbit.angularSpeed))) * EVENT_DURATION.comet + 6;
+  Math.max(...PLANETS_AND_WORLDS.map((p) => p.orbit.radius * Math.abs(p.orbit.angularSpeed))) * EVENT_DURATION.comet + 6;
 const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
 /** Convoy ship positions for the logbook sighting check (reused). */
 const sightShips = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0 }));
@@ -27,7 +28,7 @@ const sightOff = { x: 0, y: 0, z: 0 };
  * Turns a director start into a stored event with its target, or null when no
  * clear route exists (the event is then skipped and the next is scheduled).
  * Comet: a line past the player's current position, clear of the sun and of
- * every planet padded for its drift. Convoy: the planet nearest the player,
+ * every planet and world padded for its drift. Convoy: the planet nearest the player,
  * on an approach that clears the other planets and the sun at their positions
  * through the next 40s.
  */
@@ -38,7 +39,7 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
   if (ev.kind === "comet") {
     const avoid: Sphere[] = [
       { x: 0, y: 0, z: 0, r: SUN_RADIUS + 6 },
-      ...planets.map((p) => ({ ...bodies[p.name], r: p.size + COMET_PLANET_PAD })),
+      ...PLANETS_AND_WORLDS.map((p) => ({ ...bodies[p.key], r: p.size + COMET_PLANET_PAD })),
     ];
     const comet = planCometPass(flight, avoid, Math.random);
     return comet ? { state: { ...base, comet }, line: pick(eventLines.comet) } : null;
