@@ -81,12 +81,11 @@ export function useGamepadInput() {
       // The classic résumé is a normal page: the pad must not fly the ship
       // behind it. And an unfocused tab gets no pad input at all — the keyboard
       // hook releases everything on blur, and the pad must not undo that.
-      if (padShouldIdle(useSpaceStore.getState()) || !document.hasFocus()) {
-        write({ ...PAD_NEUTRAL });
-      } else {
-        write(readPadFlight(pad));
-        if (buttons) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState());
-      }
+      if (padShouldIdle(useSpaceStore.getState()) || !document.hasFocus()) write({ ...PAD_NEUTRAL });
+      else write(readPadFlight(pad));
+      // Buttons still act under an open dossier (only the sticks idle there):
+      // B is how a pad closes it. runPadAction keeps the résumé/picker guards.
+      if (buttons && document.hasFocus()) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState());
       buttons = next;
       raf = requestAnimationFrame(tick);
     };
