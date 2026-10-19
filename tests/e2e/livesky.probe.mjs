@@ -45,7 +45,7 @@ export default async function run() {
     await page.evaluateOnNewDocument(installFakeSky);
     await page.evaluate(() => {
       localStorage.setItem("fitz-live-sky-dev", "fake://sky");
-      localStorage.removeItem("fitz-live-seen");
+      localStorage.removeItem("fitz-live-seen-2");
       localStorage.removeItem("fitz-live-sky");
     });
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -145,7 +145,7 @@ export default async function run() {
     await page.evaluate(() => {
       localStorage.removeItem("fitz-live-sky-dev");
       localStorage.removeItem("fitz-live-sky");
-      localStorage.removeItem("fitz-live-seen");
+      localStorage.removeItem("fitz-live-seen-2");
     });
   });
 }

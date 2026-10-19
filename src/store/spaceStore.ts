@@ -402,7 +402,11 @@ export interface SpaceState {
   /** Live sky on (persisted as fitz-live-sky, default on): share this ship and see other pilots. */
   liveSky: boolean;
   setLiveSky: (v: boolean) => void;
-  /** The live-sky notice has been on the radio (persisted as fitz-live-seen). No pose is sent before it. */
+  /**
+   * The live-sky notice has been on the radio (persisted as fitz-live-seen-2:
+   * versioned when the notice grew the charted count, so pilots who agreed to
+   * the old one hear the new one once). No pose is sent before it.
+   */
   liveSkySeen: boolean;
   setLiveSkySeen: (v: boolean) => void;
   /** Worlds charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
@@ -547,7 +551,7 @@ export const useSpaceStore = create<SpaceState>()(
     isTeleporting: false,
     isMuted: safeGetMuted(),
     liveSky: safeGetFlag("fitz-live-sky", true),
-    liveSkySeen: safeGetFlag("fitz-live-seen", false),
+    liveSkySeen: safeGetFlag("fitz-live-seen-2", false),
     cometNear: false,
     shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
@@ -641,7 +645,7 @@ export const useSpaceStore = create<SpaceState>()(
     },
     setLiveSkySeen: (v) => {
       set({ liveSkySeen: v });
-      safeSetFlag("fitz-live-seen", v);
+      safeSetFlag("fitz-live-seen-2", v);
     },
     setMuted: (v) => {
       set({ isMuted: v });
