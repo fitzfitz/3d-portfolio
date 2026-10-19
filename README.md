@@ -85,6 +85,15 @@ production builds). Run one at a time by name:
 npm run test:e2e fuel
 ```
 
+The runner starts one Vite server and runs each probe in its own process.
+`startup` (the eager-compile ceiling, best of up to three loads) and
+`transition` (the draw-call and triangle budgets) run first, alone, on
+SwiftShader, where `docs/PERF-BUDGETS.md` was measured. Every other probe then
+runs on the real GPU, four at a time; the full suite takes about five minutes.
+`E2E_JOBS=1` runs them one by one, `E2E_BACKEND=swiftshader` puts every
+unpinned probe back on the CPU rasterizer, and `E2E_TIMING_OUT=file.json`
+saves per-page phase timings.
+
 Two things to know before running the whole suite:
 
 - It needs a real Chrome at the path hardcoded in `tests/e2e/harness.mjs`, so
