@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { flight } from "../../store/spaceStore";
 import { ambientTime } from "../../utils/ambientTime";
+import { backdropDim } from "../../utils/sunLight";
 import { planGalaxy, type GalaxyKind, type GalaxyPlan } from "../../utils/galaxyPainter";
 import { makeGalaxyMaterial, STAR_RENDER_ORDER } from "./starLayer";
 
@@ -88,6 +89,8 @@ export default function DistantGalaxies() {
     const t = ambientTime(state.clock.getElapsedTime());
     sprites.forEach((s) => {
       s.material.rotation = t * s.spin;
+      // Toned like the rest of the unlit backdrop (sunLight.ts backdropScale).
+      s.material.color.setScalar(backdropDim.value);
     });
   });
 

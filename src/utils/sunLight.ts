@@ -5,13 +5,16 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  *
  * The sun is a point light with decay 2, so a surface at distance d gets
  * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at Ruangrapi's orbit (1 AU).
- * The camera adapts like an eye or an auto-exposing lens (lawful, L22):
- * exposure = clamp((d / AU)^1.5, EXPOSURE_MIN, EXPOSURE_MAX), d being the
- * camera's distance from the sun. It is exactly 1 at 1 AU; the net brightness
- * of a lit surface, irradiance × exposure, falls as (AU / d)^0.5 between the
- * clamps, so the outer system reads dimmer but readable: 0.53 of Ruangrapi's
- * at 402, 0.49 at the edge. The ceiling is the edge's own exposure, so the
- * law holds all the way out.
+ * The camera adapts fully, like a spacecraft camera exposing for its target
+ * (lawful, L22): exposure = clamp((d / AU)^2, EXPOSURE_MIN, EXPOSURE_MAX), d
+ * being the camera's distance from the sun. It is exactly 1 at 1 AU and
+ * cancels the inverse-square sunlight wherever it is unclamped, so the net
+ * brightness of a lit surface, irradiance × exposure, is its 1 AU value at
+ * every distance from AU·√EXPOSURE_MIN (≈ 44.5) to the edge: a world reads
+ * at its true albedo wherever the camera meets it. Distance reads from the
+ * sun's shrinking disc instead. The ceiling is the edge's own exposure, so
+ * the law holds all the way out. (Partial adaptation, power 1.5, until
+ * 2026-10-19.)
  */
 
 /** Irradiance at 1 AU: the old decay-0 intensity, so Ruangrapi looks as it did. */
@@ -21,9 +24,9 @@ export const SUN_LIGHT_INTENSITY = SUN_IRRADIANCE_AT_AU * AU * AU;
 /** A world-event flare lifts the light by this fraction (2.1 → 3.2 before F3). */
 export const SUN_FLARE_SWELL = 1.1 / 2.1;
 
-export const EXPOSURE_POWER = 1.5;
+export const EXPOSURE_POWER = 2;
 export const EXPOSURE_MIN = 0.15;
-/** The exposure at the system's edge, ≈ 8.53: no clamp inside the system. */
+/** The exposure at the system's edge, ≈ 17.4: no clamp inside the system. */
 export const EXPOSURE_MAX = (SYSTEM_RADIUS / AU) ** EXPOSURE_POWER;
 export const EXPOSURE_HALF_LIFE_S = 1.5;
 
@@ -62,9 +65,51 @@ export function irradianceVsAU(d: number): number {
  * The scene's fill (the ambient light and the IBL environment) is scattered
  * sunlight too, so it falls off like the sun: (AU / d)² at the camera's
  * distance d, clamped to at most 1 so the inner system keeps today's fill.
+ * From 1 AU out the exposure cancels it, so a night side keeps the same ratio
+ * to its day side at every distance.
  */
 export function fillScale(cameraDistance: number): number {
   return Math.min(1, irradianceVsAU(cameraDistance));
+}
+
+/**
+ * The unlit backdrop's exposure curve: the old partial adaptation. The
+ * painted sky, the nebula clouds and the distant galaxies are not sunlit, so
+ * a longer exposure brightens them, as it would in a real camera; under full
+ * adaptation the Milky Way band glared near the edge (≈ 0.7% of the frame
+ * near-white at r 425, against 0.06% before).
+ */
+export const BACKDROP_EXPOSURE_POWER = 1.5;
+
+/**
+ * The one disclosed factor that tones the backdrop down (L19): the exposure's
+ * growth beyond the old curve, undone, (AU / d)^(EXPOSURE_POWER −
+ * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
+ * dims (1 at 1 AU and inward, ≈ 0.49 at the edge). The backdrop then reads
+ * as it did under the 1.5 law. The stars are not toned: they may brighten.
+ */
+export function backdropScale(cameraDistance: number): number {
+  const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));
+  return (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
+}
+
+/**
+ * Shared factor for the backdrop sprites (the nebula clouds and the distant
+ * galaxies), which multiply their colour by it each frame. Read directly,
+ * like exposureCompensation.
+ */
+export const backdropDim = { value: 1 };
+
+/**
+ * Tones the backdrop for a camera `cameraDistance` from the sun: the painted
+ * sky through `scene.backgroundIntensity` (a uniform: no new program) and the
+ * sprites through backdropDim. Allocation-free; called every frame and on a
+ * camera cut, like applyFill.
+ */
+export function applyBackdrop(scene: { backgroundIntensity: number }, cameraDistance: number): void {
+  const k = backdropScale(cameraDistance);
+  backdropDim.value = k;
+  scene.backgroundIntensity = k;
 }
 
 /** The ambient light's intensity at full fill (1 AU and inward). */

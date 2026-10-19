@@ -24,7 +24,7 @@ import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moo
 import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
-import { irradianceVsAU } from "../../utils/sunLight";
+import { backdropDim, irradianceVsAU } from "../../utils/sunLight";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
 import { makeSphereLOD } from "../../utils/sphereLod";
 
@@ -192,9 +192,10 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
         }
         posAttr.needsUpdate = true;
       }
-      // Re-tint the material color with drifted hue
+      // Re-tint the material color with drifted hue, toned like the rest of
+      // the unlit backdrop (sunLight.ts backdropScale).
       const mat = pointsRef.current.material as THREE.PointsMaterial;
-      mat.color.setHSL(driftedHue(baseHSL.h * 360, time) / 360, baseHSL.s, baseHSL.l);
+      mat.color.setHSL(driftedHue(baseHSL.h * 360, time) / 360, baseHSL.s, baseHSL.l).multiplyScalar(backdropDim.value);
     }
   });
 

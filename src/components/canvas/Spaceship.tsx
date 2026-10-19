@@ -9,7 +9,7 @@ import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { interceptAim } from "../../utils/intercept";
-import { applyFill, cutExposure } from "../../utils/sunLight";
+import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -471,13 +471,14 @@ export default function Spaceship() {
       // The ship rests only half a length off a world's surface, so the
       // camera behind it would sit inside: keep it out (worldCollide.ts).
       keepCameraOutsideWorlds(state.camera.position, bodies);
-      // The exposure and the fill are re-metered with the camera (I2):
+      // The exposure, the fill and the backdrop are re-metered with the camera (I2):
       // ExposureDriver ran earlier this frame, so without this the cut frame
       // is mis-exposed.
       if (cut) {
         const d = state.camera.position.length();
         cutExposure(state.gl, d, !store.isLowPerf);
         applyFill(state.scene, d);
+        applyBackdrop(state.scene, d);
       }
       state.camera.lookAt(
         pos.current.x + nose.x * 1.5,

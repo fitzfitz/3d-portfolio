@@ -40,7 +40,7 @@ import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../
 import { flareLevel } from "../../utils/worldEvents";
 import {
   SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
-  AMBIENT_BASE, applyFill, fillLight,
+  AMBIENT_BASE, applyFill, applyBackdrop, fillLight,
 } from "../../utils/sunLight";
 import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
@@ -411,8 +411,8 @@ function SunLight() {
  * the renderer's own tone mapping of built-in materials in low-perf. Then it
  * sets the sun's and the overlays' compensation (sunLight.ts) for the tier
  * actually rendering, and the fill (ambient light and IBL), which falls off
- * like the sunlight with no easing. Mounted in both tiers; allocates nothing
- * per frame.
+ * like the sunlight with no easing, and the unlit backdrop's single tone-down
+ * factor (applyBackdrop). Mounted in both tiers; allocates nothing per frame.
  */
 function ExposureDriver() {
   const gl = useThree((s) => s.gl);
@@ -421,6 +421,7 @@ function ExposureDriver() {
     const s = useSpaceStore.getState();
     const d = camera.position.length();
     applyFill(scene, d);
+    applyBackdrop(scene, d);
     const target = targetExposure(d);
     const e = stepExposure(gl.toneMappingExposure, target, delta, s.reducedMotion || first.current);
     first.current = false;

@@ -325,14 +325,14 @@ __fitz.teleport(b.x + 30, b.y, b.z)
 **Do:** Start at the default spawn, then fly to the inner belt near the sun,
 then out to Fuxx. Give each stop two seconds for the exposure to settle.
 
-**Look for:** Does the scene brighten near the sun and dim far from it,
-without any surface blowing out to white or sinking into murk? Do the sun,
+**Look for:** Does a lit surface read at the same brightness at every stop
+(the camera adapts fully, L19), without blowing out to white or sinking into
+murk? The stars may read brighter far out; the sky backdrop should not glare. Do the sun,
 guide lines, ring-course gates and HUD look the same brightness everywhere?
 Is the very first screen readable rather than dark?
 
-Fuxx is expected to read about 0.79 of Ruangrapi's brightness only for equal
-albedo with the camera at Fuxx's distance (exposure is metered at the camera,
-not the surface). Fuxx's albedo is lifted 3x on its material (a C-type ~4%), so
+For equal albedo Fuxx reads at Ruangrapi's brightness with the camera at
+Fuxx's distance (exposure is metered at the camera, not the surface). Fuxx's albedo is lifted 3x on its material (a C-type ~4%), so
 its lit side should read as dim violet rock, not black. A faint red glow on
 night sides is the known studio-environment reflection (docs/FOLLOW-UPS.md).
 

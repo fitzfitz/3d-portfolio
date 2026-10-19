@@ -27,6 +27,9 @@ Delete an entry when it is fixed.
   as the lawful result; or change the toe or exposure globally and
   re-baseline Fuxx and Portfolio; or raise the knee above Ruangrapi's median,
   which lifts Ruangrapi too.
+  Since the camera adapts fully (2026-10-19, L19) the same frames read rock
+  25, dwarf 23, Fuxx 19, tilted 34, blue 35, ringed 39, Ruangrapi ~39 and
+  Portfolio 50: only the dwarf and Fuxx are still under 25.
 - **Night-side red glow breaks L29.** The faint red on night sides is the
   specular IBL reflection of the `#ff5500` Lightformer in the studio
   `<Environment>` (GlobalCanvas.tsx), constant and lifted by exposure. Fix:
@@ -47,8 +50,7 @@ Delete an entry when it is fixed.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen):
   - Comments: `DistantGalaxies.tsx` and `RadarMap.tsx` still say the system
-    is 400; `sky.probe.mjs`'s corona calibration says exposure 2.5 (now 2.83
-    at that distance); `worlds.ts` gives the ringed giant–dwarf gap as 3.56
+    is 400; `worlds.ts` gives the ringed giant–dwarf gap as 3.56
     on one world and 3.55 on the other; `guideLine.ts`'s ring-strip epsilon
     reasoning does not hold under linear filtering; `gen_worlds.mjs` blames
     8-bit quantisation for the maps' drift where it is lossy chroma (hue band
