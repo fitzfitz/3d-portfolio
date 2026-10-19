@@ -11,7 +11,7 @@ import { GATE_RADIUS, GATE_OPENING_R } from "../src/data/dormantGate";
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -487,6 +487,55 @@ describe("dormant gate (dormant_gate.glb)", () => {
     expect(t).toBeGreaterThanOrEqual(600);
     expect(t).toBeLessThanOrEqual(3000);
     expect(kb("dormant_gate")).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("project probe (probe.glb)", () => {
+  // ProjectProbes.tsx draws it as one InstancedMesh of 3 with one shared
+  // MeshStandardMaterial; an onBeforeCompile patch tints COLOR_0's R zone
+  // with the project colour and blinks the G zone (the beacon lamp).
+  it("probe.glb: one mesh, one primitive, one material", async () => {
+    const root = (await load("probe")).getRoot();
+    expect(root.listMeshes()).toHaveLength(1);
+    expect(root.listMeshes()[0].listPrimitives()).toHaveLength(1);
+    expect(root.listMaterials()).toHaveLength(1);
+    // no KHR_materials_* extension, so three builds a MeshStandardMaterial
+    expect(root.listMaterials()[0].listExtensions()).toEqual([]);
+  });
+
+  it("probe.glb: COLOR_0 present; R and G masks each cover > 0 and < 25% of vertices", async () => {
+    const prim = (await load("probe")).getRoot().listMeshes()[0].listPrimitives()[0];
+    const col = prim.getAttribute("COLOR_0");
+    expect(col).not.toBeNull();
+    const n = col!.getCount();
+    const el: number[] = [];
+    let r = 0, g = 0;
+    for (let i = 0; i < n; i++) {
+      col!.getElement(i, el);
+      if (el[0] > 0.5) r++;
+      if (el[1] > 0.5) g++;
+    }
+    for (const [zone, count] of [["R", r], ["G", g]] as const) {
+      expect(count, zone).toBeGreaterThan(0);
+      expect(count / n, zone).toBeLessThan(0.25);
+    }
+  });
+
+  it("probe.glb: triangles <= 6000", async () => {
+    expect(triangles(await load("probe"))).toBeLessThanOrEqual(6000);
+  });
+
+  it("probe.glb: longest extent 2.7–3.3", async () => {
+    // Measured as ProjectProbes sees it: bakeNodeTransform applies the node
+    // transform (the quantization scale), which getBounds also applies.
+    const b = bounds(await load("probe"));
+    const longest = Math.max(...[0, 1, 2].map((i) => b.max[i] - b.min[i]));
+    expect(longest).toBeGreaterThanOrEqual(2.7);
+    expect(longest).toBeLessThanOrEqual(3.3);
+  });
+
+  it("probe.glb: stays inside its download budget", () => {
+    expect(kb("probe")).toBeLessThanOrEqual(600);
   });
 });
 

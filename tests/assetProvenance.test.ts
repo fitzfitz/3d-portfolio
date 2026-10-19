@@ -22,6 +22,7 @@ const GENERATORS: Record<string, string> = {
   "buoy.glb": "scripts/blender/gen_buoy.py",
   "shipyard.glb": "scripts/blender/gen_shipyard.py",
   "dormant_gate.glb": "scripts/blender/gen_dormant_gate.py",
+  "probe.glb": "scripts/blender/gen_probe.py",
   "ruangrapi.webp": "scripts/textures/gen_planets.mjs",
   "ruangrapi_glow.webp": "scripts/textures/gen_planets.mjs",
   "portfolio.webp": "scripts/textures/gen_planets.mjs",
