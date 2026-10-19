@@ -13,8 +13,8 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * every distance from AU·√EXPOSURE_MIN (≈ 44.5) to the edge: a world reads
  * at its true albedo wherever the camera meets it. Distance reads from the
  * sun's shrinking disc instead. The ceiling is the edge's own exposure, so
- * the law holds all the way out. (Partial adaptation, power 1.5, until
- * 2026-10-19.)
+ * the law holds all the way out. (Until 2026-10-19 main had partial
+ * adaptation, clamp((d / AU)^1.5, 0.15, 2.5).)
  */
 
 /** Irradiance at 1 AU: the old decay-0 intensity, so Ruangrapi looks as it did. */
@@ -73,20 +73,23 @@ export function fillScale(cameraDistance: number): number {
 }
 
 /**
- * The unlit backdrop's exposure curve: the old partial adaptation. The
- * painted sky, the nebula clouds and the distant galaxies are not sunlit, so
- * a longer exposure brightens them, as it would in a real camera; under full
- * adaptation the Milky Way band glared near the edge (≈ 0.7% of the frame
- * near-white at r 425, against 0.06% before).
+ * The unlit backdrop's exposure curve from 1 AU out: power 1.5, unclamped
+ * (main clamped it at 2.5, so beyond r ≈ 212 the backdrop now reads up to
+ * ~3.4× main's at the edge; inside 1 AU it follows the full power-2 exposure).
+ * The painted sky, the nebula clouds and the distant galaxies are not sunlit,
+ * so a longer exposure brightens them, as it would in a real camera; under
+ * full adaptation the Milky Way band glared near the edge (≈ 0.7% of the
+ * frame near-white at r 425, against 0.06% on the power-1.5 curve).
  */
 export const BACKDROP_EXPOSURE_POWER = 1.5;
 
 /**
  * The one disclosed factor that tones the backdrop down (L19): the exposure's
- * growth beyond the old curve, undone, (AU / d)^(EXPOSURE_POWER −
+ * growth beyond the power-1.5 curve, undone, (AU / d)^(EXPOSURE_POWER −
  * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
- * dims (1 at 1 AU and inward, ≈ 0.49 at the edge). The backdrop then reads
- * as it did under the 1.5 law. The stars are not toned: they may brighten.
+ * dims (1 at 1 AU and inward, ≈ 0.49 at the edge). The backdrop then follows
+ * (d / AU)^1.5 from 1 AU to the edge and the exposure's (d / AU)^2 inside
+ * 1 AU. The stars are not toned: they may brighten.
  */
 export function backdropScale(cameraDistance: number): number {
   const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));

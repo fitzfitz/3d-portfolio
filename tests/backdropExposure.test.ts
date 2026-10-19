@@ -12,8 +12,9 @@ const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
 // galaxies) is not sunlit, so a longer exposure brightens it. Under full
 // adaptation the Milky Way band glared near the edge (Task 13, r 425), so the
 // backdrop is toned down by one disclosed factor: the exposure's growth beyond
-// the old partial curve (power 1.5). The stars are not toned: they may brighten.
-describe("the backdrop keeps the old exposure curve (L19, L22)", () => {
+// a power-1.5 curve, from 1 AU out (inside 1 AU it follows the full power-2
+// exposure). The stars are not toned: they may brighten.
+describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () => {
   it("is the exposure's growth beyond the power-1.5 curve, undone", () => {
     expect(BACKDROP_EXPOSURE_POWER).toBe(1.5);
     for (const d of [AU, 150, 185, 242, 300, 425, SYSTEM_RADIUS]) {
@@ -27,6 +28,11 @@ describe("the backdrop keeps the old exposure curve (L19, L22)", () => {
     expect(backdropScale(60)).toBe(1);
     expect(backdropScale(10)).toBe(1);
     expect(backdropScale(2 * SYSTEM_RADIUS)).toBe(backdropScale(SYSTEM_RADIUS));
+  });
+  it("inside 1 AU it follows the full exposure, (d / AU)^2 down to the floor, not the 1.5 curve (L19 says so)", () => {
+    for (const d of [50, 60, 90]) {
+      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo((d / AU) ** EXPOSURE_POWER, 9);
+    }
   });
   it("sets the scene's background intensity and the shared factor together", () => {
     const scene = { backgroundIntensity: 1 };

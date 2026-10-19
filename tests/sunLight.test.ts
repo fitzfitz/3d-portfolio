@@ -36,7 +36,7 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(EXPOSURE_MAX).toBeCloseTo(17.42, 2);
     expect(targetExposure(SYSTEM_RADIUS)).toBeCloseTo(EXPOSURE_MAX, 12);
   });
-  it("the near-sun floor 0.15 starts at AU·√0.15 ≈ 44.5, the belt's inner edge (r 40-70), not at the spawn", () => {
+  it("the near-sun floor 0.15 starts at AU·√0.15 ≈ 44.5, just inside the belt (r 40-70), not at the spawn", () => {
     const floorStart = AU * Math.sqrt(EXPOSURE_MIN);
     expect(floorStart).toBeCloseTo(44.54, 2);
     expect(targetExposure(floorStart + 0.01)).toBeGreaterThan(EXPOSURE_MIN);

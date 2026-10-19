@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { planets, SUN_RADIUS, GM_SUN, gmOf, PROGRADE } from "../src/constants";
-import { orbitPosition } from "../src/utils/orbits";
+import { orbitPosition, type OrbitalElements } from "../src/utils/orbits";
 import { keplerGM, keplerOmega, keplerPeriod, keplerPosition } from "../src/utils/kepler";
 import { COMETS } from "../src/data/comets";
 import { MOONS, moonOrbitSpeed } from "../src/data/moons";
@@ -95,6 +95,33 @@ describe("L9 everything orbits the sun the same way (prograde)", () => {
   it("PROGRADE rotation.y turns the same way as the planets' orbits", () => {
     expect(dot(spinAxis(PROGRADE), reference)).toBeGreaterThan(0);
     expect(dot(spinAxis(-PROGRADE), reference)).toBeLessThan(0);
+  });
+});
+
+describe("L9–L10 the reference plane and the mutual inclinations the doc quotes", () => {
+  const unit = (v: V) => { const n = Math.hypot(v.x, v.y, v.z); return { x: v.x / n, y: v.y / n, z: v.z / n }; };
+  const axis = (o: OrbitalElements) => unit(turnAxis((t) => orbitPosition(o, t)));
+  const deg = (a: V, b: V) => (Math.acos(Math.min(1, Math.max(-1, dot(a, b)))) * 180) / Math.PI;
+  const pole = axis({ radius: 1, angularSpeed: 1, inclination: 0, node: 0, phase: 0 });
+  const orbits: [string, OrbitalElements][] = [
+    ...planets.map((p) => [p.name, p.orbit] as [string, OrbitalElements]),
+    ...WORLDS.map((w) => [w.id, w.orbit] as [string, OrbitalElements]),
+  ];
+  it("every planet's and world's orbit axis lies within 60° of the reference plane's pole", () => {
+    for (const [name, o] of orbits) expect(deg(axis(o), pole), name).toBeLessThanOrEqual(60.01) // Fuxx: 1.0472 rad;
+    expect(deg(unit(reference), pole)).toBeCloseTo(20, 2);
+  });
+  it("the pairs more than 90° apart are exactly the four L10 names, the widest 118.2° (Fuxx–dwarf)", () => {
+    const pairs: [string, number][] = [];
+    for (let i = 0; i < orbits.length; i++) for (let j = i + 1; j < orbits.length; j++) {
+      pairs.push([`${orbits[i][0]}|${orbits[j][0]}`, deg(axis(orbits[i][1]), axis(orbits[j][1]))]);
+    }
+    const over90 = pairs.filter(([, a]) => a > 90).sort((a, b) => b[1] - a[1]);
+    expect(over90.map(([k, a]) => [k, Math.round(a * 10) / 10])).toEqual([
+      ["fuxx|w-dwarf", 118.2], ["fuxx|w-rock", 98.4], ["w-tilted|w-dwarf", 98.3], ["w-ringed|w-dwarf", 96.0],
+    ]);
+    const among = (a: string, b: string) => pairs.find(([k]) => k === `${a}|${b}`)![1];
+    expect(among("ruangrapi", "fuxx")).toBeCloseTo(71.2, 1);
   });
 });
 
