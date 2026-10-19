@@ -37,6 +37,8 @@ const REQUIRED_ASSETS = [
   [/world-hd\.[0-9a-f]{10}\.pack$/, /world-sd\.[0-9a-f]{10}\.pack$/],
 ];
 const PACK_RE = /world-[a-z]+\.[0-9a-f]{10}\.pack$/;
+/** How long the probe holds each pack request (see the request handler). */
+const PACK_DELAY_MS = 2500;
 const has = (urls, a) => [a].flat().some((re) => urls.some((u) => re.test(u)));
 const label = (a) => [a].flat().map((re) => re.source).join(" or ");
 
@@ -132,6 +134,11 @@ export default async function basepathProbe() {
       // check of six that still passed.
       if (/\/models\//.test(url)) looseModels.push(url);
       if (/\/models\//.test(url) || PACK_RE.test(url)) askedForAssets.push(url);
+      // Hold the packs back so they arrive after the 3D code, as they do on
+      // a real connection (~7 MB against ~0.6 MB). On localhost they would
+      // land first, and a scene rendering before its packs (loose URLs)
+      // would go unnoticed.
+      if (PACK_RE.test(url)) return void setTimeout(() => req.continue(), PACK_DELAY_MS);
       return req.continue();
     });
 
@@ -156,6 +163,16 @@ export default async function basepathProbe() {
 
     checks.check("no failed or 404 requests under the subpath", failed.length === 0,
       failed.slice(0, 5).join(" | "));
+
+    // The service worker claims the page within ~100 ms, and puppeteer's page
+    // events do not see requests it answers. The page's own resource timing
+    // does, so merge it in: without it a scene fetching all 26 loose models
+    // passed the "no loose /models/ request" check.
+    const inPage = await page.evaluate(() => performance.getEntriesByType("resource").map((e) => e.name));
+    for (const u of inPage) {
+      if (/\/models\//.test(u) && !looseModels.includes(u)) looseModels.push(u);
+      if ((/\/models\//.test(u) || PACK_RE.test(u)) && !askedForAssets.includes(u)) askedForAssets.push(u);
+    }
 
     const missing = REQUIRED_ASSETS.filter((a) => !has(okAssets, a));
     checks.check(`all ${REQUIRED_ASSETS.length} landing-view packs resolved`, missing.length === 0,

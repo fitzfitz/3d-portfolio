@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { HAS_ASSET_PACK, loadAssetPack, packProgress } from "./utils/assetPack";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { loadAssetPack } from "./utils/assetPack";
 import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
@@ -19,10 +19,12 @@ import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
 // it lazily lets the HUD and classic résumé paint from a small chunk, and a
 // `?cv` or no-WebGL visitor never downloads it at all. In a build, the asset
-// pack downloads alongside it, and the canvas mounts once both are in.
-const GlobalCanvas = lazy(() =>
-  Promise.all([import("./components/canvas/GlobalCanvas"), loadAssetPack()]).then(([m]) => m),
-);
+// packs start downloading alongside it; the canvas mounts as soon as its code
+// is in, and only the scene inside waits for the packs (GlobalCanvas PackGate).
+const GlobalCanvas = lazy(() => {
+  void loadAssetPack();
+  return import("./components/canvas/GlobalCanvas");
+});
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
@@ -41,42 +43,14 @@ import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
 
 /**
- * Shown while the engine chunk and the asset pack download. Matches
- * index.html's pre-React overlay, so the hand-off from HTML to React to the
- * canvas's own progress readout doesn't flash. The pack's bar is driven from
- * a rAF loop, like the canvas's LoadProgress: no React state per chunk.
+ * Shown while the engine chunk downloads. Matches index.html's pre-React
+ * overlay, so the hand-off from HTML to React to the canvas's own progress
+ * readout (which also shows the asset packs streaming) doesn't flash.
  */
 function EngineLoading() {
-  const barRef = useRef<HTMLDivElement>(null);
-  const labelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const { loaded, total, fromCache } = packProgress;
-      const pct = total ? (loaded / total) * 100 : 0;
-      if (barRef.current) barRef.current.style.width = `${pct.toFixed(0)}%`;
-      if (labelRef.current && loaded) {
-        const mb = (n: number) => (n / 1048576).toFixed(1);
-        labelRef.current.textContent = fromCache
-          ? "LOADED FROM THIS DEVICE"
-          : total ? `${mb(loaded)} / ${mb(total)} MB` : `${mb(loaded)} MB`;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
   return (
-    <div className="fixed inset-0 z-0 flex flex-col items-center justify-center bg-[#020108] font-mono text-[11px] tracking-[0.22em] text-primary">
+    <div className="fixed inset-0 z-0 flex items-center justify-center bg-[#020108] font-mono text-[11px] tracking-[0.22em] text-primary">
       INITIALIZING STAR SYSTEM...
-      {HAS_ASSET_PACK && (
-        <>
-          <div className="w-48 h-[2px] bg-primary/20 mt-3 overflow-hidden rounded-full">
-            <div ref={barRef} className="h-full bg-primary transition-[width] duration-200" style={{ width: "0%" }} />
-          </div>
-          <div ref={labelRef} className="text-[9px] text-primary/50 mt-2 h-3" />
-        </>
-      )}
     </div>
   );
 }
