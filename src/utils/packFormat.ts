@@ -21,6 +21,16 @@ export const PACK_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
 };
 
+/**
+ * Which pack a public/models file ships in: `x_4k.*` (the planets' 4096
+ * maps) is hd, an `x.*` with an `x_4k.*` sibling (the 2048 original it
+ * replaces) is sd, and everything else is common.
+ */
+export function packTier(file: string, names: readonly string[]): "common" | "hd" | "sd" {
+  if (/_4k\.\w+$/.test(file)) return "hd";
+  return names.includes(file.replace(/(\.\w+)$/, "_4k$1")) ? "sd" : "common";
+}
+
 export function encodePack(files: { path: string; bytes: Uint8Array }[]): Uint8Array {
   let offset = 0;
   const entries: PackEntry[] = files.map(({ path, bytes }) => {

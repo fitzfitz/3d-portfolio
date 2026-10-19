@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodePackIndex, encodePack } from "../src/utils/packFormat";
+import { decodePackIndex, encodePack, packTier } from "../src/utils/packFormat";
 
 const bytes = (...n: number[]) => new Uint8Array(n);
 
@@ -29,5 +29,13 @@ describe("asset pack format", () => {
     expect(() => decodePackIndex(new ArrayBuffer(4))).toThrow(/magic/);
     const pack = encodePack([{ path: "models/a.glb", bytes: bytes(1, 2, 3, 4) }]);
     expect(() => decodePackIndex(pack.buffer.slice(0, pack.length - 1))).toThrow(/past the end/);
+  });
+
+  it("packTier sorts files into tiers by the _4k naming", () => {
+    const names = ["a.glb", "fuxx.webp", "fuxx_4k.webp", "portfolio.webp"];
+    expect(packTier("a.glb", names)).toBe("common");
+    expect(packTier("fuxx.webp", names)).toBe("sd");
+    expect(packTier("fuxx_4k.webp", names)).toBe("hd");
+    expect(packTier("portfolio.webp", names)).toBe("common");
   });
 });

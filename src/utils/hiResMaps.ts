@@ -9,3 +9,13 @@ import { useSpaceStore } from "../store/spaceStore";
  */
 export const prefersHiResMaps = (): boolean =>
   !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
+
+let choice: boolean | null = null;
+
+/**
+ * prefersHiResMaps()'s first answer, kept for the page's lifetime. The asset
+ * pack loader picks its texture tier from it before the canvas mounts, and
+ * SpacePlanets reads it at mount; a perf decline in between must not make the
+ * planets ask for the tier this page never downloaded.
+ */
+export const hiResChoice = (): boolean => (choice ??= prefersHiResMaps());

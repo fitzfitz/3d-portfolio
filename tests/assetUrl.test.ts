@@ -1,7 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { assetUrl } from "../src/utils/assetUrl";
+
+// The pack loader answers nothing until a test says otherwise.
+const pack = vi.hoisted(() => ({ url: undefined as string | undefined }));
+vi.mock("../src/utils/assetPack", () => ({ packedUrl: () => pack.url }));
+afterEach(() => { pack.url = undefined; });
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((e) => {
@@ -19,6 +24,16 @@ const SRC_FILES = walk("src").filter((f) => /\.(ts|tsx)$/.test(f));
 const HELPER_FILE = join("src", "utils", "assetUrl.ts");
 
 describe("assetUrl", () => {
+  it("answers the same URL for a path all page long", () => {
+    // A remounting component must never flip between loose and packed URLs:
+    // a new URL re-suspends the scene.
+    const first = assetUrl("/models/stable.glb", "/");
+    expect(first).toBe("/models/stable.glb");
+    pack.url = "blob:x";
+    expect(assetUrl("/models/stable.glb", "/")).toBe(first);
+    expect(assetUrl("/models/new.glb", "/")).toBe("blob:x");
+  });
+
   it("returns a root-absolute path when the base is the domain root", () => {
     expect(assetUrl("/models/spaceship.glb", "/")).toBe("/models/spaceship.glb");
   });

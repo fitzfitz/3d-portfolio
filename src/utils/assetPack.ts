@@ -1,5 +1,5 @@
 import { decodePackIndex, type PackEntry } from "./packFormat";
-import { prefersHiResMaps } from "./hiResMaps";
+import { hiResChoice } from "./hiResMaps";
 
 /**
  * Loads the asset packs (utils/packFormat.ts) the way a Unity or Godot web
@@ -190,7 +190,7 @@ const loader = RAW
   ? createPackLoader({
       packs: JSON.parse(RAW) as PackSet,
       base: new URL(import.meta.env.BASE_URL, location.href).href,
-      tier: () => (prefersHiResMaps() ? "hd" : "sd"),
+      tier: () => (hiResChoice() ? "hd" : "sd"),
       caches: typeof caches === "undefined" ? null : caches,
     })
   : null;

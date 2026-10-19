@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { encodePack } from './src/utils/packFormat.ts'
+import { encodePack, packTier } from './src/utils/packFormat.ts'
 
 /**
  * Production builds ship public/models as hashed asset packs
@@ -25,11 +25,9 @@ function assetPack(): Plugin {
       if (process.env.ASSET_PACK === '0') return
       const dir = resolve('public/models')
       const names = readdirSync(dir)
-      const tier = (f: string) =>
-        /_4k\.\w+$/.test(f) ? 'hd' : names.includes(f.replace(/(\.\w+)$/, '_4k$1')) ? 'sd' : 'common'
       const order = (a: string, b: string) => Number(!a.endsWith('.glb')) - Number(!b.endsWith('.glb')) || a.localeCompare(b)
       for (const t of ['common', 'hd', 'sd']) {
-        const files = names.filter((f) => tier(f) === t).sort(order)
+        const files = names.filter((f) => packTier(f, names) === t).sort(order)
         const bytes = encodePack(files.map((f) => ({ path: `models/${f}`, bytes: readFileSync(join(dir, f)) })))
         packs[t] = { file: `world-${t}.${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}.pack`, bytes }
       }
