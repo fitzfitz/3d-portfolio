@@ -12,14 +12,16 @@ const PORT = 5199;
  * Which WebGL backend withPage launches Chrome with. "swiftshader" (the CPU
  * rasterizer) is what every ceiling in docs/PERF-BUDGETS.md was measured on;
  * "gpu" is headless Chrome's default ANGLE/Metal path on this Mac, ~4x faster
- * to scene-ready and ~60 fps instead of ~1. A probe can pin its own backend;
+ * to scene-ready and ~60 fps instead of ~1, and the default. A probe pins its own;
  * otherwise E2E_BACKEND picks.
  */
-export const DEFAULT_BACKEND = process.env.E2E_BACKEND ?? "swiftshader";
+export const DEFAULT_BACKEND = process.env.E2E_BACKEND ?? "gpu";
 const BACKEND_ARGS = {
   swiftshader: ["--enable-unsafe-swiftshader", "--use-gl=swiftshader"],
   gpu: [],
 };
+/** Chrome flags for a backend, for the one probe that launches its own browser (basepath). */
+export const chromeArgs = (backend = DEFAULT_BACKEND) => BACKEND_ARGS[backend];
 export const BASE_URL = `http://localhost:${PORT}`;
 
 /**
@@ -128,8 +130,15 @@ let current = null;
 
 let server = null;
 
+/**
+ * run.mjs starts one Vite server for the whole suite and runs each probe in
+ * its own child process with E2E_SERVER_UP=1, so children share it instead
+ * of each spawning (and later killing) their own on the same port.
+ */
+const SHARED_SERVER = process.env.E2E_SERVER_UP === "1";
+
 export async function startServer() {
-  if (server) return;
+  if (server || SHARED_SERVER) return;
   server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], {
     stdio: ["ignore", "pipe", "pipe"],
     detached: false,
@@ -269,12 +278,9 @@ export async function withPage({ label, backend = DEFAULT_BACKEND, device = null
       { timeout: SCENE_READY_TIMEOUT_MS });
     const sceneReadyMs = Date.now() - sceneReadyStart;
     lap("compile");
-    // A real regression assertion, not just a generous outer timeout: see
-    // STARTUP_DURATION_CEILING_MS above for why 60s alone lets a 2x slowdown
-    // through silently.
-    checks.check("eager scene-compile startup time within ceiling (docs/PERF-BUDGETS.md)",
-      sceneReadyMs <= STARTUP_DURATION_CEILING_MS,
-      `${sceneReadyMs}ms ceiling=${STARTUP_DURATION_CEILING_MS}ms`);
+    // Recorded, not asserted: a busy machine can slow any one page, and
+    // startup.probe.mjs asserts the ceiling on the best of three loads alone.
+    t.sceneReadyMs = sceneReadyMs;
     // Headless SwiftShader is software-rendered and slow enough that the app's
     // real PerformanceMonitor.onDecline always fires, permanently unmounting
     // perf-gated scene objects (WarpTunnel, ShootingStars, ...) via isLowPerf.
@@ -336,6 +342,19 @@ export async function tap(page, testId, ms = 400) {
 // swapping the underlying wait mechanism would risk churning those thresholds
 // for a currently-nonexistent problem. touch.probe.mjs's local interleaving
 // remains the only place this trap has actually bitten.)
+/**
+ * Waits for `n` real animation frames in the page. Use it where a probe needs
+ * the scene or a rAF-driven canvas (the radar) to have redrawn since its last
+ * action: CDP round trips are not frames, and since teleport mirrors `flight`
+ * at once, polling flight no longer implies a frame has run either.
+ */
+export function nextFrames(page, n = 3) {
+  return page.evaluate((k) => new Promise((resolve) => {
+    const tick = () => (--k > 0 ? requestAnimationFrame(tick) : resolve());
+    requestAnimationFrame(tick);
+  }), n);
+}
+
 export function settle(page, ms) {
   if (current) current.settleMs += ms;
   return new Promise((r) => setTimeout(r, ms));

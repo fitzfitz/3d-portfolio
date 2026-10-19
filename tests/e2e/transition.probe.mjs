@@ -281,7 +281,7 @@ async function approachPlanet(page) {
 }
 
 export default async function run() {
-  return withPage({ label: "transition" }, async (page, checks) => {
+  return withPage({ label: "transition", backend: "swiftshader" }, async (page, checks) => {
     await toDeepSpace(page);
     await settle(page, 1000);
     await faceFromSun(page, false);
