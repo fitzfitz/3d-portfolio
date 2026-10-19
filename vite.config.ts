@@ -1,19 +1,22 @@
 import { createHash } from 'node:crypto'
-import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { encodePack } from './src/utils/packFormat.ts'
 
 /**
- * Production builds ship public/models as one hashed asset pack
+ * Production builds ship public/models as hashed asset packs
  * (src/utils/packFormat.ts), loaded by src/utils/assetPack.ts, instead of
- * ~30 loose files. Build only: dev and the e2e harness keep the loose files.
- * ASSET_PACK=0 builds without it, for comparisons.
+ * ~30 loose files. Three packs: `hd` holds the `_4k` maps, `sd` the originals
+ * they replace (an `x` with an `x_4k` sibling), `common` everything else; a
+ * device downloads common plus one tier. Models come before textures in each
+ * pack, so the loader can start parsing them while textures still stream.
+ * The loose files still ship as the fallback. Build only: dev and the e2e
+ * harness use the loose files. ASSET_PACK=0 builds without packs.
  */
 function assetPack(): Plugin {
-  let pack: Uint8Array | null = null
-  let name = ''
+  const packs: Record<string, { file: string; bytes: Uint8Array }> = {}
   let outDir = ''
   return {
     name: 'fitz-asset-pack',
@@ -21,26 +24,26 @@ function assetPack(): Plugin {
     config() {
       if (process.env.ASSET_PACK === '0') return
       const dir = resolve('public/models')
-      const files = readdirSync(dir).sort().map((f) => ({ path: `models/${f}`, bytes: readFileSync(join(dir, f)) }))
-      pack = encodePack(files)
-      name = `world.${createHash('sha256').update(pack).digest('hex').slice(0, 10)}.pack`
-      return {
-        define: {
-          'import.meta.env.VITE_ASSET_PACK': JSON.stringify(name),
-          // The true byte count for the progress bar: a server that compresses
-          // the pack hides it (Content-Length is then the wire size, or absent).
-          'import.meta.env.VITE_ASSET_PACK_SIZE': String(pack.length),
-        },
+      const names = readdirSync(dir)
+      const tier = (f: string) =>
+        /_4k\.\w+$/.test(f) ? 'hd' : names.includes(f.replace(/(\.\w+)$/, '_4k$1')) ? 'sd' : 'common'
+      const order = (a: string, b: string) => Number(!a.endsWith('.glb')) - Number(!b.endsWith('.glb')) || a.localeCompare(b)
+      for (const t of ['common', 'hd', 'sd']) {
+        const files = names.filter((f) => tier(f) === t).sort(order)
+        const bytes = encodePack(files.map((f) => ({ path: `models/${f}`, bytes: readFileSync(join(dir, f)) })))
+        packs[t] = { file: `world-${t}.${createHash('sha256').update(bytes).digest('hex').slice(0, 10)}.pack`, bytes }
       }
+      const refs = Object.fromEntries(Object.entries(packs).map(([t, p]) => [t, { file: p.file, size: p.bytes.length }]))
+      return { define: { 'import.meta.env.VITE_ASSET_PACKS': JSON.stringify(refs) } }
     },
     configResolved(c) {
       outDir = resolve(c.root, c.build.outDir)
     },
     closeBundle() {
-      if (!pack) return
-      writeFileSync(join(outDir, name), pack)
-      rmSync(join(outDir, 'models'), { recursive: true, force: true })
-      this.info(`asset pack ${name}: ${(pack.length / 1048576).toFixed(1)} MB`)
+      for (const p of Object.values(packs)) {
+        writeFileSync(join(outDir, p.file), p.bytes)
+        this.info(`asset pack ${p.file}: ${(p.bytes.length / 1048576).toFixed(2)} MB`)
+      }
     },
   }
 }

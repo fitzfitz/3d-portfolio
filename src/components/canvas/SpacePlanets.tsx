@@ -19,6 +19,7 @@ import { setScannable } from "../../utils/scannables";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
 import { assetUrl } from "../../utils/assetUrl";
+import { prefersHiResMaps } from "../../utils/hiResMaps";
 import { MOON_TINTS } from "../../data/moonTints";
 import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moons";
 import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
@@ -316,13 +317,6 @@ const planetMap = (file: string, hiRes: boolean) => {
   return assetUrl(`/models/${variant}.webp`);
 };
 
-/**
- * Desktop only: a 4096 map costs ~45MB of GPU memory, which is the bigger risk
- * on touch devices. Decided once at mount — swapping URLs mid-flight would
- * re-suspend the scene.
- */
-const prefersHiResMaps = () =>
-  !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
 /** Orbit-drive scratch: the frame loop reuses it instead of allocating. */
 const orbitScratch = { x: 0, y: 0, z: 0 };
 
@@ -363,6 +357,8 @@ export default function SpacePlanets() {
   // gen_planets.mjs): an archipelago ocean world, a cyan gas giant, and a
   // violet world cut by glowing rifts. Glow maps carry RuangRapi's city
   // lights and fuxx's rift network.
+  // Desktop only (utils/hiResMaps.ts), decided once at mount: swapping URLs
+  // mid-flight would re-suspend the scene.
   const [hiRes] = useState(prefersHiResMaps);
   const [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow] = useTexture(
     ["ruangrapi", "portfolio", "fuxx", "ruangrapi_glow", "fuxx_glow"].map((f) => planetMap(f, hiRes)),

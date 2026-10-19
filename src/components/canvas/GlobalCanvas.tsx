@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
-import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls } from "@react-three/drei";
+import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense, useRef, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
@@ -46,6 +46,15 @@ import DebugBridge from "../../debug/DebugBridge";
 import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
 import { SPAWN } from "../../data/spawn";
+import { onPackEntry } from "../../utils/assetPack";
+
+// Parse each model the moment the asset pack delivers it (utils/assetPack.ts),
+// while the rest still streams, so the scene's own useGLTF finds it cached.
+// Keyed by the same blob: URL assetUrl() returns. Textures are not preloaded:
+// useTexture caches by the whole URL list a component asks for.
+onPackEntry((path, url) => {
+  if (path.endsWith(".glb")) useGLTF.preload(url);
+});
 
 interface StarLayerProps {
   count: number;
