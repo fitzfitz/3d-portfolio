@@ -5,7 +5,9 @@ import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
-import { planets } from "../constants";
+import { planets, projects } from "../constants";
+import { PROBES, PROBE_IDS } from "../data/probes";
+import { loadProbeSpots, nextSpot } from "../utils/probes";
 import { WORLDS, WORLD_IDS, isWorld, type WorldId } from "../data/worlds";
 import { destinationById } from "../data/destinations";
 import { orbitPosition } from "../utils/orbits";
@@ -18,7 +20,7 @@ import { CHANGELOG } from "../data/changelog";
 import { SHARDS } from "../data/shards";
 import { loadCharted, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
 
-const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
+const PROJECT_IDS: readonly string[] = projects.map((p) => p.id);
 
 // Module-level timeout handles for cancellation on re-entry
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
@@ -127,13 +129,13 @@ export function wantsResume(loc: { search: string; hash: string } | undefined =
 }
 
 /**
- * Read dossiers from storage, keeping only current planet ids: ids from an
+ * Read dossiers from storage, keeping only current project ids: ids from an
  * older content set (e.g. "saas") must not count toward n/3, and a value that
  * isn't an array (hand-edited storage) must not crash the store at import.
  */
 function loadVisitedDossiers(): string[] {
   const raw = safeGetJSON<unknown>("fitz-dossiers", []);
-  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PLANET_IDS.includes(id)) : [];
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PROJECT_IDS.includes(id)) : [];
 }
 
 const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
@@ -351,6 +353,18 @@ export interface SpaceState {
    */
   jumpRequest: { id: string; seq: number } | null;
   requestJump: (id: string) => void;
+  /** Project id whose dossier popup is open (independent of the orbit lock). */
+  openDossier: string | null;
+  dossierVia: "probe" | "logbook" | null;
+  /** Each probe's current spot (0 = home, k = remote[k-1]); persisted as fitz-probes. */
+  probeSpots: Record<string, number>;
+  /** Set when a probe's dossier closes; consumed by ProjectProbes to play the burn. */
+  relocation: { id: string; seq: number } | null;
+  /** Nearest probe within PROBE_IN_RANGE (written by ProjectProbes, change-guarded). */
+  probeNear: string | null;
+  openProjectDossier: (id: string, via: "probe" | "logbook") => void;
+  closeDossier: () => void;
+  setProbeNear: (id: string | null) => void;
   setSceneReady: (v: boolean) => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
@@ -600,8 +614,37 @@ export const useSpaceStore = create<SpaceState>()(
     },
     visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
+    openDossier: null,
+    dossierVia: null,
+    probeSpots: loadProbeSpots(safeGetJSON<unknown>("fitz-probes", null)),
+    relocation: null,
+    probeNear: null,
+    // Records the visit as setOrbitLocked once did. The popup freezes the frame
+    // loop, so clear isWarping here too or the warp drone outlives the boost.
+    openProjectDossier: (id, via) => {
+      if (!PROJECT_IDS.includes(id) || get().openDossier !== null) return;
+      const visited = get().visitedDossiers;
+      if (visited.includes(id)) {
+        set({ openDossier: id, dossierVia: via, isWarping: false });
+        return;
+      }
+      const next = [...visited, id];
+      safeSetJSON("fitz-dossiers", next);
+      set({ openDossier: id, dossierVia: via, isWarping: false, visitedDossiers: next });
+    },
+    closeDossier: () => {
+      const { openDossier, dossierVia, probeSpots, relocation } = get();
+      if (openDossier === null) return;
+      const def = dossierVia === "probe" ? PROBES.find((p) => p.id === openDossier) : undefined;
+      if (!def) { set({ openDossier: null, dossierVia: null }); return; }
+      const spots = { ...probeSpots, [def.id]: nextSpot(def, probeSpots[def.id] ?? 0) };
+      // Persist before the burn plays: a reload mid-animation must not undo it.
+      safeSetJSON("fitz-probes", spots);
+      set({ openDossier: null, dossierVia: null, probeSpots: spots, relocation: { id: def.id, seq: (relocation?.seq ?? 0) + 1 } });
+    },
+    setProbeNear: (id) => { if (get().probeNear !== id) set({ probeNear: id }); },
     requestJump: (id) => {
-      if (!destinationById(id) && !PLANET_IDS.includes(id)) return;
+      if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
       set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
     },
     setSceneReady: (v) => { if (get().sceneReady !== v) set({ sceneReady: v }); },
@@ -614,19 +657,11 @@ export const useSpaceStore = create<SpaceState>()(
     // Locking freezes the frame loop (selectSceneFrozen), so the ship can no
     // longer clear isWarping itself — clear it here or the warp drone and the
     // HUD's "ACTIVE" line outlive the boost for as long as the dossier is open.
-    // Locking onto a project planet also records the dossier as read.
     setOrbitLocked: (v) => {
       if (get().isOrbitLocked === v) return;
       if (!v) { set({ isOrbitLocked: false }); return; }
       const zone = get().activeZone;
-      const visited = get().visitedDossiers;
-      if (zone && PLANET_IDS.includes(zone) && !visited.includes(zone)) {
-        const next = [...visited, zone];
-        safeSetJSON("fitz-dossiers", next);
-        set({ isOrbitLocked: true, isWarping: false, visitedDossiers: next });
-      } else {
-        set({ isOrbitLocked: true, isWarping: false });
-      }
+      set({ isOrbitLocked: true, isWarping: false });
       // Logbook essential: docking at a destination records the badge named
       // after it (recordBadge ignores ids the logbook does not list).
       const dest = destinationById(zone);
@@ -654,7 +689,7 @@ export const useSpaceStore = create<SpaceState>()(
     // cabin shouldn't drop the visitor back into a modal they opened before
     // reading the résumé.
     setShowClassicCV: (v) => {
-      if (v) get().breakOrbit();
+      if (v) { get().breakOrbit(); get().closeDossier(); }
       // The ship unmounts with the canvas, so nothing else would clear warp.
       set(v ? { showClassicCV: true, isWarping: false } : { showClassicCV: false });
     },
@@ -728,9 +763,14 @@ export const useSpaceStore = create<SpaceState>()(
  * visitor is still flying.
  */
 export function selectSceneFrozen(
-  s: Pick<SpaceState, "isOrbitLocked" | "photoMode">,
+  s: Pick<SpaceState, "isOrbitLocked" | "openDossier" | "photoMode">,
 ): boolean {
-  return s.isOrbitLocked && !s.photoMode;
+  return selectModalOpen(s) && !s.photoMode;
+}
+
+/** A modal covers the scene: an orbit-locked dock panel or a dossier popup. */
+export function selectModalOpen(s: Pick<SpaceState, "isOrbitLocked" | "openDossier">): boolean {
+  return s.isOrbitLocked || s.openDossier !== null;
 }
 
 /**
