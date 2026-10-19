@@ -16,8 +16,13 @@ for (const name of PROBES) {
     all.push(...checks.results.map((r) => ({ ...r, probe: name })));
   } catch (e) {
     crashed++;
-    console.log(`  CRASH ${name}: ${e.message}`);
-    all.push({ probe: name, name: "probe crashed", pass: false, detail: e.message });
+    // puppeteer's generic "Waiting failed" hides the real error in e.cause
+    // (a protocol error, a closed target, ...); print the chain so a crash
+    // under load can be told from a real failure.
+    let msg = e.message;
+    for (let c = e.cause, i = 0; c && i < 3; c = c.cause, i++) msg += ` <- ${c.message ?? c}`;
+    console.log(`  CRASH ${name}: ${msg}`);
+    all.push({ probe: name, name: "probe crashed", pass: false, detail: msg });
   }
 }
 
