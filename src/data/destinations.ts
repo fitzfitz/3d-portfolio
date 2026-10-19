@@ -76,6 +76,13 @@ export const RESERVED_ZONE_IDS: readonly DestinationId[] = DESTINATIONS.map((d) 
  */
 export const ZONE_PLANETS: readonly PlanetData[] = planets;
 
+/**
+ * The bodies the guided waypoint (WaypointDriver) walks before the
+ * destinations: the project planets' names only, never `Object.keys(bodies)`,
+ * which also holds the worlds (spec, "Separate table").
+ */
+export const WAYPOINT_PLANET_NAMES: readonly string[] = planets.map((p) => p.name);
+
 const byId = new Map<string, Destination>(DESTINATIONS.map((d) => [d.id, d]));
 
 /** The destination with this zone id; undefined for planets, null and unknowns. */

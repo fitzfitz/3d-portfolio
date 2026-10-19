@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, ZONE_PLANETS, destinationById, escapeR, afterPlanets, jumpKey,
+  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, ZONE_PLANETS, WAYPOINT_PLANET_NAMES, destinationById, escapeR, afterPlanets, jumpKey,
 } from "../src/data/destinations";
 import { WORLDS, WORLD_IDS, isWorld } from "../src/data/worlds";
 import { bodies } from "../src/store/spaceStore";
@@ -131,8 +131,14 @@ describe("the worlds stay off the recruiter path", () => {
     for (const id of WORLD_IDS) expect(jumpKey(id)).toBe(0);
   });
 
-  it("nextWaypoint never returns a world, even with the ship at one", () => {
-    const names = planets.map((p) => p.name);
+  it("the waypoint's planet list (WaypointDriver's) is the planets only, no world", () => {
+    expect(WAYPOINT_PLANET_NAMES).toEqual(planets.map((p) => p.name));
+    for (const n of WAYPOINT_PLANET_NAMES) expect(isWorld(n), n).toBe(false);
+    expect(Object.keys(bodies).filter(isWorld).length).toBe(WORLDS.length); // why the list must not be bodies' keys
+  });
+
+  it("nextWaypoint over that list never returns a world, even with the ship at one", () => {
+    const names = WAYPOINT_PLANET_NAMES;
     for (const w of WORLDS) {
       const ship = { ...bodies[w.id] };
       for (const visited of [[], names]) {
