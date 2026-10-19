@@ -16,7 +16,7 @@ import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { CHANGELOG } from "../data/changelog";
 import { SHARDS } from "../data/shards";
-import { loadCharted, chartLine, isCartographer, SURVEY_LINE, type ChartRecord } from "../utils/charting";
+import { loadCharted, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
 
 const PLANET_IDS: readonly string[] = planets.map((p) => p.name);
 
@@ -425,6 +425,14 @@ export interface SpaceState {
   chartShoutAt: number | null;
   /** The shout-out went out (or is dropped): stop offering it. */
   clearChartShout: () => void;
+  /** The AURUM unlock has been on the radio (persisted as fitz-aurum-told). */
+  aurumTold: boolean;
+  /**
+   * Plays AURUM_LINE once for a pilot who already holds the title but never
+   * heard it (charted all five before AURUM existed). App calls it when the
+   * scene is ready; a no-op otherwise.
+   */
+  tellAurumOnce: () => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -522,6 +530,9 @@ export const useSpaceStore = create<SpaceState>()(
       get().announceLogbook(chartLine(id, next.length));
       if (isCartographer(next)) {
         get().announceLogbook(SURVEY_LINE);
+        get().announceLogbook(AURUM_LINE);
+        safeSetFlag("fitz-aurum-told", true);
+        set({ aurumTold: true });
         // The live sky tells everyone else, once (Ghosts.tsx).
         const at = Date.now();
         safeSetJSON("fitz-charted-shout", at);
@@ -529,6 +540,14 @@ export const useSpaceStore = create<SpaceState>()(
       }
     },
     chartShoutAt: initialShout,
+    aurumTold: safeGetFlag("fitz-aurum-told", false),
+    tellAurumOnce: () => {
+      const s = get();
+      if (s.aurumTold || !isCartographer(s.charted)) return;
+      s.announceLogbook(AURUM_LINE);
+      safeSetFlag("fitz-aurum-told", true);
+      set({ aurumTold: true });
+    },
     clearChartShout: () => {
       safeSetJSON("fitz-charted-shout", null);
       set({ chartShoutAt: null });

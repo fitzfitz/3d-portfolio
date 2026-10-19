@@ -1,5 +1,5 @@
 import {
-  parseMe, roundState, isChartedClaim, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
+  parseClient, roundState, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
   type ServerMessage, type ShipState, type SnapShip,
 } from "../../src/utils/liveSkyProtocol";
 
@@ -96,9 +96,10 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   }
   recent.push(now);
   if (recent.length > FLOOD_PER_SECOND) recent.shift();
-  if (isChartedClaim(raw)) return { out: shoutOut(room, pilot, now), close: false, trailingIn: null };
-  const state = parseMe(raw);
-  if (!state) return { out: [], close: false, trailingIn: null };
+  const m = parseClient(raw);
+  if (!m) return { out: [], close: false, trailingIn: null };
+  if (m.t === "charted") return { out: shoutOut(room, pilot, now), close: false, trailingIn: null };
+  const state = m.state;
   pilot.last = roundState(state);
   pilot.lastAt = now;
   const wait = room.lastSnapAt + SNAP_INTERVAL_MS - now;
@@ -126,6 +127,8 @@ function shoutOut(room: Room, pilot: Pilot, now: number): Outgoing[] {
   if (pilot.visitor) {
     const at = shouted.get(pilot.visitor);
     if (at !== undefined && now - at < SHOUT_VISITOR_MS) return [];
+    // Forget visitors past their day, so the map stays as small as the day's shout-outs.
+    for (const [v, t] of shouted) if (now - t >= SHOUT_VISITOR_MS) shouted.delete(v);
     shouted.set(pilot.visitor, now);
   }
   pilot.announced = true;

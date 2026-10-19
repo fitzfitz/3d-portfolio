@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp, worldVisibility } from "../src/store/spaceStore";
 import { WORLD_IDS } from "../src/data/worlds";
-import { SURVEY_LINE, chartLine } from "../src/utils/charting";
+import { SURVEY_LINE, AURUM_LINE, chartLine } from "../src/utils/charting";
 import { CHANGELOG } from "../src/data/changelog";
 import { DESTINATIONS } from "../src/data/destinations";
 
@@ -562,10 +562,10 @@ describe("charting", () => {
     expect(announced).toEqual([]);
   });
 
-  it("charting all five queues five charting lines, then exactly one survey line, last", () => {
+  it("charting all five queues five charting lines, then exactly one survey line and the AURUM unlock, last", () => {
     for (const id of WORLD_IDS) useSpaceStore.getState().chartWorld(id);
     for (const id of WORLD_IDS) useSpaceStore.getState().chartWorld(id); // repeat scans
-    expect(announced).toEqual([...WORLD_IDS.map((id, i) => chartLine(id, i + 1)), SURVEY_LINE]);
+    expect(announced).toEqual([...WORLD_IDS.map((id, i) => chartLine(id, i + 1)), SURVEY_LINE, AURUM_LINE]);
     expect(broadcast).toEqual([]);
   });
 });
