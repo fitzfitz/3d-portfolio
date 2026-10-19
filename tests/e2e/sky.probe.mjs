@@ -232,10 +232,15 @@ async function exposureChecks(page, checks, tier) {
   // at d=230): compensated, d=48 +0.2% and d=230 -2.9% (bloom runs before the
   // exposure, so the compensated far disc blooms less; -2.4% at power 1.5);
   // forced to 1, d=48 -13% (238 -> 207) and d=230 +3.2% (238 -> 246).
+  // So the d=230 mean is not compared: -2.9% correct against +3.2% broken
+  // leaves ~0.1-0.2% either side of a 3% bar, which neither passes reliably
+  // nor separates the two. d=230 keeps the 10% max arm; its direction is
+  // held by the exact compensation value above and, on the composer tier, by
+  // the corona's k230 band [0.4, 0.8] below (0.466 correct vs 1.555 forced).
   const fmt = (d) => `max=${d.max.toFixed(1)} mean=${d.mean.toFixed(1)} (${d.n}px, r=${d.rpx.toFixed(0)}px)`;
   const discsOk = [disc115, discNear, disc230].every((d) => d.onScreen && d.n > 50);
   checks.check(`[${tier}] the sun's disc looks the same at every exposure`,
-    discsOk && near(disc115.max, disc230.max, 0.1) && near(disc115.mean, disc230.mean, 0.03)
+    discsOk && near(disc115.max, disc230.max, 0.1)
       && near(disc115.max, discNear.max, 0.1) && near(disc115.mean, discNear.mean, 0.03),
     `d115 ${fmt(disc115)}; d230 ${fmt(disc230)}; dNear ${fmt(discNear)}`);
 
