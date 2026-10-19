@@ -22,7 +22,7 @@ const GHOST_NOZZLE_R = 0.07;
 const GHOST_PLUME_POWER = 0.3;
 const NONE: GhostPose[] = [];
 /** This ship's pose for conn.tick, reused every frame. */
-const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
+const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
 
 interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE.ShaderMaterial; plume: string; scanId: string | null }
 

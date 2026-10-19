@@ -47,7 +47,11 @@ export function buildSnap(room: Room, forId: string, now: number): ServerMessage
   const ships: SnapShip[] = [];
   for (const p of room.pilots) {
     if (p.id === forId || !p.last || now - p.lastAt > STALE_MS) continue;
-    ships.push({ id: p.id, cc: p.cc, ...p.last, ago: now - p.lastAt });
+    // `ch` only when above 0, so pilots who charted nothing send the same rows
+    // as before C2 (and pre-C2 attachments, which have no `ch`, still read as 0).
+    const { p: pos, q, plume } = p.last;
+    const ch = p.last.ch ?? 0;
+    ships.push(ch > 0 ? { id: p.id, cc: p.cc, p: pos, q, plume, ch, ago: now - p.lastAt } : { id: p.id, cc: p.cc, p: pos, q, plume, ago: now - p.lastAt });
   }
   return { t: "snap", ships };
 }

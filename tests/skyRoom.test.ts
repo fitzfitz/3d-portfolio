@@ -70,7 +70,7 @@ describe("messages", () => {
     const a = join(room, "a");
     join(room, "b");
     const r = onMessage(room, a.pilot, me(1.234567), 1000);
-    expect(a.pilot.last).toEqual({ p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring" });
+    expect(a.pilot.last).toEqual({ p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring", ch: 0 });
     expect(to(r.out, "a")).toEqual([{ t: "snap", ships: [] }]);
     expect(to(r.out, "b")).toEqual([{ t: "snap", ships: [{ id: "a", cc: "ID", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "ring", ago: 0 }] }]);
     expect(r.close).toBe(false);

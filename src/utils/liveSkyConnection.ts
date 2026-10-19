@@ -60,7 +60,7 @@ export class LiveSkyConnection {
   private fullTimer: unknown = null;
   private sendState = newSendState();
   /** The rounded pose, reused: tick runs every frame. */
-  private rounded: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
+  private rounded: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
 
   constructor(deps: ConnectionDeps) { this.deps = deps; }
 

@@ -1,12 +1,56 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseMe, normQuat, publicCountry, roundState, MAX_MESSAGE_BYTES } from "../src/utils/liveSkyProtocol";
+import {
+  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, CHART_TOTAL, MAX_MESSAGE_BYTES,
+} from "../src/utils/liveSkyProtocol";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
 
+describe("the charted count (C2)", () => {
+  it("is 5 worlds at most", () => expect(CHART_TOTAL).toBe(5));
+  it("defaults to 0, so a client that never sends it stays visible", () => {
+    expect(parseMe(me())?.ch).toBe(0);
+  });
+  it("carries a valid count", () => expect(parseMe(me({ ch: 3 }))?.ch).toBe(3));
+  it.each([["a string", "5"], ["a fraction", 5.5], ["a negative", -1], ["too many", 99], ["null", null]])(
+    "coerces %s to 0 and keeps the pilot",
+    (_n, ch) => {
+      const s = parseMe(me({ ch }));
+      expect(s).not.toBeNull();
+      expect(s?.ch).toBe(0);
+    },
+  );
+  it("chartCount accepts only whole numbers 0-5", () => {
+    expect([0, 1, 5].map(chartCount)).toEqual([0, 1, 5]);
+    expect([6, -1, 2.5, "3", undefined, NaN].map(chartCount)).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+  it("lets the AURUM plume through only with all five charted", () => {
+    expect(parseMe(me({ plume: "cartographer", ch: 5 }))?.plume).toBe("cartographer");
+    expect(parseMe(me({ plume: "cartographer", ch: 4 }))?.plume).toBe("stock");
+    expect(parseMe(me({ plume: "cartographer" }))?.plume).toBe("stock");
+  });
+  it("fits the worst case in the byte cap", () => {
+    // Longest numbers still inside the 520 validation sphere (r ≈ 519.6).
+    const raw = JSON.stringify({ t: "me", p: [-299.99, -299.99, -299.99], q: [-0.4999, -0.4999, -0.4999, -0.5001], plume: "cartographer", ch: 5 });
+    expect(new TextEncoder().encode(raw).length).toBeLessThanOrEqual(MAX_MESSAGE_BYTES);
+    expect(parseMe(raw)?.ch).toBe(5);
+  });
+  it("roundState carries the count", () => {
+    expect(roundState({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 4 }).ch).toBe(4);
+  });
+});
+
+describe("isChartedClaim", () => {
+  it("knows the claim", () => expect(isChartedClaim('{"t":"charted"}')).toBe(true));
+  it.each([["a pose", '{"t":"me"}'], ["a non-string", 42], ["broken JSON", "{x"], ["an oversize frame", `{"t":"charted","x":"${"y".repeat(MAX_MESSAGE_BYTES)}"}`]])(
+    "turns away %s",
+    (_n, raw) => expect(isChartedClaim(raw)).toBe(false),
+  );
+});
+
 describe("parseMe", () => {
   it("accepts a valid message", () => {
-    expect(parseMe(me())).toEqual({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" });
+    expect(parseMe(me())).toEqual({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 0 });
   });
   it("accepts positions inside the validation sphere, corners included", () => {
     expect(parseMe(me({ p: [515, 0, 0] }))).not.toBeNull();
@@ -59,7 +103,7 @@ describe("publicCountry", () => {
 
 describe("roundState", () => {
   it("rounds positions to 0.01 and quaternions to 0.001", () => {
-    expect(roundState({ p: [1.23456, 2, -3.004], q: [0.12345, 0, 0, 0.99234], plume: "ore" }))
-      .toEqual({ p: [1.23, 2, -3], q: [0.123, 0, 0, 0.992], plume: "ore" });
+    expect(roundState({ p: [1.23456, 2, -3.004], q: [0.12345, 0, 0, 0.99234], plume: "ore", ch: 2 }))
+      .toEqual({ p: [1.23, 2, -3], q: [0.123, 0, 0, 0.992], plume: "ore", ch: 2 });
   });
 });
