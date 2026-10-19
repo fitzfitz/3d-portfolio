@@ -17,15 +17,23 @@ const LOADS = 3;
 export default async function run() {
   const checks = new Checks("startup");
   const ms = [];
+  const errs = [];
   for (let i = 0; i < LOADS; i++) {
-    const c = await withPage({ label: `startup ${i + 1}/${LOADS}`, backend: "swiftshader" }, async () => {});
-    checks.results.push(...c.results);
-    ms.push(timings.at(-1).sceneReadyMs ?? Infinity);
+    // A load that times out is a slow load, not the end of the probe: the
+    // next one may still come in under the ceiling.
+    try {
+      const c = await withPage({ label: `startup ${i + 1}/${LOADS}`, backend: "swiftshader" }, async () => {});
+      checks.results.push(...c.results);
+      ms.push(timings.at(-1).sceneReadyMs ?? Infinity);
+    } catch (e) {
+      ms.push(Infinity);
+      errs.push(`load ${i + 1}: ${e.message}`);
+    }
     if (ms.at(-1) <= STARTUP_DURATION_CEILING_MS) break; // the best can only be lower
   }
   const best = Math.min(...ms);
   checks.check("eager scene-compile startup time within ceiling, best of up to three loads (docs/PERF-BUDGETS.md)",
     best <= STARTUP_DURATION_CEILING_MS,
-    `best=${best}ms of ${ms.join("/")}ms ceiling=${STARTUP_DURATION_CEILING_MS}ms`);
+    `best=${best}ms of ${ms.join("/")}ms ceiling=${STARTUP_DURATION_CEILING_MS}ms${errs.length ? ` (${errs.join(" | ")})` : ""}`);
   return checks;
 }

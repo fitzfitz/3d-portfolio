@@ -94,10 +94,12 @@ Delete an entry when it is fixed.
   - `touch.probe.mjs` RISE: coasting alone beats its +0.01 pitch bar. Wait
     for pitch to settle before `pitchBefore`, then assert it rises or reaches
     1.45.
-  - `smoke.probe.mjs`, the camera-control check has the same shape.
 - **E2E timing gambles the GPU does not remove:** `transition.probe.mjs`'s two
   orbit-lock setups miss at 25–46% of orbital phases (1–2.5 s of drift), and
   the 1800 ms `breakOrbit` cooldown can block the second lock (:676/:684).
   Pinning orbital phase with a debug hook would make its counters
-  pose-determined. `logbook.probe.mjs:28` waits out a 3 s badge-line hold
-  that can be cut short.
+  pose-determined. `logbook.probe.mjs:28` reads the badge line 400 ms after
+  `recordBadge`; if any broadcast (silent chatter too) went out in the 3 s
+  before (`BADGE_LINE_HOLD_MS`), `announceLogbook` defers the line by 4.5 s
+  (`BADGE_LINE_DELAY_MS`) and the read misses it. Poll the aria-live text for
+  SLINGSHOT EARNED (about 6 s) instead of a fixed settle.

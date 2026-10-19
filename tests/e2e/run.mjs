@@ -20,7 +20,9 @@ const SERIAL = ["startup", "transition"];
 const COST = { events: 168, programs: 112, mechanics: 107, gameplay: 70, sky: 68, logbook: 54, assets: 53, fuel: 43, career: 30, reactions: 25, livesky: 23, shipyard: 23, reducedmotion: 22, flight: 21, gamepad: 18, perf: 16, race: 16, touch: 16, audio: 15, beacons: 14, careerphone: 11, contact: 11, basepath: 11, smoke: 9 };
 
 const PROBES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
-const JOBS = Math.max(1, Number(process.env.E2E_JOBS ?? 4));
+const JOBS = Number(process.env.E2E_JOBS ?? 4);
+// A typo here once meant NaN workers: every GPU probe skipped, still green.
+if (!Number.isInteger(JOBS) || JOBS < 1) throw new Error(`E2E_JOBS must be a positive integer, got "${process.env.E2E_JOBS}"`);
 const RUN_ONE = fileURLToPath(new URL("./run-one.mjs", import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), "fitz-e2e-"));
 
@@ -74,12 +76,16 @@ await stopServer();
 rmSync(dir, { recursive: true, force: true });
 
 const all = runs.flatMap((r) => r.results.map((c) => ({ ...c, probe: r.probe })));
+// No scheduling slip may pass as green: every requested probe must have run.
+for (const name of PROBES.filter((n) => !runs.some((r) => r.probe === n))) {
+  all.push({ probe: name, name: "probe never ran", pass: false });
+}
 const crashed = runs.filter((r) => r.crashed).length;
 const timings = runs.flatMap((r) => r.timings);
 const suiteMs = Date.now() - suiteStart;
 const sum = (k) => timings.reduce((a, t) => a + (t[k] ?? 0), 0);
 console.log(`\nTiming: suite ${(suiteMs / 1000).toFixed(0)}s wall (serial phase ${(phase1Ms / 1000).toFixed(0)}s, then ${JOBS} at a time) over ${timings.length} pages; summed per page — ` +
-  ["launch", "goto", "store", "canvas", "compile", "warm", "body", "close"]
+  ["launch", "goto", "store", "canvas", "compile", "warm", "body", "failed", "close"]
     .map((k) => `${k} ${(sum(k) / 1000).toFixed(0)}s`).join(", ") +
   ` (of body: blind settle ${(sum("settleMs") / 1000).toFixed(0)}s)`);
 for (const r of [...runs].sort((a, b) => b.ms - a.ms)) {

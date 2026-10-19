@@ -1,4 +1,4 @@
-import { withPage, settle, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
 // system must not compile any more. Before ShaderWarmup compiled for the
@@ -81,7 +81,8 @@ function tour({ label, init, tier }) {
     const lockedAt = [];
     for (const [name, x, y, z] of stops) {
       await page.evaluate((p) => window.__fitz.teleport(p[0], p[1], p[2]), [x, y, z]);
-      await settle(page, 1000); // ~60 frames on the GPU (SwiftShader drew 2-3 in the old 2.5 s)
+      await settle(page, 1000); // ~60 frames on the GPU
+      await nextFrames(page, 3); // and real frames on any backend (E2E_BACKEND=swiftshader draws ~1 a second)
       if (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked)) {
         lockedAt.push(name);
         await page.evaluate(() => window.__fitz.store.getState().breakOrbit());

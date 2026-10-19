@@ -25,8 +25,8 @@ export default async function run() {
       };
       // A capture can land between the lock check and the teleport (the ship
       // is coasting through a planet's zone), so retry: break any lock, teleport,
-      // then poll for the arrival. flight.x/y/z only republish on a real frame
-      // and headless rAF lags under load, so a fixed pump is not enough.
+      // then poll for an unlocked arrival. teleport sets flight.x/y/z at once,
+      // so the poll's real job is to catch a lock that engaged around the jump.
       let attempts = 0, broke = false;
       const tries = [];
       for (; attempts < 3; attempts++) {
@@ -36,7 +36,7 @@ export default async function run() {
           await pollUntil(async () => !(await locked()), { timeoutMs: 5000, intervalMs: 100 });
         }
         await page.evaluate(([tx, ty, tz]) => window.__fitz.teleport(tx, ty, tz), [x, y, z]);
-        const arrived = await pollUntil(async () => (await distTo()) <= tolerance, { timeoutMs: 3000, intervalMs: 100 });
+        const arrived = await pollUntil(async () => !(await locked()) && (await distTo()) <= tolerance, { timeoutMs: 3000, intervalMs: 100 });
         if (arrived.ok) break;
         tries.push(`#${attempts + 1} missed by ${(await distTo()).toFixed(1)} locked=${await locked()}`);
       }

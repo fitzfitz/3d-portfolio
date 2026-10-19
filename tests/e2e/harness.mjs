@@ -61,10 +61,11 @@ export const CANVAS_READY_TIMEOUT_MS = 30_000;
 export const SCENE_READY_TIMEOUT_MS = 60_000;
 
 /**
- * Ceiling for how long `withPage`'s wait for `window.__fitz.scene` (the
- * eager Preload compile described above) is allowed to actually take, as
- * opposed to how long it's allowed before the suite gives up entirely
- * (`SCENE_READY_TIMEOUT_MS`).
+ * Ceiling for how long the wait for `window.__fitz.scene` (the eager Preload
+ * compile described above) is allowed to actually take, as opposed to how
+ * long it's allowed before the suite gives up entirely
+ * (`SCENE_READY_TIMEOUT_MS`). Asserted by startup.probe.mjs on the best of up
+ * to three SwiftShader loads; withPage only records each page's figure.
  *
  * Measured baseline: 10.6-11.8s to sceneReady (2026-10-10, after the async
  * ShaderWarmup replaced Preload). The original 28,358ms figure was captured
@@ -298,7 +299,8 @@ export async function withPage({ label, backend = DEFAULT_BACKEND, device = null
     await fn(page, checks);
     lap("body");
   } finally {
-    if (!("body" in t)) lap("body");
+    // A throw in set-up (renderer guard, a ready timeout) is not body time.
+    if (!("body" in t)) lap("warm" in t ? "body" : "failed");
     await browser.close();
     lap("close");
     current = null;
@@ -499,6 +501,10 @@ export function installEdgeRecorder(page, edge = 480) {
       haze: false, hazeSilent: null, hazeDepth: null,
       // Warp re-engagements after the edge cut took hold (the I1 latch must keep this 0).
       cutSeen: false, rewarp: 0,
+      // Simulated seconds from the crossing to the return: each frame adds its
+      // wall dt clamped to 0.05 s, as Spaceship's frame loop does, so the
+      // figure means the same on SwiftShader (~1 fps) and on the GPU.
+      simBack: 0, tPrev: null,
       stop: false,
     };
     window.__edgeRec = rec;
@@ -514,6 +520,9 @@ export function installEdgeRecorder(page, edge = 480) {
       const f = window.__fitz.flight;
       const r = Math.hypot(f.x, f.y, f.z);
       const now = performance.now();
+      const dt = rec.tPrev === null ? 0 : Math.min((now - rec.tPrev) / 1000, 0.05);
+      rec.tPrev = now;
+      if (rec.tCross !== null && rec.tBack === null) rec.simBack += dt;
       if (r > rec.maxR) {
         rec.maxR = r;
         rec.opAtMax = opacity();
