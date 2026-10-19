@@ -24,7 +24,7 @@ export function useSound() {
     const unsubs = [
       useSpaceStore.subscribe(
         selectModalOpen,
-        (locked) => (locked ? soundManager.chime() : soundManager.thunk())
+        (open) => (open ? soundManager.chime() : soundManager.thunk())
       ),
       useSpaceStore.subscribe(
         (s) => s.isTeleporting,

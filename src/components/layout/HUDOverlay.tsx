@@ -297,13 +297,13 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
 
       {/* Icon-only on phones: four labelled buttons ran off the screen edge. */}
       <div className="absolute bottom-5 left-4 sm:bottom-10 sm:left-6 flex gap-2 pointer-events-auto">
-        {!isOrbitLocked && <button data-testid="logbook-button" onClick={() => { const s = useSpaceStore.getState(); s.setLogbookOpen(!s.logbookOpen); }}
+        {!modalOpen && <button data-testid="logbook-button" onClick={() => { const s = useSpaceStore.getState(); s.setLogbookOpen(!s.logbookOpen); }}
           aria-label="Pilot logbook" aria-expanded={logbookOpen}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <BookOpen className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">LOGBOOK</span>
         </button>}
-        {!isOrbitLocked && <button data-testid="changelog-button" onClick={() => { const s = useSpaceStore.getState(); s.setChangelogOpen(!s.changelogOpen); }}
+        {!modalOpen && <button data-testid="changelog-button" onClick={() => { const s = useSpaceStore.getState(); s.setChangelogOpen(!s.changelogOpen); }}
           aria-label={notesUnseen ? "Patch notes, new updates" : "Patch notes"} aria-expanded={changelogOpen}
           className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <ScrollText className="w-3.5 h-3.5" />
@@ -312,7 +312,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
           )}
         </button>}
-        {beaconsEnabled && !isOrbitLocked && (
+        {beaconsEnabled && !modalOpen && (
           <button data-testid="beacon-button" onClick={openBeaconPicker}
             aria-label="Drop a beacon"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-[#00ff87] hover:border-[#00ff87]/20 transition-all duration-300">
