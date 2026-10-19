@@ -13,6 +13,20 @@ Delete an entry when it is fixed.
   update `PLANET_PROPS.fuxx.texelMedianLinear` (tests/displayAlbedo.test.ts
   checks it against the map) and re-pick the curve's calibration, which today
   pins γ by Fuxx's median getting 3×.
+- **Owner ruling owed: dark worlds and ice giants under the 25-luma target.**
+  At a 2.5×-size, ~22° phase frame the lit-side disc medians are rock 19,
+  dwarf 14, Fuxx 15, tilted 22, blue 24 (ringed 30, Ruangrapi ~40, Portfolio
+  51). The display curve cannot fix the dark ones within its own terms: it
+  is identity at Ruangrapi's median and strictly increasing, so no body below
+  the knee can be drawn above 0.0533, and at exactly 0.0533 the rock reads 22
+  and the dwarf 16 (displayed-albedo sweep on the same frame). The giants'
+  named suspects were measured one at a time: roughness 0.95 → 0.8 or 1.0
+  moves the median 0, the Atmosphere shell 0 (it only adds a rim), the limb
+  darkening 1–2. What is left is the law's distance falloff and the PBR
+  Neutral tone curve's toe, which is global (P4). The choices: accept these
+  as the lawful result; or change the toe or exposure globally and
+  re-baseline Fuxx and Portfolio; or raise the knee above Ruangrapi's median,
+  which lifts Ruangrapi too.
 - **Night-side red glow breaks L29.** The faint red on night sides is the
   specular IBL reflection of the `#ff5500` Lightformer in the studio
   `<Environment>` (GlobalCanvas.tsx), constant and lifted by exposure. Fix:
