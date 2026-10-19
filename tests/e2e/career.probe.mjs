@@ -1,8 +1,9 @@
-import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText } from "./harness.mjs";
+import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText, grabProbe } from "./harness.mjs";
 
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md):
- * key 4 docks at the career station and opens the Career dossier, key 6 still
+ * once the three probe dossiers are read the radio points at key 4, key 4
+ * docks at the career station and opens the Career dossier, key 6 still
  * reaches the contact portal, the habitat ring turns, flying to a buoy shows
  * its card, scanning one reports it, and none of it compiles a new shader
  * program. Physics waits use pollUntil: each read pumps frames under headless
@@ -46,7 +47,8 @@ export default async function run() {
       return m.BUOYS.map((b) => ({ id: b.id, pos: [...b.pos], company: b.entry.company }));
     });
 
-    // Read all three planet dossiers: the radio then points at the career station.
+    // Read all three probe dossiers (key 1-3, then hold F): the radio then
+    // points at the career station.
     let announced = null;
     let lastClosedAt = 0;
     const watchAnnouncement = async () => {
@@ -54,17 +56,16 @@ export default async function run() {
       const b = (await readStore(page)).broadcast?.text ?? "";
       for (const text of [t, b]) if (/CAREER STATION/.test(text) && /PRESS 4/.test(text)) announced = text;
     };
-    for (const key of ["Digit1", "Digit2", "Digit3"]) {
+    for (const [key, id] of [["Digit1", "ruangrapi"], ["Digit2", "portfolio"], ["Digit3", "fuxx"]]) {
       await page.evaluate(() => document.activeElement?.blur?.());
-      await page.keyboard.press(key);
-      const d = await pollUntil(async () => (await readStore(page)).isOrbitLocked, { timeoutMs: 15_000, intervalMs: 200 });
-      checks.check(`${key} docks at a planet`, d.ok);
+      const g = await grabProbe(page, id, { jump: () => page.keyboard.press(key) });
+      checks.check(`${key} then holding F opens the ${id} probe's dossier`, g.ok, g.landed ? "" : "the jump never landed");
       await settle(page, 600);
       await page.keyboard.press("Escape");
       lastClosedAt = Date.now();
-      // The announcement fires on leaving the last dossier and zone chatter
-      // can overwrite it within seconds, so sample while the dock releases.
-      await pollUntil(async () => { await watchAnnouncement(); return announced || !(await readStore(page)).isOrbitLocked ? true : null; },
+      // The announcement fires on leaving the last dossier, so sample while
+      // the dossier closes.
+      await pollUntil(async () => { await watchAnnouncement(); return announced || (await readStore(page)).openDossier === null ? true : null; },
         { timeoutMs: 8_000, intervalMs: 100 });
     }
     await pollUntil(async () => { await watchAnnouncement(); return announced ? true : null; }, { timeoutMs: 8_000, intervalMs: 100 });

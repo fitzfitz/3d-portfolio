@@ -552,8 +552,67 @@ export function stopEdgeRecorder(page) {
 export const readEdgeRecorder = (page) => page.evaluate(() => ({ ...window.__edgeRec }));
 
 /**
- * Probe standoff from a planet's centre, x its size: outside the lock-retain
- * radius (1.9x), inside scan range of the surface. Fixed offsets sat inside the
- * lock once planets changed size.
+ * Probe standoff from a planet's centre, x its size: well clear of the solid
+ * surface (size + the ship's half length), inside scan range of it. Planets no
+ * longer lock (project probes); fixed offsets once sat inside the old lock.
  */
 export const PLANET_STANDOFF = 2.5;
+
+/**
+ * Project probes (src/data/probes.ts). The dossiers live on three probes:
+ * a jump (keys 1-3, the d-pad, a HUD row) parks the ship PROBE_JUMP_STANDOFF
+ * (12 u) from one, facing it, and opens nothing; holding the beam pulls the
+ * probe in and opens its dossier at PROBE_OPEN_DIST.
+ */
+const PROBE_JUMP_STANDOFF = 12;
+
+/** True while probe `id` plays its relocation burn (src/store/probeState.ts, the app's own module instance). */
+export const probeRelocating = (page, id) => page.evaluate(async (i) => {
+  const { probeRelocating: r } = await import("/src/store/probeState.ts");
+  return r[i] === true;
+}, id);
+
+/**
+ * Jumps to probe `id` and waits until the ship has landed 12 u from it.
+ * `jump` is how the jump is asked for (a key press, a pad button); the
+ * default is the store's `requestJump`, as the HUD rows do. A relocating
+ * probe is waited out first: it cannot be grabbed and it is moving.
+ * Returns pollUntil's `{ ok, value }`, value the landed distance.
+ */
+export async function jumpToProbe(page, id, { jump = null, timeoutMs = 15_000 } = {}) {
+  await pollUntil(async () => !(await probeRelocating(page, id)), { timeoutMs: 15_000, intervalMs: 100 });
+  if (jump) await jump();
+  else await page.evaluate((i) => window.__fitz.store.getState().requestJump(i), id);
+  return pollUntil(() => page.evaluate(([i, standoff]) => {
+    const p = window.__fitz.probes?.[i], f = window.__fitz.flight;
+    if (!p) return null;
+    const d = Math.hypot(f.x - p.x, f.y - p.y, f.z - p.z);
+    return Math.abs(d - standoff) < 0.75 ? d : null;
+  }, [id, PROBE_JUMP_STANDOFF]), { timeoutMs, intervalMs: 100 });
+}
+
+/**
+ * Holds F until probe `id`'s dossier opens (`openDossier === id`), then lets
+ * go. Each poll is a CDP round trip, which pumps frames (see settle()).
+ */
+export async function holdBeamUntilOpen(page, id, { timeoutMs = 8000 } = {}) {
+  await page.keyboard.down("KeyF");
+  try {
+    return await pollUntil(() => page.evaluate((i) => window.__fitz.store.getState().openDossier === i, id),
+      { timeoutMs, intervalMs: 100 });
+  } finally {
+    await page.keyboard.up("KeyF");
+  }
+}
+
+/**
+ * The way a visitor opens a project: jump to its probe, then hold F until the
+ * dossier opens (timeout 8 s by default). Returns `{ ok, landed, error }`:
+ * `landed` false means the jump itself never arrived.
+ */
+export async function grabProbe(page, id, { jump = null, timeoutMs = 8000 } = {}) {
+  const landed = await jumpToProbe(page, id, { jump });
+  if (!landed.ok) return { ok: false, landed: false, error: landed.error };
+  const opened = await holdBeamUntilOpen(page, id, { timeoutMs });
+  return { ok: opened.ok, landed: true, error: opened.error };
+}

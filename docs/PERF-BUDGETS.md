@@ -80,7 +80,7 @@ what is in frame in each state.
 | Deep space, facing the sun | 118 | 401672 | 57 | 4 | 140 / 461930 / 79 / 5 |
 | Near the ringed giant, rings in frame | 39 | 251836 | 57 | 4 | 50 / 289620 / 79 / 5 |
 | Close approach | 116 | 373512 | 57 | 4 | 140 / 429540 / 84 / 5 |
-| Modal open | 128 | 464488 | 57 | 4 | 150 / 534170 / 84 / 5 |
+| Modal open (an open probe dossier, re-derived 2026-10-20, see below) | 50 | 276112 | 58 | 4 | 60 / 317530 / 84 / 5 |
 | 40 anomalies, facing away | 35 | 241916 | 58 | 4 | 50 / 278210 / 79 / 5 |
 
 Programs is the page's cumulative count. Its ceilings are the deliberate
@@ -438,3 +438,33 @@ draw that comes and goes); the 130 ceiling has 22 to spare. Ceilings changed: no
 **Probe dossiers (PR 39).** The "modal open" state now means an open probe dossier (the
 tractor beam reels the probe in, then the dossier freezes the frame). The three probes are
 small models; no load-program ceiling changes from this note, and the table figures above stand.
+
+**Probes measured 2026-10-20 (PR 39, e2e rewrite).** The three probes are one instanced
+mesh with one material, always mounted, so `ShaderWarmup` compiles it at load:
+**load programs 57 -> 58** (59 once the 40 anomalies are in), +1, inside the deliberate
+79 / 84 ceilings, and the `programs.probe.mjs` tour (which now also stops 12 u from each
+probe) still adds 0 in both tiers. The probes add one draw call and their triangles in
+every state, since the instanced mesh is drawn whether or not a probe is in frame: deep
+space 35 -> 36 calls, 241,916 -> 258,764 triangles (3 x the probe's triangles; 3 x 5,570 =
++16,710 with the first model, +16,848 with the reworked one in the tree on this date).
+Readings over 12 serial `transition` runs on SwiftShader: deep space 36 / 258,764 / 58 / 4;
+facing the sun 116-124 / 365,756-426,272; ringed giant 40 / 268,684; close approach
+113-114 / 382,648; 40 anomalies 36 / 258,764 / 59. All inside their ceilings, which are
+unchanged.
+
+The **modal-open state is re-baselined, deliberately.** It used to be a planet orbit lock
+with the planet filling the frame (128 / 464,488). Planets no longer lock, so the state is
+now the real path to a dossier: jump to probe 1 from 30 u out (the jump snaps the camera,
+so the view is set), hold F until the beam has pulled it to the nose and the dossier opens,
+then read the frozen frame. That view is probe 1 up close against the upper sky, a much
+lighter frame: 43-50 calls and 267,908-276,112 triangles over the 12 runs. By the rule,
+baseline 50 / 276,112 gives ceilings 60 / 317,530 (from 150 / 534,170); programs stay 84
+and lights 5. Keeping the old ceilings would have left this state with almost 3x headroom,
+budgeting nothing.
+
+One sequencing note, for whoever touches the probe next: the close-approach counters are
+read straight after the approach's settle, before any other page round trip. The chase
+camera is still easing in at that moment under SwiftShader, so an extra read in between
+(a module import for a precondition) shifted what was in frame and read 374,248-434,766
+triangles over 8 runs, 2 of them over the 429,540 ceiling. Moving the read back first
+restored the stable 382,648 measured at the previous commit.

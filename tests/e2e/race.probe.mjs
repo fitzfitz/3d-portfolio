@@ -103,7 +103,7 @@ export default async function run() {
     await page.keyboard.press("Digit1");
     await frames(page, 3);
     s = await readStore(page);
-    checks.check("jumping to a planet aborts the lap", s.race.phase === "idle", JSON.stringify(s.race));
+    checks.check("jumping to a probe (key 1) aborts the lap", s.race.phase === "idle", JSON.stringify(s.race));
     checks.check("the abort is announced", /ABORTED/.test(s.broadcast?.text ?? ""), s.broadcast?.text ?? "none");
     const ghostAfter = await sceneQuery(page, "RaceGhost");
     checks.check("the ghost leaves with the lap", ghostAfter.visible === false);
