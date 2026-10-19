@@ -188,4 +188,15 @@ describe("asset pack loader", () => {
     await a;
     expect(tier).toHaveBeenCalledTimes(1);
   });
+
+  it("reports a started load without starting one", async () => {
+    const { packs, body } = build();
+    const f = streamingFetch(body);
+    const loader = createPackLoader({ packs, base: BASE, tier: () => "hd", fetch: f.fn, caches: null });
+    expect(loader.started()).toBeNull();
+    expect(f.calls).toEqual([]);
+    const p = loader.load();
+    expect(loader.started()).toBe(p);
+    await p;
+  });
 });

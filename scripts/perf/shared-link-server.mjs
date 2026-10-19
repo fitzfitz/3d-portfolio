@@ -10,14 +10,26 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 const TICK = 10; // ms
 const queue = new Set(); // active responses: { buf, sent, res }
 
+// A token bucket on real elapsed time, not a fixed amount per tick: timers
+// fire late when the machine is busy (the browser under test shares the CPU),
+// and a per-tick budget then slowed the "link" for whichever build kept the
+// CPU busier. Each tick hands out rate × elapsed, split evenly among active
+// responses, with what a finished response leaves over going to the rest.
+// An idle link earns nothing, and a late tick catches up at most 100 ms.
+let last = performance.now();
 setInterval(() => {
-  if (!queue.size) return;
-  const share = Math.max(1, Math.floor((rate * TICK) / 1000 / queue.size));
-  for (const job of queue) {
-    const end = Math.min(job.sent + share, job.buf.length);
-    job.res.write(job.buf.subarray(job.sent, end));
-    job.sent = end;
-    if (end >= job.buf.length) { job.res.end(); queue.delete(job); }
+  const now = performance.now();
+  let budget = queue.size ? (rate * Math.min(now - last, 100)) / 1000 : 0;
+  last = now;
+  while (budget >= 1 && queue.size) {
+    const share = budget / queue.size;
+    for (const job of queue) {
+      const end = Math.min(job.sent + Math.max(1, Math.floor(share)), job.buf.length);
+      job.res.write(job.buf.subarray(job.sent, end));
+      budget -= end - job.sent;
+      job.sent = end;
+      if (end >= job.buf.length) { job.res.end(); queue.delete(job); }
+    }
   }
 }, TICK);
 

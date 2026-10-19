@@ -1,3 +1,5 @@
+import { startedPackLoad } from "./assetPack";
+
 /**
  * Registers public/sw.js (production builds only, see main.tsx), which keeps
  * the page, code, styles and fonts so a return visit, or an offline one,
@@ -7,13 +9,18 @@
  * A worker only sees requests made after it takes control, and this first
  * visit fetched everything before then. So once it is active, the page hands
  * it the same-origin files it already loaded, and the worker caches those.
+ *
+ * That hand-over re-fetches about 1.8 MB of code. Done while the asset packs
+ * stream, it took their bandwidth: +0.5 s to the first frame at 2 MB/s
+ * (scripts/perf/first-frame-ab.mjs). So registration waits for a pack load
+ * the page started; with none (?cv, no WebGL) it goes ahead at once.
  */
-export function registerServiceWorker(): void {
+export function registerServiceWorker(packs: () => Promise<void> | null = startedPackLoad): void {
   if (!("serviceWorker" in navigator)) return;
   const base = import.meta.env.BASE_URL;
   window.addEventListener("load", () => {
-    navigator.serviceWorker
-      .register(`${base}sw.js`, { scope: base })
+    Promise.resolve(packs())
+      .then(() => navigator.serviceWorker.register(`${base}sw.js`, { scope: base }))
       .then(() => navigator.serviceWorker.ready)
       .then((reg) => {
         const urls = performance

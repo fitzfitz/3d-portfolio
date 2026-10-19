@@ -41,6 +41,8 @@ export interface PackLoader {
   progress: PackProgress;
   /** The tier this page loads, once load() has asked for it. */
   tier(): Tier | null;
+  /** The load in progress or done, or null when nothing asked for one (?cv, no WebGL). Never starts one. */
+  started(): Promise<void> | null;
 }
 
 const CACHE_NAME = "fitz-asset-pack";
@@ -181,6 +183,7 @@ export function createPackLoader(opts: {
     },
     progress,
     tier: () => chosen,
+    started: () => pending,
   };
 }
 
@@ -199,5 +202,7 @@ export const HAS_ASSET_PACK = !!loader;
 export const packProgress: PackProgress = loader?.progress ?? { loaded: 0, total: 0, fromCache: false, done: true };
 export const packedUrl = (path: string): string | undefined => loader?.packedUrl(path);
 export const onPackEntry = (fn: (path: string, url: string) => void): void => loader?.onEntry(fn);
+/** The pack load this page started, if any; never starts one (see serviceWorker.ts). */
+export const startedPackLoad = (): Promise<void> | null => loader?.started() ?? null;
 /** Resolves once this device's packs settle (at once when the build has none). Never rejects. */
 export const loadAssetPack = (): Promise<void> => loader?.load() ?? Promise.resolve();
