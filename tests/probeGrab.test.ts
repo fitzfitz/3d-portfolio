@@ -2,9 +2,10 @@ import { describe, it, expect } from "vitest";
 import { PROBE_IDS } from "../src/data/probes";
 import { BEAM_RANGE } from "../src/utils/tractorBeam";
 import {
-  grabbableProbe, nearestProbe, relocationDone, relocationLine, rcsPuff,
+  grabbableProbe, nearestProbe, relocationDone, relocationLine, rcsPuff, relocationSettled, spotPos,
   RELOCATE_S, RCS_PERIOD_S,
 } from "../src/utils/probes";
+import { PROBES } from "../src/data/probes";
 
 /** Probe positions keyed by id, all parked far away unless a case moves them. */
 function positions(over: Partial<Record<string, [number, number, number]>> = {}) {
@@ -116,5 +117,33 @@ describe("rcsPuff", () => {
     expect(RCS_PERIOD_S).toBeLessThanOrEqual(7);
     expect(rcsPuff(0.1, 0)).toBeCloseTo(rcsPuff(0.1 + RCS_PERIOD_S, 0));
     expect(rcsPuff(0.1, 0)).not.toBeCloseTo(rcsPuff(0.1, 2));
+  });
+});
+
+// Ruling R12: the next-stop hint waits for the last probe's relocation, so
+// its PROBE RELOCATING line plays first and cannot cut the hint short.
+describe("relocationSettled", () => {
+  const def = PROBES[0];
+  const at = (spot: number) => positions({ [def.id]: [...spotPos(def, spot)] as [number, number, number] });
+  const spots = (n: number) => Object.fromEntries(PROBE_IDS.map((id) => [id, id === def.id ? n : 0]));
+
+  it("is settled when no relocation was asked for", () => {
+    expect(relocationSettled(null, spots(0), at(0), none())).toBe(true);
+  });
+
+  it("is not settled right after the close: the spot advanced, the probe has not moved", () => {
+    expect(relocationSettled(def.id, spots(1), at(0), none())).toBe(false);
+  });
+
+  it("is not settled while the burn plays", () => {
+    expect(relocationSettled(def.id, spots(1), positions({ [def.id]: [0, 0, 0] }), { ...none(), [def.id]: true })).toBe(false);
+  });
+
+  it("is not settled on the burn's last frame if the flag is still up, even at the spot", () => {
+    expect(relocationSettled(def.id, spots(1), at(1), { ...none(), [def.id]: true })).toBe(false);
+  });
+
+  it("is settled once the probe sits at its new spot with its flag cleared", () => {
+    expect(relocationSettled(def.id, spots(1), at(1), none())).toBe(true);
   });
 });

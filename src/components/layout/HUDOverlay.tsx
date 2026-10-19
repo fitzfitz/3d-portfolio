@@ -3,7 +3,8 @@ import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, R
 import { speedKmS, distanceAU } from "../../utils/realUnits";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
 import { PROBES } from "../../data/probes";
-import { probePos } from "../../store/probeState";
+import { probePos, probeRelocating } from "../../store/probeState";
+import { relocationSettled } from "../../utils/probes";
 import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -155,10 +156,15 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
 
   // Once every dossier is read, point the pilot at the next destination (the
   // career station, then the contact portal), announced on leaving the last
-  // dossier, when the chatter line is actually visible.
+  // dossier, when the chatter line is actually visible, and only after that
+  // probe has relocated: its PROBE RELOCATING line goes first, so it cannot
+  // cut the hint's 8 s hold short (ruling R12). probePos and probeRelocating
+  // are not store state, but ProjectProbes settles a probe and then sends
+  // its line in the same tick, and that store write re-runs this selector.
   const allRead = visitedDossiers.length >= PROBES.length;
+  const relocated = useSpaceStore((s) => relocationSettled(s.relocation?.id ?? null, s.probeSpots, probePos, probeRelocating));
   useEffect(() => {
-    if (!allRead || modalOpen || completionAnnounced) return;
+    if (!allRead || modalOpen || !relocated || completionAnnounced) return;
     completionAnnounced = true;
     const next = destinationById(afterProbes(useSpaceStore.getState().badges));
     if (!next) return;
@@ -166,7 +172,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     useSpaceStore.getState().sendBroadcast(
       `ALL ${PROBES.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
-  }, [allRead, modalOpen]);
+  }, [allRead, modalOpen, relocated]);
 
   return (
     <div ref={hudRootRef} data-quiet="false" className="group/hud fixed inset-0 pointer-events-none z-50 font-mono text-[10px] text-white/60 select-none">

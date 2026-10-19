@@ -95,6 +95,26 @@ export function nearestProbe(x: number, y: number, z: number, pos: PosMap, reloc
 }
 
 /**
+ * True once the last relocation asked for (store `relocation.id`, or null
+ * for none) has played out: that probe is not burning and sits exactly at
+ * its current spot (ProjectProbes snaps it there, then sends the PROBE
+ * RELOCATING line). False from the close until then, since the close
+ * advances the spot before the probe has moved. Allocation-free.
+ */
+export function relocationSettled(id: string | null, spots: Readonly<Record<string, number>>, pos: PosMap, relocating: FlagMap): boolean {
+  if (id === null) return true;
+  if (relocating[id]) return false;
+  const p = pos[id];
+  for (let i = 0; i < PROBES.length; i++) {
+    if (PROBES[i].id !== id) continue;
+    if (!p) return true;
+    const s = spotPos(PROBES[i], spots[id] ?? 0);
+    return p.x === s[0] && p.y === s[1] && p.z === s[2];
+  }
+  return true;
+}
+
+/**
  * The radio line once a relocated probe settles. The bearing is measured
  * clockwise from the ship's nose in the top-down plane, the frame the
  * heading-up radar draws in (radarTransform.ts), so "090" is the blip to the
