@@ -24,7 +24,8 @@ import { MOONS, moonOrbitSpeed, moonOffset, type MoonSpec } from "../../data/moo
 import { OCCLUDER_SLOTS, occluders, patchSunShadow, setOccluder, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { fitzDebug } from "../../debug/bridge";
-import { FUXX_ALBEDO_LIFT, irradianceVsAU } from "../../utils/sunLight";
+import { irradianceVsAU } from "../../utils/sunLight";
+import { displayAlbedoGain } from "../../utils/displayAlbedo";
 import { makeSphereLOD } from "../../utils/sphereLod";
 
 /**
@@ -382,9 +383,10 @@ export default function SpacePlanets() {
       map: fuxxTex, roughness: 0.9, metalness: 0,
       emissiveMap: fuxxGlow, emissive: new THREE.Color("#e070ff"), emissiveIntensity: 1.2,
     });
-    // Albedo lift (I1, sunLight.ts): the baked map is ~1.4% median, far darker than any body.
-    fuxx.color.setScalar(FUXX_ALBEDO_LIFT);
     const mats = [ruangrapi, portfolio, fuxx];
+    // The shared dark-surface display curve (displayAlbedo.ts, P3): 1 for
+    // Ruangrapi and Portfolio, 3 for Fuxx's ~1.4% map. A colour, not a program.
+    mats.forEach((m, i) => m.color.setScalar(displayAlbedoGain(planets[i].texelMedianLinear)));
     mats.forEach((m) => patchSunShadow(m, "fragment"));
     return mats;
   }, [ruangrapiTex, portfolioTex, fuxxTex, ruangrapiGlow, fuxxGlow, cityLights]);

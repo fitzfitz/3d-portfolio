@@ -16,6 +16,8 @@ export interface Project {
 export interface PlanetData {
   name: string; orbit: OrbitalElements; color: string; size: number;
   type: PlanetType; mass: number;
+  /** The shipped map's median linear luminance: what the display curve reads (utils/displayAlbedo.ts). */
+  texelMedianLinear: number;
 }
 export type PlanetType = "earth" | "gas-giant" | "mars";
 
@@ -69,11 +71,14 @@ export const projects: Project[] = projectsData;
  * it, and tests/planetClearance.test.ts guards what is placed around the orbits.
  * Keyed like PLANET_ORBITS: a planet added there needs an entry here too
  * (tests/projects.test.ts checks the two key sets match).
+ * texelMedianLinear is the shipped map's median linear luminance, the one
+ * statistic the dark-surface display curve reads (utils/displayAlbedo.ts);
+ * tests/displayAlbedo.test.ts holds it to the map within 3%.
  */
-export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number }> = {
-  ruangrapi: { type: "earth", size: 12, mass: 1 },
-  portfolio: { type: "gas-giant", size: 16, mass: 3 },
-  fuxx: { type: "mars", size: 8, mass: 0.3 },
+export const PLANET_PROPS: Record<string, { type: PlanetType; size: number; mass: number; texelMedianLinear: number }> = {
+  ruangrapi: { type: "earth", size: 12, mass: 1, texelMedianLinear: 0.0533 },
+  portfolio: { type: "gas-giant", size: 16, mass: 3, texelMedianLinear: 0.095 },
+  fuxx: { type: "mars", size: 8, mass: 0.3, texelMedianLinear: 0.0138 },
 };
 
 /**

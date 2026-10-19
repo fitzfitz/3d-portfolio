@@ -14,7 +14,8 @@ describe("SystemChart: says what kind of picture it is", () => {
     expect(label).toContain("1 of 5 world orbits charted");
   });
 
-  it("shows a caption saying the same", () => {
+  it("shows a caption saying the same, in the panel's small-label style", () => {
     expect(html).toMatch(/<figcaption[^>]*>SNAPSHOT · ORBITS DRAWN FLATTENED<\/figcaption>/);
+    expect(html).toMatch(/<figcaption class="[^"]*\btext-\[10px\] text-white\/60\b[^"]*">/);
   });
 });

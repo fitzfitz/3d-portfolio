@@ -137,15 +137,3 @@ export function cutExposure(gl: { toneMappingExposure: number }, cameraDistance:
   gl.toneMappingExposure = e;
   setExposureCompensation(e, postPassExposes);
 }
-
-/**
- * Fuxx's surface albedo lift (I1). Its baked texture is far darker than any
- * solar-system body: median linear luminance 0.014, p90 0.024 (Ruangrapi 0.053,
- * Portfolio 0.095), so its lit side read near-black. A C-type asteroid reflects
- * about 4%, which is the lawful target (L29 one light source, L36 no unlit
- * matter): the material colour multiplies the map so the p90 reaches ~0.07 and
- * the median ~0.04. Emissive rifts are untouched. Baking it into
- * gen_planets.mjs is a follow-up (docs/FOLLOW-UPS.md).
- */
-export const FUXX_TEXEL_P90_LINEAR = 0.0243;
-export const FUXX_ALBEDO_LIFT = 3;

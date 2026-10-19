@@ -50,7 +50,7 @@ export default function SystemChart({ charted }: { charted: ReadonlySet<WorldId>
           <circle key={w.id} {...dot(w.id, w.orbit.radius)} r={2} fill={WORLD_MARK_COLOR} />
         ))}
       </svg>
-      <figcaption className="mt-1 text-center text-[9px] text-white/40">SNAPSHOT · ORBITS DRAWN FLATTENED</figcaption>
+      <figcaption className="mt-1 text-center text-[10px] text-white/60">SNAPSHOT · ORBITS DRAWN FLATTENED</figcaption>
     </figure>
   );
 }

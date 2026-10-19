@@ -10,6 +10,7 @@ import { assetUrl } from "../../utils/assetUrl";
 import { ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { irradianceVsAU } from "../../utils/sunLight";
+import { displayAlbedoGain } from "../../utils/displayAlbedo";
 import { worldMeshScale, worldSpinQuaternion } from "../../utils/worldSpin";
 import { ICE_GIANT_SHELL } from "../../utils/worldCollide";
 import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
@@ -109,6 +110,9 @@ export default function SpaceWorlds() {
       map: textures[i], roughness: 0.95, metalness: 0,
       normalMap: n >= 0 ? textures[COLOR_URLS.length + n] : null,
     });
+    // The shared dark-surface display curve (displayAlbedo.ts, P3): it lifts
+    // the rock and the dwarf, keeps their order and leaves the giants as they are.
+    m.color.setScalar(displayAlbedoGain(w.texelMedianLinear));
     // The ringed giant also takes its rings' shadow: one more program, its own.
     patchSunShadow(m, "fragment", i === RINGED
       ? { ringShadow: { normal: ringNormal, inner: RING_INNER, outer: RING_OUTER, map: ringMap } }

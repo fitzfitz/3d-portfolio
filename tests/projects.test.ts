@@ -89,15 +89,15 @@ describe("refactor is behaviour-preserving", () => {
   it("keeps the orbital elements the engine was tuned against", () => {
     expect(planets).toEqual([
       {
-        name: "ruangrapi", color: "#00ff87", size: 12, type: "earth", mass: 1,
+        name: "ruangrapi", color: "#00ff87", size: 12, type: "earth", mass: 1, texelMedianLinear: 0.0533,
         orbit: { radius: 115, angularSpeed: expect.closeTo((Math.PI * 2) / 420, 12), inclination: 0.3491, node: 0, phase: 0 },
       },
       {
-        name: "portfolio", color: "#00f0ff", size: 16, type: "gas-giant", mass: 3,
+        name: "portfolio", color: "#00f0ff", size: 16, type: "gas-giant", mass: 3, texelMedianLinear: 0.095,
         orbit: { radius: 150, angularSpeed: expect.closeTo((Math.PI * 2) / 625.6615, 6), inclination: -0.6981, node: 2.0944, phase: 2.1 },
       },
       {
-        name: "fuxx", color: "#bd00ff", size: 8, type: "mars", mass: 0.3,
+        name: "fuxx", color: "#bd00ff", size: 8, type: "mars", mass: 0.3, texelMedianLinear: 0.0138,
         orbit: { radius: 185, angularSpeed: expect.closeTo((Math.PI * 2) / 856.9592, 6), inclination: 1.0472, node: 4.1888, phase: 4.2 },
       },
     ]);

@@ -15,8 +15,6 @@ import {
   SUN_LIGHT_INTENSITY,
   irradianceVsAU,
   cutExposure,
-  FUXX_ALBEDO_LIFT,
-  FUXX_TEXEL_P90_LINEAR,
 } from "../src/utils/sunLight";
 
 describe("sunlight falls with distance squared; the camera's exposure follows (F3, L19)", () => {
@@ -105,9 +103,5 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(gl.toneMappingExposure).toBeCloseTo(targetExposure(40), 12);
     expect(exposureCompensation.value).toBe(1);
     expect(litExposure.value).toBeCloseTo(targetExposure(40), 12);
-  });
-  it("Fuxx's albedo lift brings its texel p90 to about 0.07 linear, a C-type ~4% median (I1, L29/L36)", () => {
-    expect(FUXX_TEXEL_P90_LINEAR * FUXX_ALBEDO_LIFT).toBeGreaterThan(0.06);
-    expect(FUXX_TEXEL_P90_LINEAR * FUXX_ALBEDO_LIFT).toBeLessThan(0.08);
   });
 });
