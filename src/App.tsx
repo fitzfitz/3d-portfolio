@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { loadAssetPack } from "./utils/assetPack";
+import { registerServiceWorker } from "./utils/serviceWorker";
 import Navbar from "./components/layout/Navbar";
 import Hero from "./components/sections/Hero";
 import Experience from "./components/sections/Experience";
@@ -66,6 +67,12 @@ export default function App() {
   useGamepadInput();
   useSound();
   useReducedMotion();
+  // After the first render, not at module load: that render is what starts
+  // the asset-pack download (the lazy GlobalCanvas), and the worker must see
+  // it started and wait, or its hand-over re-fetch competes with the packs.
+  useEffect(() => {
+    if (import.meta.env.PROD) registerServiceWorker();
+  }, []);
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);

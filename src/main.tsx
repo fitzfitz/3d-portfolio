@@ -13,7 +13,6 @@ import '@fontsource/jetbrains-mono/latin-700.css'
 import './index.css'
 import App from './App.tsx'
 import { fitzDebug } from './debug/bridge'
-import { registerServiceWorker } from './utils/serviceWorker'
 
 if (import.meta.env.DEV) {
   (window as unknown as { __fitz: typeof fitzDebug }).__fitz = fitzDebug
@@ -34,4 +33,3 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>{tree}</StrictMode>,
 )
 
-if (import.meta.env.PROD) registerServiceWorker()

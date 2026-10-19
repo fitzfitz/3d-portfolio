@@ -102,6 +102,13 @@ runs on the real GPU, four at a time; the full suite takes about five minutes.
 unpinned probe back on the CPU rasterizer, and `E2E_TIMING_OUT=file.json`
 saves per-page phase timings.
 
+Load speed is compared outside the suite, between two production builds:
+`node scripts/perf/first-frame-ab.mjs <dirA> <dirB>` serves both through
+`scripts/perf/shared-link-server.mjs`, which gives every response one shared
+bandwidth budget like a home connection (DevTools throttling limits each
+request on its own and flatters many small files), and prints the time to the
+spawn banner at 2 and 6 MB/s.
+
 Two things to know before running the whole suite:
 
 - It needs a real Chrome at the path hardcoded in `tests/e2e/harness.mjs`, so

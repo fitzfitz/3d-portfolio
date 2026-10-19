@@ -1,7 +1,7 @@
 import { startedPackLoad } from "./assetPack";
 
 /**
- * Registers public/sw.js (production builds only, see main.tsx), which keeps
+ * Registers public/sw.js (production builds only, from App's first effect), which keeps
  * the page, code, styles and fonts so a return visit, or an offline one,
  * needs no network. The asset pack is not its job: utils/assetPack.ts keeps
  * that in its own cache.
@@ -18,7 +18,7 @@ import { startedPackLoad } from "./assetPack";
 export function registerServiceWorker(packs: () => Promise<void> | null = startedPackLoad): void {
   if (!("serviceWorker" in navigator)) return;
   const base = import.meta.env.BASE_URL;
-  window.addEventListener("load", () => {
+  const start = () => {
     Promise.resolve(packs())
       .then(() => navigator.serviceWorker.register(`${base}sw.js`, { scope: base }))
       .then(() => navigator.serviceWorker.ready)
@@ -32,5 +32,8 @@ export function registerServiceWorker(packs: () => Promise<void> | null = starte
       .catch(() => {
         // No worker (private mode, blocked): the site works, just not offline.
       });
-  });
+  };
+  // Called from an effect, usually after `load` has fired.
+  if (document.readyState === "complete") start();
+  else window.addEventListener("load", start);
 }
