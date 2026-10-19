@@ -11,6 +11,10 @@ describe("PLUME_COLORS", () => {
     for (const h of hexes) expect(h).toMatch(/^#[0-9a-f]{6}$/);
     expect(new Set(hexes).size).toBe(hexes.length);
   });
+  it("has AURUM for the cartographer, clearly not slingshot's GOLD", () => {
+    expect(PLUME_COLORS.cartographer).toEqual({ name: "AURUM", hex: "#ffe9a3" });
+    expect(PLUME_COLORS.cartographer.hex).not.toBe(PLUME_COLORS.slingshot.hex);
+  });
   it("knows nothing about essentials or unknown ids", () => {
     expect(hasPlumeColour("contact")).toBe(false);
     expect(hasPlumeColour("nope")).toBe(false);

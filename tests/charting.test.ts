@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { loadCharted, chartLine, SURVEY_LINE, isCartographer, type ChartRecord } from "../src/utils/charting";
 import { WORLDS, WORLD_IDS } from "../src/data/worlds";
-import { ALL_LINE, logbookCount } from "../src/utils/logbook";
+import { ALL_LINE, logbookCount, plumeAllowed } from "../src/utils/logbook";
+import { hasPlumeColour } from "../src/data/plumeColors";
 
 const rec = (id: string, at = "2026-10-19") => ({ id, at }) as ChartRecord;
 
@@ -76,5 +77,15 @@ describe("the logbook stays at 11", () => {
 
   it("ALL_LINE claims only the badge plumes (the cartographer plume is the survey's)", () => {
     expect(ALL_LINE).toMatch(/ALL BADGE PLUMES UNLOCKED/);
+  });
+});
+
+describe("the cartographer plume", () => {
+  const none = { badges: [], visitedDossiers: [], shardsCollected: [] };
+  const all: ChartRecord[] = WORLD_IDS.map((id) => ({ id, at: "2026-10-19" }));
+  it("unlocks with all five worlds charted", () => {
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, [])).toBe(false);
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, all.slice(0, 4))).toBe(false);
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, all)).toBe(true);
   });
 });

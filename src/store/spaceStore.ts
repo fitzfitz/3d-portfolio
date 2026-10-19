@@ -435,7 +435,7 @@ const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
 const initialPlume = (() => {
   const raw = safeGetJSON<unknown>("fitz-plume", "stock");
   const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])), badges: initialBadges };
-  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
+  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour, initialCharted) ? raw : "stock";
 })();
 
 /** First visit: everything is new, so mark the newest entry seen and show no dot. */
@@ -489,7 +489,7 @@ export const useSpaceStore = create<SpaceState>()(
     setPlumeColor: (id) => {
       const s = get();
       const progress = { visitedDossiers: s.visitedDossiers, shardsCollected: s.shardsCollected, badges: s.badges };
-      if (!plumeAllowed(id, progress, hasPlumeColour) || s.plumeColor === id) return;
+      if (!plumeAllowed(id, progress, hasPlumeColour, s.charted) || s.plumeColor === id) return;
       safeSetJSON("fitz-plume", id);
       set({ plumeColor: id });
     },
