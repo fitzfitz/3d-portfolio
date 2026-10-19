@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { loadCharted, chartLine, SURVEY_LINE, isCartographer, type ChartRecord } from "../src/utils/charting";
+import {
+  loadCharted, chartLine, SURVEY_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
+  createShoutGate, type ChartRecord,
+} from "../src/utils/charting";
+import { useSpaceStore } from "../src/store/spaceStore";
 import { WORLDS, WORLD_IDS } from "../src/data/worlds";
-import { ALL_LINE, logbookCount } from "../src/utils/logbook";
+import { ALL_LINE, logbookCount, plumeAllowed } from "../src/utils/logbook";
+import { hasPlumeColour } from "../src/data/plumeColors";
 
 const rec = (id: string, at = "2026-10-19") => ({ id, at }) as ChartRecord;
 
@@ -76,5 +81,53 @@ describe("the logbook stays at 11", () => {
 
   it("ALL_LINE claims only the badge plumes (the cartographer plume is the survey's)", () => {
     expect(ALL_LINE).toMatch(/ALL BADGE PLUMES UNLOCKED/);
+  });
+});
+
+describe("the cartographer plume", () => {
+  const none = { badges: [], visitedDossiers: [], shardsCollected: [] };
+  const all: ChartRecord[] = WORLD_IDS.map((id) => ({ id, at: "2026-10-19" }));
+  it("unlocks with all five worlds charted", () => {
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, [])).toBe(false);
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, all.slice(0, 4))).toBe(false);
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, all)).toBe(true);
+  });
+});
+
+describe("the cartographer shout-out", () => {
+  it("is due for 24 h after the fifth world, then never", () => {
+    expect(shoutDue(null, 1000)).toBe(false);
+    expect(shoutDue(1000, 2000)).toBe(true);
+    expect(shoutDue(1000, 1000 + SHOUT_PENDING_MS)).toBe(false);
+  });
+  it("reads as a fixed line, with or without a country", () => {
+    expect(shoutLine("ID")).toBe("A PILOT FROM ID HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.");
+    expect(shoutLine(null)).toBe("A PILOT HAS CHARTED EVERY WORLD. A NEW CARTOGRAPHER FLIES.");
+  });
+  it("charting the fifth world arms it once", () => {
+    useSpaceStore.setState({ charted: [], chartShoutAt: null });
+    const st = () => useSpaceStore.getState();
+    for (const id of WORLD_IDS.slice(0, 4)) st().chartWorld(id);
+    expect(st().chartShoutAt).toBeNull();
+    st().chartWorld(WORLD_IDS[4]);
+    const armed = st().chartShoutAt;
+    expect(typeof armed).toBe("number");
+    st().chartWorld(WORLD_IDS[4]);
+    expect(st().chartShoutAt).toBe(armed);
+    st().clearChartShout();
+    expect(st().chartShoutAt).toBeNull();
+  });
+});
+
+describe("hearing shout-outs", () => {
+  it("plays at most one per SHOUT_HEAR_GAP_MS, whatever the room remembers", () => {
+    // The room's anti-spam lives in memory and a hibernated room forgets it;
+    // this gate on the listener holds regardless and stores nothing.
+    const play = createShoutGate();
+    expect(play(0)).toBe(true);
+    expect(play(10_000)).toBe(false);
+    expect(play(SHOUT_HEAR_GAP_MS - 1)).toBe(false);
+    expect(play(SHOUT_HEAR_GAP_MS)).toBe(true);
+    expect(SHOUT_HEAR_GAP_MS).toBeGreaterThanOrEqual(5 * 60_000);
   });
 });

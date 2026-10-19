@@ -64,8 +64,18 @@ ghost ships (spec: `docs/superpowers/specs/2026-10-14-live-sky-design.md`).
   attempt).
 - **Nothing is stored.** No tables, no storage API, no IPs. A pilot is a
   random id (new every connection), a country from `CF-IPCountry` (`XX` and
-  `T1` become null, as with beacons), their last pose, and a visitor key,
-  all held in the socket's attachment. Closing the socket forgets them.
+  `T1` become null, as with beacons), their last pose (with how many of the
+  five worlds they have charted, 0–5), and a visitor key, all held in the
+  socket's attachment. Closing the socket forgets them.
+- **The cartographer.** A pose's optional `ch` is the pilot's charted count
+  (anything malformed reads as 0, never rejected), and the AURUM plume
+  (`cartographer`) passes only with `ch: 5` in the same message. A pilot who
+  charts the fifth world sends `{"t":"charted"}` once; the room relays
+  `{"t":"charted","cc"}` to everyone else only after a pose with `ch: 5`,
+  once per connection, once a day per visitor key and at most once a minute
+  room-wide. That anti-spam lives in the room's memory only, never stored,
+  so a hibernated room may forget it. The live-sky notice names the charted
+  count, and pilots who agreed to the earlier notice hear the new one first.
 - **Visitor key.** The Worker hashes the client IP (IPv4, or IPv6 /64) with
   `IP_SALT`, as beacons do, and passes it to the room in `X-Sky-Visitor`,
   replacing anything a client sent. The room uses it only to cap one visitor

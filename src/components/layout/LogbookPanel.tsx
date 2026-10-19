@@ -133,7 +133,7 @@ export default function LogbookPanel() {
             className={`px-2 py-1 rounded-lg border outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer ${liveSky ? "border-primary/60 text-primary" : "border-white/10 text-white/60"}`}>
             {liveSky ? "ON" : "OFF"}
           </button>
-          <p id="livesky-desc" className="mt-1 text-white/40">See other pilots flying now. They see your ship, plume and country.</p>
+          <p id="livesky-desc" className="mt-1 text-white/40">See other pilots flying now. They see your ship, plume, country and worlds charted.</p>
         </>
       )}
       <div className="text-white/40 mt-3 mb-1">THE UNIVERSE</div>

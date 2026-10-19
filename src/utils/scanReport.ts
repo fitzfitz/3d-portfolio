@@ -36,7 +36,8 @@ function hash(id: string): number {
 }
 
 export function generateScanReport(id: string): string {
-  if (ghostRegistry.has(id)) return ghostReport(ghostRegistry.get(id) ?? null);
+  const ghost = ghostRegistry.get(id);
+  if (ghost) return ghostReport(ghost.cc, ghost.ch);
   const beacon = beaconRegistry.get(id);
   if (beacon) return beaconReport(beacon, Date.now());
   const buoy = BUOY_REPORTS.get(id);

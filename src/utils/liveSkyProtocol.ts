@@ -9,16 +9,28 @@ import { hasPlumeColour } from "../data/plumeColors";
 
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
-export interface ShipState { p: Vec3; q: Quat; plume: string }
-/** `ago`: how old the pose was (ms) when the room sent it, so clients can time it without a shared clock. */
-export interface SnapShip extends ShipState { id: string; cc: string | null; ago: number }
+/** `ch`: worlds charted, 0-CHART_TOTAL (spec 2026-10-17 new worlds, "Live sky"). */
+export interface ShipState { p: Vec3; q: Quat; plume: string; ch: number }
+/**
+ * `ago`: how old the pose was (ms) when the room sent it, so clients can time
+ * it without a shared clock. `ch` is on the wire only when above 0, so rows
+ * from pilots who charted nothing stay byte-identical.
+ */
+export interface SnapShip extends Omit<ShipState, "ch"> { id: string; cc: string | null; ago: number; ch?: number }
 
 export type ServerMessage =
   | { t: "hello"; id: string; peers: number }
   | { t: "peers"; n: number }
   | { t: "sync" }
   | { t: "snap"; ships: SnapShip[] }
-  | { t: "full" };
+  | { t: "full" }
+  /** Another pilot just charted every world (relayed once; see beacon-api/src/sky.ts). */
+  | { t: "charted"; cc: string | null };
+
+/** Worlds a pilot can chart: the most `ch` can be. */
+export const CHART_TOTAL = 5;
+/** The plume that needs every world charted, in the same message. */
+const CARTOGRAPHER_PLUME = "cartographer";
 
 /** Open sockets per room; the next one is turned away with `full`. */
 export const SKY_CAP = 40;
@@ -54,17 +66,38 @@ export function parseMe(raw: unknown): ShipState | null {
   let m: unknown;
   try { m = JSON.parse(raw); } catch { return null; }
   if (!m || typeof m !== "object" || Array.isArray(m)) return null;
-  const { t, p, q, plume } = m as Record<string, unknown>;
+  const { t, p, q, plume, ch } = m as Record<string, unknown>;
   if (t !== "me" || !inWorld(p) || typeof plume !== "string" || !hasPlumeColour(plume)) return null;
   const nq = normQuat(q);
-  return nq ? { p: [p[0], p[1], p[2]], q: nq, plume } : null;
+  if (!nq) return null;
+  // A bad count never hides a pilot: it reads as 0. AURUM needs all five in
+  // the same message, or it shows as stock.
+  const n = chartCount(ch);
+  return { p: [p[0], p[1], p[2]], q: nq, plume: plume === CARTOGRAPHER_PLUME && n !== CHART_TOTAL ? "stock" : plume, ch: n };
+}
+
+/** A charted count: a whole number 0-CHART_TOTAL, anything else 0. */
+export function chartCount(v: unknown): number {
+  return Number.isInteger(v) && (v as number) >= 0 && (v as number) <= CHART_TOTAL ? (v as number) : 0;
+}
+
+/** A client's `{t:"charted"}`: it has just charted every world (the room decides whether to relay it). */
+export function isChartedClaim(raw: unknown): boolean {
+  if (typeof raw !== "string" || raw.length > MAX_MESSAGE_BYTES) return false;
+  try {
+    const m: unknown = JSON.parse(raw);
+    return !!m && typeof m === "object" && !Array.isArray(m) && (m as Record<string, unknown>).t === "charted";
+  } catch {
+    return false;
+  }
 }
 
 /** Rounded for the wire: positions to 0.01, quaternion components to 0.001. Pass `out` to reuse an object. */
-export function roundState(s: ShipState, out: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" }): ShipState {
+export function roundState(s: ShipState, out: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 }): ShipState {
   for (let i = 0; i < 3; i++) out.p[i] = Math.round(s.p[i] * 100) / 100;
   for (let i = 0; i < 4; i++) out.q[i] = Math.round(s.q[i] * 1000) / 1000;
   out.plume = s.plume;
+  out.ch = s.ch ?? 0;
   return out;
 }
 

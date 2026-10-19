@@ -1,5 +1,6 @@
 import type { Vec3 } from "./reactions";
 import { jumpKey } from "../data/destinations";
+import { isCartographer, type ChartRecord } from "./charting";
 
 /**
  * The pilot logbook (docs/superpowers/specs/2026-10-13-pilot-logbook-design.md):
@@ -86,11 +87,15 @@ export function convoySighted(ship: Vec3, ships: readonly Vec3[], radius = CONVO
 }
 
 /**
- * Whether plume `id` may be selected: "stock" always; otherwise a badge entry
- * with a colour whose entry is done (derived badges count too).
+ * Whether plume `id` may be selected: "stock" always; "cartographer" (AURUM)
+ * once all five worlds are charted; otherwise a badge entry with a colour
+ * whose entry is done (derived badges count too).
  */
-export function plumeAllowed(id: string, p: LogbookProgress, hasColour: (id: string) => boolean): boolean {
+export function plumeAllowed(
+  id: string, p: LogbookProgress, hasColour: (id: string) => boolean, charted: readonly ChartRecord[] = [],
+): boolean {
   if (id === "stock") return true;
+  if (id === "cartographer") return hasColour(id) && isCartographer(charted);
   const e = LOGBOOK.find((x) => x.id === id);
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }

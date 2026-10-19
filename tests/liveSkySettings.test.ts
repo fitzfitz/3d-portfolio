@@ -29,12 +29,20 @@ describe("live sky settings", () => {
     useSpaceStore.getState().setLiveSky(true);
     expect(ls.map.get("fitz-live-sky")).toBe("1");
   });
-  it("setLiveSkySeen persists as fitz-live-seen", () => {
+  it("setLiveSkySeen persists as fitz-live-seen-2", () => {
     const ls = memoryStorage();
     vi.stubGlobal("localStorage", ls);
     useSpaceStore.getState().setLiveSkySeen(true);
     expect(useSpaceStore.getState().liveSkySeen).toBe(true);
-    expect(ls.map.get("fitz-live-seen")).toBe("1");
+    expect(ls.map.get("fitz-live-seen-2")).toBe("1");
+  });
+  it("a pilot who saw the old notice sees the new one (it adds the charted count)", async () => {
+    const ls = memoryStorage();
+    ls.map.set("fitz-live-seen", "1");
+    vi.stubGlobal("localStorage", ls);
+    vi.resetModules();
+    const fresh = await import("../src/store/spaceStore");
+    expect(fresh.useSpaceStore.getState().liveSkySeen).toBe(false);
   });
   it("survives blocked storage", () => {
     vi.stubGlobal("localStorage", { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } });

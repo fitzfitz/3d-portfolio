@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { VALIDATION_RADIUS } from "../constants";
 import { hasPlumeColour, PLUME_COLORS } from "../data/plumeColors";
 import {
-  normQuat, publicCountry, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
+  normQuat, publicCountry, chartCount, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
   type Quat, type ServerMessage, type ShipState, type SnapShip, type Vec3,
 } from "./liveSkyProtocol";
 
@@ -17,7 +17,7 @@ export const RENDER_DELAY_MS = 2 * SNAP_INTERVAL_MS;
 export const FADE_IN_MS = 500;
 export const MAX_GHOSTS = 8;
 export const GHOST_LABEL = "LIVE PILOT";
-export const LIVE_SKY_NOTICE = "LIVE SKY // OTHER PILOTS CAN SEE YOUR SHIP, PLUME AND COUNTRY. TOGGLE IN THE LOGBOOK (L)";
+export const LIVE_SKY_NOTICE = "LIVE SKY // OTHER PILOTS CAN SEE YOUR SHIP, PLUME, COUNTRY AND WORLDS CHARTED. TOGGLE IN THE LOGBOOK (L)";
 const SEND_INTERVAL_MS = 200;
 const MOVE_EPS = 0.05;
 const TURN_EPS = Math.PI / 180;
@@ -51,7 +51,7 @@ function clampToSphere(p: number[]): [number, number, number] {
 
 function parseShip(row: unknown): SnapShip | null {
   if (!row || typeof row !== "object") return null;
-  const { id, p, q, plume, cc, ago } = row as Record<string, unknown>;
+  const { id, p, q, plume, cc, ago, ch } = row as Record<string, unknown>;
   if (typeof id !== "string" || id.length === 0 || id.length > 16) return null;
   if (!Array.isArray(p) || p.length !== 3 || !p.every((v) => typeof v === "number" && Number.isFinite(v))) return null;
   const nq = normQuat(q);
@@ -60,7 +60,9 @@ function parseShip(row: unknown): SnapShip | null {
     id,
     p: clampToSphere(p),
     q: nq,
-    plume: typeof plume === "string" && hasPlumeColour(plume) ? plume : "stock",
+    // The room checks AURUM against the count; a client checks again, since the room is untrusted too.
+    plume: typeof plume === "string" && hasPlumeColour(plume) && (plume !== "cartographer" || chartCount(ch) === CHART_TOTAL) ? plume : "stock",
+    ch: chartCount(ch),
     cc: typeof cc === "string" ? publicCountry(cc) : null,
     ago: typeof ago === "number" && Number.isFinite(ago) && ago > 0 ? Math.min(ago, STALE_MS) : 0,
   };
@@ -78,6 +80,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     case "peers": return isCount(o.n) ? { t: "peers", n: o.n } : null;
     case "sync": return { t: "sync" };
     case "full": return { t: "full" };
+    case "charted": return { t: "charted", cc: typeof o.cc === "string" ? publicCountry(o.cc) : null };
     case "snap":
       if (!Array.isArray(o.ships)) return null;
       return { t: "snap", ships: o.ships.slice(0, SKY_CAP).map(parseShip).filter((s): s is SnapShip => s !== null) };
@@ -88,6 +91,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
 /** A ghost's pose this frame. GhostBuffer reuses one per ghost, so read it, don't keep it. */
 export interface GhostPose {
   id: string; p: Vec3; q: Quat; plume: string; cc: string | null; alpha: number;
+  /** Worlds this pilot has charted, 0-CHART_TOTAL. */
+  ch: number;
   /** ghostScanId(id), built once. */
   scanId: string;
   /** Scratch for nearestGhosts. */
@@ -131,12 +136,13 @@ export class GhostBuffer {
       const at = arrival - s.ago;
       const t = this.tracks.get(s.id);
       if (!t) {
-        const pose: GhostPose = { id: s.id, p: [...s.p], q: [...s.q], plume: s.plume, cc: s.cc, alpha: 0, scanId: ghostScanId(s.id), dist: 0 };
+        const pose: GhostPose = { id: s.id, p: [...s.p], q: [...s.q], plume: s.plume, cc: s.cc, ch: s.ch ?? 0, alpha: 0, scanId: ghostScanId(s.id), dist: 0 };
         this.tracks.set(s.id, { samples: [{ at, p: s.p, q: s.q }], firstSeen: arrival, pose });
         continue;
       }
       t.pose.plume = s.plume;
       t.pose.cc = s.cc;
+      t.pose.ch = s.ch ?? 0;
       const last = t.samples[t.samples.length - 1];
       if (at <= last.at) continue; // the same pose again (a still pilot), or one older than we hold
       // After a long stillness, hold the old pose until just before the new
@@ -200,13 +206,13 @@ export function writeRadarBlips(poses: readonly GhostPose[]): void {
   liveRadar.count = poses.length;
 }
 
-export interface SendState { lastAt: number; lastP: Vec3 | null; lastQ: Quat | null; lastPlume: string | null; syncPending: boolean }
-export const newSendState = (): SendState => ({ lastAt: -Infinity, lastP: null, lastQ: null, lastPlume: null, syncPending: false });
+export interface SendState { lastAt: number; lastP: Vec3 | null; lastQ: Quat | null; lastPlume: string | null; lastCh: number; syncPending: boolean }
+export const newSendState = (): SendState => ({ lastAt: -Infinity, lastP: null, lastQ: null, lastPlume: null, lastCh: 0, syncPending: false });
 
 /** Spec §3.2: only with company, at most every 200 ms, and only when something changed or the room asked. */
 export function shouldSend(s: SendState, peers: number, now: number, me: ShipState): boolean {
   if (peers <= 0 || now - s.lastAt < SEND_INTERVAL_MS) return false;
-  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || now - s.lastAt >= KEEPALIVE_MS) return true;
+  if (s.syncPending || !s.lastP || !s.lastQ || s.lastPlume !== me.plume || s.lastCh !== me.ch || now - s.lastAt >= KEEPALIVE_MS) return true;
   const moved = Math.hypot(
     (me.p[0] - s.lastP[0]),
     (me.p[1] - s.lastP[1]),
@@ -222,6 +228,7 @@ export function markSent(s: SendState, now: number, me: ShipState): void {
   s.lastP = [...me.p];
   s.lastQ = [...me.q];
   s.lastPlume = me.plume;
+  s.lastCh = me.ch;
   s.syncPending = false;
 }
 
@@ -241,7 +248,15 @@ export function shipQuat(heading: number, pitch: number, out: Quat = [0, 0, 0, 1
  */
 export const hudShowsRadio = (s: { photoMode: boolean; showClassicCV: boolean }) => !s.photoMode && !s.showClassicCV;
 
-/** Ghost scannables → their pilot's public country, read by generateScanReport. */
-export const ghostRegistry = new Map<string, string | null>();
+/** Ghost scannables → their pilot's public country and charted count, read by generateScanReport. */
+export const ghostRegistry = new Map<string, { cc: string | null; ch: number }>();
 export const ghostScanId = (id: string) => `ghost_${id}`;
-export const ghostReport = (cc: string | null) => (cc ? `PILOT FROM ${cc} · LIVE` : "PILOT · LIVE");
+/**
+ * A ghost's scan text: the title at all five worlds charted, the count below
+ * that, today's text at none. "LIVE" stands in for an unknown country.
+ */
+export function ghostReport(cc: string | null, ch: number): string {
+  if (ch >= CHART_TOTAL) return `CARTOGRAPHER · ${cc ?? "LIVE"}`;
+  if (ch > 0) return `${ch}/${CHART_TOTAL} CHARTED · ${cc ?? "LIVE"}`;
+  return cc ? `PILOT FROM ${cc} · LIVE` : "PILOT · LIVE";
+}

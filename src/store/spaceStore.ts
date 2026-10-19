@@ -258,6 +258,10 @@ export const bodies: Record<string, { x: number; y: number; z: number }> = Objec
 
 /** Charted worlds from fitz-charted, read once at import (sanitised). */
 const initialCharted = loadCharted(safeGetJSON<unknown>("fitz-charted", []));
+const initialShout = (() => {
+  const v = safeGetJSON<unknown>("fitz-charted-shout", null);
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+})();
 
 /**
  * Which worlds are charted, for what draws only once a world is: module-level
@@ -398,7 +402,11 @@ export interface SpaceState {
   /** Live sky on (persisted as fitz-live-sky, default on): share this ship and see other pilots. */
   liveSky: boolean;
   setLiveSky: (v: boolean) => void;
-  /** The live-sky notice has been on the radio (persisted as fitz-live-seen). No pose is sent before it. */
+  /**
+   * The live-sky notice has been on the radio (persisted as fitz-live-seen-2:
+   * versioned when the notice grew the charted count, so pilots who agreed to
+   * the old one hear the new one once). No pose is sent before it.
+   */
   liveSkySeen: boolean;
   setLiveSkySeen: (v: boolean) => void;
   /** Worlds charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
@@ -410,6 +418,13 @@ export interface SpaceState {
    * report; the fifth also announces the survey.
    */
   chartWorld: (id: WorldId) => void;
+  /**
+   * When the fifth world was charted, until the live sky has announced it
+   * (persisted as fitz-charted-shout; see shoutDue). Null when nothing is due.
+   */
+  chartShoutAt: number | null;
+  /** The shout-out went out (or is dropped): stop offering it. */
+  clearChartShout: () => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
   /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
@@ -435,7 +450,7 @@ const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
 const initialPlume = (() => {
   const raw = safeGetJSON<unknown>("fitz-plume", "stock");
   const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])), badges: initialBadges };
-  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour) ? raw : "stock";
+  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour, initialCharted) ? raw : "stock";
 })();
 
 /** First visit: everything is new, so mark the newest entry seen and show no dot. */
@@ -489,7 +504,7 @@ export const useSpaceStore = create<SpaceState>()(
     setPlumeColor: (id) => {
       const s = get();
       const progress = { visitedDossiers: s.visitedDossiers, shardsCollected: s.shardsCollected, badges: s.badges };
-      if (!plumeAllowed(id, progress, hasPlumeColour) || s.plumeColor === id) return;
+      if (!plumeAllowed(id, progress, hasPlumeColour, s.charted) || s.plumeColor === id) return;
       safeSetJSON("fitz-plume", id);
       set({ plumeColor: id });
     },
@@ -505,7 +520,18 @@ export const useSpaceStore = create<SpaceState>()(
       set({ charted: next });
       worldVisibility[id].charted = true;
       get().announceLogbook(chartLine(id, next.length));
-      if (isCartographer(next)) get().announceLogbook(SURVEY_LINE);
+      if (isCartographer(next)) {
+        get().announceLogbook(SURVEY_LINE);
+        // The live sky tells everyone else, once (Ghosts.tsx).
+        const at = Date.now();
+        safeSetJSON("fitz-charted-shout", at);
+        set({ chartShoutAt: at });
+      }
+    },
+    chartShoutAt: initialShout,
+    clearChartShout: () => {
+      safeSetJSON("fitz-charted-shout", null);
+      set({ chartShoutAt: null });
     },
     changelogOpen: false,
     changelogSeen: initialChangelogSeen,
@@ -525,7 +551,7 @@ export const useSpaceStore = create<SpaceState>()(
     isTeleporting: false,
     isMuted: safeGetMuted(),
     liveSky: safeGetFlag("fitz-live-sky", true),
-    liveSkySeen: safeGetFlag("fitz-live-seen", false),
+    liveSkySeen: safeGetFlag("fitz-live-seen-2", false),
     cometNear: false,
     shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
@@ -619,7 +645,7 @@ export const useSpaceStore = create<SpaceState>()(
     },
     setLiveSkySeen: (v) => {
       set({ liveSkySeen: v });
-      safeSetFlag("fitz-live-seen", v);
+      safeSetFlag("fitz-live-seen-2", v);
     },
     setMuted: (v) => {
       set({ isMuted: v });

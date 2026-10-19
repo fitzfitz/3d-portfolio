@@ -44,4 +44,11 @@ describe("Sky adapter", () => {
     const snap = sockets[1].sent.map((m) => JSON.parse(m)).filter((m) => m.t === "snap").at(-1);
     expect(snap.ships.map((s: { id: string }) => s.id)).not.toContain("a");
   });
+  it("a pilot restored from a pre-C2 attachment can still announce", () => {
+    const { sky, sockets: [a, b] } = room("a", "b");
+    sky.webSocketMessage(a as never, JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 5 }));
+    sky.webSocketMessage(a as never, '{"t":"charted"}');
+    expect(b.sent.filter((m) => m === '{"t":"charted","cc":"ID"}')).toHaveLength(1);
+    expect(a.sent.some((m) => m.includes('"t":"charted"'))).toBe(false);
+  });
 });

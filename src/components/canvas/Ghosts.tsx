@@ -10,7 +10,11 @@ import {
   liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, hudShowsRadio, writeRadarBlips,
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
-import type { ShipState } from "../../utils/liveSkyProtocol";
+import { CHART_TOTAL, type ShipState } from "../../utils/liveSkyProtocol";
+import { createShoutGate, shoutDue, shoutLine } from "../../utils/charting";
+
+/** Plays another pilot's shout-out at most once per SHOUT_HEAR_GAP_MS. */
+const hearShout = createShoutGate();
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
@@ -22,7 +26,7 @@ const GHOST_NOZZLE_R = 0.07;
 const GHOST_PLUME_POWER = 0.3;
 const NONE: GhostPose[] = [];
 /** This ship's pose for conn.tick, reused every frame. */
-const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock" };
+const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
 
 interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE.ShaderMaterial; plume: string; scanId: string | null }
 
@@ -81,6 +85,7 @@ export default function Ghosts() {
     setTimer: (fn, ms) => window.setTimeout(fn, ms),
     clearTimer: (h) => window.clearTimeout(h as number),
     random: Math.random,
+    onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
   }), []);
   const noticeQueued = useRef(false);
   const wanted = useRef(false);
@@ -128,7 +133,8 @@ export default function Ghosts() {
       me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
       shipQuat(flight.heading, flight.pitch, me.q);
       me.plume = s.plumeColor;
-      conn.tick(me);
+      me.ch = Math.min(s.charted.length, CHART_TOTAL);
+      if (conn.tick(me, shoutDue(s.chartShoutAt, Date.now()))) s.clearChartShout();
     }
 
     const all = conn.ghosts.size ? conn.ghosts.sample(performance.now(), s.reducedMotion ? 0 : FADE_IN_MS) : NONE;
@@ -162,7 +168,7 @@ export default function Ghosts() {
       slot.flame.uniforms.uPower.value = GHOST_PLUME_POWER * g.alpha;
       slot.flame.uniforms.uTime.value = t;
       slot.scanId = g.scanId;
-      ghostRegistry.set(slot.scanId, g.cc);
+      ghostRegistry.set(slot.scanId, { cc: g.cc, ch: g.ch });
       setScannable(slot.scanId, g.p[0], g.p[1], g.p[2], GHOST_LABEL);
     }
   });
