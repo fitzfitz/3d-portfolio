@@ -137,7 +137,8 @@ export const PROGRADE = -1;
  * Inclined living orbits around the sun at origin (spec §3), keyed by planet
  * name (each project's id, which is also its probe's).
  * Speeds follow Kepler's third law (sunOmega), so outer planets are slower.
- * Periods are minutes-slow: orbital speed stays ≪ ship speed.
+ * Periods are minutes-slow: orbital speed stays under a quarter of cruise
+ * (tests/projects.test.ts). Moons are faster but stay under half of warp.
  *
  * These stay in code rather than the content JSON because they are tuning
  * constants, balanced against the keep-out radii above, the belt (r 40-70), the

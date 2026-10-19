@@ -271,6 +271,37 @@ describe("moons (moon.glb)", () => {
     expect(materialNames(doc)).toEqual(["MoonIce", "MoonRock", "MoonVolcanic"]);
     for (const m of ["MoonIce", "MoonRock", "MoonVolcanic"]) expect(triangles(doc, m)).toBe(4480);
   });
+
+  // OrbitingMoon centres each variant and scales it by the moon's size; the
+  // collider takes that size as the radius, the camera keep-out MOON_MESH_RADIUS × it.
+  it("draws every variant as a unit sphere with relief no higher than MOON_MESH_RADIUS", async () => {
+    const { MOON_MESH_RADIUS } = await import("../src/data/moons");
+    const doc = await load("moon");
+    for (const mat of ["MoonIce", "MoonRock", "MoonVolcanic"]) {
+      const { min, max } = materialBounds(doc, mat);
+      const c = [0, 1, 2].map((r) => (min[r] + max[r]) / 2);
+      for (let r = 0; r < 3; r++) expect((max[r] - min[r]) / 2, `${mat} half-extent ${r}`).toBeCloseTo(1, 1);
+      let rMax = 0, rMin = Infinity;
+      const el: number[] = [];
+      for (const node of doc.getRoot().listNodes()) {
+        const mesh = node.getMesh();
+        if (!mesh) continue;
+        const m = node.getWorldMatrix();
+        for (const p of mesh.listPrimitives()) {
+          if (p.getMaterial()?.getName() !== mat) continue;
+          const pos = p.getAttribute("POSITION")!;
+          for (let i = 0; i < pos.getCount(); i++) {
+            pos.getElement(i, el);
+            const w = [0, 1, 2].map((r) => m[r] * el[0] + m[4 + r] * el[1] + m[8 + r] * el[2] + m[12 + r] - c[r]);
+            const d = Math.hypot(w[0], w[1], w[2]);
+            rMax = Math.max(rMax, d); rMin = Math.min(rMin, d);
+          }
+        }
+      }
+      expect(rMax, mat).toBeLessThanOrEqual(MOON_MESH_RADIUS);
+      expect(rMin, mat).toBeGreaterThan(0.95);
+    }
+  });
 });
 
 describe("career station (career_station.glb)", () => {

@@ -8,6 +8,9 @@ import { bodies } from "../src/store/spaceStore";
 import { PLAYER_SHIP_SCALE, SHIP_WARP_SPEED, planets } from "../src/constants";
 import { WORLDS } from "../src/data/worlds";
 import { PLANET_ATMOSPHERES } from "../src/data/planetAtmospheres";
+import { MOONS, MOON_MESH_RADIUS, moonOrbitSpeed } from "../src/data/moons";
+import { moonCenters } from "../src/store/moonState";
+import { G_MAX } from "../src/utils/gravityWell";
 
 const DT = 0.05; // Spaceship clamps dt here: the longest step a slow device takes
 const dist = (p: { x: number; y: number; z: number }, c: { x: number; y: number; z: number }) =>
@@ -77,10 +80,41 @@ describe("resolveWorldContact", () => {
   });
 });
 
-describe("SOLID_BODIES (planets, then worlds: everything the ship cannot fly through)", () => {
-  it("lists every planet, then every world, at its equatorial size", () => {
-    expect(SOLID_BODIES.map((b) => b.id)).toEqual([...planets.map((p) => p.name), ...WORLDS.map((w) => w.id)]);
-    expect(SOLID_BODIES.map((b) => b.size)).toEqual([...planets.map((p) => p.size), ...WORLDS.map((w) => w.size)]);
+/** A moon's radius in scene units: its size (× its planet's) times its planet's size. */
+const moonR = (m: (typeof MOONS)[number]) => m.size * planets[m.planet].size;
+/** Every centre SOLID_BODIES needs, as Spaceship reads them: `bodies` plus `moonCenters`. */
+const allCenters = () => ({ ...bodies, ...moonCenters });
+
+describe("SOLID_BODIES (planets, worlds, then moons: everything the ship cannot fly through)", () => {
+  it("lists every planet, then every world, then every moon, at its equatorial size", () => {
+    expect(SOLID_BODIES.map((b) => b.id)).toEqual([...planets.map((p) => p.name), ...WORLDS.map((w) => w.id), ...MOONS.map((m) => m.id)]);
+    expect(SOLID_BODIES.map((b) => b.size)).toEqual([...planets.map((p) => p.size), ...WORLDS.map((w) => w.size), ...MOONS.map(moonR)]);
+  });
+
+  it("keeps the camera past a moon's relief (moon.glb reaches MOON_MESH_RADIUS × its size)", () => {
+    for (const m of MOONS) {
+      expect(SOLID_BODIES.find((s) => s.id === m.id)!.cameraR, m.id).toBeCloseTo(moonR(m) * MOON_MESH_RADIUS + CAMERA_CLEARANCE, 12);
+    }
+  });
+
+  it("has a centre for every body: planets and worlds in `bodies`, moons in `moonCenters`", () => {
+    const centers = allCenters();
+    for (const b of SOLID_BODIES) expect(centers[b.id], b.id).toBeDefined();
+    for (const m of MOONS) expect(bodies[m.id], `${m.id} must not join bodies (its keys are the wells')`).toBeUndefined();
+  });
+
+  // A check after each step cannot tunnel through a moving body: the furthest
+  // the ship and the body close in one 0.05 s step (warp + the gravity cap +
+  // the body's own speed) is under the contact sphere's diameter.
+  it("no body can be tunnelled through at the 0.05 s dt clamp, moons' orbital speed included", () => {
+    const moonSpeed = (m: (typeof MOONS)[number]) => {
+      const p = planets[m.planet];
+      return Math.abs(moonOrbitSpeed(m)) * m.distance * p.size + p.orbit.radius * p.orbit.angularSpeed;
+    };
+    for (const m of MOONS) {
+      const step = (SHIP_WARP_SPEED + G_MAX + moonSpeed(m)) * DT;
+      expect(step, m.id).toBeLessThan(2 * (moonR(m) + SHIP_HALF_LENGTH));
+    }
   });
 
   it("keeps the camera past a planet's atmosphere shell (SpacePlanets' Atmosphere thickness) and a world's outermost shell", () => {
@@ -93,12 +127,15 @@ describe("SOLID_BODIES (planets, then worlds: everything the ship cannot fly thr
   });
 
   // The capture net used to stop a ship at a planet by docking it; now the
-  // surface does, as it does at a world.
-  describe.each(planets.map((p) => [p.name, p.size] as const))("a ship driven into each planet at 39 u/s stops at its surface: %s (size %d)", (id, size) => {
+  // surface does, as it does at a world. Moons are solid too (spec §4.4).
+  describe.each([
+    ...planets.map((p) => ["planet", p.name, p.size] as const),
+    ...MOONS.map((m) => ["moon", m.id, moonR(m)] as const),
+  ])("a ship driven into each %s at 39 u/s stops at its surface: %s (size %d)", (_kind, id, size) => {
     const reach = size + SHIP_HALF_LENGTH;
     it("2 s at 60 Hz with warp held at the centre: never inside, never through", () => {
       const c = { x: -80, y: 14, z: 60 };
-      const centers = { ...bodies, [id]: c };
+      const centers = { ...allCenters(), [id]: c };
       const pos = { x: c.x - reach - 30, y: c.y + 0.4, z: c.z }, vel = { x: 0, y: 0, z: 0 };
       const dt = 1 / 60;
       let hits = 0;
@@ -147,10 +184,10 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
 
   // For a planet: the camera kept outside each planet's atmosphere shell.
   describe.each(SOLID_BODIES.map((b) => [b.id, b] as const))("camera kept outside %s's outermost shell, with the ship parked nose-out at its contact radius", (id, w) => {
-    const shell = w.size * (PLANET_ATMOSPHERES[id]?.thickness ?? 1);
+    const shell = w.size * (PLANET_ATMOSPHERES[id]?.thickness ?? (MOONS.some((m) => m.id === id) ? MOON_MESH_RADIUS : 1));
     // Away from the origin and off the plane, so no axis is special.
     const c = { x: 140, y: -12, z: -75 };
-    const centers = { ...bodies, [id]: c };
+    const centers = { ...allCenters(), [id]: c };
     const dirs = [
       { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 },
       { x: 0.6, y: -0.48, z: 0.64 },
@@ -159,8 +196,10 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
     it.each(dirs.map((d, i) => [i, d] as const))("outward direction %i: the camera ends at or beyond the body's camera radius", (_i, n) => {
       const len = Math.hypot(n.x, n.y, n.z);
       const nose = { x: n.x / len, y: n.y / len, z: n.z / len };
-      // Rest where resolveWorldContact leaves the ship.
-      const pos = { x: c.x + nose.x * 2, y: c.y + nose.y * 2, z: c.z + nose.z * 2 }, vel = { x: 0, y: 0, z: 0 };
+      // Rest where resolveWorldContact leaves the ship (start inside: 2 u,
+      // or half the contact radius for a moon smaller than that).
+      const k = Math.min(2, (w.size + SHIP_HALF_LENGTH) / 2);
+      const pos = { x: c.x + nose.x * k, y: c.y + nose.y * k, z: c.z + nose.z * k }, vel = { x: 0, y: 0, z: 0 };
       expect(resolveWorldContact(pos, vel, c, w.size)).toBe(true);
       const side = { x: 0, y: 0, z: 0 };
       for (const [distance, height] of [
@@ -171,7 +210,8 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
         const cam = chaseCamTarget({ x: 0, y: 0, z: 0 }, pos, nose, distance, height, side);
         // Nose-out puts the chase framing behind the ship, inside the world:
         // the collider alone does not keep the camera out (the finding).
-        if (n.y === 0) expect(dist(cam, c)).toBeLessThan(w.size);
+        // (A moon is smaller than the chase distance: the camera lands past it.)
+        if (n.y === 0 && w.size > distance) expect(dist(cam, c)).toBeLessThan(w.size);
         keepCameraOutsideBodies(cam, centers);
         expect(dist(cam, c)).toBeGreaterThanOrEqual(w.cameraR - 1e-9);
         expect(dist(cam, c)).toBeGreaterThan(shell);
@@ -197,6 +237,21 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
       }
       expect(hit).toBe(true);
     });
+  });
+
+  // A moon outruns cruise (portfolioRock ~15 u/s): it can sweep through a
+  // parked ship's camera, which must be pushed clear every frame.
+  it.each(MOONS.map((m) => [m.id, m] as const))("camera kept outside a moon that sweeps through it: %s", (id, m) => {
+    const b = SOLID_BODIES.find((s) => s.id === id)!;
+    const cam = { x: 10, y: 3, z: -4 };
+    const c = { x: cam.x - 30, y: cam.y + 0.2, z: cam.z };
+    const centers = { ...allCenters(), [id]: c };
+    for (let i = 0; i < 240; i++) {
+      c.x += 16 * DT; // faster than any moon
+      keepCameraOutsideBodies(cam, centers);
+      expect(dist(cam, c), `frame ${i}`).toBeGreaterThanOrEqual(b.cameraR - 1e-9);
+      expect(dist(cam, c), `frame ${i}`).toBeGreaterThan(moonR(m) * MOON_MESH_RADIUS);
+    }
   });
 
   it("leaves a camera clear of every planet and world untouched", () => {

@@ -226,7 +226,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div className="text-[11px] font-bold">
           TARGET:{" "}
           <span className={probeNear || activeZone ? "text-primary animate-pulse" : "text-white/20"}>
-            {probeNear ? `PROBE_${probeNear.toUpperCase()}` : activeZone ? (destinationById(activeZone)?.scanLabel ?? `PLANET_${activeZone.toUpperCase()}`) : "DEEP_SPACE"}
+            {probeNear ? `PROBE_${probeNear.toUpperCase()}` : (destinationById(activeZone)?.scanLabel ?? "DEEP_SPACE")}
           </span>
         </div>
         {activeZone && (

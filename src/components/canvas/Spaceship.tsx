@@ -5,6 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { moonCenters } from "../../store/moonState";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
@@ -74,6 +75,13 @@ const FIRST_PROBE_HOME = PROBES[0].home;
 
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
+/**
+ * Every solid body's live centre, by SOLID_BODIES id: the planets' and
+ * worlds' `bodies` entries and the moons' `moonCenters` entries. Merged once:
+ * it holds the same objects their writers update in place, so it stays live
+ * and the frame loop reads it without allocating.
+ */
+const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonCenters };
 
 /**
  * Gravity wells, one per planet and world plus the sun, reused every frame:
@@ -431,9 +439,9 @@ export default function Spaceship() {
       const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
-      // The ship rests only half a length off a planet's or world's surface,
+      // The ship rests only half a length off a planet's, world's or moon's surface,
       // so the camera behind it would sit inside: keep it out (worldCollide.ts).
-      keepCameraOutsideBodies(state.camera.position, bodies);
+      keepCameraOutsideBodies(state.camera.position, SOLID_CENTERS);
       // The exposure, the fill and the backdrop are re-metered with the camera (I2):
       // ExposureDriver ran earlier this frame, so without this the cut frame
       // is mis-exposed.
@@ -639,11 +647,11 @@ export default function Spaceship() {
         break;
       }
     }
-    // The planets' and worlds' solid surfaces (worldCollide.ts): they move,
-    // so each is read from `bodies`, at its equatorial size. The rings and
-    // moons are fly-through.
+    // The planets', worlds' and moons' solid surfaces (worldCollide.ts):
+    // they move, so each is read live from SOLID_CENTERS, at its equatorial
+    // size. The rings are fly-through.
     for (let i = 0; i < SOLID_BODIES.length; i++) {
-      if (resolveWorldContact(pos.current, vel.current, bodies[SOLID_BODIES[i].id], SOLID_BODIES[i].size)) { impact(time); break; }
+      if (resolveWorldContact(pos.current, vel.current, SOLID_CENTERS[SOLID_BODIES[i].id], SOLID_BODIES[i].size)) { impact(time); break; }
     }
 
     _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);

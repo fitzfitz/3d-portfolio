@@ -1,6 +1,7 @@
 import { PLAYER_SHIP_SCALE, planets } from "../constants";
 import { WORLDS, type WorldData } from "../data/worlds";
 import { PLANET_ATMOSPHERES } from "../data/planetAtmospheres";
+import { MOONS, MOON_MESH_RADIUS } from "../data/moons";
 import type { Vec3 } from "./reactions";
 
 /**
@@ -23,10 +24,12 @@ const SKIN = 0.05;
  * and an inward velocity is reflected and damped, like the sun's bounce. In
  * place, so the frame loop allocates nothing. True on contact.
  *
- * A check after each step cannot tunnel: the smallest contact sphere (the
- * dwarf, 3.5 + 1.2) is 9.4 across (the smallest planet's, 8 + 1.2, is 18.4),
- * and the furthest a step goes is warp plus the gravity cap, (39 + 14) × the
- * 0.05 s dt clamp ≈ 2.7.
+ * A check after each step cannot tunnel: the smallest world contact sphere
+ * (the dwarf, 3.5 + 1.2) is 9.4 across (the smallest planet's, 8 + 1.2, is
+ * 18.4), and the furthest a step goes is warp plus the gravity cap,
+ * (39 + 14) × the 0.05 s dt clamp ≈ 2.7. Moons are small and fast, so
+ * tests/worldCollide.test.ts checks each one: its closing step (warp, cap
+ * and its own orbital speed) stays under its contact sphere's diameter.
  */
 export function resolveWorldContact(pos: Vec3, vel: Vec3, center: Vec3, radius: number): boolean {
   const reach = radius + SHIP_HALF_LENGTH;
@@ -74,15 +77,22 @@ export function worldCameraRadius(w: WorldData): number {
 export interface SolidBody { readonly id: string; readonly size: number; readonly cameraR: number }
 
 /**
- * Every solid body, planets then worlds, keyed as in `bodies`. A planet's
- * camera radius is its atmosphere shell (SpacePlanets' Atmosphere
- * `thickness`, data/planetAtmospheres.ts; FrontSide, so it culls from
- * inside) plus CAMERA_CLEARANCE; a world's is worldCameraRadius. The
- * moons and the Ocean World's ring are fly-through.
+ * Every solid body: planets, worlds, then moons (project probes spec §4.4).
+ * Planets and worlds are keyed as in `bodies`, moons as in `moonCenters`
+ * (store/moonState.ts). A planet's camera radius is its atmosphere shell
+ * (SpacePlanets' Atmosphere `thickness`, data/planetAtmospheres.ts;
+ * FrontSide, so it culls from inside) plus CAMERA_CLEARANCE; a world's is
+ * worldCameraRadius; a moon's is its mesh's relief (MOON_MESH_RADIUS) plus
+ * CAMERA_CLEARANCE. The Ocean World's ring and the worlds' rings are
+ * fly-through.
  */
 export const SOLID_BODIES: readonly SolidBody[] = [
   ...planets.map((p) => ({ id: p.name, size: p.size, cameraR: p.size * PLANET_ATMOSPHERES[p.name].thickness + CAMERA_CLEARANCE })),
   ...WORLDS.map((w) => ({ id: w.id, size: w.size, cameraR: worldCameraRadius(w) })),
+  ...MOONS.map((m) => {
+    const size = m.size * planets[m.planet].size;
+    return { id: m.id, size, cameraR: size * MOON_MESH_RADIUS + CAMERA_CLEARANCE };
+  }),
 ];
 
 /**
@@ -105,7 +115,9 @@ export function keepOutside(p: Vec3, center: Vec3, minR: number): void {
  * nose and lags, so a ship parked nose-out on a body would put the camera
  * inside it. Run after the camera's lerp: pushes `cam` out along the
  * centre-to-camera normal of any body it is inside, to its SOLID_BODIES
- * cameraR. In place, allocation-free; `centers` is `bodies`.
+ * cameraR. In place, allocation-free; `centers` holds every SOLID_BODIES
+ * id (Spaceship passes `bodies` and `moonCenters` merged once); a body
+ * missing from it is skipped.
  */
 export function keepCameraOutsideBodies(cam: Vec3, centers: Readonly<Record<string, Vec3>>): void {
   for (let i = 0; i < SOLID_BODIES.length; i++) {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { projects, planets, projectById, PLANET_ORBITS, PLANET_PROPS } from "../src/constants";
+import { projects, planets, projectById, PLANET_ORBITS, PLANET_PROPS, SHIP_MAX_SPEED, SHIP_WARP_SPEED } from "../src/constants";
+import { MOONS, moonOrbitSpeed } from "../src/data/moons";
 import { RESERVED_ZONE_IDS, JUMP_TARGETS } from "../src/data/destinations";
 import { PROBE_IDS } from "../src/data/probes";
 import { PLANET_ATMOSPHERES, PORTFOLIO_ATMOSPHERE } from "../src/data/planetAtmospheres";
@@ -58,6 +59,24 @@ describe("project <-> probe and planet mapping", () => {
       expect(p.mass, `${p.name}.mass`).toBeGreaterThan(0);
       expect(p.label.trim(), `${p.name}.label`).not.toBe("");
       expect(p.color, `${p.name}.color`).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it("gives every planet an atmosphere (PLANET_ATMOSPHERES), and nothing else", () => {
+    // worldCollide's SOLID_BODIES reads each planet's shell from it unguarded.
+    expect(Object.keys(PLANET_ATMOSPHERES).sort(), "PLANET_ATMOSPHERES keys vs PLANET_PROPS keys").toEqual(Object.keys(PLANET_PROPS).sort());
+    expect(Object.keys(PLANET_ATMOSPHERES).sort(), "PLANET_ATMOSPHERES keys vs PLANET_ORBITS keys").toEqual(Object.keys(PLANET_ORBITS).sort());
+  });
+
+  // constants.ts PLANET_ORBITS: "orbital speed stays ≪ ship speed".
+  it("keeps every planet's orbital speed well below cruise, and every moon's below warp", () => {
+    for (const p of planets) expect(p.orbit.radius * p.orbit.angularSpeed, p.name).toBeLessThan(SHIP_MAX_SPEED / 4);
+    // Moons are magnified insets on their own clock (L13) and can outrun
+    // cruise; a pilot they push can still always outrun them at warp.
+    for (const m of MOONS) {
+      const p = planets[m.planet];
+      const v = Math.abs(moonOrbitSpeed(m)) * m.distance * p.size + p.orbit.radius * p.orbit.angularSpeed;
+      expect(v, m.id).toBeLessThan(SHIP_WARP_SPEED / 2);
     }
   });
 

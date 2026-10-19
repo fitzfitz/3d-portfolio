@@ -182,6 +182,7 @@ describe.each(planets.map((p) => [p.name, p.size] as const))("tuning targets (sp
   // Was "a fast skim inside 1.3 sizes does not open the dossier".
   it("b=30: a fast skim neither sticks nor passes through", () => {
     const f = at(-30);
+    expect(f.touched, "a skim never meets the surface").toBe(false);
     expect(f.minR).toBeGreaterThanOrEqual(reach);
     expect(f.exitSpeed, "left the well").not.toBeNull();
     expect(f.end.x, "flew on past the planet").toBeGreaterThan(wells[0].radius);
@@ -198,6 +199,7 @@ describe.each(planets.map((p) => [p.name, p.size] as const))("tuning targets (sp
   it("b=30 still skims at 30 and 20 fps", () => {
     for (const dt of [1 / 30, 1 / 20]) {
       const f = at(-30, { dt });
+      expect(f.touched, `dt=${dt}`).toBe(false);
       expect(f.minR, `dt=${dt}`).toBeGreaterThanOrEqual(reach);
       expect(f.end.x, `dt=${dt}`).toBeGreaterThan(wells[0].radius);
     }

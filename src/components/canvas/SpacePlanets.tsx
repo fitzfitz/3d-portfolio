@@ -9,6 +9,7 @@ import { PORTAL_POS, planets, PROGRADE, SUN_RADIUS } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
 import { PLANET_ATMOSPHERES } from "../../data/planetAtmospheres";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { moonCenters } from "../../store/moonState";
 import { orbitPosition } from "../../utils/orbits";
 import { ambientTime } from "../../utils/ambientTime";
 import { driftedHue } from "../../utils/nebulaHue";
@@ -452,8 +453,9 @@ export default function SpacePlanets() {
       setOccluder(PLANET_SLOT0 + i, pos.x, pos.y, pos.z, p.size);
     }
 
-    // 0.5. Moons: orbit angle, occluder slot and sunVis from one angle, after
-    // the planets have moved, so the slots match what this frame draws.
+    // 0.5. Moons: orbit angle, occluder slot, collider centre (moonCenters)
+    // and sunVis from one angle, after the planets have moved, so the slots
+    // and the collider match what this frame draws.
     for (let k = 0; k < MOONS.length; k++) {
       const m = MOONS[k];
       const angle = m.phase + time * MOON_SPEEDS[k];
@@ -462,7 +464,9 @@ export default function SpacePlanets() {
       const b = bodies[planets[m.planet].name];
       moonOffset(m, angle, moonScratch);
       const slot = MOON_SLOT0 + k;
-      setOccluder(slot, b.x + moonScratch.x, b.y + moonScratch.y, b.z + moonScratch.z, MOON_RADII[k]);
+      const mc = moonCenters[m.id];
+      mc.x = b.x + moonScratch.x; mc.y = b.y + moonScratch.y; mc.z = b.z + moonScratch.z;
+      setOccluder(slot, mc.x, mc.y, mc.z, MOON_RADII[k]);
       const vis = moonSunVis[k];
       if (vis) vis.value = sunVisibility(occluders[slot], PLANET_OCCLUDERS, SUN_RADIUS);
     }
