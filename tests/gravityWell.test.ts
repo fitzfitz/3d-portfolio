@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   stepGravity, wellAccel, gravityMode, SlingshotGate, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
-  WELL_REF_SIZE, planetWell,
+  WELL_REF_SIZE, planetWell, wellStrength, SLINGSHOT_SPEED,
 } from "../src/utils/gravityWell";
 import { resolveWorldContact, SHIP_HALF_LENGTH } from "../src/utils/worldCollide";
 import { cruiseCap } from "../src/utils/speedCap";
@@ -129,10 +129,20 @@ describe("gravityMode", () => {
 });
 
 describe("planetWell", () => {
-  it("scales the gas giant's tuning by size: g by size², radius and softening by size", () => {
+  it("pins the strength rule (R21): quadratic in size up to 16, linear above, continuous at 16", () => {
+    expect(WELL_REF_SIZE).toBe(16);
+    expect(wellStrength(16)).toBe(PLANET_WELL_G);
+    expect(wellStrength(8)).toBeCloseTo(PLANET_WELL_G / 4, 9);
+    expect(wellStrength(4)).toBeCloseTo(PLANET_WELL_G / 16, 9);
+    expect(wellStrength(32)).toBeCloseTo(PLANET_WELL_G * 2, 9);
+    expect(wellStrength(22)).toBeCloseTo(PLANET_WELL_G * 22 / 16, 9);
+    expect(wellStrength(16 - 1e-9)).toBeCloseTo(wellStrength(16 + 1e-9), 4);
+    for (let s = 1; s < 30; s += 0.5) expect(wellStrength(s + 0.5)).toBeGreaterThan(wellStrength(s));
+  });
+  it("scales the gas giant's tuning by size: g by wellStrength, radius and softening by size", () => {
     for (const p of SOLAR_BODIES) {
       const w = planetWell(p);
-      expect(w.g, p.id).toBeCloseTo(PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, 9);
+      expect(w.g, p.id).toBeCloseTo(wellStrength(p.size), 9);
       expect(w.radius, p.id).toBeCloseTo(p.size * PLANET_WELL_RADIUS_FACTOR, 9);
       expect(w.rMin, p.id).toBe(p.size);
     }
@@ -143,7 +153,7 @@ describe("planetWell", () => {
     expect(BODY_REACH.map((b) => b.size)).toEqual(SOLAR_BODIES.map((b) => b.size));
     for (const b of BODY_REACH) {
       const w = planetWell(b);
-      expect(w.g, b.key).toBeCloseTo(PLANET_WELL_G * (b.size / WELL_REF_SIZE) ** 2, 9);
+      expect(w.g, b.key).toBeCloseTo(wellStrength(b.size), 9);
       expect(w.radius, b.key).toBeCloseTo(b.size * PLANET_WELL_RADIUS_FACTOR, 9);
     }
   });
@@ -159,6 +169,8 @@ describe("planetWell", () => {
  * longer dock (project probes, spec §4.4): a skim leaves, a straight run meets
  * the solid surface, and nothing passes through.
  */
+// Ruling R21 made the well linear in size above 16, so Jupiter's and
+// Saturn's b=30 skims stay clear (they met the surface under size²).
 // Ruling R20: every target's impact parameter is a multiple of the body's
 // size (b_ref × size / 16, the size the targets were written for), flown
 // around all nine bodies: L36's frame, where the pull at the same multiple of
@@ -191,6 +203,11 @@ describe.each(SOLAR_BODIES.map((b) => [b.id, b.size] as const))("tuning targets 
     expect(f.minR).toBeLessThanOrEqual(31 * k);
     expect(f.exitSpeed!).toBeGreaterThanOrEqual(MAX + 1);
   });
+  if (size > WELL_REF_SIZE) {
+    it("b=40: a giant's pass still earns the slingshot (peak above SLINGSHOT_SPEED)", () => {
+      expect(at(-40).peak).toBeGreaterThan(SLINGSHOT_SPEED);
+    });
+  }
   // Was "a fast skim inside 1.3 sizes does not open the dossier".
   it("b=30: a fast skim neither sticks nor passes through", () => {
     const f = at(-30);
