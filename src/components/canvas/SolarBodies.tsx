@@ -4,12 +4,13 @@ import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
-import { AU, PROGRADE } from "../../constants";
-import type { BodyId } from "../../data/bodyIds";
+import { AU } from "../../constants";
+import { CLOSE_UP_HOURS_PER_SECOND } from "../../data/solarMoons";
 import { SOLAR_BODIES, bodyById, type SolarBody } from "../../data/solarSystem";
 import { bodies, useSpaceStore } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { ambientTime } from "../../utils/ambientTime";
+import { meshScale, spinQuaternion } from "../../utils/bodySpin";
 import { assetUrl } from "../../utils/assetUrl";
 import { updateBodies } from "../../utils/bodyPositions";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
@@ -38,7 +39,6 @@ import { bodySlot, OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUnif
  * darkening and the atmosphere rims. Every orbit is drawn as its true ellipse.
  */
 
-const DEG = Math.PI / 180;
 
 /**
  * Draw order of a body's transparent layers, explicit rather than left to
@@ -55,22 +55,11 @@ const DEG = Math.PI / 180;
 const BODY_RENDER_ORDER = { limb: -0.2, atmosphere: -0.1, ring: 0 } as const;
 
 /**
- * Interim spin (Task 13 replaces it with the IAU poles on the close-up clock):
- * each body's axis leans its NASA obliquity from the orbit normal, about X,
- * and turns at the rate its fictional predecessor turned (rad/s): Earth the
- * Ocean World's, Jupiter the Banded Giant's, Mars the Rust World's, the rest
- * their -TYPE world's. Venus is new, compressed like the worlds' (Saturn's
- * 10.66 h to 0.3 rad/s). The obliquity already carries the sense: past 90°
- * the axis points below the orbit, so a prograde turn about it reads
- * backwards (Venus, Uranus). Its sign is not applied twice.
+ * Earth's clouds turn a little faster than its surface (the Ocean World's
+ * relation, 0.168 against 0.1 rad/s), on the same close-up clock.
  */
-const INTERIM_SPIN: Readonly<Record<BodyId, number>> = {
-  mercury: 0.15, venus: (0.3 * 10.656) / 5832.5, earth: 0.1, mars: 0.13, ceres: 0.35,
-  jupiter: 0.3, saturn: 0.3, uranus: 0.19, neptune: 0.2,
-};
-
-/** Earth's clouds turn a little faster than its surface, as the Ocean World's did. */
-const CLOUD_SPIN = 0.168;
+const CLOUD_SPIN_RATIO = 1.68;
+const cloudSpin = (b: SolarBody) => (CLOUD_SPIN_RATIO * 2 * Math.PI * CLOSE_UP_HOURS_PER_SECOND) / b.rotationHours;
 
 /**
  * Maps with a 4096-wide variant (`mapHiRes`: Mercury, Earth, Mars), drawn on
@@ -188,12 +177,13 @@ export default function SolarBodies() {
   }, [textures, gl]);
 
   /**
-   * The ring plane's normal in world space: Saturn's tilted axis. The ring
-   * shader takes its own from its model matrix; Saturn's ring-shadow patch
-   * reads this. Fixed while the interim tilt is (Task 13 makes it the pole).
+   * The ring plane's normal in world space: Saturn's IAU pole, fixed in space
+   * (the ring mesh sits in the pole frame below, so the two share one
+   * quaternion). The ring shader takes its own from its model matrix; Saturn's
+   * ring-shadow patch reads this.
    */
   const ringNormal = useMemo(() => ({
-    value: new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(1, 0, 0), SATURN.obliquityDeg * DEG),
+    value: new THREE.Vector3(0, 1, 0).applyQuaternion(spinQuaternion(SATURN, 0, new THREE.Quaternion())),
   }), []);
 
   // Built here, not as JSX, so no re-render can re-apply an onBeforeCompile
@@ -220,11 +210,12 @@ export default function SolarBodies() {
   }), [textures, ringMap, ringNormal, cityLights]);
   useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
 
-  // Detail by distance (sphereLod.ts), flattened along the spin axis. The
+  // Detail by distance (sphereLod.ts), flattened along the pole (the LOD's local Y, turned onto it each frame). The
   // eclipse occluders and collisions use the equatorial size, never this scale.
   const lods = useMemo(() => SOLAR_BODIES.map((b, i) => {
     const lod = makeSphereLOD(materials[i], b.size, { name: `Body_${b.id}` });
-    lod.scale.y *= 1 - b.flattening;
+    const [sx, sy, sz] = meshScale(b);
+    lod.scale.multiply(new THREE.Vector3(sx, sy, sz));
     return lod;
   }), [materials]);
 
@@ -263,6 +254,7 @@ export default function SolarBodies() {
     return () => { fitzDebug.sunShadow = null; fitzDebug.sunShadowDebug = null; };
   }, []);
 
+  const poleQuaternions = useMemo(() => SOLAR_BODIES.map((b) => spinQuaternion(b, 0, new THREE.Quaternion())), []);
   const posGroups = useRef<(THREE.Group | null)[]>(SOLAR_BODIES.map(() => null));
 
   useFrame((state) => {
@@ -275,7 +267,7 @@ export default function SolarBodies() {
       const b = SOLAR_BODIES[i];
       const p = bodies[b.id];
       posGroups.current[i]?.position.set(p.x, p.y, p.z);
-      lods[i].rotation.y = PROGRADE * INTERIM_SPIN[b.id] * time;
+      spinQuaternion(b, time, lods[i].quaternion);
     }
     const s = bodies.saturn;
     ringMat.uniforms.uIrradiance.value = irradianceVsAU(Math.hypot(s.x, s.y, s.z));
@@ -287,16 +279,18 @@ export default function SolarBodies() {
         const atm = b.look.atmosphere;
         return (
           <group key={b.id} ref={(g) => { posGroups.current[i] = g; }}>
-            {/* The spin frame: +Y is the axis, leaning its obliquity. */}
-            <group rotation={[b.obliquityDeg * DEG, 0, 0]}>
-              <primitive object={lods[i]} dispose={null} />
+            {/* The surface turns about the IAU pole (spinQuaternion, per frame). */}
+            <primitive object={lods[i]} dispose={null} />
+            {/* The pole frame: +Y on the pole, fixed in space; the clouds turn
+                about it and the ring lies in it. */}
+            <group quaternion={poleQuaternions[i]}>
               {b.look.clouds && (
                 <CloudLayer radius={b.size} alphaMap={textures[TEX_CLOUDS]} linear={b.look.clouds.linear}
-                  speed={PROGRADE * CLOUD_SPIN} sunShadow />
+                  speed={cloudSpin(b)} sunShadow />
               )}
               {/* In the equatorial plane: the spin frame's XZ (RingGeometry's
                   XY turned down), so the ring and the shadow's normal share
-                  the one tilt and cannot disagree. */}
+                  the one pole and cannot disagree. */}
               {b.look.rings === "saturn" && (
                 <mesh name={`BodyRing_${b.id}`} rotation={[-Math.PI / 2, 0, 0]} material={ringMat}
                   renderOrder={BODY_RENDER_ORDER.ring}>
