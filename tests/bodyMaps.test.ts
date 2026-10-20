@@ -108,10 +108,12 @@ describe("provenance: a pinned NASA/USGS source or a seeded generator for every 
   });
 });
 
-describe("honest albedo: 0.177 × geometric, dark bodies before the display curve", () => {
+describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the display curve", () => {
   for (const s of SURFACES) {
-    it(`${s.id}: texelMedianLinear ${s.stat} is 0.177 × ${s.albedo} within 10%`, () => {
-      expect(Math.abs(s.stat / (ALBEDO_SCALE * s.albedo) - 1)).toBeLessThan(0.1);
+    // The brief allows 10%; every map lands within 3% (worst: Titan 2.2%,
+    // Saturn's kept w-ringed 1.9%), so 3% is held.
+    it(`${s.id}: texelMedianLinear ${s.stat} is 0.177 × ${s.albedo} within 3%`, () => {
+      expect(Math.abs(s.stat / (ALBEDO_SCALE * s.albedo) - 1)).toBeLessThan(0.03);
     });
     for (const name of s.hiRes ? [s.map, `${s.map}_4k`] : [s.map]) {
       it(`${s.id}: ${name}.webp median is within 3% of ${s.stat}${s.id === "earth" ? " (under its clouds)" : ""}`, async () => {

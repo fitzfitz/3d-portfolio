@@ -18,6 +18,31 @@
  * requires every quote to establish public domain. A source whose page said
  * otherwise would have been generated instead (and ledgered).
  *
+ * Saturn has no source here (spec §5.5 asked for "a Cassini global map"):
+ * a time-boxed search on 2026-10-20 found no public-domain, all-longitude,
+ * visible-light natural-colour global cylindrical map of Saturn's cloud tops,
+ * so its seeded w-ringed (gen_worlds.mjs) stays. Examined and rejected:
+ *   - images.nasa.gov / Photojournal searches "Saturn cylindrical map Cassini",
+ *     "Saturn global map", "Saturn map projection", "Saturn cylindrical",
+ *     "Saturn mosaic Cassini global", "map of Saturn's clouds", "Saturn polar
+ *     projection", "Saturn's atmosphere mosaic", "Saturn natural color mosaic",
+ *     "Saturn full globe": every "global map" hit is a moon (Dione, Rhea,
+ *     Tethys, Mimas, Enceladus, Iapetus, Phoebe, Titan), not Saturn;
+ *   - PIA21617 Cassini "Noodle" Mosaic (5001 × 5301): one Grand Finale swath,
+ *     north pole to ~the hexagon, partial longitudes;
+ *   - PIA21622 Near-Infrared "Noodle" Mosaic: partial swath, infrared;
+ *   - PIA06193 "The Greatest Saturn Portrait" (8888 × 4544), PIA17218 "A
+ *     Farewell to Saturn" (6000 × 2500), PIA11141 "Saturn ... Four Years On",
+ *     PIA17171/17172 "The Day the Earth Smiled": natural colour, but
+ *     perspective views of one hemisphere with rings, not map projections;
+ *   - PIA21611 hexagon comparison (2048 × 1024): north polar region only;
+ *     PIA17654 hexagon polar projection: infrared, polar only; PIA23170 VIMS
+ *     spectral map: the rings, false colour;
+ *   - NASA SVS search API ("Saturn map", "Saturn texture", "Saturn global",
+ *     "Saturn cylindrical"): no Saturn map product;
+ *   - USGS Astrogeology: only "Saturn Voyager Airbrush Global Products", which
+ *     are its moons' maps (Dione, Enceladus, Iapetus, Mimas, Rhea, Tethys).
+ *
  * The USGS mosaics are served from S3 at ~50 KB/s per connection, so large
  * files are fetched as parallel byte ranges (verified by the hash).
  */
