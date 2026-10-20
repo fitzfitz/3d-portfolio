@@ -24,9 +24,12 @@ const FASTEST_BODY_U_PER_S = Math.max(...SOLAR_BODIES.map((b) => {
   return (visVivaKmS(s.a * (1 - s.e), s.a) * SECONDS_PER_GAME_SECOND) / KM_PER_UNIT;
 }));
 const COMET_PLANET_PAD = FASTEST_BODY_U_PER_S * EVENT_DURATION.comet + 6;
-/** Convoy-route scratch: a body's position along the route's 40 s. */
-const routeTarget = { x: 0, y: 0, z: 0 };
-const routeOther = { x: 0, y: 0, z: 0 };
+/** The convoy route is checked every ROUTE_DT over its first 40 s. */
+const ROUTE_DT = 0.5;
+const ROUTE_STEPS = 40 / ROUTE_DT + 1;
+/** Convoy-route scratch: every body's position at each route step, filled once per plan. */
+const routeTrack = new Float64Array(ROUTE_STEPS * SOLAR_BODIES.length * 3);
+const routeScratch = { x: 0, y: 0, z: 0 };
 const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
 /** Convoy ship positions for the logbook sighting check (reused). */
 const sightShips = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0 }));
@@ -61,18 +64,28 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
     const d = Math.hypot(p.x - flight.x, p.y - flight.y, p.z - flight.z);
     if (d < best) { best = d; target = b; }
   }
+  // Every body's position along the route's 40 s, once per plan (not per
+  // candidate and slot): ROUTE_STEPS × SOLAR_BODIES, xyz.
+  for (let s = 0; s < ROUTE_STEPS; s++) {
+    for (let i = 0; i < SOLAR_BODIES.length; i++) {
+      const q = bodyPositionAt(SOLAR_BODIES[i], ambientNow + s * ROUTE_DT, routeScratch);
+      const o = (s * SOLAR_BODIES.length + i) * 3;
+      routeTrack[o] = q.x; routeTrack[o + 1] = q.y; routeTrack[o + 2] = q.z;
+    }
+  }
+  const ti = SOLAR_BODIES.indexOf(target);
   const off = { x: 0, y: 0, z: 0 };
   const plan = planConvoy(bodies[target.id], target.size, (candidate) => {
-    for (let t = 0; t <= 40; t += 0.5) {
-      const c = bodyPositionAt(target, ambientNow + t, routeTarget);
+    for (let s = 0; s < ROUTE_STEPS; s++) {
+      const row = s * SOLAR_BODIES.length * 3, c = row + ti * 3;
       for (const slot of [0, 1, 2] as const) {
-        convoyShipOffsetAt(off, candidate, t, slot);
-        const x = c.x + off.x, y = c.y + off.y, z = c.z + off.z;
+        convoyShipOffsetAt(off, candidate, s * ROUTE_DT, slot);
+        const x = routeTrack[c] + off.x, y = routeTrack[c + 1] + off.y, z = routeTrack[c + 2] + off.z;
         if (Math.hypot(x, y, z) < SUN_RADIUS + 10) return false;
-        for (const b of SOLAR_BODIES) {
-          if (b === target) continue;
-          const q = bodyPositionAt(b, ambientNow + t, routeOther);
-          if (Math.hypot(x - q.x, y - q.y, z - q.z) < b.size + 6) return false;
+        for (let i = 0; i < SOLAR_BODIES.length; i++) {
+          if (i === ti) continue;
+          const o = row + i * 3;
+          if (Math.hypot(x - routeTrack[o], y - routeTrack[o + 1], z - routeTrack[o + 2]) < SOLAR_BODIES[i].size + 6) return false;
         }
       }
     }

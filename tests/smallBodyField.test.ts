@@ -14,7 +14,6 @@ import {
 import { resolveWorldContact } from "../src/utils/worldCollide";
 import { cruiseCap } from "../src/utils/speedCap";
 
-const D2R = Math.PI / 180;
 const mod360 = (x: number) => ((x % 360) + 360) % 360;
 const wrap180 = (x: number) => mod360(x + 180) - 180;
 

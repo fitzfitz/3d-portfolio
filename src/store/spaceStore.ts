@@ -440,7 +440,7 @@ export interface SpaceState {
    */
   chartWorld: (id: BodyId) => void;
   /**
-   * When the fifth world was charted, until the live sky has announced it
+   * When the last body was charted, until the live sky has announced it
    * (persisted as fitz-charted-shout; see shoutDue). Null when nothing is due.
    */
   chartShoutAt: number | null;
