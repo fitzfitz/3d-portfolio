@@ -437,8 +437,9 @@ run but one independent re-run, which read 107 with the same triangles (a points
 draw that comes and goes); the 130 ceiling has 22 to spare. Ceilings changed: none; one added.
 
 **Probe dossiers (PR 39).** The "modal open" state now means an open probe dossier (the
-tractor beam reels the probe in, then the dossier freezes the frame). The three probes are
-small models; no load-program ceiling changes from this note, and the table figures above stand.
+tractor beam reels the probe in, then the dossier freezes the frame). The measured effect
+of the probes, the load-program record (57 -> 58) and the deliberate modal-open re-baseline
+are in the next two notes; the 79 / 84 load-program ceilings themselves do not change.
 
 **Probes measured 2026-10-20 (PR 39, e2e rewrite).** The three probes are one instanced
 mesh with one material, always mounted, so `ShaderWarmup` compiles it at load:
@@ -469,3 +470,13 @@ camera is still easing in at that moment under SwiftShader, so an extra read in 
 (a module import for a precondition) shifted what was in frame and read 374,248-434,766
 triangles over 8 runs, 2 of them over the 429,540 ceiling. Moving the read back first
 restored the stable 382,648 measured at the previous commit.
+
+**Probe burn plume (PR 39 final review, 2026-10-20).** The relocation burn gained a warm
+plume per probe (the engine plume's `ShaderMaterial` with a warm `uColor`, so the ship
+plume's program) and one nozzle-flare `Points` (the ship sparks' exact `PointsMaterial`
+settings bar the size uniform, so their program). Both are hidden unless a probe is burning,
+so they add no draw call to any measured state and up to 4 (3 plumes + 1 flare) for the
+2.5 s of a burn; the tractor-beam cone's apex became a true point (same vertex count).
+`probes.probe.mjs` now asserts the burn compiles no program (58 -> 58). Full run after the
+change: deep space 36 / 258,764 / 58, modal open 49, 40 anomalies 59 programs, beam on 37
+calls, and the `programs.probe.mjs` tour still adds 0 in both tiers. Ceilings changed: none.

@@ -49,7 +49,7 @@ stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
 photo mode, `B` closes a dossier, `LB` grabs a probe, the d-pad (clockwise from up) jumps like
 `1`–`4`, View jumps to the shipyard, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
-Touch controls (joystick, pitch, `SCAN`, `BOOST`) render only when the browser
+Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
 some configurations, devtools device emulation.
 

@@ -392,7 +392,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {/* Rows double as jump buttons (same as the number keys). */}
         {PROBES.map((def, i) => (
           <button key={def.id} onClick={() => requestJump(def.id)}
-            title={`Jump to the ${def.id} probe [${i + 1}]`}
+            title={`Jump to the ${projectById(def.id)?.title ?? def.id} probe [${i + 1}]`}
             className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? ZONE_COLORS[def.id] : "text-white/40"}`}>
             <span className="text-white/30">[{i + 1}]</span>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projectById(def.id)?.color }} />

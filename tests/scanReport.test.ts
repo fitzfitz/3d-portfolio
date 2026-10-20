@@ -39,6 +39,16 @@ it("planet scans are titled by the planet's label, not its project", async () =>
   expect(generateScanReport("ruangrapi")).toMatch(/^SCAN\[OCEAN WORLD\] \/\/ CORE: SUPABASE/);
 });
 
+it("the banded giant's scan names what really orbits it (two moons, one captured), not the ship", async () => {
+  const { MOONS } = await import("../src/data/moons");
+  const { planets } = await import("../src/constants");
+  const mine = MOONS.filter((m) => planets[m.planet].name === "portfolio");
+  expect(mine.length).toBe(2);
+  expect(mine.filter((m) => m.captured).map((m) => m.variant)).toEqual(["Ice"]);
+  expect(generateScanReport("portfolio")).toContain("ORBITING IT: TWO MOONS, THE ICY ONE CAPTURED AND RETROGRADE");
+  expect(generateScanReport("portfolio")).not.toContain("ORBITING IT: YOU");
+});
+
 it("planet scans end with the orbit in real units", () => {
   expect(generateScanReport("portfolio")).toMatch(/ \/\/ ORBIT 1\.30 AU · YEAR 1\.49 EARTH-YR$/);
   expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
