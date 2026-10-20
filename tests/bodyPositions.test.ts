@@ -1,6 +1,7 @@
 import { beforeAll, describe, it, expect } from "vitest";
 import { BODY_IDS, type BodyId } from "../src/data/bodyIds";
 import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
+import { SOLAR_MOONS } from "../src/data/solarMoons";
 import { eclipticToWorld, orbitShape, osculatingEcliptic, planetEcliptic, type Ecl } from "../src/utils/ephemeris";
 import { ORRERY_DAYS_PER_SECOND, ORRERY_TEST_JD, setOrreryEpochJd } from "../src/utils/orreryClock";
 import { bodyPositionAt, heliocentric, updateBodies } from "../src/utils/bodyPositions";
@@ -62,14 +63,11 @@ describe("updateBodies: the one writer of `bodies`", () => {
     expect(out.ruangrapi.x).toBeNaN();
   });
 
-  it("gives the outermost body no slot; the rest hold slots 0.. in BODY_IDS order", () => {
-    const outermost = SOLAR_BODIES.reduce((a, b) =>
-      orbitShape(b.orbit.el, ORRERY_TEST_JD).a > orbitShape(a.orbit.el, ORRERY_TEST_JD).a ? b : a);
-    expect(outermost.id).toBe("neptune");
-    expect(bodySlot("neptune")).toBe(-1);
-    const slotted = BODY_IDS.filter((id) => id !== outermost.id);
+  it("gives the bodies with a moon or a ring slots 0-5 in BODY_IDS order; Mercury, Venus and Ceres none", () => {
+    const slotted = BODY_IDS.filter((id) => SOLAR_MOONS.some((m) => m.parent === id) || bodyById(id).look.rings);
     slotted.forEach((id, i) => expect(bodySlot(id), id).toBe(i));
-    expect(OCCLUDER_SLOTS.bodies).toEqual({ first: 0, count: 8 });
+    for (const id of ["mercury", "venus", "ceres"] as const) expect(bodySlot(id), id).toBe(-1);
+    expect(OCCLUDER_SLOTS.bodies).toEqual({ first: 0, count: 6 });
   });
 
   it("places each slotted body's occluder at its centre with its equatorial radius", () => {

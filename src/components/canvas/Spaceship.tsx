@@ -5,7 +5,8 @@ import { useGLTF } from "@react-three/drei";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { moonCenters } from "../../store/moonState";
+import { moonPositions } from "../../store/moonState";
+import { moonReach, SOLAR_MOONS } from "../../data/solarMoons";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
@@ -54,12 +55,15 @@ const SPACE_DRAG = 0.982;   // per-frame decay basis
  * station and shipyard models are <= 5.3 (retainR 13 in data/careerTrail.ts).
  */
 const LANDMARK_CRUISE_R = 15;
+/** Each moon's reach (its collider radius), fixed. */
+const MOON_REACH = SOLAR_MOONS.map(moonReach);
 /**
  * Every sphere warp must leave room for, reused each frame (utils/cruise.ts
- * freeDistance): bodies, the Sun, fixed landmarks, probes. Moons join in Task 14.
+ * freeDistance; spec §6.3's d_free): bodies, the Sun, the moons, fixed
+ * landmarks, probes.
  */
 const CRUISE_SPHERES: { x: number; y: number; z: number; r: number }[] = Array.from(
-  { length: BODY_REACH.length + 1 + CRYSTAL_LANDMARKS.length + PROBES.length },
+  { length: BODY_REACH.length + 1 + SOLAR_MOONS.length + CRYSTAL_LANDMARKS.length + PROBES.length },
   () => ({ x: 0, y: 0, z: 0, r: 0 }),
 );
 const BRAKE = 0.92;         // per-frame decay basis
@@ -97,11 +101,11 @@ const FIRST_PROBE_HOME = PROBES[0].home;
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 /**
  * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
- * entries and the moons' `moonCenters` entries (none until Task 14). Merged once:
+ * entries and the moons' `moonPositions` entries. Merged once:
  * it holds the same objects their writers update in place, so it stays live
  * and the frame loop reads it without allocating.
  */
-const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonCenters };
+const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonPositions };
 
 /**
  * Gravity wells, one per body plus the sun, reused every frame:
@@ -134,9 +138,10 @@ const _total = new THREE.Vector3();
  */
 const SHIP_SUN_VIS = { value: 1 };
 /**
- * What shadows the ship: every GPU occluder slot, plus the bodies that have
- * none (the outermost, Neptune: it shadows nothing the GPU draws, but the
- * ship can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
+ * What shadows the ship: every GPU occluder slot (the bodies with a moon or a
+ * ring, and the nine moons), plus the bodies that have none (Mercury, Venus
+ * and Ceres: they shadow nothing the GPU draws, but the ship can fly behind
+ * them). Those are CPU-only, refreshed from `bodies` each frame.
  */
 const CPU_ONLY_BODIES = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0);
 const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
@@ -630,6 +635,10 @@ export default function Spaceship() {
       }
       const sun = CRUISE_SPHERES[n++];
       sun.x = SUN_WELL.x; sun.y = SUN_WELL.y; sun.z = SUN_WELL.z; sun.r = SUN_RADIUS;
+      for (let i = 0; i < SOLAR_MOONS.length; i++) {
+        const q = moonPositions[SOLAR_MOONS[i].id], c = CRUISE_SPHERES[n++];
+        c.x = q.x; c.y = q.y; c.z = q.z; c.r = MOON_REACH[i];
+      }
       for (let i = 0; i < CRYSTAL_LANDMARKS.length; i++) {
         const l = CRYSTAL_LANDMARKS[i], c = CRUISE_SPHERES[n++];
         c.x = l[0]; c.y = l[1]; c.z = l[2]; c.r = LANDMARK_CRUISE_R;
@@ -688,7 +697,7 @@ export default function Spaceship() {
         break;
       }
     }
-    // The bodies' (and, from Task 14, the moons') solid surfaces (worldCollide.ts):
+    // The bodies' and the moons' solid surfaces (worldCollide.ts):
     // they move, so each is read live from SOLID_CENTERS, at its equatorial
     // size. The rings are fly-through.
     for (let i = 0; i < SOLID_BODIES.length; i++) {

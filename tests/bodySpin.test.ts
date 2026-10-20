@@ -28,6 +28,18 @@ describe("poleWorld", () => {
   });
 });
 
+describe("poleWorld is computed once per body (constant pole data)", () => {
+  it("writes `out`, and a caller mutating a result does not change the next one", () => {
+    const b = bodyById("saturn");
+    const out = new THREE.Vector3();
+    const first = poleWorld(b, out).clone();
+    expect(poleWorld(b, out)).toBe(out);
+    out.set(9, 9, 9);
+    poleWorld(b).multiplyScalar(-3);
+    expect(poleWorld(b).distanceTo(first)).toBe(0);
+  });
+});
+
 describe("spinQuaternion", () => {
   const out = new THREE.Quaternion();
   const axisOf = (b: (typeof SOLAR_BODIES)[number], t: number) =>

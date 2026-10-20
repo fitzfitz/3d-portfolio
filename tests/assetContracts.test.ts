@@ -7,11 +7,13 @@ import { STATION_RADII } from "../src/data/careerTrail";
 import { PLAYER_SHIP_SCALE } from "../src/constants";
 import { SHIPYARD_RADII } from "../src/data/shipyard";
 import { GATE_RADIUS, GATE_OPENING_R } from "../src/data/dormantGate";
+import { MOON_SHAPE_REACH, SOLAR_MOONS } from "../src/data/solarMoons";
+import sharp from "sharp";
 
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, SolarMoons, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -264,46 +266,91 @@ describe("fuel crystal (space_crystal.glb)", () => {
   });
 });
 
-describe("moons (moon.glb)", () => {
-  it("keeps the three named variants OrbitingMoon picks from", async () => {
-    const doc = await load("moon");
-    expect(nodeNames(doc)).toEqual(["Moon_Ice", "Moon_Rock", "Moon_Volcanic"]);
-    expect(materialNames(doc)).toEqual(["MoonIce", "MoonRock", "MoonVolcanic"]);
-    for (const m of ["MoonIce", "MoonRock", "MoonVolcanic"]) expect(triangles(doc, m)).toBe(4480);
+describe("Phobos and Deimos (phobos.glb, deimos.glb; gen_mars_moons.py)", () => {
+  const SHAPED = SOLAR_MOONS.filter((m) => m.shape);
+
+  it.each(SHAPED.map((m) => [m.id, m] as const))("%s: one node, one primitive, one matte material SolarMoons looks up", async (id, m) => {
+    const doc = await load(id);
+    const name = id[0].toUpperCase() + id.slice(1);
+    expect(nodeNames(doc)).toEqual([name]);
+    expect(materialNames(doc)).toEqual([`${name}Baked`]);
+    expect(doc.getRoot().listMeshes()[0].listPrimitives()).toHaveLength(1);
+    const mat = doc.getRoot().listMaterials()[0];
+    expect(mat.getMetallicFactor()).toBe(0);
+    expect(mat.getRoughnessFactor()).toBeCloseTo(0.95, 2);
+    expect(mat.getEmissiveFactor()).toEqual([0, 0, 0]);
+    // base colour + normal only: Phobos and Deimos share one shader program.
+    expect(textureSet(doc, `${name}Baked`)).toEqual(textureSet(await load(SHAPED[0].id), `${SHAPED[0].id[0].toUpperCase()}${SHAPED[0].id.slice(1)}Baked`));
+    expect(textureSet(doc, `${name}Baked`)).toMatchObject({ base: true, normal: true, emissive: false, metalRough: false });
+    expect(semantics(doc)).toEqual(["NORMAL", "POSITION", "TEXCOORD_0"]);
+    expect(m.shape).toBe(id);
   });
 
-  // The old OrbitingMoon centred each variant and scaled it by the moon's
-  // size; its collider took that size as the radius, the camera keep-out
-  // 1.02 × it. The fictional moons left the scene with the real-system
-  // cut-over (Task 6); the file still ships until Task 14 replaces it, so its
-  // contract holds with the old data/moons.ts MOON_MESH_RADIUS restated here.
-  it("draws every variant as a unit sphere with relief no higher than MOON_MESH_RADIUS", async () => {
-    const MOON_MESH_RADIUS = 1.02;
-    const doc = await load("moon");
-    for (const mat of ["MoonIce", "MoonRock", "MoonVolcanic"]) {
-      const { min, max } = materialBounds(doc, mat);
-      const c = [0, 1, 2].map((r) => (min[r] + max[r]) / 2);
-      for (let r = 0; r < 3; r++) expect((max[r] - min[r]) / 2, `${mat} half-extent ${r}`).toBeCloseTo(1, 1);
-      let rMax = 0, rMin = Infinity;
-      const el: number[] = [];
-      for (const node of doc.getRoot().listNodes()) {
-        const mesh = node.getMesh();
-        if (!mesh) continue;
-        const m = node.getWorldMatrix();
-        for (const p of mesh.listPrimitives()) {
-          if (p.getMaterial()?.getName() !== mat) continue;
-          const pos = p.getAttribute("POSITION")!;
-          for (let i = 0; i < pos.getCount(); i++) {
-            pos.getElement(i, el);
-            const w = [0, 1, 2].map((r) => m[r] * el[0] + m[4 + r] * el[1] + m[8 + r] * el[2] + m[12 + r] - c[r]);
-            const d = Math.hypot(w[0], w[1], w[2]);
-            rMax = Math.max(rMax, d); rMin = Math.min(rMin, d);
-          }
-        }
+  it.each(SHAPED.map((m) => [m.id, m] as const))("%s: at most 1,500 triangles and 120 KiB", async (id) => {
+    expect(triangles(await load(id))).toBeLessThanOrEqual(1500);
+    expect(kb(id)).toBeLessThanOrEqual(120);
+  });
+
+  // The GLB's unit is half the NSSDC mean diameter, so the game scales it by
+  // the moon's size; its tips stay inside MOON_SHAPE_REACH (the collider) and
+  // reach nearly to it, and the long axis (+X) points at Mars.
+  it.each(SHAPED.map((m) => [m.id, m] as const))("%s: centred, tips inside MOON_SHAPE_REACH, long axis on +X, shortest on +Y (the pole)", async (id, m) => {
+    const doc = await load(id);
+    const reach = MOON_SHAPE_REACH[m.shape!];
+    const r = maxRadius(doc);
+    expect(r).toBeLessThanOrEqual(reach);
+    expect(r).toBeGreaterThan(reach - 0.05);
+    const b = bounds(doc);
+    const ext = [0, 1, 2].map((i) => b.max[i] - b.min[i]);
+    expect(ext[0]).toBeGreaterThan(ext[2]);
+    expect(ext[2]).toBeGreaterThan(ext[1]);
+    // Published dimensions (km): Phobos 27 x 22 x 18, Deimos 15 x 12 x 11, within 15%.
+    const km = id === "phobos" ? [27, 18, 22] : [15, 11, 12];
+    ext.forEach((e, i) => expect(Math.abs((e * m.diameterKm) / 2 / km[i] - 1), `${id} axis ${i}`).toBeLessThan(0.15));
+  });
+
+  // The scene's albedo rule (tests/bodyMaps.test.ts for the maps): the
+  // surface's linear-luminance median (texels sampled over the triangles,
+  // area-weighted) times baseColorFactor is 0.177 x the geometric albedo, within 3%.
+  it.each(SHAPED.map((m) => [m.id, m] as const))("%s: texel median x baseColorFactor is 0.177 x its albedo within 3%", async (id, m) => {
+    const doc = await load(id);
+    const mat = doc.getRoot().listMaterials()[0];
+    const tex = mat.getBaseColorTexture()!;
+    const { data, info } = await sharp(Buffer.from(tex.getImage()!)).raw().toBuffer({ resolveWithObject: true });
+    const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    const lumAt = (u: number, v: number) => {
+      const x = Math.min(info.width - 1, Math.max(0, Math.floor(u * info.width)));
+      const y = Math.min(info.height - 1, Math.max(0, Math.floor(v * info.height)));
+      const k = (y * info.width + x) * info.channels;
+      return 0.2126 * lin(data[k] / 255) + 0.7152 * lin(data[k + 1] / 255) + 0.0722 * lin(data[k + 2] / 255);
+    };
+    const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
+    const pos = prim.getAttribute("POSITION")!, uv = prim.getAttribute("TEXCOORD_0")!, idx = prim.getIndices()!;
+    const samples: [number, number][] = [];
+    const P = [[], [], []] as number[][], T = [[], [], []] as number[][];
+    const BARY = [[1 / 3, 1 / 3], [0.6, 0.2], [0.2, 0.6], [0.2, 0.2]];
+    for (let t = 0; t < idx.getCount(); t += 3) {
+      for (let c = 0; c < 3; c++) { pos.getElement(idx.getScalar(t + c), P[c]); uv.getElement(idx.getScalar(t + c), T[c]); }
+      const e1 = [0, 1, 2].map((i) => P[1][i] - P[0][i]), e2 = [0, 1, 2].map((i) => P[2][i] - P[0][i]);
+      const area = Math.hypot(e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]) / 2;
+      for (const [a, b] of BARY) {
+        const u = T[0][0] + a * (T[1][0] - T[0][0]) + b * (T[2][0] - T[0][0]);
+        const v = T[0][1] + a * (T[1][1] - T[0][1]) + b * (T[2][1] - T[0][1]);
+        samples.push([lumAt(u, v), area]);
       }
-      expect(rMax, mat).toBeLessThanOrEqual(MOON_MESH_RADIUS);
-      expect(rMin, mat).toBeGreaterThan(0.95);
     }
+    samples.sort((x, y) => x[0] - y[0]);
+    const total = samples.reduce((s2, x) => s2 + x[1], 0);
+    let acc = 0, median = 0;
+    for (const [l, w] of samples) { acc += w; if (acc >= total / 2) { median = l; break; } }
+    const f = mat.getBaseColorFactor();
+    const factor = 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+    expect(Math.abs((median * factor) / (0.177 * m.geometricAlbedo) - 1)).toBeLessThan(0.03);
+    expect(m.texelMedianLinear).toBeCloseTo(0.177 * m.geometricAlbedo, 9);
+  });
+
+  it("moon.glb, the old fictional moons' model, no longer ships", () => {
+    expect(readdirSync("public/models")).not.toContain("moon.glb");
   });
 });
 
@@ -592,8 +639,11 @@ describe("public/models", () => {
   // cloud and Black Marble maps, and the seven sphere moons' maps (~1 MiB,
   // drawn from Task 14) ship now. This total counts both texture tiers; a
   // device downloads common plus one (tests/bodyMaps.test.ts caps each).
-  it("stays under 10 MiB in total", () => {
+  // 10 → 9 MiB (2026-10-20, Task 14): the moons arrived (maps 9.19 MiB in
+  // total at Task 12; moon.glb, 416 KiB, retired; phobos.glb + deimos.glb,
+  // 131 KiB, added) for 8.91 MiB, so the cap sits ~90 KiB above the real total.
+  it("stays under 9 MiB in total", () => {
     const total = readdirSync("public/models").reduce((s, f) => s + statSync(`public/models/${f}`).size, 0);
-    expect(total / 1024 / 1024).toBeLessThan(10);
+    expect(total / 1024 / 1024).toBeLessThan(9);
   });
 });

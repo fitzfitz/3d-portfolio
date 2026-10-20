@@ -18,10 +18,18 @@ const qAlign = new THREE.Quaternion();
 const qTurn = new THREE.Quaternion();
 const axis = new THREE.Vector3();
 
-/** The pole as a unit vector in the world frame. */
+/** Each body's pole, computed once: the pole data is constant and poleEcliptic allocates. */
+const poles = new Map<SolarBody, THREE.Vector3>();
+
+/** The pole as a unit vector in the world frame, copied into `out`. Allocation-free when `out` is given. */
 export function poleWorld(b: SolarBody, out: THREE.Vector3 = new THREE.Vector3()): THREE.Vector3 {
-  eclipticToWorld(poleEcliptic(b.pole.raDeg, b.pole.decDeg), scratch);
-  return out.set(scratch.x, scratch.y, scratch.z).normalize();
+  let p = poles.get(b);
+  if (!p) {
+    eclipticToWorld(poleEcliptic(b.pole.raDeg, b.pole.decDeg), scratch);
+    p = new THREE.Vector3(scratch.x, scratch.y, scratch.z).normalize();
+    poles.set(b, p);
+  }
+  return out.copy(p);
 }
 
 /** Local +Y onto the pole, then turned about it for `gameSeconds`. Writes and returns `out`; allocation-free. */

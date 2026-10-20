@@ -34,20 +34,22 @@ async function processGlb(name, textureTransforms) {
   console.log(`${name}.glb  ${mb(src)} -> ${mb(out)}`);
 }
 
-// Per-asset texture settings. Default: WebP q92 at authored size. Moons and
-// comet nuclei never fill more than a small part of the screen (moon radius
-// <= 0.55u; the nucleus sits inside its coma), so their 1024² bakes are
-// halved — that alone was ~1MB of download. Hero asteroids keep 1024² (close
-// passes at radius up to 7u) with a slightly lighter quality.
+// Per-asset texture settings. Default: WebP q92 at authored size. Comet
+// nuclei never fill more than a small part of the screen (the nucleus sits
+// inside its coma), so their 1024² bakes are halved. Phobos and Deimos
+// (gen_mars_moons.py, drawn 0.66 and 0.52 u) keep 1024² at q85: the ship can
+// pass close enough for either to fill the view. Hero asteroids keep 1024²
+// (close passes at radius up to 7u) with a slightly lighter quality.
 const TEXTURE_OPTS = {
-  moon: { quality: 88, resize: [512, 512] },
+  phobos: { quality: 85 },
+  deimos: { quality: 85 },
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
 };
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
-const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "moon", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe"];
+const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe"];
 for (const k of MODELS) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }

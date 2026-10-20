@@ -240,22 +240,28 @@ async function eclipses(page, checks) {
   checks.check("the ship's sunVis and the occluder slots are on the debug bridge", wired);
   if (!wired) return;
 
-  // Occluder slots 0-7 are the bodies but the outermost, in BODY_IDS order, at their centres (updateBodies).
+  // Occluder slots (sunShadow.ts): the bodies with a moon or a ring 0-5 at
+  // their centres (updateBodies), the nine moons 6-14 at theirs (updateMoons).
   const slots = await page.evaluate(async () => {
     const { SOLAR_BODIES } = await import("/src/data/solarSystem.ts");
-    const { bodySlot } = await import("/src/components/canvas/sunShadow.ts");
+    const { SOLAR_MOONS } = await import("/src/data/solarMoons.ts");
+    const { bodySlot, moonSlot } = await import("/src/components/canvas/sunShadow.ts");
     const u = window.__fitz.sunShadow;
+    const track = (slot, c, r, id) => {
+      const s = u.uOccluders.value[slot];
+      return { id, err: Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z), dr: Math.abs(s.w - r) };
+    };
     return {
       count: u.uOccluderCount.value,
-      bodies: SOLAR_BODIES.filter((b) => bodySlot(b.id) >= 0).map((b) => {
-        const s = u.uOccluders.value[bodySlot(b.id)], c = window.__fitz.bodies[b.id];
-        return { id: b.id, err: Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z), dr: Math.abs(s.w - b.size) };
-      }),
+      bodies: SOLAR_BODIES.filter((b) => bodySlot(b.id) >= 0).map((b) => track(bodySlot(b.id), window.__fitz.bodies[b.id], b.size, b.id)),
+      moons: SOLAR_MOONS.map((m) => track(moonSlot(m.id), window.__fitz.moons[m.id], m.size, m.id)),
     };
   });
-  checks.check("the eight GPU occluder slots are in use (every body but the outermost; moons from Task 14)", slots.count === 8, `count=${slots.count}`);
-  checks.check("occluder slots track the bodies", slots.bodies.length === 8 && slots.bodies.every((b) => b.err < 0.01 && b.dr < 1e-6),
+  checks.check("the fifteen GPU occluder slots are in use (six bodies with a moon or a ring, nine moons)", slots.count === 15, `count=${slots.count}`);
+  checks.check("occluder slots track the bodies", slots.bodies.length === 6 && slots.bodies.every((b) => b.err < 0.01 && b.dr < 1e-6),
     slots.bodies.map((b) => `${b.id} ${b.err.toFixed(4)}`).join(", "));
+  checks.check("occluder slots track the moons", slots.moons.length === 9 && slots.moons.every((b) => b.err < 0.01 && b.dr < 1e-6),
+    slots.moons.map((b) => `${b.id} ${b.err.toFixed(4)}`).join(", "));
 
   // Each body skips its own sphere by distance, in one program per material
   // kind: its compiled program says so. Reading the program in use (not the
@@ -283,6 +289,18 @@ async function eclipses(page, checks) {
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
         return key.endsWith("|sunShadow:fragment") && src.includes(SKIP);
       })(),
+      moons: (() => {
+        const out = [];
+        window.__fitz.scene.traverse((o) => {
+          if (!o.isMesh || !o.name.startsWith("Moon_") || out.some((m) => m.name === o.name)) return;
+          const { key, src } = used(o.material);
+          const shaped = o.name === "Moon_phobos" || o.name === "Moon_deimos";
+          out.push({ name: o.name, ok: shaped
+            ? key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;")
+            : key.endsWith("|sunShadow:fragment") && src.includes(SKIP) });
+        });
+        return out;
+      })(),
       ship: window.__fitz.shipShadow.materials.map((mat) => {
         const { key, src } = used(mat);
         return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
@@ -293,6 +311,8 @@ async function eclipses(page, checks) {
     programs.bodies.length === 9 && programs.bodies.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.bodies));
   checks.check("Earth keeps its night-side city lights alongside the shadow", programs.bodies.find((b) => b.name === "earth")?.cityLights === true);
   checks.check("Earth's clouds darken in the same shadows (their planet skipped)", programs.clouds === true);
+  checks.check("the nine moons draw shadowed: round ones per fragment (own sphere skipped), Phobos and Deimos per object",
+    programs.moons.length === 9 && programs.moons.every((m) => m.ok), JSON.stringify(programs.moons));
   checks.check("every ship hull material draws with its shadow program",
     programs.ship.length > 0 && programs.ship.every(Boolean), `materials=${programs.ship.length} ${JSON.stringify(programs.ship)}`);
 

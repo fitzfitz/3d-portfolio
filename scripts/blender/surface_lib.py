@@ -1,5 +1,6 @@
-# Shared numpy surface painting for the texel-painted Blender generators
-# (gen_moon.py, gen_world_rock.py, gen_world_dwarf.py): seeded gradient noise,
+# Shared numpy surface painting for the Blender generators (gen_mars_moons.py;
+# formerly gen_moon.py, gen_world_rock.py, gen_world_dwarf.py, whose outputs
+# are retired): seeded gradient noise,
 # fbm, domain warp, cellular noise, crater profiles and stamping, ray streaks,
 # colour helpers, and the new worlds' equirect grid, normal map and writer.
 # Pure numpy, no bpy, no grid globals: each generator owns its grid (the
@@ -7,8 +8,8 @@
 # it with crater_stamper(). Import it from a generator with
 #   sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 #   from surface_lib import ...
-# Changing anything here changes moon.glb, w-rock*.png and w-dwarf*.png:
-# re-run all three and update assets-src/MANIFEST.md.
+# Changing Perlin, fbm, crater_height or smoothstep changes phobos.glb and
+# deimos.glb: re-run gen_mars_moons.py and update assets-src/MANIFEST.md.
 import math
 import struct
 import zlib

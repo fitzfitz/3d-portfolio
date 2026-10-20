@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { SUN_RADIUS } from "../../constants";
 import type { BodyId } from "../../data/bodyIds";
 import { SOLAR_BODIES } from "../../data/solarSystem";
-import { orbitShape, JD_J2000 } from "../../utils/ephemeris";
+import { MOON_IDS, SOLAR_MOONS, type MoonId } from "../../data/solarMoons";
 import { RING_TAU_MAX } from "../../utils/ringOptics";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
@@ -19,7 +19,8 @@ import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
  *   whose discs a moon's shadow can cross part of). The loop skips the body
  *   the fragment lies on by distance, so no program depends on a body's slot.
  * - "object": one factor per material, `sunVis`, written on the CPU from
- *   `sunVisibility` (for moons and the ship, small enough to be all in or out).
+ *   `sunVisibility` (for Phobos, Deimos and the ship, small enough to be all
+ *   in or out; the sphere moons take "fragment", like the planets).
  *
  * Patch the material instance that actually renders. `Material.clone()` does
  * not copy `onBeforeCompile`, `onBeforeRender` or `customProgramCacheKey`, so
@@ -32,33 +33,40 @@ import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 export const MAX_OCCLUDERS = 16;
 
 /**
- * The bodies that hold a GPU slot, in BODY_IDS order. A body only shadows
- * receivers farther from the sun than itself, so the outermost (Neptune, by
- * semi-major axis) needs none; it still shadows the ship and the sun's glare
- * on the CPU. Task 14 re-cuts these when the moons return.
+ * The bodies that hold a GPU slot, in BODY_IDS order: those with a moon or a
+ * ring (Earth, Mars, Jupiter, Saturn, Uranus, Neptune). The GPU slots exist
+ * for receivers: a planet takes its moons' shadows, a moon its parent's and
+ * its siblings', a ring its planet's. Mercury, Venus and Ceres have no moon
+ * or ring, and at their sizes their shadows never reach another body, so they
+ * shadow only on the CPU (the ship and the sun's glare, from `bodies`).
  */
-const OUTERMOST_BODY = SOLAR_BODIES.reduce((a, b) =>
-  (orbitShape(b.orbit.el, JD_J2000).a > orbitShape(a.orbit.el, JD_J2000).a ? b : a));
-const SLOTTED_BODIES: readonly BodyId[] = SOLAR_BODIES.filter((b) => b !== OUTERMOST_BODY).map((b) => b.id);
+const SLOTTED_BODIES: readonly BodyId[] = SOLAR_BODIES
+  .filter((b) => b.look.rings !== undefined || SOLAR_MOONS.some((m) => m.parent === b.id))
+  .map((b) => b.id);
 
 /**
- * Fixed occluder slots (F4, docs/UNIVERSE-RULES.md L20): every body but the
- * outermost, in BODY_IDS order from 0 (mercury 0 … uranus 7). Moons hold
- * none until they return (Task 14): their range is empty, after the bodies.
- * Fixed, never a per-frame nearest-N choice, which would make shadows pop.
+ * Fixed occluder slots (F4, docs/UNIVERSE-RULES.md L20): the slotted bodies
+ * from 0 (earth 0 … neptune 5), then the nine moons in MOON_IDS order
+ * (moon 6 … triton 14): 15 of the 16. Fixed, never a per-frame nearest-N
+ * choice, which would make shadows pop.
  */
 export const OCCLUDER_SLOTS = {
   bodies: { first: 0, count: SLOTTED_BODIES.length },
-  moons: { first: SLOTTED_BODIES.length, count: 0 },
+  moons: { first: SLOTTED_BODIES.length, count: MOON_IDS.length },
 } as const;
 
 /** How many slots the frame loop fills: the shaders read only these. */
 export const OCCLUDER_COUNT = OCCLUDER_SLOTS.moons.first + OCCLUDER_SLOTS.moons.count;
 
-/** Body `id`'s occluder slot, or -1 when it shadows on the CPU only (the outermost). */
+/** Body `id`'s occluder slot, or -1 when it shadows on the CPU only (Mercury, Venus, Ceres). */
 export function bodySlot(id: BodyId): number {
   const i = SLOTTED_BODIES.indexOf(id);
   return i < 0 ? -1 : OCCLUDER_SLOTS.bodies.first + i;
+}
+
+/** Moon `id`'s occluder slot (every moon holds one). */
+export function moonSlot(id: MoonId): number {
+  return OCCLUDER_SLOTS.moons.first + MOON_IDS.indexOf(id);
 }
 
 /**

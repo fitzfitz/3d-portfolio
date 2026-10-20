@@ -7,7 +7,8 @@ import { CHASE_CAM, chaseCamTarget } from "../src/utils/chaseCam";
 import { bodies } from "../src/store/spaceStore";
 import { PLAYER_SHIP_SCALE, SHIP_WARP_SPEED } from "../src/constants";
 import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
-import { moonCenters } from "../src/store/moonState";
+import { moonPositions } from "../src/store/moonState";
+import { insetDistance, insetPeriod, MOON_IDS, moonReach, SOLAR_MOONS } from "../src/data/solarMoons";
 import { G_MAX } from "../src/utils/gravityWell";
 import { JD_J2000, orbitShape, visVivaKmS } from "../src/utils/ephemeris";
 import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND } from "../src/utils/realUnits";
@@ -80,24 +81,45 @@ describe("resolveWorldContact", () => {
   });
 });
 
-/** Every centre SOLID_BODIES needs, as Spaceship reads them: `bodies` plus `moonCenters` (empty until Task 14). */
-const allCenters = () => ({ ...bodies, ...moonCenters });
+/** Every centre SOLID_BODIES needs, as Spaceship reads them: `bodies` plus `moonPositions`. */
+const allCenters = () => ({ ...bodies, ...moonPositions });
 /** A body's fastest orbital speed (u/s): vis-viva at perihelion, on the orrery clock. */
 const fastest = (id: (typeof SOLAR_BODIES)[number]["id"]) => {
   const s = orbitShape(bodyById(id).orbit.el, JD_J2000);
   return (visVivaKmS(s.a * (1 - s.e), s.a) * SECONDS_PER_GAME_SECOND) / KM_PER_UNIT;
 };
 
-describe("SOLID_BODIES (the nine bodies: everything the ship cannot fly through)", () => {
-  it("lists every body in BODY_IDS order, at its equatorial size", () => {
-    expect(SOLID_BODIES.map((b) => b.id)).toEqual(SOLAR_BODIES.map((b) => b.id));
-    expect(SOLID_BODIES.map((b) => b.size)).toEqual(SOLAR_BODIES.map((b) => b.size));
+/** A moon's speed about its parent in the inset (u/s). */
+const moonSpeed = (m: (typeof SOLAR_MOONS)[number]) => (2 * Math.PI * insetDistance(m)) / insetPeriod(m);
+
+describe.each(SOLAR_MOONS.map((m) => [m.id, m] as const))("the moon %s, moving at its inset speed plus its parent's", (_id, m) => {
+  it("pushes a stationary ship out, never through", () => {
+    const reach = moonReach(m) + SHIP_HALF_LENGTH;
+    const v = moonSpeed(m) + fastest(m.parent);
+    const c = { x: 0, y: 0, z: 0 };
+    const pos = { x: reach + 2, y: 0, z: 0 }, vel = { x: 0, y: 0, z: 0 };
+    for (let i = 0; i < 200; i++) {
+      c.x += v * DT;
+      resolveWorldContact(pos, vel, c, moonReach(m));
+      expect(dist(pos, c)).toBeGreaterThanOrEqual(reach - 1e-9);
+      expect(pos.x, `step ${i}`).toBeGreaterThan(c.x);
+    }
+  });
+});
+
+describe("SOLID_BODIES (the nine bodies and the nine moons: everything the ship cannot fly through)", () => {
+  it("lists every body in BODY_IDS order at its equatorial size, then every moon in MOON_IDS order at its reach", () => {
+    expect(SOLID_BODIES.map((b) => b.id)).toEqual([...SOLAR_BODIES.map((b) => b.id), ...MOON_IDS]);
+    expect(SOLID_BODIES.map((b) => b.size)).toEqual([...SOLAR_BODIES.map((b) => b.size), ...SOLAR_MOONS.map(moonReach)]);
+    // A sphere moon reaches its size; Phobos and Deimos their shape's tips.
+    for (const m of SOLAR_MOONS.filter((x) => !x.shape)) expect(moonReach(m), m.id).toBe(m.size);
+    expect(moonReach(SOLAR_MOONS.find((m) => m.id === "phobos")!)).toBeGreaterThan(SOLAR_MOONS.find((m) => m.id === "phobos")!.size);
   });
 
-  it("has a centre for every body in `bodies`; the moons hold none yet", () => {
+  it("has a centre for every body in `bodies` and every moon in `moonPositions`", () => {
     const centers = allCenters();
     for (const b of SOLID_BODIES) expect(centers[b.id], b.id).toBeDefined();
-    expect(Object.keys(moonCenters)).toEqual([]);
+    expect(Object.keys(moonPositions).sort()).toEqual([...MOON_IDS].sort());
   });
 
   // A check after each step cannot tunnel through a moving body: the furthest
@@ -112,6 +134,15 @@ describe("SOLID_BODIES (the nine bodies: everything the ship cannot fly through)
     expect(fastest("mercury")).toBeLessThan(3.5);
   });
 
+  // A moon adds its inset speed about its parent (Phobos: ~10.6 u/s) to its parent's.
+  it("no moon can be tunnelled through either: warp + cap + its inset speed + its parent's", () => {
+    for (const m of SOLAR_MOONS) {
+      const step = (SHIP_WARP_SPEED + G_MAX + moonSpeed(m) + fastest(m.parent)) * DT;
+      expect(step, m.id).toBeLessThan(2 * (moonReach(m) + SHIP_HALF_LENGTH));
+    }
+    expect(moonSpeed(SOLAR_MOONS.find((m) => m.id === "phobos")!)).toBeGreaterThan(10);
+  });
+
   it("keeps the camera past a body's atmosphere shell (its look.atmosphere thickness), or its surface", () => {
     for (const b of SOLAR_BODIES) {
       const s = SOLID_BODIES.find((x) => x.id === b.id)!;
@@ -120,11 +151,15 @@ describe("SOLID_BODIES (the nine bodies: everything the ship cannot fly through)
     }
     // Earth's cloud shell (1.03 R) lies inside its atmosphere's.
     expect(bodyById("earth").look.atmosphere!.thickness).toBeGreaterThan(1.03);
+    // A moon: its reach (no shell yet) plus the clearance.
+    for (const m of SOLAR_MOONS) {
+      expect(SOLID_BODIES.find((x) => x.id === m.id)!.cameraR, m.id).toBeCloseTo(moonReach(m) + CAMERA_CLEARANCE, 12);
+    }
   });
 
   // The capture net used to stop a ship at a planet by docking it; now the
   // surface does (spec §4.4).
-  describe.each(SOLAR_BODIES.map((b) => [b.id, b.size] as const))("a ship driven into %s at 39 u/s stops at its surface (size %d)", (id, size) => {
+  describe.each(SOLID_BODIES.map((b) => [b.id, b.size] as const))("a ship driven into %s at 39 u/s stops at its surface (size %d)", (id, size) => {
     const reach = size + SHIP_HALF_LENGTH;
     it("2 s at 60 Hz with warp held at the centre: never inside, never through", () => {
       const c = { x: -80, y: 14, z: 60 };
@@ -175,7 +210,7 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
 
   // The camera kept outside each body's atmosphere shell (or its surface).
   describe.each(SOLID_BODIES.map((b) => [b.id, b] as const))("camera kept outside %s's outermost shell, with the ship parked nose-out at its contact radius", (id, w) => {
-    const shell = w.size * (bodyById(id as (typeof SOLAR_BODIES)[number]["id"]).look.atmosphere?.thickness ?? 1);
+    const shell = w.cameraR - CAMERA_CLEARANCE;
     // Away from the origin and off the plane, so no axis is special.
     const c = { x: 140, y: -12, z: -75 };
     const centers = { ...allCenters(), [id]: c };

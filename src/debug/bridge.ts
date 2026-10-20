@@ -1,5 +1,6 @@
 import type * as THREE from "three";
 import { useSpaceStore, flight, bodies } from "../store/spaceStore";
+import { moonPositions } from "../store/moonState";
 import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
 import { raceClock } from "../utils/raceClock";
@@ -19,6 +20,8 @@ export interface FitzDebug {
   store: typeof useSpaceStore;
   flight: typeof flight;
   bodies: typeof bodies;
+  /** The nine moons' live centres by moon id (store/moonState.ts), written by SolarMoons each frame. */
+  moons: typeof moonPositions;
   /** Time-trial clock (seconds), live. */
   raceClock: typeof raceClock;
   sound: typeof soundManager;
@@ -88,8 +91,8 @@ export interface FitzDebug {
   /**
    * The shared eclipse uniforms (sunShadow.ts), live, registered by
    * SolarBodies in dev: `uOccluders.value[i]` is slot i (xyz world position,
-   * w radius; the bodies in BODY_IDS order less the outermost), `uOccluderCount` how
-   * many are read.
+   * w radius; sunShadow.ts bodySlot / moonSlot: the bodies with a moon or a
+   * ring 0-5, the nine moons 6-14), `uOccluderCount` how many are read (15).
    */
   sunShadow: typeof import("../components/canvas/sunShadow").sunShadowUniforms | null;
   /**
@@ -114,6 +117,7 @@ export const fitzDebug: FitzDebug = {
   store: useSpaceStore,
   flight,
   bodies,
+  moons: moonPositions,
   raceClock,
   sound: soundManager,
   scene: null,

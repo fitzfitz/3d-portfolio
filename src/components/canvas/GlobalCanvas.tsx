@@ -9,6 +9,7 @@ import TractorBeam from "./TractorBeam";
 import ProjectProbes from "./ProjectProbes";
 import SpacePlanets from "./SpacePlanets";
 import SolarBodies from "./SolarBodies";
+import SolarMoons from "./SolarMoons";
 import BodyDots from "./BodyDots";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
@@ -595,6 +596,8 @@ function GlobalCanvas() {
             <SpacePlanets />
             {/* The nine real bodies: textures load here, so ShaderWarmup compiles them */}
             <SolarBodies />
+            {/* The nine major moons, insets about their planets (maps and the Phobos/Deimos GLBs load here) */}
+            <SolarMoons />
             {/* Bodies under 2 px across as dots: after SolarBodies, which moves them */}
             <BodyDots />
 

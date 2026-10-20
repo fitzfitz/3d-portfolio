@@ -7,7 +7,9 @@ cd "$(dirname "$0")/../.."
 mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_cargo_ship.py
 [ -f scripts/blender/gen_creature.py ] && "$BLENDER" --background --python scripts/blender/gen_creature.py
-[ -f scripts/blender/gen_moon.py ] && "$BLENDER" --background --python scripts/blender/gen_moon.py
+# Phobos and Deimos (2026-10-20, real-solar-system Task 14): PDS shape models
+# (pinned URL + SHA-256) plus seeded detail. Replaces gen_moon.py's fictional moons.
+"$BLENDER" --background --python scripts/blender/gen_mars_moons.py
 [ -f scripts/blender/gen_comet_head.py ] && "$BLENDER" --background --python scripts/blender/gen_comet_head.py
 [ -f scripts/blender/gen_asteroids.py ] && "$BLENDER" --background --python scripts/blender/gen_asteroids.py
 # Hero ship, contact portal and fuel crystal (original replacements, 2026-10-10,

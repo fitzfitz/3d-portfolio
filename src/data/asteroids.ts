@@ -20,7 +20,7 @@ export const asteroidInstances: AsteroidData[] = [
   { position: [140, -75, 40], scale: 1.4, rotationSpeed: [-0.03, 0.04, 0.07], initialRotation: [1.5, 0.2, 1.2], variant: 3 },
   { position: [-70, 90, -170], scale: 2.5, rotationSpeed: [0.07, -0.03, 0.05], initialRotation: [0.1, 0.5, 1.8], variant: 0 },
   { position: [40, -95, -190], scale: 3.0, rotationSpeed: [-0.06, 0.06, -0.03], initialRotation: [0.5, 2.2, 0.4], variant: 2 },
-  { position: [-201, 60, -80], scale: 2.4, rotationSpeed: [0.04, 0.05, 0.08], initialRotation: [1.8, 0.1, 0.5], variant: 3 },
+  { position: [-202, 60, -80], scale: 2.4, rotationSpeed: [0.04, 0.05, 0.08], initialRotation: [1.8, 0.1, 0.5], variant: 3 },
   { position: [210, -45, -30], scale: 1.6, rotationSpeed: [-0.05, -0.04, 0.05], initialRotation: [0.3, 0.8, 1.1], variant: 1 },
   // Deep-volume sentinels (high above / far below the ecliptic)
   { position: [81, 173, 103], scale: 2.6, rotationSpeed: [0.05, -0.04, 0.06], initialRotation: [0.7, 1.4, 0.3], variant: 0 },

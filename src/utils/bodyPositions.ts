@@ -48,8 +48,9 @@ export const bodiesGameSeconds = (): number => lastGameSeconds;
  * The frame drive, the one writer of `bodies`: each body's position into
  * `out[b.id]` (in place; no other key is touched), its scannable (measured
  * from its surface, labelled with its real name) and, if it holds one, its
- * occluder slot at its equatorial radius. The outermost body has no GPU slot
- * (sunShadow.ts); the CPU lists read it from `bodies`.
+ * occluder slot at its equatorial radius. Mercury, Venus and Ceres have no GPU
+ * slot (sunShadow.ts); the CPU lists read them from `bodies`. The moons' slots
+ * are moonOrbits.ts updateMoons'.
  */
 export function updateBodies(gameSeconds: number, out: Record<BodyId, Vec3>): void {
   lastGameSeconds = gameSeconds;

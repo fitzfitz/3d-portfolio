@@ -1,5 +1,6 @@
 import { PLAYER_SHIP_SCALE } from "../constants";
 import { SOLAR_BODIES, type SolarBody } from "../data/solarSystem";
+import { moonReach, SOLAR_MOONS } from "../data/solarMoons";
 import type { Vec3 } from "./reactions";
 
 /**
@@ -22,12 +23,13 @@ const SKIN = 0.05;
  * and an inward velocity is reflected and damped, like the sun's bounce. In
  * place, so the frame loop allocates nothing. True on contact.
  *
- * A check after each step cannot tunnel: the smallest contact sphere
+ * A check after each step cannot tunnel: the smallest body contact sphere
  * (Ceres, 2.95 + 1.2) is 8.3 across, and the furthest a step goes is warp
  * plus the gravity cap plus the body's own orbital speed (Mercury's at
  * perihelion, the fastest, ~3.4 u/s), (39 + 14 + 3.4) × the 0.05 s dt
- * clamp ≈ 2.8.
- * tests/worldCollide.test.ts checks each body.
+ * clamp ≈ 2.8. The moons are smaller and faster: Phobos's contact sphere
+ * (0.66 × 1.25 + 1.2) is 4.1 across against a 3.3 step (its 10.6 u/s about
+ * Mars included). tests/worldCollide.test.ts checks each body and moon.
  */
 export function resolveWorldContact(pos: Vec3, vel: Vec3, center: Vec3, radius: number): boolean {
   const reach = radius + SHIP_HALF_LENGTH;
@@ -73,11 +75,16 @@ export function bodyCameraRadius(b: SolarBody): number {
 export interface SolidBody { readonly id: string; readonly size: number; readonly cameraR: number }
 
 /**
- * Every solid body, keyed as in `bodies` (project probes spec §4.4), with
- * bodyCameraRadius. The moons join here when they return (Task 14), keyed as
- * in `moonCenters` (store/moonState.ts). Saturn's rings are fly-through.
+ * Every solid body: the nine bodies keyed as in `bodies` (project probes spec
+ * §4.4), with bodyCameraRadius, then the nine moons keyed as in
+ * `moonPositions` (store/moonState.ts), at their reach (moonReach: a sphere
+ * moon's size, Phobos's and Deimos's shape tips) with CAMERA_CLEARANCE past
+ * it. Saturn's rings are fly-through.
  */
-export const SOLID_BODIES: readonly SolidBody[] = SOLAR_BODIES.map((b) => ({ id: b.id, size: b.size, cameraR: bodyCameraRadius(b) }));
+export const SOLID_BODIES: readonly SolidBody[] = [
+  ...SOLAR_BODIES.map((b) => ({ id: b.id, size: b.size, cameraR: bodyCameraRadius(b) })),
+  ...SOLAR_MOONS.map((m) => ({ id: m.id, size: moonReach(m), cameraR: moonReach(m) + CAMERA_CLEARANCE })),
+];
 
 /**
  * Pushes `p` out to `minR` from `center` if it is inside, along the same
@@ -100,7 +107,7 @@ export function keepOutside(p: Vec3, center: Vec3, minR: number): void {
  * inside it. Run after the camera's lerp: pushes `cam` out along the
  * centre-to-camera normal of any body it is inside, to its SOLID_BODIES
  * cameraR. In place, allocation-free; `centers` holds every SOLID_BODIES
- * id (Spaceship passes `bodies` and `moonCenters` merged once); a body
+ * id (Spaceship passes `bodies` and `moonPositions` merged once); a body
  * missing from it is skipped.
  */
 export function keepCameraOutsideBodies(cam: Vec3, centers: Readonly<Record<string, Vec3>>): void {

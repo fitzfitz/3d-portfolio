@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { SUN_RADIUS } from "../src/constants";
 import { BODY_IDS } from "../src/data/bodyIds";
+import { MOON_IDS } from "../src/data/solarMoons";
 import { sunVisibility } from "../src/utils/sunOcclusion";
 import {
   MAX_OCCLUDERS,
@@ -10,6 +11,7 @@ import {
   patchSunShadow,
   sunShadowCoverage,
   bodySlot,
+  moonSlot,
   OCCLUDER_COUNT,
   setOccluder,
   sunShadowUniforms,
@@ -290,16 +292,22 @@ describe("the self-skip (a body never shadows its own surface)", () => {
 });
 
 describe("OCCLUDER_SLOTS (fixed, no per-frame selection)", () => {
-  it("bodies 0-7, no moons until Task 14, all inside MAX_OCCLUDERS", () => {
-    expect(OCCLUDER_SLOTS.bodies).toEqual({ first: 0, count: 8 });
-    expect(OCCLUDER_SLOTS.moons).toEqual({ first: 8, count: 0 });
-    expect(OCCLUDER_COUNT).toBe(8);
+  it("bodies with a moon or a ring 0-5, the nine moons 6-14: 15 of MAX_OCCLUDERS", () => {
+    expect(OCCLUDER_SLOTS.bodies).toEqual({ first: 0, count: 6 });
+    expect(OCCLUDER_SLOTS.moons).toEqual({ first: 6, count: 9 });
+    expect(OCCLUDER_COUNT).toBe(15);
     expect(OCCLUDER_COUNT).toBeLessThanOrEqual(MAX_OCCLUDERS);
   });
 
-  it("bodySlot gives the bodies 0-7 in BODY_IDS order and the outermost, Neptune, no GPU slot", () => {
+  it("bodySlot gives Earth to Neptune (each has a moon or a ring) 0-5 and Mercury, Venus, Ceres none (CPU only)", () => {
     expect(Object.fromEntries(BODY_IDS.map((id) => [id, bodySlot(id)]))).toEqual({
-      mercury: 0, venus: 1, earth: 2, mars: 3, ceres: 4, jupiter: 5, saturn: 6, uranus: 7, neptune: -1,
+      mercury: -1, venus: -1, earth: 0, mars: 1, ceres: -1, jupiter: 2, saturn: 3, uranus: 4, neptune: 5,
+    });
+  });
+
+  it("moonSlot gives the moons 6-14 in MOON_IDS order", () => {
+    expect(Object.fromEntries(MOON_IDS.map((id) => [id, moonSlot(id)]))).toEqual({
+      moon: 6, phobos: 7, deimos: 8, io: 9, europa: 10, ganymede: 11, callisto: 12, titan: 13, triton: 14,
     });
   });
 });

@@ -68,8 +68,7 @@ const systemOf = (parent: BodyId): SolarMoon[] =>
 /** Drawn u per real parent radius, before the inset scale. */
 const baseDistance = (m: SolarMoon): number => (m.aKm / PARENT_R_KM[m.parent]!) * bodyById(m.parent).size;
 
-/** One distance scale per system: the innermost moon clears the planet (and Saturn's A ring). */
-export function insetScale(parent: BodyId): number {
+function computeInsetScale(parent: BodyId): number {
   const inner = systemOf(parent)[0];
   const size = bodyById(parent).size;
   let required = 1.5 * (size + inner.size);
@@ -77,23 +76,55 @@ export function insetScale(parent: BodyId): number {
   return Math.min(1, required / baseDistance(inner));
 }
 
+/**
+ * Memoised per parent (and per moon below): the data is constant, and the
+ * frame loops (moonOrbits.ts, the cruise list) read these every frame.
+ */
+const scaleCache = new Map<BodyId, number>();
+const distanceCache = new Map<SolarMoon, number>();
+const gmCache = new Map<BodyId, number>();
+
+/** One distance scale per system: the innermost moon clears the planet (and Saturn's A ring). */
+export function insetScale(parent: BodyId): number {
+  let s = scaleCache.get(parent);
+  if (s === undefined) scaleCache.set(parent, (s = computeInsetScale(parent)));
+  return s;
+}
+
 /** u from the parent's centre. */
-export const insetDistance = (m: SolarMoon): number => baseDistance(m) * insetScale(m.parent);
+export function insetDistance(m: SolarMoon): number {
+  let d = distanceCache.get(m);
+  if (d === undefined) distanceCache.set(m, (d = baseDistance(m) * insetScale(m.parent)));
+  return d;
+}
 
 /** Orbital period on the close-up clock (s). */
 export const insetPeriod = (m: SolarMoon): number => m.periodHours / CLOSE_UP_HOURS_PER_SECOND;
 
 /** The system's GM (u^3/s^2) so Kepler III holds inside the inset (from its innermost moon). */
 export function insetGM(parent: BodyId): number {
-  const m = systemOf(parent)[0];
-  return gmOfMoon(m);
+  let gm = gmCache.get(parent);
+  if (gm === undefined) gmCache.set(parent, (gm = gmOfMoon(systemOf(parent)[0])));
+  return gm;
 }
 export const gmOfMoon = (m: SolarMoon): number => insetDistance(m) ** 3 * (2 * Math.PI / insetPeriod(m)) ** 2;
 
-/** Outermost moon's inset distance plus its size. */
+/**
+ * How far Phobos's and Deimos's shapes reach from their centres, in units of
+ * half the NSSDC mean diameter (the GLBs' unit, so the mesh scale is `size`):
+ * the largest radius of P. C. Thomas's shape models (PDS SBN
+ * EAR-A-5-DDR-SHAPE-MODELS-V2.1), 13.98 / 11.25 km and 8.71 / 6.2 km, rounded
+ * up. tests/assetContracts.test.ts holds the shipped GLBs inside these.
+ */
+export const MOON_SHAPE_REACH: Readonly<Record<NonNullable<SolarMoon["shape"]>, number>> = { phobos: 1.25, deimos: 1.41 };
+
+/** The farthest surface point from a moon's centre (u): its size, or its shape's tips. The collider's radius. */
+export const moonReach = (m: SolarMoon): number => m.size * (m.shape ? MOON_SHAPE_REACH[m.shape] : 1);
+
+/** Outermost moon's inset distance plus its reach. */
 export function moonSystemReach(parent: BodyId): number {
   const sys = systemOf(parent);
   const last = sys[sys.length - 1];
-  return insetDistance(last) + last.size;
+  return insetDistance(last) + moonReach(last);
 }
 

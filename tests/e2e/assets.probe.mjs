@@ -1,6 +1,6 @@
 import { withPage, settle } from "./harness.mjs";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, existsSync, statSync, copyFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, statSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -69,26 +69,26 @@ export default async function run() {
       `x ${h0?.x?.toFixed(3)} -> ${h1?.x?.toFixed(3)}`);
 
     // Shipped materials keep correct PBR values for rock (regression guard on
-    // bake_utils' 0.55 metallic default leaking into a rocky body).
+    // bake_utils' 0.55 metallic default leaking into a rocky body): the nine
+    // real moons (SolarMoons.tsx, meshes named Moon_<id>) are all drawn and
+    // all matte, Phobos and Deimos from their GLBs (PhobosBaked / DeimosBaked).
     const rock = await page.evaluate(() => {
-      const out = {};
+      const out = { names: new Set(), metal: 0, baked: new Set() };
       window.__fitz.scene.traverse((o) => {
         const m = o.material;
-        // Three moon variants (MoonRock / MoonIce / MoonVolcanic): track the
-        // most metallic one, and how many distinct variants are on screen.
-        if (["MoonRock", "MoonIce", "MoonVolcanic"].includes(m?.name)) {
-          out.moon = Math.max(out.moon ?? 0, m.metalness);
-          (out.moonNames ??= new Set()).add(m.name);
+        if (o.isMesh && o.name.startsWith("Moon_")) {
+          out.names.add(o.name);
+          out.metal = Math.max(out.metal, m.metalness ?? 0);
+          if (/^(Phobos|Deimos)Baked$/.test(m.name)) out.baked.add(m.name);
         }
-        if (m?.name?.startsWith("Asteroid")) out.asteroid = m.metalness;
       });
-      return { ...out, moonNames: [...(out.moonNames ?? [])].sort() };
+      return { names: [...out.names].sort(), metal: out.metal, baked: [...out.baked].sort() };
     });
-    checks.check("moon materials stay non-metallic", (rock.moon ?? 1) <= 0.1,
-      `max metalness=${rock.moon}`);
-    checks.check("all three moon variants are in the scene",
-      ["MoonIce", "MoonRock", "MoonVolcanic"].every((n) => rock.moonNames.includes(n)),
-      rock.moonNames.join(","));
+    checks.check("moon materials stay non-metallic", rock.names.length > 0 && rock.metal <= 0.1,
+      `max metalness=${rock.metal}`);
+    const MOONS = ["callisto", "deimos", "europa", "ganymede", "io", "moon", "phobos", "titan", "triton"].map((id) => `Moon_${id}`);
+    checks.check("all nine moons are in the scene", MOONS.every((n) => rock.names.includes(n)), rock.names.join(","));
+    checks.check("Phobos and Deimos draw their shape-model GLBs", rock.baked.join() === "DeimosBaked,PhobosBaked", rock.baked.join(","));
   });
 
   // ---- regeneration: structural, not byte-exact ----
@@ -108,59 +108,27 @@ export default async function run() {
 
   const scratch = mkdtempSync(join(tmpdir(), "fitz-regen-"));
 
-  // gen_moon.py:68 hardcodes its output to assets-src/moon.glb and reads no env
-  // var (verified). Regenerating therefore OVERWRITES an original in a
-  // gitignored, local-only directory. Preserve it byte-for-byte and restore it
-  // no matter how this block exits.
-  const original = "assets-src/moon.glb";
-  const preserved = join(scratch, "moon.original.glb");
-  copyFileSync(original, preserved);
-  const originalHash = createHash("sha256").update(readFileSync(original)).digest("hex");
-
+  // gen_mars_moons.py writes into MARS_MOONS_OUT when set, so the originals in
+  // assets-src/ are never touched. It is seeded and byte-reproducible (the
+  // shape-model tables are pinned by SHA-256), so the fresh files must match
+  // the originals exactly; the structural fingerprint names what differs if not.
   try {
-    execFileSync(blender, ["--background", "--python", "scripts/blender/gen_moon.py"],
-      { stdio: "pipe" });
-    checks.check("gen_moon.py runs headless", true);
-
-    const [shipped, fresh] = await Promise.all([
-      fingerprint(preserved),      // the pre-existing original
-      fingerprint(original),       // what the generator just wrote
-    ]);
-
-    checks.check("regenerated moon keeps its node names",
-      JSON.stringify(shipped.nodes) === JSON.stringify(fresh.nodes),
-      `${shipped.nodes} vs ${fresh.nodes}`);
-    checks.check("regenerated moon keeps its material PBR values",
-      JSON.stringify(shipped.materials) === JSON.stringify(fresh.materials),
-      JSON.stringify(fresh.materials));
-    const drift = Math.abs(fresh.vertices - shipped.vertices) / (shipped.vertices || 1);
-    checks.check("regenerated moon vertex count within 2%", drift <= 0.02,
-      `${shipped.vertices} -> ${fresh.vertices} (${(drift * 100).toFixed(2)}%)`);
-    // File size is dominated by two baked 1024x1024 textures (color+AO,
-    // normal — gen_moon.py:51,64) whose PNG-compressed byte size shifts a
-    // little run-to-run: Cycles' AO bake (ao_samples=32) and the procedural
-    // Voronoi/Clouds displacement textures are sampled, not bit-identical
-    // across independent renders, so the baked pixels (and therefore their
-    // compressed size) are not byte-stable even though the geometry and PBR
-    // values are (already asserted exactly above/below). A 25% band is
-    // generous enough to absorb that sampling noise while still catching a
-    // genuinely broken export — a truncated/near-empty file, an accidentally
-    // doubled texture resolution, or unintended debug data folded in — any of
-    // which would land far outside this range.
-    const byteDrift = Math.abs(fresh.bytes - shipped.bytes) / (shipped.bytes || 1);
-    checks.check("regenerated moon file size stays within a sane band (±25%)",
-      byteDrift <= 0.25,
-      `${shipped.bytes} -> ${fresh.bytes} bytes (${(byteDrift * 100).toFixed(2)}%)`);
+    execFileSync(blender, ["--background", "--python", "scripts/blender/gen_mars_moons.py"],
+      { stdio: "pipe", env: { ...process.env, MARS_MOONS_OUT: scratch } });
+    checks.check("gen_mars_moons.py runs headless", true);
+    for (const name of ["phobos", "deimos"]) {
+      const original = `assets-src/${name}.glb`, fresh = join(scratch, `${name}.glb`);
+      const [a, b] = await Promise.all([fingerprint(original), fingerprint(fresh)]);
+      checks.check(`regenerated ${name} keeps its node names and PBR values`,
+        JSON.stringify(a.nodes) === JSON.stringify(b.nodes) && JSON.stringify(a.materials) === JSON.stringify(b.materials),
+        `${JSON.stringify(b.nodes)} ${JSON.stringify(b.materials)}`);
+      checks.check(`regenerated ${name} keeps its vertex count`, a.vertices === b.vertices, `${a.vertices} -> ${b.vertices}`);
+      const hash = (f) => createHash("sha256").update(readFileSync(f)).digest("hex");
+      checks.check(`regenerated ${name} is byte-identical`, hash(original) === hash(fresh),
+        `${hash(original).slice(0, 12)} vs ${hash(fresh).slice(0, 12)}`);
+    }
   } catch (e) {
     checks.check("regeneration check completed", false, e.message.slice(0, 200));
-  } finally {
-    // Always restore, then prove the restore worked. A silent failure here
-    // costs an irreplaceable original.
-    copyFileSync(preserved, original);
-    const restoredHash = createHash("sha256").update(readFileSync(original)).digest("hex");
-    checks.check("assets-src/moon.glb restored byte-for-byte",
-      restoredHash === originalHash,
-      `${originalHash.slice(0, 12)} vs ${restoredHash.slice(0, 12)}`);
   }
 
   return checks;
