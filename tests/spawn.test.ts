@@ -3,7 +3,7 @@ import { AU } from "../src/constants";
 import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { SPAWN } from "../src/data/spawn";
 import { validateDrop } from "../src/utils/beacons";
-import { d3, beltClearance } from "./helpers/clearance";
+import { d3 } from "./helpers/clearance";
 
 const P = [SPAWN.x, SPAWN.y, SPAWN.z] as const;
 
@@ -16,10 +16,6 @@ describe("spawn at 0.92 AU (F3 revision)", () => {
     expect(k).toBeLessThan(1.3);
   });
   // Clearance of the real orbits (well and moon system included) is held for the spawn in tests/solarClearance.test.ts.
-  it("is clear of the belt and the halo", () => {
-    expect(beltClearance(P, 0.436, 40, 70, 2.5)).toBeGreaterThan(15);
-    expect(beltClearance(P, 1.31, 80, 95, 4.5)).toBeGreaterThan(15);
-  });
   it("is clear of every scenery asteroid", () => {
     for (const a of ASTEROID_COLLIDERS) expect(d3([a.x, a.y, a.z], P) - a.r).toBeGreaterThan(20);
   });

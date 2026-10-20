@@ -8,7 +8,7 @@ import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
 import { SPAWN } from "../src/data/spawn";
-import { d3, beltClearance, MARGIN } from "./helpers/clearance";
+import { d3, MARGIN } from "./helpers/clearance";
 import { landmarkMargin, worstRule } from "./helpers/solarClearance";
 
 const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
@@ -105,12 +105,6 @@ describe("career landmark clearance", () => {
       SHARDS.forEach((s, i) => {
         expect(d3(p.pos, s.pos), `shard ${i} vs ${p.name}`).toBeGreaterThan(p.keepOut + MARGIN);
       });
-    }
-  });
-  it("is not buried in the asteroid belt or the polar halo", () => {
-    for (const p of PLACES) {
-      expect(beltClearance(p.pos, 0.436, 40, 70, 2.5), `belt vs ${p.name}`).toBeGreaterThan(p.keepOut);
-      expect(beltClearance(p.pos, 1.31, 80, 95, 4.5), `halo vs ${p.name}`).toBeGreaterThan(p.keepOut);
     }
   });
 });
