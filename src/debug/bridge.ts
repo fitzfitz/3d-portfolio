@@ -7,6 +7,7 @@ import type { JellyState } from "../utils/jellyMood";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { LiveSkyConnection } from "../utils/liveSkyConnection";
 import { liveRadar } from "../utils/liveSky";
+import { orreryEpochJd, setOrreryEpochJd } from "../utils/orreryClock";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -105,6 +106,8 @@ export interface FitzDebug {
   sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
   /** Set `holdRegen` to pause the fuel auto-refill (e2e fuel probe). Registered by Spaceship in dev. */
   fuelDebug: typeof import("../utils/fuel").fuelDebug | null;
+  /** Orrery epoch (JD at game time 0): read, or set to jump the date. */
+  orrery: { epochJd: () => number; setEpochJd: (jd: number) => void };
 }
 
 export const fitzDebug: FitzDebug = {
@@ -136,4 +139,5 @@ export const fitzDebug: FitzDebug = {
   shipShadow: null,
   sunShadowDebug: null,
   fuelDebug: null,
+  orrery: { epochJd: orreryEpochJd, setEpochJd: setOrreryEpochJd },
 };

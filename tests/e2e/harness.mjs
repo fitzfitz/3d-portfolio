@@ -222,6 +222,8 @@ export async function withPage({ label, backend = DEFAULT_BACKEND, device = null
     if (emulateReducedMotion) {
       await page.emulateMediaFeatures([{ name: "prefers-reduced-motion", value: "reduce" }]);
     }
+    // Pin the orrery date first so a probe initScript can override it.
+    await page.evaluateOnNewDocument("window.__FITZ_ORRERY_JD__ = 2461333.5");
     if (initScript) await page.evaluateOnNewDocument(initScript);
     page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
     page.on("console", (m) => {
