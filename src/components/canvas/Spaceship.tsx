@@ -48,7 +48,11 @@ const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
 const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
-/** Clear radius of a fixed landmark (the gate's frame is 15) for cruise's free-space measure. */
+/**
+ * Clear radius of a fixed landmark for cruise's free-space measure. The largest
+ * extent is the dormant gate's GATE_RADIUS = 15 (data/dormantGate.ts); the career
+ * station and shipyard models are <= 5.3 (retainR 13 in data/careerTrail.ts).
+ */
 const LANDMARK_CRUISE_R = 15;
 /**
  * Every sphere warp must leave room for, reused each frame (utils/cruise.ts

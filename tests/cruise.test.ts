@@ -60,43 +60,81 @@ describe("freeDistance", () => {
   });
 });
 
+type Ship = { p: { x: number; y: number; z: number }; v: { x: number; y: number; z: number }; w: number };
+
+/**
+ * One frame of Spaceship.tsx's warp model, shared by every sim here so they
+ * cannot drift: warpSpeed steps toward cruiseLimit(freeDistance), warping sets
+ * velocity to nose * cruiseCap(warpSpeed), then drag, then integrate. Released
+ * warp resets warpSpeed to the base and the ship just coasts through the drag.
+ */
+function frame(ship: Ship, sp: readonly Sph[], warping: boolean, nx: number, ny: number, nz: number): void {
+  if (warping) {
+    ship.w = stepCruise(ship.w, cruiseLimit(freeDistance(ship.p, sp, sp.length, SYSTEM_RADIUS)), DT);
+    const c = cruiseCap(ship.w, DRAG, DT);
+    ship.v.x = nx * c; ship.v.y = ny * c; ship.v.z = nz * c;
+  } else ship.w = SHIP_WARP_SPEED;
+  const k = Math.pow(DRAG, DT * 60);
+  ship.v.x *= k; ship.v.y *= k; ship.v.z *= k;
+  ship.p.x += ship.v.x * DT; ship.p.y += ship.v.y * DT; ship.p.z += ship.v.z * DT;
+}
+const speedOf = (s: Ship) => Math.hypot(s.v.x, s.v.y, s.v.z);
+
 describe("cruise flight", () => {
-  it("Earth to Neptune takes at most 20 s and less than a tank", () => {
+  it("Earth to Neptune takes 10 to 20 s and less than a tank", () => {
     const sp = spheres();
     const e = centre("earth"), n = centre("neptune");
     const d0 = Math.hypot(n.x - e.x, n.y - e.y, n.z - e.z);
     const ux = (n.x - e.x) / d0, uy = (n.y - e.y) / d0, uz = (n.z - e.z) / d0;
     const start = reach("earth").reach + 20;
-    const p = { x: e.x + ux * start, y: e.y + uy * start, z: e.z + uz * start };
-    let w = SHIP_WARP_SPEED, t = 0, peak = 0;
-    while (Math.hypot(p.x - n.x, p.y - n.y, p.z - n.z) > 100 && t < 120) {
-      w = stepCruise(w, cruiseLimit(freeDistance(p, sp, sp.length, SYSTEM_RADIUS)), DT);
-      const dx = n.x - p.x, dy = n.y - p.y, dz = n.z - p.z, d = Math.hypot(dx, dy, dz);
-      const v = cruiseCap(w, DRAG, DT) * Math.pow(DRAG, DT * 60);
-      p.x += (dx / d) * v * DT; p.y += (dy / d) * v * DT; p.z += (dz / d) * v * DT;
-      peak = Math.max(peak, w); t += DT;
+    const ship: Ship = {
+      p: { x: e.x + ux * start, y: e.y + uy * start, z: e.z + uz * start },
+      v: { x: 0, y: 0, z: 0 }, w: SHIP_WARP_SPEED,
+    };
+    let t = 0;
+    for (;;) {
+      const dx = n.x - ship.p.x, dy = n.y - ship.p.y, dz = n.z - ship.p.z, d = Math.hypot(dx, dy, dz);
+      if (d <= 100 || t >= 120) break;
+      frame(ship, sp, true, dx / d, dy / d, dz / d);
+      t += DT;
     }
-    console.log(`trip ${t.toFixed(2)} s, peak ${peak.toFixed(0)} u/s, fuel ${(FUEL_DRAIN_PER_SEC * t).toFixed(1)}`);
+    // ~18.6 s at the time of writing: ~3000 u at up to 468 u/s, plus the 3 s build
+    // and the slow-down in the free space near each end. Under 10 s would mean cruise is too fast.
+    expect(t).toBeGreaterThanOrEqual(10);
     expect(t).toBeLessThanOrEqual(20);
     expect(FUEL_DRAIN_PER_SEC * t).toBeLessThan(FUEL_MAX);
   });
 
-  it("a head-on run at Jupiter never enters the body and is at warp speed inside 60 u", () => {
-    const sp = spheres();
-    const j = centre("jupiter"), size = reach("jupiter").size;
-    const p = { x: j.x + 1500, y: j.y, z: j.z };
-    let w = SHIP_WARP_SPEED, closest = Infinity, worst = 0, t = 0;
-    for (;;) {
-      const free = freeDistance(p, sp, sp.length, SYSTEM_RADIUS);
-      w = stepCruise(w, cruiseLimit(free), DT);
-      const d = Math.hypot(p.x - j.x, p.y - j.y, p.z - j.z);
-      closest = Math.min(closest, d);
-      if (d - reach("jupiter").reach <= 60) worst = Math.max(worst, w);
-      if (d - size <= 2 || (t += DT) > 120) break;
-      p.x += ((j.x - p.x) / d) * w * DT; p.y += ((j.y - p.y) / d) * w * DT; p.z += ((j.z - p.z) / d) * w * DT;
-    }
-    expect(closest).toBeGreaterThanOrEqual(size + 1);
-    expect(worst).toBeLessThanOrEqual(SHIP_WARP_SPEED);
+  describe("head-on at Jupiter, from 1500 u out (full per-frame model, never stopped by the test)", () => {
+    const j = centre("jupiter"), size = reach("jupiter").size, jr = reach("jupiter").reach;
+    const fresh = (): Ship => ({ p: { x: j.x + 1500, y: j.y, z: j.z }, v: { x: 0, y: 0, z: 0 }, w: SHIP_WARP_SPEED });
+    const surface = (s: Ship) => Math.hypot(s.p.x - j.x, s.p.y - j.y, s.p.z - j.z) - jr;
+
+    it("holding warp all the way in arrives at base warp speed or slower", () => {
+      const sp = spheres(), ship = fresh();
+      let inside60 = 0, peak = 0;
+      for (let i = 0; i < 60 * 120 && surface(ship) > 0; i++) {
+        frame(ship, sp, true, -1, 0, 0);
+        peak = Math.max(peak, ship.w);
+        if (surface(ship) <= 60) inside60 = Math.max(inside60, speedOf(ship), ship.w);
+      }
+      expect(peak).toBeGreaterThan(200); // it really did cruise
+      expect(surface(ship)).toBeLessThanOrEqual(0); // and reached the body (collision takes over there)
+      expect(inside60).toBeLessThanOrEqual(SHIP_WARP_SPEED + 1e-9);
+    });
+
+    it.each([1400, 900, 600, 300, 100, 61])("releasing warp %i u from the surface stops short of it", (release) => {
+      const sp = spheres(), ship = fresh();
+      let closest = Infinity, atRelease = 0, warping = true;
+      for (let i = 0; i < 60 * 120; i++) {
+        if (warping && surface(ship) <= release) { warping = false; atRelease = speedOf(ship); }
+        frame(ship, sp, warping, -1, 0, 0);
+        closest = Math.min(closest, surface(ship) + jr);
+        if (!warping && speedOf(ship) < 1e-3) break;
+      }
+      if (release >= 600) expect(atRelease).toBeGreaterThan(39); // the cases that matter: released at speed
+      expect(closest).toBeGreaterThanOrEqual(size + 1);
+    });
   });
 
   it("a straight run outward at full cruise peaks below SYSTEM_RADIUS + 100", () => {
