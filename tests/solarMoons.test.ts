@@ -31,14 +31,13 @@ describe("moon insets", () => {
       const size = bodyById(p).size;
       let need = 1.5 * (size + inner.size);
       if (p === "saturn") need = Math.max(need, 2.27 * size + inner.size + 2);
-      expect(insetDistance(inner)).toBeGreaterThanOrEqual(need - 1e-9);
+      expect(insetScale(p)).toBeLessThan(1);
+      expect(insetDistance(inner)).toBeCloseTo(need, 6);
     }
-    // The brief expected exactly 1, but min(1, required / real) gives 0.599 for Mars (Phobos
-    // real 17.9 u vs required 10.7 u); the formula is kept and the conflict reported.
     expect(insetScale("mars")).toBeCloseTo(0.599, 2);
     expect(insetScale("earth")).toBeCloseTo(0.04, 2);
     expect(insetScale("jupiter")).toBeCloseTo(0.313, 2);
-    expect(insetScale("saturn")).toBeCloseTo(0.126, 1);
+    expect(insetScale("saturn")).toBeCloseTo(0.13, 2);
     expect(insetScale("neptune")).toBeCloseTo(0.138, 2);
   });
   it("system reach is outermost distance plus size", () => {

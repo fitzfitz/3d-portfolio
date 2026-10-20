@@ -27,9 +27,7 @@ describe("roster", () => {
       const p = poleEcliptic(b.pole.raDeg, b.pole.decDeg);
       const ang = deg(Math.acos(Math.max(-1, Math.min(1, p.x * n.x + p.y * n.y + p.z * n.z))));
       const obl = b.rotationHours < 0 ? 180 - ang : ang;
-      // Mars: the IAU pole against the JPL Table 2a orbit normal gives 23.9 deg, 1.3 deg off
-      // NASA's 25.19 (which uses Mars's own orbit pole). Reported, not fudged: widened for Mars only.
-      expect(Math.abs(obl - b.obliquityDeg), b.id).toBeLessThan(b.id === "mars" ? 1.5 : 0.5);
+      expect(Math.abs(obl - b.obliquityDeg), b.id).toBeLessThan(0.5);
     }
   });
   it("reach covers rings", () => {

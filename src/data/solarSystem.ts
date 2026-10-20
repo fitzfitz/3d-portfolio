@@ -14,6 +14,8 @@ import type { BodyId } from "./bodyIds";
  * - Poles: IAU WGCCRE 2015, Archinal et al. 2018, Celest. Mech. Dyn. Astron.
  *   130:22; J2000 RA/Dec at epoch (rates ignored).
  * - Bond and geometric albedos: NSSDC fact sheets. Flattening: NSSDC (1 - polar/equatorial).
+ * - Mars pole only: IAU 2009 (Archinal et al. 2011, Celest. Mech. Dyn. Astron. 109:101),
+ *   because the 2015 constants need that model's periodic terms.
  * - Orbits: JPL Table 2a (src/data/jplElements.ts), Ceres from SBDB (src/data/smallBodies.ts).
  * Maps are interim (the fictional worlds' maps) until the real ones land (Task 12);
  * texelMedianLinear is each map's current value. `color` is the HUD swatch,
@@ -86,7 +88,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
   }),
   body({
     id: "mars", name: "MARS", ordinal: "4TH PLANET", diameterKm: 6792.4, flattening: 0.00589,
-    obliquityDeg: 25.19, pole: { raDeg: 317.269202, decDeg: 54.432516 }, rotationHours: 24.6229,
+    obliquityDeg: 25.19, pole: { raDeg: 317.68143, decDeg: 52.8865 }, rotationHours: 24.6229,
     orbit: { kind: "jpl", el: JPL_PLANETS.mars }, geometricAlbedo: 0.17, bondAlbedo: 0.25,
     map: "w-rock", tint: "#b5653a", texelMedianLinear: 0.0255, color: "#c4805e",
     look: { atmosphere: { color: "#d9a07a", thickness: 1.03, intensity: 0.5, dusk: "#6a8fd0" } },
