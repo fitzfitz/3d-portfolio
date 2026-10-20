@@ -20,6 +20,7 @@ export default function LogbookTracker() {
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const charted = useSpaceStore((s) => s.charted);
+  const legacy = useSpaceStore((s) => s.legacyCartographer);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
   const { done, total } = logbookCount(progress);
@@ -49,7 +50,7 @@ export default function LogbookTracker() {
   }, [progress, reducedMotion]);
 
   const complete = goal === null;
-  const cartographer = isCartographer(charted);
+  const cartographer = isCartographer(charted, legacy);
   const worlds = `WORLDS ${charted.length}/${BODY_COUNT}`;
   return (
     <button type="button" data-testid="logbook-tracker"

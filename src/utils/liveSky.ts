@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { VALIDATION_RADIUS } from "../constants";
 import { hasPlumeColour, PLUME_COLORS } from "../data/plumeColors";
 import {
-  normQuat, publicCountry, chartCount, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
+  normQuat, publicCountry, chartCount, isCartographerCount, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, STALE_MS,
   type Quat, type ServerMessage, type ShipState, type SnapShip, type Vec3,
 } from "./liveSkyProtocol";
 
@@ -61,7 +61,7 @@ function parseShip(row: unknown): SnapShip | null {
     p: clampToSphere(p),
     q: nq,
     // The room checks AURUM against the count; a client checks again, since the room is untrusted too.
-    plume: typeof plume === "string" && hasPlumeColour(plume) && (plume !== "cartographer" || chartCount(ch) === CHART_TOTAL) ? plume : "stock",
+    plume: typeof plume === "string" && hasPlumeColour(plume) && (plume !== "cartographer" || isCartographerCount(chartCount(ch))) ? plume : "stock",
     ch: chartCount(ch),
     cc: typeof cc === "string" ? publicCountry(cc) : null,
     ago: typeof ago === "number" && Number.isFinite(ago) && ago > 0 ? Math.min(ago, STALE_MS) : 0,
@@ -252,11 +252,12 @@ export const hudShowsRadio = (s: { photoMode: boolean; showClassicCV: boolean })
 export const ghostRegistry = new Map<string, { cc: string | null; ch: number }>();
 export const ghostScanId = (id: string) => `ghost_${id}`;
 /**
- * A ghost's scan text: the title at all five worlds charted, the count below
- * that, today's text at none. "LIVE" stands in for an unknown country.
+ * A ghost's scan text: the title at all nine bodies charted (a legacy ch 5 is
+ * 5/9, untitled, though its AURUM plume is still drawn), the count below that,
+ * today's text at none. "LIVE" stands in for an unknown country.
  */
 export function ghostReport(cc: string | null, ch: number): string {
-  if (ch >= CHART_TOTAL) return `CARTOGRAPHER · ${cc ?? "LIVE"}`;
+  if (ch === CHART_TOTAL) return `CARTOGRAPHER · ${cc ?? "LIVE"}`;
   if (ch > 0) return `${ch}/${CHART_TOTAL} CHARTED · ${cc ?? "LIVE"}`;
   return cc ? `PILOT FROM ${cc} · LIVE` : "PILOT · LIVE";
 }

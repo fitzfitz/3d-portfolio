@@ -1,5 +1,6 @@
 import { VALIDATION_RADIUS } from "../constants";
 import { hasPlumeColour } from "../data/plumeColors";
+import { BODY_IDS, LEGACY_CHART_TOTAL } from "../data/bodyIds";
 
 /**
  * Live sky wire protocol (docs/superpowers/specs/2026-10-14-live-sky-design.md §3).
@@ -9,7 +10,7 @@ import { hasPlumeColour } from "../data/plumeColors";
 
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
-/** `ch`: worlds charted, 0-CHART_TOTAL (spec 2026-10-17 new worlds, "Live sky"). */
+/** `ch`: bodies charted, 0-CHART_TOTAL (spec 2026-10-17 new worlds, "Live sky"; 9 bodies since PR #40). */
 export interface ShipState { p: Vec3; q: Quat; plume: string; ch: number }
 /**
  * `ago`: how old the pose was (ms) when the room sent it, so clients can time
@@ -27,9 +28,19 @@ export type ServerMessage =
   /** Another pilot just charted every world (relayed once; see beacon-api/src/sky.ts). */
   | { t: "charted"; cc: string | null };
 
-/** Worlds a pilot can chart: the most `ch` can be. */
-export const CHART_TOTAL = 5;
-/** The plume that needs every world charted, in the same message. */
+/** Bodies a pilot can chart: the most `ch` can be. */
+export const CHART_TOTAL = BODY_IDS.length;
+/**
+ * The legacy-5 rule: a client older than PR #40 charted five fictional worlds
+ * and sends ch 5 + the AURUM plume (and the title claim) as a cartographer.
+ * The room keeps that plume and accepts that claim, so cached old clients keep
+ * their gold. It is for plume coercion and the claim ONLY: what other pilots
+ * see (ghost scans) is the title at CHART_TOTAL alone; a ch-5 ghost reads 5/9.
+ * A new client that is a cartographer by the legacy flag sends CHART_TOTAL.
+ * TODO: remove once no client older than PR #40 can be cached (asset-pack SW max age).
+ */
+export const isCartographerCount = (n: number): boolean => n === CHART_TOTAL || n === LEGACY_CHART_TOTAL;
+/** The plume that needs a cartographer count, in the same message. */
 const CARTOGRAPHER_PLUME = "cartographer";
 
 /** Open sockets per room; the next one is turned away with `full`. */
@@ -90,10 +101,10 @@ function poseFrom({ p, q, plume, ch }: Record<string, unknown>): ShipState | nul
   if (!inWorld(p) || typeof plume !== "string" || !hasPlumeColour(plume)) return null;
   const nq = normQuat(q);
   if (!nq) return null;
-  // A bad count never hides a pilot: it reads as 0. AURUM needs all five in
-  // the same message, or it shows as stock.
+  // A bad count never hides a pilot: it reads as 0. AURUM needs a cartographer
+  // count (CHART_TOTAL, or the legacy 5) in the same message, or it shows as stock.
   const n = chartCount(ch);
-  return { p: [p[0], p[1], p[2]], q: nq, plume: plume === CARTOGRAPHER_PLUME && n !== CHART_TOTAL ? "stock" : plume, ch: n };
+  return { p: [p[0], p[1], p[2]], q: nq, plume: plume === CARTOGRAPHER_PLUME && !isCartographerCount(n) ? "stock" : plume, ch: n };
 }
 
 /** A charted count: a whole number 0-CHART_TOTAL, anything else 0. */

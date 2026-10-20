@@ -19,6 +19,7 @@ export default function HangarPanel({ onClose }: { onClose: () => void }) {
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const plumeColor = useSpaceStore((s) => s.plumeColor);
   const charted = useSpaceStore((s) => s.charted);
+  const legacyCartographer = useSpaceStore((s) => s.legacyCartographer);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
 
@@ -56,7 +57,7 @@ export default function HangarPanel({ onClose }: { onClose: () => void }) {
         SHIPYARD // HANGAR
       </h3>
 
-      <PlumePicker progress={progress} charted={charted} plumeColor={plumeColor}
+      <PlumePicker progress={progress} charted={charted} legacyCartographer={legacyCartographer} plumeColor={plumeColor}
         onPick={(id) => useSpaceStore.getState().setPlumeColor(id)} />
 
       <div className="flex items-center justify-between border-t border-white/5 pt-6 mt-8">

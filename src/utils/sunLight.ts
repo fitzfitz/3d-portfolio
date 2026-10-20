@@ -84,16 +84,28 @@ export function fillScale(cameraDistance: number): number {
 export const BACKDROP_EXPOSURE_POWER = 1.5;
 
 /**
+ * The most the backdrop's net brightness (backdropScale × exposure) may gain:
+ * the old 480 u edge's value, (480 / AU)^1.5 ≈ 8.5. The system is now 3,600 u
+ * across, and the Milky Way band glared (Task 13) beyond that gain.
+ */
+export const BACKDROP_NET_MAX = 8.5;
+
+/**
  * The one disclosed factor that tones the backdrop down (L19): the exposure's
  * growth beyond the power-1.5 curve, undone, (AU / d)^(EXPOSURE_POWER −
  * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
- * dims (1 at 1 AU and inward, ≈ 0.49 at the edge). The backdrop then follows
- * (d / AU)^1.5 from 1 AU to the edge and the exposure's (d / AU)^2 inside
+ * dims (1 at 1 AU and inward), and capped so the net gain never passes
+ * BACKDROP_NET_MAX (≈ 0.179 at the 3,600 u edge). The backdrop then follows
+ * (d / AU)^1.5 from 1 AU to ≈ 480 u, flat beyond and the exposure's (d / AU)^2 inside
  * 1 AU. The stars are not toned: they may brighten.
  */
 export function backdropScale(cameraDistance: number): number {
   const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));
-  return (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
+  const toned = (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
+  // Past the old 480 u edge the power-1.5 curve would keep climbing; the net
+  // gain holds at BACKDROP_NET_MAX instead, so scale × exposure never exceeds
+  // it and never falls (the exposure is (d / AU)^2 there, the scale its inverse).
+  return Math.min(toned, BACKDROP_NET_MAX / targetExposure(d));
 }
 
 /**

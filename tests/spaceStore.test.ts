@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp, worldVisibility } from "../src/store/spaceStore";
+import { isCartographer } from "../src/utils/charting";
+import { useSpaceStore, flight, selectSceneFrozen, loadBadges, loadShards, todayStamp } from "../src/store/spaceStore";
 import { BODY_IDS } from "../src/data/bodyIds";
 import { SURVEY_LINE, AURUM_LINE, chartLine } from "../src/utils/charting";
 import { CHANGELOG } from "../src/data/changelog";
@@ -22,7 +23,6 @@ beforeEach(() => {
     charted: [], openDossier: null, dossierVia: null, relocation: null, probeNear: null, probeTip: null,
     probeSpots: { ruangrapi: 0, portfolio: 0, fuxx: 0 },
   });
-  for (const id of BODY_IDS) worldVisibility[id].charted = false;
 });
 
 describe("spaceStore", () => {
@@ -678,12 +678,6 @@ describe("charting", () => {
     expect(broadcast).toEqual([]);
   });
 
-  it("chartWorld writes worldVisibility, so the radar arrow shows", () => {
-    useSpaceStore.getState().chartWorld("ceres");
-    expect(worldVisibility.ceres.charted).toBe(true);
-    expect(worldVisibility.mercury.charted).toBe(false);
-  });
-
   it("rewrites a legacy fitz-charted in the new ids on the next charting write (§7)", () => {
     useSpaceStore.setState({ charted: [{ id: "neptune", at: "2026-10-18" }] }); // loaded from a stored w-blue
     useSpaceStore.getState().chartWorld("earth");
@@ -737,39 +731,55 @@ it("charting lines queue behind the scan report on the radio", async () => {
 });
 
 describe("charted at module load", () => {
-  const loadWith = async (stored: string) => {
+  const loadWith = async (charted: string, extra: Record<string, string> = {}) => {
     vi.resetModules();
+    const writes: Record<string, string> = {};
     vi.stubGlobal("localStorage", {
-      getItem: (k: string) => (k === "fitz-charted" ? stored : null),
-      setItem: () => {},
+      getItem: (k: string) => (k === "fitz-charted" ? charted : extra[k] ?? null),
+      setItem: (k: string, v: string) => { writes[k] = v; },
     });
     const fresh = await import("../src/store/spaceStore");
     vi.unstubAllGlobals();
-    return fresh;
+    return { fresh, writes };
   };
 
-  it("a returning visitor's charted bodies show at once (radar arrows)", async () => {
-    const fresh = await loadWith(JSON.stringify([{ id: "neptune", at: "2026-10-18" }]));
+  it("a returning visitor's charted bodies load", async () => {
+    const { fresh } = await loadWith(JSON.stringify([{ id: "neptune", at: "2026-10-18" }]));
     expect(fresh.useSpaceStore.getState().charted).toEqual([{ id: "neptune", at: "2026-10-18" }]);
-    expect(fresh.worldVisibility.neptune.charted).toBe(true);
-    expect(fresh.worldVisibility.mercury.charted).toBe(false);
+    expect(fresh.useSpaceStore.getState().legacyCartographer).toBe(false);
   });
 
   it("a returning visitor's legacy world ids load as their real bodies (§7)", async () => {
-    const fresh = await loadWith(JSON.stringify([{ id: "w-blue", at: "2026-10-18" }, { id: "w-dwarf", at: "2026-10-19" }]));
+    const { fresh } = await loadWith(JSON.stringify([{ id: "w-blue", at: "2026-10-18" }, { id: "w-dwarf", at: "2026-10-19" }]));
     expect(fresh.useSpaceStore.getState().charted).toEqual([{ id: "neptune", at: "2026-10-18" }, { id: "ceres", at: "2026-10-19" }]);
-    expect(fresh.worldVisibility.neptune.charted).toBe(true);
-    expect(fresh.worldVisibility.ceres.charted).toBe(true);
+    expect(fresh.useSpaceStore.getState().legacyCartographer).toBe(false);
+  });
+
+  it("the five legacy records + AURUM set the legacy flag once: cartographer, AURUM kept, 5/9", async () => {
+    const legacy = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at: "2026-10-18" }));
+    const { fresh, writes } = await loadWith(JSON.stringify(legacy), { "fitz-plume": JSON.stringify("cartographer") });
+    const st = fresh.useSpaceStore.getState();
+    expect(writes["fitz-cartographer-legacy"]).toBeTruthy();
+    expect(st.legacyCartographer).toBe(true);
+    expect(isCartographer(st.charted, st.legacyCartographer)).toBe(true);
+    expect(st.plumeColor).toBe("cartographer");
+    expect(st.charted.map((c) => c.id)).toEqual(["mercury", "saturn", "uranus", "neptune", "ceres"]);
+    expect(st.charted).toHaveLength(5);
+  });
+
+  it("the legacy flag is never cleared: a stored flag holds without the legacy records", async () => {
+    const { fresh } = await loadWith("[]", { "fitz-cartographer-legacy": "1" });
+    expect(fresh.useSpaceStore.getState().legacyCartographer).toBe(true);
   });
 
   it("seeds `bodies` with the nine body ids and nothing else", async () => {
-    const fresh = await loadWith("[]");
+    const { fresh } = await loadWith("[]");
     expect(Object.keys(fresh.bodies)).toEqual([...BODY_IDS]);
   });
 
   it("survives corrupt storage", async () => {
-    const fresh = await loadWith("{not json");
+    const { fresh } = await loadWith("{not json");
     expect(fresh.useSpaceStore.getState().charted).toEqual([]);
-    for (const id of BODY_IDS) expect(fresh.worldVisibility[id].charted).toBe(false);
+    expect(fresh.useSpaceStore.getState().legacyCartographer).toBe(false);
   });
 });

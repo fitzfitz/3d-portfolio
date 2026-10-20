@@ -130,8 +130,8 @@ export default async function run() {
 
     // --- C2: the cartographer in the live sky ---
     // This pilot charts all nine bodies (in memory only: setState skips the
-    // store's persistence) with the shout-out due, and flies AURUM. The wire
-    // still counts the legacy five until Task 8, so the pose carries ch 5.
+    // store's persistence) with the shout-out due, and flies AURUM. The pose
+    // carries ch 9 (CHART_TOTAL).
     await inPage(page, () => {
       const st = window.__fitz.store;
       const at = new Date().toISOString().slice(0, 10);
@@ -141,8 +141,8 @@ export default async function run() {
     });
     await hold(page, ["KeyW"], 1500); // moving keeps poses going out after the first
     const c2 = await inPage(page, () => window.__fakeSky.sent);
-    const pose = c2.filter((m) => m.t === "me" && m.ch === 5).at(-1);
-    checks.check("a cartographer's pose carries ch 5 and the AURUM plume", pose?.plume === "cartographer",
+    const pose = c2.filter((m) => m.t === "me" && m.ch === 9).at(-1);
+    checks.check("a cartographer's pose carries ch 9 and the AURUM plume", pose?.plume === "cartographer",
       JSON.stringify(pose));
     const claims = c2.filter((m) => m.t === "charted").length;
     const cleared = (await readStore(page)).chartShoutAt === null;
@@ -155,7 +155,7 @@ export default async function run() {
 
     const ship2 = await inPage(page, () => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
     await inPage(page, (s) => window.__fakeSky.serve({ t: "snap", ships: [
-      { id: "g1", p: [s.x + 6, s.y, s.z], q: [0, 0, 0, 1], plume: "cartographer", cc: "ID", ch: 5 },
+      { id: "g1", p: [s.x + 6, s.y, s.z], q: [0, 0, 0, 1], plume: "cartographer", cc: "ID", ch: 9 },
     ] }), ship2);
     await settle(page, 1500);
     await hold(page, ["KeyE"], 2600);

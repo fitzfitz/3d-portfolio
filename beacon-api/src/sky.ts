@@ -1,5 +1,5 @@
 import {
-  parseClient, roundState, CHART_TOTAL, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
+  parseClient, roundState, isCartographerCount, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
   type ServerMessage, type ShipState, type SnapShip,
 } from "../../src/utils/liveSkyProtocol";
 
@@ -117,11 +117,13 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
 /**
  * A pilot's "I charted every world", relayed to everyone else only when it
  * is believable and rare: a pose was seen (that is consent), that pose has
- * all five charted, this connection has not announced, this visitor has not
+ * a cartographer count (9 charted, or the legacy 5 an old cached client sends;
+ * legacy-5 rule: remove once no client older than PR #40 can be
+ * cached (asset-pack SW max age)), this connection has not announced, this visitor has not
  * announced within a day, and the room has been quiet for SHOUT_GAP_MS.
  */
 function shoutOut(room: Room, pilot: Pilot, now: number): Outgoing[] {
-  if (!pilot.last || (pilot.last.ch ?? 0) !== CHART_TOTAL || pilot.announced) return [];
+  if (!pilot.last || !isCartographerCount(pilot.last.ch ?? 0) || pilot.announced) return [];
   if (now - room.lastShoutAt < SHOUT_GAP_MS) return [];
   const shouted = room.shouted ?? (room.shouted = new Map());
   if (pilot.visitor) {

@@ -1,18 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, MAX_MESSAGE_BYTES,
+  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, isCartographerCount, MAX_MESSAGE_BYTES,
 } from "../src/utils/liveSkyProtocol";
-import { LEGACY_CHART_TOTAL } from "../src/data/bodyIds";
+import { BODY_IDS, LEGACY_CHART_TOTAL } from "../src/data/bodyIds";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
 
 describe("the charted count (C2)", () => {
-  it("is 5 worlds at most", () => expect(CHART_TOTAL).toBe(5));
-  // The wire still counts the five legacy worlds until Task 8 moves it to
-  // the nine bodies with the legacy-5 rule (old cached clients keep AURUM).
-  it("is still the legacy chart's total on the wire (Task 8 raises it to 9)", () => {
-    expect(CHART_TOTAL).toBe(LEGACY_CHART_TOTAL);
+  it("is the nine bodies at most", () => {
+    expect(CHART_TOTAL).toBe(9);
+    expect(CHART_TOTAL).toBe(BODY_IDS.length);
+  });
+  // Old cached clients (before PR #40) send ch 5 + AURUM for their five worlds.
+  it("counts a cartographer at nine, or at the legacy five", () => {
+    expect(LEGACY_CHART_TOTAL).toBe(5);
+    for (const n of [5, 9]) expect(isCartographerCount(n)).toBe(true);
+    for (const n of [0, 4, 6, 8, 10]) expect(isCartographerCount(n)).toBe(false);
   });
   it("defaults to 0, so a client that never sends it stays visible", () => {
     expect(parseMe(me())?.ch).toBe(0);
@@ -26,20 +30,22 @@ describe("the charted count (C2)", () => {
       expect(s?.ch).toBe(0);
     },
   );
-  it("chartCount accepts only whole numbers 0-5", () => {
-    expect([0, 1, 5].map(chartCount)).toEqual([0, 1, 5]);
-    expect([6, -1, 2.5, "3", undefined, NaN].map(chartCount)).toEqual([0, 0, 0, 0, 0, 0]);
+  it("chartCount accepts only whole numbers 0-9", () => {
+    expect([0, 1, 5, 9].map(chartCount)).toEqual([0, 1, 5, 9]);
+    expect([10, -1, 2.5, "3", undefined, NaN].map(chartCount)).toEqual([0, 0, 0, 0, 0, 0]);
   });
-  it("lets the AURUM plume through only with all five charted", () => {
+  it("lets the AURUM plume through at ch 9 and at the legacy ch 5, and coerces 4 and 8", () => {
+    expect(parseMe(me({ plume: "cartographer", ch: 9 }))?.plume).toBe("cartographer");
     expect(parseMe(me({ plume: "cartographer", ch: 5 }))?.plume).toBe("cartographer");
     expect(parseMe(me({ plume: "cartographer", ch: 4 }))?.plume).toBe("stock");
+    expect(parseMe(me({ plume: "cartographer", ch: 8 }))?.plume).toBe("stock");
     expect(parseMe(me({ plume: "cartographer" }))?.plume).toBe("stock");
   });
   it("fits the worst case in the byte cap", () => {
-    // Longest numbers still inside the 520 validation sphere (r ≈ 519.6).
-    const raw = JSON.stringify({ t: "me", p: [-299.99, -299.99, -299.99], q: [-0.4999, -0.4999, -0.4999, -0.5001], plume: "cartographer", ch: 5 });
+    // Longest numbers still inside the 3800 validation sphere.
+    const raw = JSON.stringify({ t: "me", p: [-299.99, -299.99, -299.99], q: [-0.4999, -0.4999, -0.4999, -0.5001], plume: "cartographer", ch: 9 });
     expect(new TextEncoder().encode(raw).length).toBeLessThanOrEqual(MAX_MESSAGE_BYTES);
-    expect(parseMe(raw)?.ch).toBe(5);
+    expect(parseMe(raw)?.ch).toBe(9);
   });
   it("roundState carries the count", () => {
     expect(roundState({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 4 }).ch).toBe(4);

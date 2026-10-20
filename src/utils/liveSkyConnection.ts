@@ -93,7 +93,8 @@ export class LiveSkyConnection {
   /**
    * Per frame. `me` is null while the ship may not be shared yet (the notice
    * has not been shown). With `shout`, a tick that sends a pose with every
-   * world charted follows it with the title claim, which the room only
+   * body charted (ch CHART_TOTAL; a legacy-flag cartographer sends it too)
+   * follows it with the title claim, which the room only
    * relays after such a pose. Returns whether the claim went out.
    */
   tick(me: ShipState | null, shout = false): boolean {

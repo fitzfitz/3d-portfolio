@@ -35,7 +35,10 @@ describe("parseServerMessage", () => {
       if (m?.t !== "snap") throw new Error("not a snapshot");
       return m.ships[0];
     };
+    expect(row({ ch: 9, plume: "cartographer" })).toMatchObject({ ch: 9, plume: "cartographer" });
+    // An old cached client: ch 5 keeps its AURUM plume (legacy-5 rule).
     expect(row({ ch: 5, plume: "cartographer" })).toMatchObject({ ch: 5, plume: "cartographer" });
+    expect(row({ ch: 8, plume: "cartographer" })).toMatchObject({ ch: 8, plume: "stock" });
     expect(row({ ch: 2, plume: "cartographer" })).toMatchObject({ ch: 2, plume: "stock" });
     expect(row({ ch: "x" }).ch).toBe(0);
     expect(row({}).ch).toBe(0);
@@ -285,16 +288,18 @@ describe("ghost scan reports", () => {
     expect(ghostReport("ID", 0)).toBe("PILOT FROM ID · LIVE");
     expect(ghostReport(null, 0)).toBe("PILOT · LIVE");
   });
-  it("show the charted count, and the title at five", () => {
-    expect(ghostReport("ID", 5)).toBe("CARTOGRAPHER · ID");
-    expect(ghostReport("ID", 3)).toBe("3/5 CHARTED · ID");
-    expect(ghostReport(null, 5)).toBe("CARTOGRAPHER · LIVE");
-    expect(ghostReport(null, 2)).toBe("2/5 CHARTED · LIVE");
+  it("show the charted count, and the title only at all nine", () => {
+    expect(ghostReport("ID", 9)).toBe("CARTOGRAPHER · ID");
+    expect(ghostReport("ID", 3)).toBe("3/9 CHARTED · ID");
+    expect(ghostReport(null, 9)).toBe("CARTOGRAPHER · LIVE");
+    expect(ghostReport(null, 2)).toBe("2/9 CHARTED · LIVE");
+    // A legacy ch-5 ghost reads as 5/9 and untitled (its AURUM plume is still drawn).
+    expect(ghostReport("ID", 5)).toBe("5/9 CHARTED · ID");
   });
   it("generateScanReport answers for a registered ghost", () => {
     ghostRegistry.set(ghostScanId("ab12cd34"), { cc: "SG", ch: 0 });
     expect(generateScanReport("ghost_ab12cd34")).toBe("PILOT FROM SG · LIVE");
-    ghostRegistry.set(ghostScanId("ab12cd34"), { cc: "SG", ch: 5 });
+    ghostRegistry.set(ghostScanId("ab12cd34"), { cc: "SG", ch: 9 });
     expect(generateScanReport("ghost_ab12cd34")).toBe("CARTOGRAPHER · SG");
   });
 });

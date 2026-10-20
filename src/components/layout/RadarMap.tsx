@@ -6,8 +6,8 @@ import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { SOLAR_BODIES } from "../../data/solarSystem";
-import { flight, useSpaceStore, bodies, crystalSlots, worldVisibility } from "../../store/spaceStore";
-import { worldToRadar, altitudeCue, radarShowsWorld, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
+import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
+import { worldToRadar, altitudeCue, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
@@ -22,8 +22,8 @@ const PROBE_DIAMOND_RIM = "rgba(0, 0, 0, 0.8)";
 
 const blip = { px: 0, py: 0, onRim: false };
 
-/** A blip; `free` ones (uncharted bodies, in range only) are never rim-clamped or dimmed. */
-interface RadarTarget { name: string; x: number; y: number; z: number; color: string; free?: boolean }
+/** A blip. */
+interface RadarTarget { name: string; x: number; y: number; z: number; color: string }
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
 export default function RadarMap() {
@@ -73,19 +73,17 @@ export default function RadarMap() {
         ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
-      // The bodies (radarShowsWorld): uncharted only in range and free;
-      // charted, rim-clamped like a destination (charting's radar arrow).
+      // The nine bodies, always (charted or not, in range or not):
+      // rim-clamped like a destination, so the radar says where each one is.
       for (const sb of SOLAR_BODIES) {
         const b = bodies[sb.id];
-        const show = radarShowsWorld(worldVisibility[sb.id].charted, Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z));
-        if (show === "hidden") continue;
-        targets.push({ name: sb.id, x: b.x, y: b.y, z: b.z, color: sb.color, free: show === "free" });
+        targets.push({ name: sb.id, x: b.x, y: b.y, z: b.z, color: sb.color });
       }
       for (const t of targets) {
         const dx = (t.x - flight.x);
         const dz = (t.z - flight.z);
         const { x: sx, up } = worldToRadar(dx, dz, a);
-        const { px, py, onRim } = radarBlip(sx, up, scale, rimR, !t.free, blip);
+        const { px, py, onRim } = radarBlip(sx, up, scale, rimR, true, blip);
         const pulse = activeZone === t.name ? 1 + 0.5 * Math.sin(now * 8) : 1;
         ctx.globalAlpha = onRim ? 0.45 : 1;
         ctx.fillStyle = t.color;

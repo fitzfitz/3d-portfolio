@@ -96,10 +96,10 @@ export function convoySighted(ship: Vec3, ships: readonly Vec3[], radius = CONVO
  * whose entry is done (derived badges count too).
  */
 export function plumeAllowed(
-  id: string, p: LogbookProgress, hasColour: (id: string) => boolean, charted: readonly ChartRecord[] = [],
+  id: string, p: LogbookProgress, hasColour: (id: string) => boolean, charted: readonly ChartRecord[] = [], legacyCartographer = false,
 ): boolean {
   if (id === "stock") return true;
-  if (id === "cartographer") return hasColour(id) && isCartographer(charted);
+  if (id === "cartographer") return hasColour(id) && isCartographer(charted, legacyCartographer);
   const e = LOGBOOK.find((x) => x.id === id);
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }

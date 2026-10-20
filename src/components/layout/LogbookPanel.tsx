@@ -31,6 +31,7 @@ export default function LogbookPanel() {
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const liveSky = useSpaceStore((s) => s.liveSky);
   const charted = useSpaceStore((s) => s.charted);
+  const legacy = useSpaceStore((s) => s.legacyCartographer);
   const chartedIds = useMemo(() => new Set(charted.map((c) => c.id)), [charted]);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
@@ -96,7 +97,7 @@ export default function LogbookPanel() {
           always tappable, on phones too. */}
       <div className="sticky top-0 -mx-4 px-4 pt-4 pb-3 mb-1 bg-[#07051a] flex items-center justify-between gap-3">
         <h2 id="logbook-title" ref={headingRef} tabIndex={-1} className="text-primary text-xs outline-none">
-          PILOT LOGBOOK{isCartographer(charted) && " · CARTOGRAPHER"}
+          PILOT LOGBOOK{isCartographer(charted, legacy) && " · CARTOGRAPHER"}
         </h2>
         <span className="ml-auto text-white/60">{done} / {total}</span>
         <button type="button" data-testid="logbook-close" aria-label="Close logbook"

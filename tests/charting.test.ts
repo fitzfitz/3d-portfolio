@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
   loadCharted, chartLine, SURVEY_LINE, AURUM_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
-  createShoutGate, type ChartRecord,
+  createShoutGate, coversLegacyWorlds, wireChartCount, LEGACY_CARTOGRAPHER_KEY, type ChartRecord,
 } from "../src/utils/charting";
 import { useSpaceStore } from "../src/store/spaceStore";
 import { BODY_IDS, LEGACY_WORLD_TO_BODY } from "../src/data/bodyIds";
 import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { ALL_LINE, logbookCount, plumeAllowed } from "../src/utils/logbook";
+import { CHART_TOTAL } from "../src/utils/liveSkyProtocol";
 import { hasPlumeColour } from "../src/data/plumeColors";
 
 const rec = (id: string, at = "2026-10-19") => ({ id, at }) as ChartRecord;
@@ -74,6 +75,33 @@ describe("isCartographer: the title is derived, never stored", () => {
     expect(isCartographer([...BODY_IDS.slice(0, 8), BODY_IDS[0]].map((id) => rec(id)))).toBe(false);
     // Nine records, but one not a body.
     expect(isCartographer([...BODY_IDS.slice(0, 8), "fuxx"].map((id) => rec(id)))).toBe(false);
+  });
+});
+
+describe("the legacy cartographer (§7, legacy-5 rule)", () => {
+  const legacyRaw = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at: "2026-10-18" }));
+  it("covers the five legacy worlds only from the RAW stored legacy ids", () => {
+    expect(coversLegacyWorlds(legacyRaw)).toBe(true);
+    expect(coversLegacyWorlds(legacyRaw.slice(0, 4))).toBe(false);
+    expect(coversLegacyWorlds([...legacyRaw.slice(0, 4), { id: "w-dwarf", at: "not a date" }])).toBe(false);
+    // The five new ids a nine-body client charted are not the legacy five.
+    expect(coversLegacyWorlds(["mercury", "saturn", "uranus", "neptune", "ceres"].map((id) => ({ id, at: "2026-10-18" })))).toBe(false);
+    expect(coversLegacyWorlds("nope")).toBe(false);
+    expect(LEGACY_CARTOGRAPHER_KEY).toBe("fitz-cartographer-legacy");
+  });
+  it("the legacy flag alone makes a cartographer; the wire count is then nine", () => {
+    const five = ["mercury", "saturn", "uranus", "neptune", "ceres"].map((id) => rec(id as never));
+    expect(isCartographer(five)).toBe(false);
+    expect(isCartographer(five, true)).toBe(true);
+    expect(wireChartCount(five, false)).toBe(5);
+    expect(wireChartCount(five, true)).toBe(CHART_TOTAL);
+    expect(wireChartCount(BODY_IDS.map((id) => rec(id)), false)).toBe(CHART_TOTAL);
+    expect(wireChartCount([], false)).toBe(0);
+  });
+  it("plumeAllowed grants AURUM to a legacy cartographer", () => {
+    const none = { badges: [], visitedDossiers: [], shardsCollected: [] };
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, [], true)).toBe(true);
+    expect(plumeAllowed("cartographer", none, hasPlumeColour, [], false)).toBe(false);
   });
 });
 

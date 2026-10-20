@@ -1,5 +1,6 @@
 import { isBodyId, LEGACY_WORLD_TO_BODY, type BodyId } from "../data/bodyIds";
 import { BODY_COUNT, bodyById } from "../data/solarSystem";
+import { CHART_TOTAL } from "./liveSkyProtocol";
 import { BODY_FACTS } from "./worldReports";
 
 /**
@@ -53,9 +54,37 @@ export function loadCharted(raw: unknown): ChartRecord[] {
   return out;
 }
 
-/** The title is derived, never stored: every body charted. */
-export function isCartographer(c: readonly ChartRecord[]): boolean {
-  return new Set(c.filter((r) => isBodyId(r.id)).map((r) => r.id)).size === BODY_COUNT;
+/**
+ * Set once, at load, when the raw stored records cover all five legacy world
+ * ids (a pilot who earned the title before the real Solar System), and never
+ * cleared: they keep CARTOGRAPHER and AURUM at 5/9.
+ * TODO: this legacy-5 rule can go once no client older than PR #40 can be cached.
+ */
+export const LEGACY_CARTOGRAPHER_KEY = "fitz-cartographer-legacy";
+
+/** Whether the RAW stored records name all five legacy world ids with real dates. */
+export function coversLegacyWorlds(raw: unknown): boolean {
+  if (!Array.isArray(raw)) return false;
+  const have = new Set<string>();
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const { id, at } = r as { id?: unknown; at?: unknown };
+    if (typeof id === "string" && Object.hasOwn(LEGACY_WORLD_TO_BODY, id) && typeof at === "string" && isDateStamp(at)) have.add(id);
+  }
+  return have.size === Object.keys(LEGACY_WORLD_TO_BODY).length;
+}
+
+/** The title is derived, never stored: every body charted, or the legacy flag (coversLegacyWorlds). */
+export function isCartographer(c: readonly ChartRecord[], legacy = false): boolean {
+  return legacy || new Set(c.filter((r) => isBodyId(r.id)).map((r) => r.id)).size === BODY_COUNT;
+}
+
+/**
+ * The `ch` this client puts on the wire: its true charted count in bodies,
+ * or CHART_TOTAL for a cartographer (a legacy-flag one has charted only 5).
+ */
+export function wireChartCount(c: readonly ChartRecord[], legacy: boolean): number {
+  return isCartographer(c, legacy) ? CHART_TOTAL : Math.min(new Set(c.filter((r) => isBodyId(r.id)).map((r) => r.id)).size, CHART_TOTAL);
 }
 
 /** The radio line for the `count`th body charted: its name and one fact. */
