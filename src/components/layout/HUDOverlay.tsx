@@ -4,7 +4,7 @@ import { speedKmS, distanceAU } from "../../utils/realUnits";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
 import { PROBES } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
-import { relocationSettled } from "../../utils/probes";
+import { probeTipText, relocationSettled } from "../../utils/probes";
 import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -61,8 +61,10 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const requestJump = useSpaceStore((s) => s.requestJump);
   const probeNear = useSpaceStore((s) => s.probeNear);
+  const probeTip = useSpaceStore((s) => s.probeTip);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
+  const probeTipLine = probeTipText(probeTip, pad, isCoarse);
   const changelogSeen = useSpaceStore((s) => s.changelogSeen);
   const logbookOpen = useSpaceStore((s) => s.logbookOpen);
   const changelogOpen = useSpaceStore((s) => s.changelogOpen);
@@ -237,9 +239,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             {probeNear ? `PROBE_${probeNear.toUpperCase()}` : (destinationById(activeZone)?.scanLabel ?? "DEEP_SPACE")}
           </span>
         </div>
-        {probeNear && !modalOpen && (
-          <div data-testid="hud-probe-tip" className="text-[9px] text-primary/80">
-            PROBE IN RANGE // HOLD {pad ? "LB" : isCoarse ? "BEAM" : "F"} TO GRAB
+        {/* "HOLD F" only when the beam would take a probe from where it
+            points now (probeTip, ProjectProbes); else fly closer or turn. */}
+        {probeNear && probeTipLine && !modalOpen && (
+          <div data-testid="hud-probe-tip" data-tip={probeTip ?? ""} className={`text-[9px] ${probeTip === "grab" ? "text-primary/80" : "text-white/55"}`}>
+            {probeTipLine}
           </div>
         )}
         {activeZone && (

@@ -9,7 +9,8 @@ import { flight, selectModalOpen, useSpaceStore } from "../../store/spaceStore";
 import { projectById } from "../../constants";
 import { pullStep } from "../../utils/tractorBeam";
 import {
-  PROBE_DRIFT_SPEED, beaconLevel, nearestProbe, rcsPuff, relocationDone, relocationLine, relocationTravel, spotPos,
+  PROBE_DRIFT_SPEED, beaconLevel, burnDirection, nearestProbe, probeTip, rcsPuff, relocationDone, relocationLine,
+  relocationTravel, spotPos, trimTone,
 } from "../../utils/probes";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
@@ -19,17 +20,25 @@ import { fitzDebug } from "../../debug/bridge";
 const N = PROBES.length;
 /** Idle spin about the vertical (rad/s); frozen under reduced motion through ambientTime. */
 const SPIN = 0.15;
-/** The painted trim: the project colour washed this far toward white (R10: paint, not light). */
-const PAINT_WHITE = 0.6;
 /** Beacon lamp emissive gain at the top of its blink; the glow is Bloom's. */
 const BEACON_GAIN = 3.0;
 /** RCS throat glow: a puff peaks at 1, the relocation burn holds BURN_GLOW. */
-const BURN_GLOW = 2.2;
+const BURN_GLOW = 6.0;
+/** Seconds the probe takes to swing its dish onto the burn line (the thrusters then face back at the ship). */
+const BURN_TURN_S = 0.4;
 
 const dummy = new THREE.Object3D();
 const ZERO = { x: 0, y: 0, z: 0 };
 const nose = { x: 0, y: 0, z: 0 };
 const home = { x: 0, y: 0, z: 0 };
+const burnDir = { x: 0, y: 0, z: 0 };
+const trim = { r: 0, g: 0, b: 0 };
+const qIdle = new THREE.Quaternion();
+const qBurn = new THREE.Quaternion();
+const _euler = new THREE.Euler();
+const _v = new THREE.Vector3();
+/** The model's dish boresight (gen_probe.py contract). */
+const BORESIGHT = new THREE.Vector3(0, 0, 1);
 
 interface Burn { t: number; sx: number; sy: number; sz: number; dx: number; dy: number; dz: number }
 
@@ -39,8 +48,10 @@ interface Burn { t: number; sx: number; sy: number; sz: number; dx: number; dy: 
  * throats. GLTFLoader would switch `vertexColors` on and multiply the albedo
  * by it (everything outside R/G went black), so the attribute is renamed to
  * `probeMask` and read here instead. Per instance: `probeTint` (the project
- * colour, linear) and `probeGlow` (x = beacon level, y = RCS level).
- *  - R: albedo times the tint washed PAINT_WHITE toward white. No emissive.
+ * colour, linear), `probeTrim` (that colour through trimTone: pulled 60%
+ * toward its own luminance, as the model preview does) and `probeGlow`
+ * (x = beacon level, y = RCS level).
+ *  - R: albedo times the trim colour, so it reads as paint. No emissive.
  *  - G: emissive tint times the beacon level (the only lamp).
  *  - B: a warm emissive flash for the RCS puff and the relocation burn.
  * One material and one InstancedMesh, compiled at load by ShaderWarmup.
@@ -52,26 +63,30 @@ function patchProbeMaterial(m: THREE.MeshStandardMaterial): void {
       .replace("#include <common>", `#include <common>
 attribute vec3 probeMask;
 attribute vec3 probeTint;
+attribute vec3 probeTrim;
 attribute vec2 probeGlow;
 varying vec3 vProbeMask;
 varying vec3 vProbeTint;
+varying vec3 vProbeTrim;
 varying vec2 vProbeGlow;`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
 vProbeMask = probeMask;
 vProbeTint = probeTint;
+vProbeTrim = probeTrim;
 vProbeGlow = probeGlow;`);
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", `#include <common>
 varying vec3 vProbeMask;
 varying vec3 vProbeTint;
+varying vec3 vProbeTrim;
 varying vec2 vProbeGlow;`)
       .replace("#include <color_fragment>", `#include <color_fragment>
-diffuseColor.rgb *= mix(vec3(1.0), mix(vProbeTint, vec3(1.0), ${PAINT_WHITE.toFixed(3)}), vProbeMask.r);`)
+diffuseColor.rgb *= mix(vec3(1.0), vProbeTrim, vProbeMask.r);`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
 totalEmissiveRadiance += vProbeMask.g * vProbeTint * (vProbeGlow.x * ${BEACON_GAIN.toFixed(3)});
 totalEmissiveRadiance += vProbeMask.b * vec3(1.0, 0.82, 0.55) * vProbeGlow.y;`);
   };
-  m.customProgramCacheKey = () => "projectProbe:v1";
+  m.customProgramCacheKey = () => "projectProbe:v2";
 }
 
 /**
@@ -98,13 +113,16 @@ export default function ProjectProbes() {
     if (!mask) throw new Error("probe.glb has no COLOR_0 zone mask");
     g.deleteAttribute("color");
     g.setAttribute("probeMask", mask);
-    const tint = new Float32Array(N * 3);
+    const tint = new Float32Array(N * 3), paint = new Float32Array(N * 3);
     const c = new THREE.Color();
     PROBES.forEach((def, i) => {
       c.set(projectById(def.id)?.color ?? "#ffffff");
       tint[i * 3] = c.r; tint[i * 3 + 1] = c.g; tint[i * 3 + 2] = c.b;
+      trimTone(c.r, c.g, c.b, trim);
+      paint[i * 3] = trim.r; paint[i * 3 + 1] = trim.g; paint[i * 3 + 2] = trim.b;
     });
     g.setAttribute("probeTint", new THREE.InstancedBufferAttribute(tint, 3));
+    g.setAttribute("probeTrim", new THREE.InstancedBufferAttribute(paint, 3));
     const glowAttr = new THREE.InstancedBufferAttribute(new Float32Array(N * 2), 2);
     glowAttr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute("probeGlow", glowAttr);
@@ -132,6 +150,14 @@ export default function ProjectProbes() {
     lastSeq.current = useSpaceStore.getState().relocation?.seq ?? 0;
   }, []);
 
+  // Unmounted (the classic résumé), no probe is near: the HUD tip and the
+  // chatter must not hold a stale one.
+  useEffect(() => () => {
+    const st = useSpaceStore.getState();
+    st.setProbeNear(null);
+    st.setProbeTip(null);
+  }, []);
+
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.probes = probePos;
@@ -147,18 +173,19 @@ export default function ProjectProbes() {
     // Photo mode can run frames under an open dossier: nothing moves then.
     const moving = !s.photoMode;
 
-    // A probe-origin close: start that probe's burn, pointed away from the ship.
+    // A probe-origin close: start that probe's burn, away from the ship but
+    // swung well off the view line (burnDirection), so it streaks off.
     const reloc = s.relocation;
     if (reloc && reloc.seq !== lastSeq.current) {
       lastSeq.current = reloc.seq;
       const i = PROBES.findIndex((d) => d.id === reloc.id);
       if (i >= 0) {
         const p = probePos[reloc.id], b = burns.current[i];
-        let dx = p.x - flight.x, dy = p.y - flight.y, dz = p.z - flight.z;
-        let l = Math.hypot(dx, dy, dz);
-        if (l < 1e-3) { dx = beamState.dx; dy = beamState.dy; dz = beamState.dz; l = Math.hypot(dx, dy, dz) || 1; }
+        let ax = p.x - flight.x, ay = p.y - flight.y, az = p.z - flight.z;
+        if (Math.hypot(ax, ay, az) < 1e-3) { ax = beamState.dx; ay = beamState.dy; az = beamState.dz; }
+        burnDirection(ax, ay, az, i, burnDir);
         b.t = 0; b.sx = p.x; b.sy = p.y; b.sz = p.z;
-        b.dx = dx / l; b.dy = dy / l; b.dz = dz / l;
+        b.dx = burnDir.x; b.dy = burnDir.y; b.dz = burnDir.z;
         probeRelocating[reloc.id] = true;
         held.current[i] = false;
         opened.current[i] = false;
@@ -192,11 +219,14 @@ export default function ProjectProbes() {
         continue;
       }
       if (!moving) continue;
-      if (held.current[i] && canOpen) {
-        const left = pullStep(p, nose, beamState.vel, PROBE_PULL_SPEED, dt);
-        if (left <= PROBE_OPEN_DIST && !opened.current[i]) {
-          opened.current[i] = true;
-          s.openProjectDossier(id, "probe");
+      if (held.current[i]) {
+        // The latch holds until the probe is released or its burn starts.
+        if (canOpen) {
+          const left = pullStep(p, nose, beamState.vel, PROBE_PULL_SPEED, dt);
+          if (left <= PROBE_OPEN_DIST && !opened.current[i]) {
+            opened.current[i] = true;
+            s.openProjectDossier(id, "probe");
+          }
         }
         continue;
       }
@@ -214,7 +244,18 @@ export default function ProjectProbes() {
     for (let i = 0; i < N; i++) {
       const id = PROBES[i].id, p = probePos[id];
       dummy.position.set(p.x, p.y, p.z);
-      dummy.rotation.set(0.22 * Math.sin(i * 2.1), t * SPIN + i * 2.1, 0.18 * Math.cos(i * 1.7));
+      _euler.set(0.22 * Math.sin(i * 2.1), t * SPIN + i * 2.1, 0.18 * Math.cos(i * 1.7));
+      qIdle.setFromEuler(_euler);
+      if (probeRelocating[id]) {
+        // Burning: the dish swings onto the burn line, so the aft thrusters
+        // (the lit B zone) face back toward the ship and the camera.
+        const b = burns.current[i];
+        qBurn.setFromUnitVectors(BORESIGHT, _v.set(b.dx, b.dy, b.dz));
+        const k = Math.min(b.t / BURN_TURN_S, 1);
+        dummy.quaternion.slerpQuaternions(qIdle, qBurn, k * k * (3 - 2 * k));
+      } else {
+        dummy.quaternion.copy(qIdle);
+      }
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       ga[i * 2] = beaconLevel(t, (i * 2 * Math.PI) / N);
@@ -223,8 +264,11 @@ export default function ProjectProbes() {
     mesh.instanceMatrix.needsUpdate = true;
     glow.needsUpdate = true;
 
-    // HUD tip and chatter: the nearest probe in range (store setter is change-guarded).
-    s.setProbeNear(nearestProbe(flight.x, flight.y, flight.z, probePos, probeRelocating, PROBE_IN_RANGE));
+    // HUD tip and chatter: the nearest probe in range, and whether the beam
+    // would take a probe from where it points now (both setters change-guarded).
+    const near = nearestProbe(flight.x, flight.y, flight.z, probePos, probeRelocating, PROBE_IN_RANGE);
+    s.setProbeNear(near);
+    s.setProbeTip(probeTip(beamState.ox, beamState.oy, beamState.oz, beamState.dx, beamState.dy, beamState.dz, probePos, probeRelocating, near));
   });
 
   return (

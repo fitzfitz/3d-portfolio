@@ -22,7 +22,7 @@ const fmt = (v) => `(${v.map((n) => n.toFixed(1)).join(", ")})`;
 /**
  * The radar's probe diamonds on its latest complete frame. RadarMap draws on
  * its own rAF loop, so its context is wrapped to log each filled four-point
- * diamond path (the probe marker: a 2.2 px half-diagonal) with its fill
+ * diamond path (the probe marker: a PROBE_DIAMOND, 3.5 px, half-diagonal) with its fill
  * colour and centre; a clearRect starts a new frame's log. Read after a few
  * frames, outside the radar's own callback, so the log is one whole frame.
  */
@@ -38,8 +38,8 @@ const radarDiamonds = (page) => page.evaluate(async () => {
   ctx.lineTo = function (x, y) { path.push([x, y]); return orig.line.call(this, x, y); };
   ctx.fill = function (...a) {
     const [p0, p1] = path;
-    if (path.length === 4 && Math.abs(p1[0] - p0[0] - 2.2) < 1e-6 && Math.abs(p1[1] - p0[1] - 2.2) < 1e-6) {
-      frame.push({ color: String(this.fillStyle).toLowerCase(), x: p0[0], y: p0[1] + 2.2 });
+    if (path.length === 4 && Math.abs(p1[0] - p0[0] - 3.5) < 1e-6 && Math.abs(p1[1] - p0[1] - 3.5) < 1e-6) {
+      frame.push({ color: String(this.fillStyle).toLowerCase(), x: p0[0], y: p0[1] + 3.5 });
     }
     return orig.fill.apply(this, a);
   };

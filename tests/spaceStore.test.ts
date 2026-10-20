@@ -19,7 +19,7 @@ beforeEach(() => {
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
     badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false, logbookLineAt: 0,
-    charted: [], openDossier: null, dossierVia: null, relocation: null, probeNear: null,
+    charted: [], openDossier: null, dossierVia: null, relocation: null, probeNear: null, probeTip: null,
     probeSpots: { ruangrapi: 0, portfolio: 0, fuxx: 0 },
   });
   for (const id of WORLD_IDS) worldVisibility[id].charted = false;
@@ -449,6 +449,17 @@ describe("hasWebGL", () => {
     const { hasWebGL } = await import("../src/store/spaceStore");
     const doc = { createElement: () => { throw new Error("blocked"); } };
     expect(hasWebGL(doc as unknown as Document)).toBe(false);
+  });
+});
+
+describe("probe HUD fields", () => {
+  it("setProbeTip writes only on a change", () => {
+    const seen: unknown[] = [];
+    const unsub = useSpaceStore.subscribe((s) => seen.push(s.probeTip));
+    const st = useSpaceStore.getState();
+    st.setProbeTip("closer"); st.setProbeTip("closer"); st.setProbeTip("grab"); st.setProbeTip("grab"); st.setProbeTip(null);
+    unsub();
+    expect(seen).toEqual(["closer", "grab", null]);
   });
 });
 

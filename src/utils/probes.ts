@@ -140,3 +140,86 @@ export function rcsPuff(t: number, phase: number): number {
   const k = (((t + phase) % RCS_PERIOD_S) + RCS_PERIOD_S) % RCS_PERIOD_S;
   return k < RCS_PUFF_S ? Math.sin((Math.PI * k) / RCS_PUFF_S) : 0;
 }
+
+/** How far the burn swings off the ship-to-probe axis (spec §4.2; R13: >= 45°, so it streaks across the view). */
+const BURN_OFF_AXIS = (50 * Math.PI) / 180;
+/**
+ * How far the swing leans from "up" toward the side. Mostly sideways: the
+ * chase camera sits just behind and above the ship, so a climbing probe left
+ * the top of the frame within ~0.6 s, while the wide frame keeps a sideways
+ * streak in view for most of RELOCATE_S.
+ */
+const BURN_LEAN = (85 * Math.PI) / 180;
+
+/**
+ * The relocation burn's unit direction, written into `out`. Straight away
+ * from the ship is the camera's own view line (the chase camera sits behind
+ * the ship), where the probe only shrinks; so the burn swings BURN_OFF_AXIS
+ * off that axis, mostly to one side and a little up, the side alternating
+ * with the probe index `i` (deterministic). (ax, ay, az) is the probe minus the
+ * ship; any length, zero tolerated. Allocation-free.
+ */
+export function burnDirection(ax: number, ay: number, az: number, i: number, out: { x: number; y: number; z: number }): void {
+  let l = Math.hypot(ax, ay, az);
+  if (l < 1e-9) { ax = 0; ay = 0; az = 1; l = 1; }
+  ax /= l; ay /= l; az /= l;
+  // side = a x worldUp; a vertical axis falls back to +x.
+  let sx = -az, sy = 0, sz = ax;
+  let sl = Math.hypot(sx, sy, sz);
+  if (sl < 1e-3) { sx = 1; sy = 0; sz = 0; sl = 1; }
+  sx /= sl; sy /= sl; sz /= sl;
+  // up' = side x a (perpendicular to the axis, as near world-up as it gets).
+  const ux = sy * az - sz * ay, uy = sz * ax - sx * az, uz = sx * ay - sy * ax;
+  const sign = i % 2 === 0 ? 1 : -1;
+  const cl = Math.cos(BURN_LEAN), sn = Math.sin(BURN_LEAN) * sign;
+  const px = ux * cl + sx * sn, py = uy * cl + sy * sn, pz = uz * cl + sz * sn;
+  const c = Math.cos(BURN_OFF_AXIS), s = Math.sin(BURN_OFF_AXIS);
+  out.x = ax * c + px * s; out.y = ay * c + py * s; out.z = az * c + pz * s;
+  const ol = Math.hypot(out.x, out.y, out.z);
+  out.x /= ol; out.y /= ol; out.z /= ol;
+}
+
+/** What the HUD pickup tip says: the beam would take a probe, it is near but out of the cone, or out of reach. */
+export type ProbeTip = "grab" | "turn" | "closer" | null;
+
+/**
+ * The tip for `near` (the nearest probe in PROBE_IN_RANGE, or null), from
+ * the beam's origin and unit direction: "grab" only when grabbableProbe
+ * would select a probe this frame, "turn" inside BEAM_RANGE but outside the
+ * cone, "closer" beyond it.
+ */
+export function probeTip(
+  ox: number, oy: number, oz: number, dx: number, dy: number, dz: number,
+  pos: PosMap, relocating: FlagMap, near: string | null,
+): ProbeTip {
+  if (near === null) return null;
+  if (grabbableProbe(ox, oy, oz, dx, dy, dz, pos, relocating) !== null) return "grab";
+  const p = pos[near];
+  if (!p) return null;
+  return Math.hypot(p.x - ox, p.y - oy, p.z - oz) <= BEAM_RANGE ? "turn" : "closer";
+}
+
+export function probeTipText(tip: ProbeTip, pad: boolean, coarse: boolean): string | null {
+  switch (tip) {
+    case "grab": return `PROBE IN RANGE // HOLD ${pad ? "LB" : coarse ? "BEAM" : "F"} TO GRAB`;
+    case "turn": return "PROBE NEARBY // TURN TOWARD IT";
+    case "closer": return "PROBE NEARBY // FLY CLOSER";
+    default: return null;
+  }
+}
+
+/** The trim paint's pull toward its own luminance (turntable_probe.py DESAT). */
+export const TRIM_DESAT = 0.6;
+
+/**
+ * The painted trim's multiply colour (linear in, linear out): the project
+ * colour pulled TRIM_DESAT of the way to its own Rec. 709 luminance, the
+ * same as scripts/blender/turntable_probe.py toned(), so the game matches
+ * the model preview.
+ */
+export function trimTone(r: number, g: number, b: number, out: { r: number; g: number; b: number }): void {
+  const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  out.r = r + TRIM_DESAT * (y - r);
+  out.g = g + TRIM_DESAT * (y - g);
+  out.b = b + TRIM_DESAT * (y - b);
+}

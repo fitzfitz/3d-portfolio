@@ -69,6 +69,27 @@ export function consider(
 }
 
 /**
+ * Puts a target in sel[0] ahead of everything already selected, shifting the
+ * rest down and dropping whatever falls past `max`. TractorBeam uses it to
+ * reserve a project probe's slot: crystals and shards fill `budget - 1`
+ * first, so three nearer crystals can never evict the probe.
+ */
+export function reserveFirst(
+  sel: BeamSelection, max: number, kind: BeamKind, index: number, ring: number,
+  dist: number, x: number, y: number, z: number,
+): void {
+  if (max <= 0) return;
+  const last = Math.min(sel.count, max - 1);
+  for (let i = last; i > 0; i--) {
+    sel.kind[i] = sel.kind[i - 1]; sel.index[i] = sel.index[i - 1]; sel.ring[i] = sel.ring[i - 1];
+    sel.dist[i] = sel.dist[i - 1]; sel.x[i] = sel.x[i - 1]; sel.y[i] = sel.y[i - 1]; sel.z[i] = sel.z[i - 1];
+  }
+  sel.kind[0] = kind; sel.index[0] = index; sel.ring[0] = ring; sel.dist[0] = dist;
+  sel.x[0] = x; sel.y[0] = y; sel.z[0] = z;
+  sel.count = Math.min(max, sel.count + 1);
+}
+
+/**
  * Moves `p` toward the ship at `speed` RELATIVE to it (the ship's own motion
  * is added first, so a pull keeps up with a moving ship), never past it.
  * Returns the remaining distance.

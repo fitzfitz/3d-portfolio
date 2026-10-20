@@ -38,13 +38,15 @@ export default async function run() {
       checks.check(`${tag}: the buoy card stays on screen`, all && m.card.l >= 0 && m.card.r <= vp.width && m.card.t >= 0, JSON.stringify(m.card));
     }
     // Run after the viewport loop: the 1 s hold below moves the ship off the buoy.
-    // Park 20 u from a project probe so the right column carries its widest
-    // line, the touch pickup tip (PROBE IN RANGE // HOLD BEAM TO GRAB); planets
-    // no longer raise a zone warning. 20 u leaves room for the 1 s of flight
-    // inside the 45 u range.
+    // Park 28 u behind a project probe, nose on it, so the right column
+    // carries its widest line, the touch pickup tip (PROBE IN RANGE // HOLD
+    // BEAM TO GRAB), which shows only while the probe is inside the beam's
+    // cone and 30 u; planets no longer raise a zone warning. Heading 0 faces
+    // +z, and 1 s of thrust (<= SHIP_MAX_SPEED 10.8 u/s) keeps it dead ahead
+    // and short of the probe.
     await page.evaluate(() => {
       const p = window.__fitz.probes.ruangrapi;
-      window.__fitz.teleport(p.x, p.y + 20, p.z); window.__fitz.setAttitude(0, 0);
+      window.__fitz.teleport(p.x, p.y, p.z - 28); window.__fitz.setAttitude(0, 0);
     });
     const zone = await pollUntil(() => page.evaluate(() => !!document.querySelector('[data-testid="hud-probe-tip"]')), { timeoutMs: 10_000, intervalMs: 200 });
     checks.check("a probe is in range (its pickup tip shows in the right column)", zone.ok);

@@ -3,7 +3,8 @@ import { PROBE_IDS } from "../src/data/probes";
 import { BEAM_RANGE } from "../src/utils/tractorBeam";
 import {
   grabbableProbe, nearestProbe, relocationDone, relocationLine, rcsPuff, relocationSettled, spotPos,
-  RELOCATE_S, RCS_PERIOD_S,
+  burnDirection, probeTip, probeTipText, trimTone,
+  RELOCATE_S, RCS_PERIOD_S, TRIM_DESAT,
 } from "../src/utils/probes";
 import { PROBES } from "../src/data/probes";
 
@@ -145,5 +146,96 @@ describe("relocationSettled", () => {
 
   it("is settled once the probe sits at its new spot with its flag cleared", () => {
     expect(relocationSettled(def.id, spots(1), at(1), none())).toBe(true);
+  });
+});
+
+// Task 12 (R13): the burn must read as a streak, not a disc shrinking down the view line.
+describe("burnDirection", () => {
+  const angleDeg = (a: number[], b: { x: number; y: number; z: number }) =>
+    (Math.acos(Math.max(-1, Math.min(1, (a[0] * b.x + a[1] * b.y + a[2] * b.z) / Math.hypot(a[0], a[1], a[2])))) * 180) / Math.PI;
+  const axes = [[0, 0, 1], [1, 0, 0], [0.3, -0.2, -0.9], [0, 1, 0], [0, -1, 0], [0.001, 1, 0], [5, 2, -3]];
+
+  it("is a unit vector at least 45° off the ship-to-probe axis, for every probe", () => {
+    for (const a of axes) {
+      for (let i = 0; i < PROBE_IDS.length; i++) {
+        const out = { x: 0, y: 0, z: 0 };
+        burnDirection(a[0], a[1], a[2], i, out);
+        expect(Math.hypot(out.x, out.y, out.z)).toBeCloseTo(1, 6);
+        const deg = angleDeg(a, out);
+        expect(deg, `axis ${a} probe ${i}`).toBeGreaterThanOrEqual(45);
+        expect(deg, `axis ${a} probe ${i}`).toBeLessThan(90); // still away from the ship
+      }
+    }
+  });
+
+  it("is deterministic per probe and climbs a little off a level axis", () => {
+    const a = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 };
+    burnDirection(0, 0, 1, 1, a);
+    burnDirection(0, 0, 1, 1, b);
+    expect(a).toEqual(b);
+    for (let i = 0; i < PROBE_IDS.length; i++) {
+      burnDirection(0, 0, 1, i, a);
+      expect(a.y, `probe ${i}`).toBeGreaterThan(0.05);
+    }
+  });
+
+  it("swings mostly sideways, neighbouring probes to opposite sides", () => {
+    const a = { x: 0, y: 0, z: 0 }, b = { x: 0, y: 0, z: 0 };
+    burnDirection(0, 0, 1, 0, a);
+    burnDirection(0, 0, 1, 1, b);
+    expect(Math.sign(a.x)).not.toBe(Math.sign(b.x));
+    expect(Math.abs(a.x)).toBeGreaterThan(a.y);
+    expect(Math.abs(a.x)).toBeGreaterThan(0.5);
+  });
+
+  it("tolerates a zero axis", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    burnDirection(0, 0, 0, 0, out);
+    expect(Math.hypot(out.x, out.y, out.z)).toBeCloseTo(1, 6);
+  });
+});
+
+// Task 12 (R13): the tip only says HOLD F when the beam would take the probe.
+describe("probeTip", () => {
+  it("is null with no probe in range", () => {
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions(), none(), null)).toBe(null);
+  });
+  it("is grab when the beam would select a probe", () => {
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 20] }), none(), "fuxx")).toBe("grab");
+  });
+  it("is closer beyond the beam's 30 u, even dead ahead", () => {
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 34] }), none(), "fuxx")).toBe("closer");
+  });
+  it("is turn inside 30 u but outside the 20° cone", () => {
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [20, 0, 0] }), none(), "fuxx")).toBe("turn");
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, -20] }), none(), "fuxx")).toBe("turn");
+  });
+});
+
+describe("probeTipText", () => {
+  it("names the grab control for keyboard, pad and touch", () => {
+    expect(probeTipText("grab", false, false)).toBe("PROBE IN RANGE // HOLD F TO GRAB");
+    expect(probeTipText("grab", true, false)).toBe("PROBE IN RANGE // HOLD LB TO GRAB");
+    expect(probeTipText("grab", false, true)).toBe("PROBE IN RANGE // HOLD BEAM TO GRAB");
+    expect(probeTipText("grab", true, true)).toBe("PROBE IN RANGE // HOLD LB TO GRAB");
+  });
+  it("says to fly closer or turn otherwise, and nothing with no probe", () => {
+    expect(probeTipText("closer", false, false)).toBe("PROBE NEARBY // FLY CLOSER");
+    expect(probeTipText("turn", true, false)).toBe("PROBE NEARBY // TURN TOWARD IT");
+    expect(probeTipText(null, false, false)).toBe(null);
+  });
+});
+
+describe("trimTone (matches turntable_probe.py toned())", () => {
+  it("pulls the colour 60% toward its own Rec. 709 luminance, not toward white", () => {
+    const out = { r: 0, g: 0, b: 0 };
+    trimTone(1, 0, 0, out);
+    const y = 0.2126;
+    expect(out.r).toBeCloseTo(1 + 0.6 * (y - 1));
+    expect(out.g).toBeCloseTo(0.6 * y);
+    expect(out.b).toBeCloseTo(0.6 * y);
+    trimTone(0.5, 0.5, 0.5, out); // a grey is its own luminance
+    expect(out).toEqual({ r: 0.5, g: 0.5, b: 0.5 });
+    expect(TRIM_DESAT).toBe(0.6);
   });
 });

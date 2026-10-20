@@ -7,7 +7,7 @@ import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
 import { planets, projects } from "../constants";
 import { PROBES, PROBE_IDS } from "../data/probes";
-import { loadProbeSpots, nextSpot } from "../utils/probes";
+import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
 import { WORLDS, WORLD_IDS, isWorld, type WorldId } from "../data/worlds";
 import { destinationById } from "../data/destinations";
 import { orbitPosition } from "../utils/orbits";
@@ -362,9 +362,12 @@ export interface SpaceState {
   relocation: { id: string; seq: number } | null;
   /** Nearest probe within PROBE_IN_RANGE (written by ProjectProbes, change-guarded). */
   probeNear: string | null;
+  /** The HUD pickup tip for probeNear: "grab" only when the beam would take a probe (ProjectProbes, change-guarded). */
+  probeTip: ProbeTip;
   openProjectDossier: (id: string, via: "probe" | "logbook") => void;
   closeDossier: () => void;
   setProbeNear: (id: string | null) => void;
+  setProbeTip: (tip: ProbeTip) => void;
   setSceneReady: (v: boolean) => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
@@ -619,6 +622,7 @@ export const useSpaceStore = create<SpaceState>()(
     probeSpots: loadProbeSpots(safeGetJSON<unknown>("fitz-probes", null)),
     relocation: null,
     probeNear: null,
+    probeTip: null,
     // Records the visit as setOrbitLocked once did. The popup freezes the frame
     // loop, so clear isWarping here too or the warp drone outlives the boost.
     openProjectDossier: (id, via) => {
@@ -643,6 +647,7 @@ export const useSpaceStore = create<SpaceState>()(
       set({ openDossier: null, dossierVia: null, probeSpots: spots, relocation: { id: def.id, seq: (relocation?.seq ?? 0) + 1 } });
     },
     setProbeNear: (id) => { if (get().probeNear !== id) set({ probeNear: id }); },
+    setProbeTip: (tip) => { if (get().probeTip !== tip) set({ probeTip: tip }); },
     requestJump: (id) => {
       if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
       set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });

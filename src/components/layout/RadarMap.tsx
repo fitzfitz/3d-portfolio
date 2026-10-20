@@ -17,6 +17,9 @@ const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y:
 
 /** One diamond per probe, in its project's colour; preallocated so the frame loop allocates nothing. */
 const PROBE_BLIPS = PROBE_IDS.map((id) => ({ id, color: projectById(id)?.color ?? "#00ff87" }));
+/** Probe diamond half-diagonal (px): big enough to read as a diamond, not a dot (R13). */
+const PROBE_DIAMOND = 3.5;
+const PROBE_DIAMOND_RIM = "rgba(0, 0, 0, 0.8)";
 
 const blip = { px: 0, py: 0, onRim: false };
 
@@ -127,23 +130,28 @@ export default function RadarMap() {
         ctx.globalAlpha = onRim ? 0.45 : 1;
         ctx.fillStyle = pb.color;
         ctx.beginPath();
-        ctx.moveTo(c + px, c + py - 2.2);
-        ctx.lineTo(c + px + 2.2, c + py);
-        ctx.lineTo(c + px, c + py + 2.2);
-        ctx.lineTo(c + px - 2.2, c + py);
+        ctx.moveTo(c + px, c + py - PROBE_DIAMOND);
+        ctx.lineTo(c + px + PROBE_DIAMOND, c + py);
+        ctx.lineTo(c + px, c + py + PROBE_DIAMOND);
+        ctx.lineTo(c + px - PROBE_DIAMOND, c + py);
         ctx.closePath();
+        // A 1 px dark rim (half of a 2 px stroke, the fill covers the inner
+        // half) so the diamond's corners read against other blips.
+        ctx.strokeStyle = PROBE_DIAMOND_RIM;
+        ctx.lineWidth = 2;
+        ctx.stroke();
         ctx.fill();
         if (visited.includes(pb.id)) {
           ctx.strokeStyle = pb.color;
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.arc(c + px, c + py, 5, 0, Math.PI * 2);
+          ctx.arc(c + px, c + py, PROBE_DIAMOND + 3, 0, Math.PI * 2);
           ctx.stroke();
         }
         const cue = altitudeCue(q.y - flight.y);
         if (cue.dir !== 0) {
           ctx.globalAlpha = cue.alpha * (onRim ? 0.45 : 0.9);
-          const by = c + py - cue.dir * 6;
+          const by = c + py - cue.dir * (PROBE_DIAMOND + 4.5);
           ctx.beginPath();
           ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
           ctx.lineTo(c + px, by);
