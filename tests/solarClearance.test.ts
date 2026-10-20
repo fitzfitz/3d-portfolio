@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { PROBES } from "../src/data/probes";
 import {
-  LANDMARKS, landmarkMargin, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
+  LANDMARKS, JELLY_POINTS, JELLY_KEEP_RADIUS, landmarkMargin, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
 } from "./helpers/solarClearance";
 import { DEEP_SPACE_POINT } from "./e2e/deepSpacePoint.mjs";
+import { HAZE_START } from "../src/utils/edgeHaze";
 import { eclipticToWorld } from "../src/utils/ephemeris";
 
 describe("sweptOrbit", () => {
@@ -20,6 +21,16 @@ describe("sweptOrbit", () => {
 describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () => {
   it.each(LANDMARKS.map((l) => [l.name, l] as const))("%s", (name, l) => {
     expect(landmarkMargin(l.pos, l.radius), `${name} vs ${worstRule(l.pos, l.radius)}`).toBeGreaterThan(0);
+  });
+
+  it("keeps the jellyfish swim path clear of every real orbit", () => {
+    for (const p of JELLY_POINTS) {
+      expect(landmarkMargin(p, JELLY_KEEP_RADIUS), `jelly ${p.join(",")} vs ${worstRule(p, JELLY_KEEP_RADIUS)}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("keeps the deep-space point inside the edge haze", () => {
+    expect(Math.hypot(...DEEP_SPACE_POINT)).toBeLessThan(HAZE_START);
   });
 
   it("keeps every probe spot within r 480", () => {

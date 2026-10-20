@@ -11,6 +11,11 @@ import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { RING_GATES, RING_RADIUS } from "../../src/data/ringCourse";
 import { PROBES, PROBE_RADIUS } from "../../src/data/probes";
 import { SPAWN } from "../../src/data/spawn";
+import { SHARDS } from "../../src/data/shards";
+import { ASTEROID_COLLIDERS } from "../../src/data/asteroids";
+import { JELLY_PATH } from "../../src/data/jellyfishPath";
+import { JELLY_RADIUS } from "../../src/utils/jellyMood";
+import { CRYSTAL_PICKUP_RADIUS } from "../../src/utils/crystalField";
 import { DEEP_SPACE_POINT } from "../e2e/deepSpacePoint.mjs";
 
 /**
@@ -109,15 +114,25 @@ export const LANDMARKS: Landmark[] = [
   ...BUOYS.map((b) => ({ name: `buoy ${b.id}`, pos: b.pos, radius: BUOY_CARD_R })),
   { name: "shipyard", pos: SHIPYARD_POS, radius: SHIPYARD_RADII.zoneR },
   { name: "dormant gate", pos: GATE_POS, radius: GATE_KEEP_OUT },
+  // The portal's proximity zone is PORTAL_ZONE_R (2.2 u, the zone itself, not a scaled planet zone); a body's own zone (1.8 x size) lies inside its 3.5 x size well.
   { name: "portal", pos: PORTAL_POS, radius: PORTAL_ZONE_R },
   ...PROBES.flatMap((p) => [
     { name: `${p.id} home`, pos: p.home, radius: PROBE_RADIUS },
     ...p.remote.map((r, i) => ({ name: `${p.id} remote ${i + 1}`, pos: r, radius: PROBE_RADIUS })),
   ]),
   ...RING_GATES.map((g, i) => ({ name: `ring gate ${i}`, pos: g as Vec3, radius: RING_RADIUS })),
+  ...SHARDS.map((s, i) => ({ name: `shard ${i}`, pos: s.pos as Vec3, radius: CRYSTAL_PICKUP_RADIUS })),
+  ...ASTEROID_COLLIDERS.map((a) => ({ name: `scenery ${a.id}`, pos: [a.x, a.y, a.z] as Vec3, radius: a.r })),
   { name: "spawn", pos: [SPAWN.x, SPAWN.y, SPAWN.z], radius: SPAWN_RADIUS },
   { name: "deep-space point", pos: DEEP_SPACE_POINT as unknown as Vec3, radius: 0 },
 ];
+
+/** The jellyfish's swim path, 400 points as the old test sampled it, each held at JELLY_RADIUS. */
+export const JELLY_POINTS: Vec3[] = Array.from({ length: 400 }, (_, i) => {
+  const v = JELLY_PATH.getPointAt(i / 400);
+  return [v.x, v.y, v.z] as Vec3;
+});
+export const JELLY_KEEP_RADIUS = JELLY_RADIUS;
 
 /** Every landmark with its margin, for the ledger. */
 export const clearanceReport = (): { name: string; margin: number }[] =>

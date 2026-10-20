@@ -4,12 +4,14 @@ import { buildGates } from "../utils/race";
  * The time-trial course: a closed loop of rings, flown in order, starting and
  * finishing through ring 0 in the inner belt, near the sun.
  *
- * Out through the asteroid belt (r 40-70), a climbing turn up to y≈70, then a
- * dive home. Every ring sits inside the innermost planet orbit, so no planet
- * ever drifts through the course, and clear of colliders and shards —
- * tests/race.test.ts checks all of that, so edit positions freely.
+ * Out through the asteroid belt (r 40-70), a climbing turn up to y≈50, then a
+ * dive home. The loop weaves through the inner system, so each ring is placed
+ * clear of every real swept orbit (planet wells and moon systems, belt,
+ * Trojans, comets): rings above or below the plane where the orbit tubes fill
+ * it (tests/solarClearance.test.ts). They also clear colliders and shards
+ * (tests/race.test.ts).
  *
- * The loop is ~486 units: ~12.5s at pure warp, ~45s at cruise. Since the
+ * The loop is ~540 units: ~13.9s at pure warp, ~50s at cruise. Since the
  * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
  */
 export const RING_GATES: [number, number, number][] = [
