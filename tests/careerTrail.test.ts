@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planets, PORTAL_POS, PORTAL_ZONE_R } from "../src/constants";
+import { PORTAL_POS, PORTAL_ZONE_R } from "../src/constants";
 import { career } from "../src/data/career";
 import { SHARDS } from "../src/data/shards";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../src/data/asteroids";
@@ -8,7 +8,8 @@ import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
 import { SPAWN } from "../src/data/spawn";
-import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
+import { d3, beltClearance, MARGIN } from "./helpers/clearance";
+import { landmarkMargin, worstRule } from "./helpers/solarClearance";
 
 const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
@@ -68,12 +69,12 @@ describe("career trail shape", () => {
     expect(last).toBeGreaterThanOrEqual(15);
     expect(last).toBeLessThanOrEqual(25);
   });
-  it("keeps the whole arc 60+ from the sun and the buoys no more than 50 apart", () => {
+  it("keeps the whole arc 60+ from the sun and the buoys no more than 80 apart", () => {
     for (let k = 0; k <= 400; k++) {
       const p = arcPoint(TRAIL_ARC, k / 400);
       expect(d3(p, [SUN_COLLIDER.x, SUN_COLLIDER.y, SUN_COLLIDER.z]), `arc t=${k / 400}`).toBeGreaterThanOrEqual(60);
     }
-    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(50);
+    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(80);
   });
   it("puts the station below the orbital plane, as the portal is above it", () => {
     expect(STATION_POS[1]).toBeLessThan(-80);
@@ -81,12 +82,9 @@ describe("career trail shape", () => {
 });
 
 describe("career landmark clearance", () => {
-  it("never shares space with a planet's swept orbit, its zone or its moons", () => {
-    for (const planet of planets) {
-      for (const p of PLACES) {
-        expect(closestApproach(planet, p.pos), `${planet.name} vs ${p.name}`)
-          .toBeGreaterThan(planet.size * MOON_REACH_FACTOR + p.keepOut + MARGIN);
-      }
+  it("never shares space with a body's swept orbit, its well, its moons, or a belt, Trojan or comet orbit", () => {
+    for (const p of PLACES) {
+      expect(landmarkMargin(p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
     }
   });
   it("keeps clear of the sun, the contact portal and the scenery asteroids", () => {

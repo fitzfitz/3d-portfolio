@@ -3,8 +3,15 @@ import projects from "../src/data/projects.json";
 import { SPAWN } from "../src/data/spawn";
 import { SYSTEM_RADIUS, SUN_RADIUS } from "../src/constants";
 import { SUN_COLLIDER } from "../src/data/asteroids";
-import { PLANETS_AND_WORLDS } from "../src/data/worlds";
-import { orbitPosition } from "../src/utils/orbits";
+import { BODY_ORBITS } from "./helpers/solarClearance";
+import { beltClearance } from "./helpers/clearance";
+import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
+import { SHARDS } from "../src/data/shards";
+import { DESTINATIONS } from "../src/data/destinations";
+import { GATE_POS, GATE_KEEP_OUT } from "../src/data/dormantGate";
+import { BUOYS, BUOY_CARD_R } from "../src/data/careerTrail";
+import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
+import { CRYSTAL_PICKUP_RADIUS } from "../src/utils/crystalField";
 import { PROBES, PROBE_IDS, PROBE_RADIUS } from "../src/data/probes";
 import {
   loadProbeSpots, nextSpot, spotPos, RELOCATE_S, RELOCATE_DIST, relocationTravel, beaconLevel,
@@ -45,9 +52,9 @@ describe("probe table", () => {
     expect(d1).toBeLessThanOrEqual(45);
     for (const p of rest) expect(d3(p.home, S), p.id).toBeGreaterThan(d1);
     expect(segDist(S, first.home, [0, 0, 0])).toBeGreaterThan(Math.max(SUN_RADIUS, SUN_COLLIDER.r));
-    for (const b of PLANETS_AND_WORLDS) {
-      const c = orbitPosition(b.orbit, 0);
-      expect(segDist(S, first.home, [c.x, c.y, c.z]), b.key).toBeGreaterThan(b.reach);
+    // The line clears every body's whole swept orbit, well and moon system included.
+    for (const o of BODY_ORBITS) {
+      for (const q of o.pts) expect(segDist(S, first.home, q), o.name).toBeGreaterThan(o.keepOut);
     }
   });
 
@@ -172,6 +179,41 @@ describe("beaconLevel", () => {
       expect(hi).toBeLessThanOrEqual(1);
       expect(up).toBeLessThanOrEqual(15);
       expect(maxStep).toBeLessThanOrEqual(0.02);
+    }
+  });
+});
+
+describe("project probes clear the other fixed things they could touch (orbits: tests/solarClearance.test.ts)", () => {
+  const MARGIN = 4;
+  const spots = PROBES.flatMap((p) => [
+    { name: `${p.id} home`, pos: p.home },
+    ...p.remote.map((r, i) => ({ name: `${p.id} remote ${i + 1}`, pos: r })),
+  ]);
+
+  it("clears the sun, the asteroid belt and the halo", () => {
+    for (const s of spots) {
+      expect(Math.hypot(s.pos[0], s.pos[1], s.pos[2]), `${s.name} vs sun`).toBeGreaterThan(SUN_COLLIDER.r + PROBE_RADIUS + MARGIN);
+      expect(beltClearance(s.pos, 0.436, 40, 70, 2.5), `${s.name} vs belt`).toBeGreaterThan(PROBE_RADIUS);
+      expect(beltClearance(s.pos, 1.31, 80, 95, 4.5), `${s.name} vs halo`).toBeGreaterThan(PROBE_RADIUS);
+    }
+  });
+
+  it("clears destinations, the gate, shards, career buoys, ring-course gates and scenery asteroids", () => {
+    for (const s of spots) {
+      for (const d of DESTINATIONS) expect(d3(s.pos, d.pos), `${s.name} vs ${d.id}`).toBeGreaterThan(d.zoneR + PROBE_RADIUS + MARGIN);
+      expect(d3(s.pos, GATE_POS), `${s.name} vs gate`).toBeGreaterThan(GATE_KEEP_OUT + PROBE_RADIUS);
+      SHARDS.forEach((sh, i) => expect(d3(s.pos, sh.pos), `${s.name} vs shard ${i}`).toBeGreaterThan(CRYSTAL_PICKUP_RADIUS + PROBE_RADIUS + MARGIN));
+      for (const b of BUOYS) expect(d3(s.pos, b.pos), `${s.name} vs ${b.id}`).toBeGreaterThan(BUOY_CARD_R + PROBE_RADIUS + MARGIN);
+      RING_GATES.forEach((g, i) => expect(d3(s.pos, g), `${s.name} vs ring ${i}`).toBeGreaterThan(RING_RADIUS + PROBE_RADIUS + MARGIN));
+      for (const a of ASTEROID_COLLIDERS) expect(d3(s.pos, [a.x, a.y, a.z]), `${s.name} vs ${a.id}`).toBeGreaterThan(a.r + PROBE_RADIUS + 2);
+    }
+  });
+
+  it("keeps probes clear of each other", () => {
+    for (let i = 0; i < spots.length; i++) {
+      for (let j = i + 1; j < spots.length; j++) {
+        expect(d3(spots[i].pos, spots[j].pos), `${spots[i].name} vs ${spots[j].name}`).toBeGreaterThan(30);
+      }
     }
   });
 });

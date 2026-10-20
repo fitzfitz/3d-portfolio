@@ -5,6 +5,7 @@ import {
 import { SYSTEM_RADIUS } from "../src/constants";
 import { DESTINATIONS } from "../src/data/destinations";
 import { GATE_POS } from "../src/data/dormantGate";
+import { planets, PORTAL_POS, LOCK_RETAIN_FACTOR as RETAIN } from "../src/constants";
 
 describe("isRejectedSpawn", () => {
   it("rejects inside the asteroid belt band", () => {
@@ -158,5 +159,21 @@ describe("crystal keep-out around a ringed world", () => {
     for (const b of PLANETS_AND_WORLDS) if (b.key !== "w-ringed") expect(b.reach, b.key).toBe(b.size);
     const avoid = crystalAvoidPoints([{ x: 300, y: 0, z: 0, size: 12, reach: 12 }], [], { x: -300, y: 0, z: 0 });
     expect(avoid[0].r).toBe(12 * LOCK_RETAIN_FACTOR + CRYSTAL_PICKUP_RADIUS);
+  });
+});
+
+describe("crystal spawns near planets", () => {
+  it("rejects any spot inside a planet's lock-retain radius", () => {
+    const at = { x: 100, y: 0, z: 0 };
+    const avoid = crystalAvoidPoints(
+      planets.map((p) => ({ ...at, size: p.size })),
+      [PORTAL_POS],
+      { x: 0, y: 200, z: 0 },
+    );
+    for (const p of planets) {
+      const r = p.size * RETAIN - 0.5;
+      // Off the belt and halo bands, so only the planet keep-out can reject it.
+      expect(isRejectedSpawn(at.x + r, at.y, at.z, avoid)).toBe(true);
+    }
   });
 });

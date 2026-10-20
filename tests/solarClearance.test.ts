@@ -1,0 +1,40 @@
+import { describe, it, expect } from "vitest";
+import { PROBES } from "../src/data/probes";
+import {
+  LANDMARKS, landmarkMargin, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
+} from "./helpers/solarClearance";
+import { DEEP_SPACE_POINT } from "./e2e/deepSpacePoint.mjs";
+import { eclipticToWorld } from "../src/utils/ephemeris";
+
+describe("sweptOrbit", () => {
+  it("starts at perihelion and covers the ellipse (world frame, y up)", () => {
+    const pts = sweptOrbit({ a: 2, e: 0.5, i: 0, node: 0, argPeri: 0 }, 4);
+    const w = { x: 0, y: 0, z: 0 };
+    eclipticToWorld({ x: 1, y: 0, z: 0 }, w);
+    expect(pts[0][0]).toBeCloseTo(w.x, 6); // perihelion at a(1-e) = 1 AU on +x
+    expect(pts[2][0]).toBeCloseTo(-3 * w.x, 6); // aphelion at a(1+e) = 3 AU on -x
+    expect(pts[0][1]).toBeCloseTo(0, 9);
+  });
+});
+
+describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () => {
+  it.each(LANDMARKS.map((l) => [l.name, l] as const))("%s", (name, l) => {
+    expect(landmarkMargin(l.pos, l.radius), `${name} vs ${worstRule(l.pos, l.radius)}`).toBeGreaterThan(0);
+  });
+
+  it("keeps every probe spot within r 480", () => {
+    for (const p of PROBES) for (const s of [p.home, ...p.remote]) {
+      expect(Math.hypot(...s), p.id).toBeLessThanOrEqual(480);
+    }
+  });
+
+  it("keeps the deep-space point 60 u from any swept orbit", () => {
+    expect(deepSpaceGap(DEEP_SPACE_POINT as unknown as Vec3)).toBeGreaterThanOrEqual(DEEP_SPACE_MIN);
+  });
+
+  it("reports a margin per landmark", () => {
+    const r = clearanceReport();
+    expect(r.length).toBe(LANDMARKS.length);
+    for (const row of r) expect(row.margin, row.name).toBeGreaterThan(0);
+  });
+});

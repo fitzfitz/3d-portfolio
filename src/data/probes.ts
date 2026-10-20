@@ -4,9 +4,11 @@ export interface ProbeDef { id: string; home: Vec3T; remote: readonly Vec3T[] }
 
 /**
  * The three project probes, in projects.json order. Coordinates were picked by
- * search against the same clearance rules tests/planetClearance.test.ts holds
- * (whole orbit tubes of every planet and world, destinations, gate, shards,
- * buoys, ring gates, scenery, belt, halo). Homes: probe 1 sits ~34 u from the
+ * search against the clearance rules tests/solarClearance.test.ts holds
+ * (the real swept orbits with their wells and moon systems, the belt, Trojans
+ * and comets) and tests/probes.test.ts (destinations, gate, shards, buoys,
+ * ring gates, scenery, belt, halo). Seven remote spots moved inward along their
+ * radial line when the real orbits arrived (the plan ledger). Homes: probe 1 sits ~34 u from the
  * spawn (the nearest, on a clear line), 2 and 3 walk out from it at ~68 and
  * ~87 u, all in the upper-left sky above the spawn so the waypoint walks
  * 1 -> 2 -> 3. Each remote pool is every third spot of a 21-point
@@ -22,8 +24,8 @@ export const PROBES: readonly ProbeDef[] = [
       [-160, -53, -298],
       [60, -202, -236],
       [217, 354, -56],
-      [330, 94, 242],
-      [40, 1, 406],
+      [259, 74, 190],
+      [31, 1, 315],
       [-242, -251, 228],
     ],
   },
@@ -31,13 +33,13 @@ export const PROBES: readonly ProbeDef[] = [
     id: "portfolio",
     home: [-111, 60, 100],
     remote: [
-      [-371, 53, -186],
+      [-272, 39, -136],
       [-112, 312, -235],
       [10, -342, -15],
-      [352, 131, -9],
+      [338, 126, -9],
       [126, -289, 216],
-      [-219, 1, 348],
-      [-391, -2, 136],
+      [-178, 1, 283],
+      [-337, -2, 117],
     ],
   },
   {
@@ -45,7 +47,7 @@ export const PROBES: readonly ProbeDef[] = [
     home: [-67, 102, -7],
     remote: [
       [-204, -268, -138],
-      [78, 64, -318],
+      [74, 61, -301],
       [287, -119, -88],
       [172, -65, 123],
       [27, 327, 259],

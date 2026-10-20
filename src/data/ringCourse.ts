@@ -13,16 +13,16 @@ import { buildGates } from "../utils/race";
  * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
  */
 export const RING_GATES: [number, number, number][] = [
-  [-12, 3, 34],   // 0 start / finish, inner belt near the sun
-  [-45, 0, 40],   // into the belt
-  [-62, -8, -5],
-  [-26, -2, -52], // past the boulder at (-40, -5, -60)
-  [20, 15, -70],
-  [55, 40, -40],  // climbing turn
+  [-12, 23, 34],   // 0 start / finish, inner belt near the sun
+  [-45, -33, 40],   // into the belt
+  [-62, -38, -5],
+  [-26, -34, -52], // past the boulder at (-40, -5, -60)
+  [20, 50, -70],
+  [55, 45, -40],  // climbing turn
   [40, 70, 10],   // the top
   [0, 55, 50],
-  [35, 20, 55],   // diving
-  [25, 5, 30],    // home stretch
+  [35, 39, 55],   // diving
+  [25, 23, 30],    // home stretch
 ];
 
 /** Ring opening radius. Generous: the chase camera hides the ship's exact line. */

@@ -35,10 +35,11 @@ export const BUOY_CARD_R = 6;
  * TRAIL_END. It starts about 45 units from the spawn pad, stays 60+
  * units from the sun along its whole length, and sweeps down through the
  * orbital plane to the station. The buoys sit at equal angles along it, about
- * 50 apart, so each one reads from the last (tests/careerTrail.test.ts).
+ * 77 apart (the real Earth and Mars wells leave no clear buoy spots nearer the
+ * plane, so the first moved up and the spacing opened from 50; tests/solarClearance.test.ts).
  */
-export const TRAIL_START: Vec3 = [-32, 24, 85];
-export const TRAIL_BEND: Vec3 = [-29, 7, 156];
+export const TRAIL_START: Vec3 = [-32, 80, 85];
+export const TRAIL_BEND: Vec3 = [-40, 48, 208];
 export const TRAIL_END: Vec3 = [-11, -104, 178];
 
 /** A circular arc: angle 0 at centre + radius·u, turning toward v, for `span` radians. n = u × v. */
