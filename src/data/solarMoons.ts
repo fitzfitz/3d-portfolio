@@ -1,6 +1,6 @@
 import { drawnRadius } from "../utils/sizeLaw";
 import type { BodyId } from "./bodyIds";
-import { bodyById } from "./solarSystem";
+import { bodyById, type AtmosphereLook } from "./solarSystem";
 
 /**
  * The nine major moons, each system one uniform inset (spec §5.3).
@@ -38,6 +38,8 @@ export interface SolarMoon {
   geometricAlbedo: number;
   texelMedianLinear: number;
   shape?: "phobos" | "deimos";
+  /** As a body's `look` (data/solarSystem.ts): Titan's haze rim. */
+  look?: { atmosphere?: AtmosphereLook };
 }
 
 const moon = (m: Omit<SolarMoon, "size" | "retrograde" | "map"> & { retrograde?: boolean }): SolarMoon => ({
@@ -52,9 +54,21 @@ export const SOLAR_MOONS: readonly SolarMoon[] = [
   moon({ id: "europa", name: "EUROPA", parent: "jupiter", diameterKm: 3121.6, aKm: 671_034, periodHours: 85.228, plane: "equator", inclinationDeg: 0.5, geometricAlbedo: 0.68, texelMedianLinear: 0.1194 }),
   moon({ id: "ganymede", name: "GANYMEDE", parent: "jupiter", diameterKm: 5268.2, aKm: 1_070_412, periodHours: 171.709, plane: "equator", inclinationDeg: 0.2, geometricAlbedo: 0.44, texelMedianLinear: 0.0782 }),
   moon({ id: "callisto", name: "CALLISTO", parent: "jupiter", diameterKm: 4820.6, aKm: 1_882_709, periodHours: 400.536, plane: "equator", inclinationDeg: 0.3, geometricAlbedo: 0.19, texelMedianLinear: 0.0333 }),
-  moon({ id: "titan", name: "TITAN", parent: "saturn", diameterKm: 5149.5, aKm: 1_221_870, periodHours: 382.69, plane: "equator", inclinationDeg: 0.3, geometricAlbedo: 0.22, texelMedianLinear: 0.0381 }),
+  // Titan's orange photochemical haze reaches ~500 km over its 2,575 km
+  // radius (Cassini); the rim is drawn at 1.12 R, thicker than Earth's.
+  moon({ id: "titan", name: "TITAN", parent: "saturn", diameterKm: 5149.5, aKm: 1_221_870, periodHours: 382.69, plane: "equator", inclinationDeg: 0.3, geometricAlbedo: 0.22, texelMedianLinear: 0.0381,
+    look: { atmosphere: { color: "#e39a3a", thickness: 1.12, intensity: 0.9 } } }),
   moon({ id: "triton", name: "TRITON", parent: "neptune", diameterKm: 2706.8, aKm: 354_759, periodHours: 141.045, plane: "equator", inclinationDeg: 156.885, retrograde: true, geometricAlbedo: 0.72, texelMedianLinear: 0.1274 }),
 ];
+
+/**
+ * The atmosphere rim of a body or a moon, from its `look` (Ruling R5: the data
+ * has one home, on the body or the moon); undefined when it has none.
+ */
+export function atmosphereOf(id: BodyId | MoonId): AtmosphereLook | undefined {
+  const m = SOLAR_MOONS.find((x) => x.id === id);
+  return m ? m.look?.atmosphere : bodyById(id as BodyId).look.atmosphere;
+}
 
 /** Parents' equatorial radii (km). */
 const PARENT_R_KM: Readonly<Partial<Record<BodyId, number>>> = {

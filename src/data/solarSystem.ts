@@ -1,6 +1,6 @@
 import { CERES, JPL_PLANETS } from "../utils/ephemeris";
 import type { JplPlanetElements, OsculatingElements } from "../utils/ephemeris";
-import { RING_OUT } from "../utils/ringOptics";
+import { RING_OUT, uranusRingRadii } from "../utils/ringOptics";
 import { drawnRadius } from "../utils/sizeLaw";
 import { BODY_IDS } from "./bodyIds";
 import type { BodyId } from "./bodyIds";
@@ -26,6 +26,15 @@ import type { BodyId } from "./bodyIds";
  *   (Earth's under its cloud layer; tests/bodyMaps.test.ts). `color` (the HUD
  *   swatch, orbit lines and far dots) is the map's mean colour at one brightness.
  */
+/**
+ * An atmosphere rim (Atmosphere.tsx, L27): scattered sunlight in a shell
+ * `thickness` × the radius, `intensity` at 1 AU (scaled by the live sunlight),
+ * `dusk` the terminator band's tint (the sunset orange when omitted). Lives on
+ * a body's or a moon's `look` (Ruling R5: one home); data/solarMoons.ts
+ * atmosphereOf reads either.
+ */
+export interface AtmosphereLook { color: string; thickness: number; intensity: number; dusk?: string }
+
 export interface SolarBody {
   id: BodyId;
   name: string;
@@ -56,7 +65,7 @@ export interface SolarBody {
     /** The night-side emissive map. */
     nightLights?: string;
     rings?: "saturn" | "uranus";
-    atmosphere?: { color: string; thickness: number; intensity: number; dusk?: string };
+    atmosphere?: AtmosphereLook;
     limb?: number;
   };
   facts: { moons: number; dayHours: number; yearDays: number; meanTempC: number };
@@ -69,9 +78,6 @@ export interface SolarBody {
  * cyan-blue (atmosphereMaterial.ts's uDusk).
  */
 export const ICE_GIANT_DUSK = "#4a86b8";
-
-/** Uranus's epsilon ring edge over its equatorial radius (51,149 km / 25,559 km). */
-const URANUS_RING_OUT = 2.0;
 
 const body = (b: Omit<SolarBody, "size">): SolarBody => ({ ...b, size: drawnRadius(b.diameterKm) });
 
@@ -89,7 +95,10 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     obliquityDeg: 177.36, pole: { raDeg: 272.76, decDeg: 67.16 }, rotationHours: -5832.5,
     orbit: { kind: "jpl", el: JPL_PLANETS.venus }, geometricAlbedo: 0.689, bondAlbedo: 0.76,
     map: "venus", texelMedianLinear: 0.1224, color: "#9e998d",
-    look: { atmosphere: { color: "#f0dca0", thickness: 1.06, intensity: 0.8 } },
+    // A pale cream haze, weak, with a cream terminator band (no sunset
+    // orange over sulphuric-acid haze): the old saturated #f0dca0 at 0.8 ringed
+    // the dim disc in bright yellow, and next to it the disc read olive.
+    look: { atmosphere: { color: "#efe7d2", thickness: 1.06, intensity: 0.45, dusk: "#e0cba8" } },
     facts: { moons: 0, dayHours: 2802, yearDays: 224.701, meanTempC: 464 },
     hint: "inside Earth's orbit, wrapped in a cream cloud deck, spinning backwards",
   }),
@@ -170,7 +179,7 @@ export function bodyById(id: BodyId): SolarBody {
 export const BODY_REACH: readonly { key: BodyId; size: number; reach: number }[] = SOLAR_BODIES.map((b) => ({
   key: b.id,
   size: b.size,
-  reach: b.look.rings === "saturn" ? b.size * RING_OUT : b.look.rings === "uranus" ? b.size * URANUS_RING_OUT : b.size,
+  reach: b.look.rings === "saturn" ? b.size * RING_OUT : b.look.rings === "uranus" ? uranusRingRadii(b.size)[1] : b.size,
 }));
 
 // Roster order is BODY_IDS order.

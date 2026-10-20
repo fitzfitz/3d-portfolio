@@ -151,10 +151,13 @@ describe("SOLID_BODIES (the nine bodies and the nine moons: everything the ship 
     }
     // Earth's cloud shell (1.03 R) lies inside its atmosphere's.
     expect(bodyById("earth").look.atmosphere!.thickness).toBeGreaterThan(1.03);
-    // A moon: its reach (no shell yet) plus the clearance.
+    // A moon: its reach out to its haze shell (Titan's, look.atmosphere) plus the clearance.
     for (const m of SOLAR_MOONS) {
-      expect(SOLID_BODIES.find((x) => x.id === m.id)!.cameraR, m.id).toBeCloseTo(moonReach(m) + CAMERA_CLEARANCE, 12);
+      expect(SOLID_BODIES.find((x) => x.id === m.id)!.cameraR, m.id)
+        .toBeCloseTo(moonReach(m) * (m.look?.atmosphere?.thickness ?? 1) + CAMERA_CLEARANCE, 12);
     }
+    const titan = SOLAR_MOONS.find((m) => m.id === "titan")!;
+    expect(SOLID_BODIES.find((x) => x.id === "titan")!.cameraR).toBeGreaterThan(titan.size * 1.05 + CAMERA_CLEARANCE);
   });
 
   // The capture net used to stop a ship at a planet by docking it; now the

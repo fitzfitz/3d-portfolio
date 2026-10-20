@@ -10,22 +10,23 @@ import { SOLAR_BODIES, bodyById, type SolarBody } from "../../data/solarSystem";
 import { bodies, useSpaceStore } from "../../store/spaceStore";
 import { fitzDebug } from "../../debug/bridge";
 import { ambientTime } from "../../utils/ambientTime";
-import { meshScale, spinQuaternion } from "../../utils/bodySpin";
+import { meshScale, ringNormal, spinQuaternion } from "../../utils/bodySpin";
 import { assetUrl } from "../../utils/assetUrl";
 import { updateBodies } from "../../utils/bodyPositions";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
 import { orbitShape } from "../../utils/ephemeris";
 import { hiResChoice } from "../../utils/hiResMaps";
 import { orreryJd } from "../../utils/orreryClock";
-import { ringRadii } from "../../utils/ringOptics";
+import { ringIrradiance, ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
-import { irradianceVsAU } from "../../utils/sunLight";
-import { guideViewportHeight, makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
+import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyRings";
+import { guideViewportHeight, makeGuideLineMaterial, RING_NIGHT_FLOOR } from "./guideLine";
+import { patchNightGlow } from "./nightGlow";
 import {
   apsides, ORBIT_MIN_HALF_PX, ORBIT_RIBBON_HALF_WIDTH, ORBIT_RIBBON_SAMPLES, ORBIT_TICK_MIN_HALF_PX,
   orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse,
 } from "./orbitRibbon";
-import { bodySlot, OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
+import { OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 
 /**
  * The nine real bodies (data/solarSystem.ts), one data-driven renderer
@@ -35,8 +36,9 @@ import { bodySlot, OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUnif
  * lit, shadowed (sunShadow.ts "fragment" mode) and scanned. Each wears its
  * NASA/USGS public-domain map (or a seeded one where no true-colour global
  * map exists; spec §5.5, data/solarSystem.ts). Earth adds its clouds and
- * night lights, Saturn its rings, and `look` adds the limb
- * darkening and the atmosphere rims. Every orbit is drawn as its true ellipse.
+ * night lights, Saturn and Uranus their rings (bodyRings.ts), and `look` adds
+ * the limb darkening and the atmosphere rims. Every orbit is drawn as its
+ * true ellipse.
  */
 
 
@@ -75,7 +77,8 @@ const CLOUDS = EARTH.look.clouds!;
 const SATURN = bodyById("saturn");
 const RING_MAP = `${SATURN.map}_ring`;
 const [RING_INNER, RING_OUTER] = ringRadii(SATURN.size);
-const RING_SEGMENTS = 256;
+/** The ringed bodies' indices in SOLAR_BODIES (Saturn, Uranus), for the frame loop. */
+const RINGED = SOLAR_BODIES.flatMap((b, i) => (b.look.rings ? [i] : []));
 
 /** The distinct maps the bodies draw, in a fixed order. */
 const MAPS: readonly string[] = [...new Set(SOLAR_BODIES.map((b) => b.map))];
@@ -94,30 +97,6 @@ const mapUrl = (file: string, hiRes: boolean) => {
  */
 function bodyColor(b: SolarBody): THREE.Color {
   return new THREE.Color(1, 1, 1).multiplyScalar(displayAlbedoGain(b.texelMedianLinear));
-}
-
-/**
- * City lights only on the night side. three.js adds an emissive map on the
- * lit hemisphere too, which would put Earth's lights in broad daylight. This
- * injects a mask after the emissive map is applied: the sun is a point light
- * at the world origin, so its view-space position is re-uploaded each frame
- * and compared with the surface normal.
- */
-const sunView = new THREE.Vector3();
-function useNightSideEmissive() {
-  const uniform = useMemo(() => ({ value: new THREE.Vector3() }), []);
-  useFrame(({ camera }) => {
-    sunView.set(0, 0, 0).applyMatrix4(camera.matrixWorldInverse);
-    uniform.value.copy(sunView);
-  });
-  return useMemo(() => (shader: THREE.WebGLProgramParametersWithUniforms) => {
-    shader.uniforms.uSunView = uniform;
-    shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform vec3 uSunView;")
-      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-        vec3 toSun = normalize(uSunView + vViewPosition);
-        totalEmissiveRadiance *= smoothstep(0.12, -0.2, dot(normal, toSun));`);
-  }, [uniform]);
 }
 
 /**
@@ -145,7 +124,6 @@ export default function SolarBodies() {
     mapUrl(CLOUDS.map, false),
   ]);
   const gl = useThree((s) => s.gl);
-  const cityLights = useNightSideEmissive();
 
   // The ring strip: colour in RGB (sRGB, decoded on sampling; alpha stays
   // linear), τ in A. Set before its first upload. No mipmaps: the strip runs
@@ -182,9 +160,7 @@ export default function SolarBodies() {
    * quaternion). The ring shader takes its own from its model matrix; Saturn's
    * ring-shadow patch reads this.
    */
-  const ringNormal = useMemo(() => ({
-    value: new THREE.Vector3(0, 1, 0).applyQuaternion(spinQuaternion(SATURN, 0, new THREE.Quaternion())),
-  }), []);
+  const saturnRingNormal = useMemo(() => ({ value: ringNormal(SATURN, new THREE.Vector3()) }), []);
 
   // Built here, not as JSX, so no re-render can re-apply an onBeforeCompile
   // over the shadow patch. Fragment mode skips each body's own sphere by
@@ -197,17 +173,18 @@ export default function SolarBodies() {
     });
     m.color.copy(bodyColor(b));
     if (b.look.nightLights) {
+      // City lights on the night side only (nightGlow.ts; Io's hot spots share the program).
       m.emissiveMap = textures[TEX_NIGHT];
       m.emissive.set("#ffd9a0");
       m.emissiveIntensity = 1.4;
-      m.onBeforeCompile = cityLights;
+      patchNightGlow(m);
     }
     // Saturn also takes its rings' shadow: one more program, its own.
     patchSunShadow(m, "fragment", b.look.rings === "saturn"
-      ? { ringShadow: { normal: ringNormal, inner: RING_INNER, outer: RING_OUTER, map: ringMap } }
+      ? { ringShadow: { normal: saturnRingNormal, inner: RING_INNER, outer: RING_OUTER, map: ringMap } }
       : undefined);
     return m;
-  }), [textures, ringMap, ringNormal, cityLights]);
+  }), [textures, ringMap, saturnRingNormal]);
   useEffect(() => () => materials.forEach((m) => m.dispose()), [materials]);
 
   // Detail by distance (sphereLod.ts), flattened along the pole (the LOD's local Y, turned onto it each frame). The
@@ -219,19 +196,32 @@ export default function SolarBodies() {
     return lod;
   }), [materials]);
 
-  // Lit by the sunlight at Saturn's live distance (L19, §4.8: written each
-  // frame); in Saturn's umbra through its occluder slot (L20).
-  const ringMat = useMemo(() => makePlanetRingMaterial("#ffffff", RING_INNER, RING_OUTER, bodySlot("saturn"), { ringMap }), [ringMap]);
-  useEffect(() => () => ringMat.dispose(), [ringMat]);
+  // The rings (bodyRings.ts): Saturn's measured strip, Uranus's epsilon ring
+  // built in code. Lit by the sunlight at their planet's live distance (L19,
+  // §4.8: written each frame); in their planet's umbra through its occluder
+  // slot (L20). One program for both.
+  const uranusStrip = useMemo(() => makeUranusRingStrip(), []);
+  useEffect(() => () => uranusStrip.dispose(), [uranusStrip]);
+  const ringMats = useMemo(() => SOLAR_BODIES.map((b) => (b.look.rings
+    ? makeBodyRingMaterial(b, b.look.rings === "saturn" ? ringMap : uranusStrip)
+    : null)), [ringMap, uranusStrip]);
+  const rings = useMemo(() => SOLAR_BODIES.map((b, i) => {
+    const m = ringMats[i];
+    return m ? makeBodyRing(b, m, BODY_RENDER_ORDER.ring) : null;
+  }), [ringMats]);
+  useEffect(() => () => {
+    ringMats.forEach((m) => m?.dispose());
+    rings.forEach((r) => r?.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); }));
+  }, [ringMats, rings]);
   // The umbra floor is measured per tier (guideLine.ts): the PostFX buffer is
   // linear, the low-perf tier draws display-encoded colour.
   useEffect(() => {
     const apply = (lowPerf: boolean) => {
-      ringMat.uniforms.uNightFloor.value = lowPerf ? RING_NIGHT_FLOOR.display : RING_NIGHT_FLOOR.linear;
+      for (const m of ringMats) if (m) m.uniforms.uNightFloor.value = lowPerf ? RING_NIGHT_FLOOR.display : RING_NIGHT_FLOOR.linear;
     };
     apply(useSpaceStore.getState().isLowPerf);
     return useSpaceStore.subscribe((st) => st.isLowPerf, apply);
-  }, [ringMat]);
+  }, [ringMats]);
 
   // One ellipse per body for the orrery date at mount: JPL's element rates
   // move an orbit by well under a degree in a long session's millennia.
@@ -269,8 +259,10 @@ export default function SolarBodies() {
       posGroups.current[i]?.position.set(p.x, p.y, p.z);
       spinQuaternion(b, time, lods[i].quaternion);
     }
-    const s = bodies.saturn;
-    ringMat.uniforms.uIrradiance.value = irradianceVsAU(Math.hypot(s.x, s.y, s.z));
+    for (let k = 0; k < RINGED.length; k++) {
+      const i = RINGED[k], p = bodies[SOLAR_BODIES[i].id];
+      ringMats[i]!.uniforms.uIrradiance.value = ringIrradiance(Math.hypot(p.x, p.y, p.z) / AU);
+    }
   });
 
   return (
@@ -288,15 +280,10 @@ export default function SolarBodies() {
                 <CloudLayer radius={b.size} alphaMap={textures[TEX_CLOUDS]} linear={b.look.clouds.linear}
                   speed={cloudSpin(b)} sunShadow />
               )}
-              {/* In the equatorial plane: the spin frame's XZ (RingGeometry's
-                  XY turned down), so the ring and the shadow's normal share
-                  the one pole and cannot disagree. */}
-              {b.look.rings === "saturn" && (
-                <mesh name={`BodyRing_${b.id}`} rotation={[-Math.PI / 2, 0, 0]} material={ringMat}
-                  renderOrder={BODY_RENDER_ORDER.ring}>
-                  <ringGeometry args={[RING_INNER, RING_OUTER, RING_SEGMENTS, 1]} />
-                </mesh>
-              )}
+              {/* In the equatorial plane: the spin frame's XZ (bodyRings.ts
+                  turns RingGeometry's XY down), so the ring and the shadow's
+                  normal share the one pole and cannot disagree. */}
+              {rings[i] && <primitive object={rings[i]} dispose={null} />}
             </group>
             {b.look.limb !== undefined && (
               <LimbDarkening radius={b.size} strength={b.look.limb} renderOrder={BODY_RENDER_ORDER.limb} />

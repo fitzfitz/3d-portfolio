@@ -3,8 +3,13 @@ import * as THREE from "three";
 import { SUN_RADIUS } from "../src/constants";
 import { BODY_IDS } from "../src/data/bodyIds";
 import { MOON_IDS } from "../src/data/solarMoons";
+import { readFileSync } from "node:fs";
+import { bodyById } from "../src/data/solarSystem";
 import { sunVisibility } from "../src/utils/sunOcclusion";
 import {
+  allOccluders,
+  CPU_ONLY_BODIES,
+  occluders,
   MAX_OCCLUDERS,
   OCCLUDER_SLOTS,
   SUN_SHADOW_GLSL,
@@ -309,5 +314,37 @@ describe("OCCLUDER_SLOTS (fixed, no per-frame selection)", () => {
     expect(Object.fromEntries(MOON_IDS.map((id) => [id, moonSlot(id)]))).toEqual({
       moon: 6, phobos: 7, deimos: 8, io: 9, europa: 10, ganymede: 11, callisto: 12, titan: 13, triton: 14,
     });
+  });
+});
+
+describe("allOccluders: every body and moon, for the CPU's sun tests (the ship's shadow, the sun's glare)", () => {
+  it("is the sixteen GPU slots (the same objects, moons included) then Mercury, Venus and Ceres", () => {
+    expect(allOccluders.slice(0, MAX_OCCLUDERS)).toEqual(occluders);
+    for (let i = 0; i < MAX_OCCLUDERS; i++) expect(allOccluders[i]).toBe(occluders[i]);
+    expect(CPU_ONLY_BODIES).toEqual(["mercury", "venus", "ceres"]);
+    expect(allOccluders.length).toBe(MAX_OCCLUDERS + 3);
+    CPU_ONLY_BODIES.forEach((id, k) => expect(allOccluders[MAX_OCCLUDERS + k].r, id).toBe(bodyById(id).size));
+  });
+
+  it("lets a moon hide the sun: a point behind the Moon sees less of it than the bodies alone allow", () => {
+    const slot = moonSlot("moon");
+    const keep = { ...occluders[slot] };
+    try {
+      // Far above the ecliptic, where no body can be in the way.
+      setOccluder(slot, 0, 2000, 0, 5);
+      const p = { x: 0, y: 2030, z: 0 };
+      const withoutMoon = allOccluders.filter((o) => o !== occluders[slot]);
+      const lit = sunVisibility(p, withoutMoon, SUN_RADIUS);
+      expect(sunVisibility(p, allOccluders, SUN_RADIUS)).toBeLessThan(lit - 0.1);
+    } finally {
+      setOccluder(slot, keep.x, keep.y, keep.z, keep.r);
+    }
+  });
+
+  it("is what the ship's shadow and the sun's glare both read", () => {
+    const sun = readFileSync("src/components/canvas/Sun.tsx", "utf8");
+    const ship = readFileSync("src/components/canvas/Spaceship.tsx", "utf8");
+    expect(sun).toMatch(/sunVisibility\(cam\.position, allOccluders, SUN_RADIUS\)/);
+    expect(ship).toMatch(/sunVisibility\(pos\.current, allOccluders, SUN_RADIUS\)/);
   });
 });

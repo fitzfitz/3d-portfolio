@@ -5,7 +5,7 @@ import { SOLAR_MOONS } from "../src/data/solarMoons";
 import { eclipticToWorld, orbitShape, osculatingEcliptic, planetEcliptic, type Ecl } from "../src/utils/ephemeris";
 import { ORRERY_DAYS_PER_SECOND, ORRERY_TEST_JD, setOrreryEpochJd } from "../src/utils/orreryClock";
 import { bodyPositionAt, heliocentric, updateBodies } from "../src/utils/bodyPositions";
-import { bodySlot, occluders, OCCLUDER_SLOTS } from "../src/components/canvas/sunShadow";
+import { allOccluders, bodySlot, CPU_ONLY_BODIES, MAX_OCCLUDERS, occluders, OCCLUDER_SLOTS } from "../src/components/canvas/sunShadow";
 import { clearScannables, nearestScannable } from "../src/utils/scannables";
 import { AU } from "../src/constants";
 
@@ -80,6 +80,16 @@ describe("updateBodies: the one writer of `bodies`", () => {
       expect(occluders[s].z, id).toBe(out[id].z);
       expect(occluders[s].r, id).toBe(bodyById(id).size);
     }
+  });
+
+  it("places Mercury, Venus and Ceres in the CPU-only occluders (no GPU slot, but they hide the sun from the ship and the glare)", () => {
+    const out = Object.fromEntries(BODY_IDS.map((id) => [id, { x: 0, y: 0, z: 0 }])) as Record<BodyId, V>;
+    updateBodies(0, out);
+    CPU_ONLY_BODIES.forEach((id, k) => {
+      const o = allOccluders[MAX_OCCLUDERS + k];
+      expect([o.x, o.y, o.z], id).toEqual([out[id].x, out[id].y, out[id].z]);
+      expect(o.r, id).toBe(bodyById(id).size);
+    });
   });
 
   it("registers each body as a scannable by its real name, measured from its surface", () => {

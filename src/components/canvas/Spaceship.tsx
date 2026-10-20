@@ -37,9 +37,9 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
-import { bodySlot, occluders, patchSunShadow } from "./sunShadow";
-import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
-import { BODY_REACH, SOLAR_BODIES } from "../../data/solarSystem";
+import { allOccluders, patchSunShadow } from "./sunShadow";
+import { sunVisibility } from "../../utils/sunOcclusion";
+import { BODY_REACH } from "../../data/solarSystem";
 import { resolveWorldContact, keepCameraOutsideBodies, SOLID_BODIES } from "../../utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
@@ -137,15 +137,6 @@ const _total = new THREE.Vector3();
  * trip): a patch is applied once and keeps the uniform it was given.
  */
 const SHIP_SUN_VIS = { value: 1 };
-/**
- * What shadows the ship: every GPU occluder slot (the bodies with a moon or a
- * ring, and the nine moons), plus the bodies that have none (Mercury, Venus
- * and Ceres: they shadow nothing the GPU draws, but the ship can fly behind
- * them). Those are CPU-only, refreshed from `bodies` each frame.
- */
-const CPU_ONLY_BODIES = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0);
-const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
-const SHIP_OCCLUDERS: readonly Occluder[] = [...occluders, ...CPU_ONLY_OCCLUDERS];
 
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
@@ -835,15 +826,13 @@ export default function Spaceship() {
   });
 
   // The ship in a body's shadow. Runs after the flight loop above, so it
-  // sees this frame's position. The occluder slots and `bodies` are
-  // SolarBodies', which runs after this component: a frame old, a few
-  // hundredths of a unit.
+  // sees this frame's position. What shadows it is sunShadow.ts
+  // allOccluders: every GPU slot (the bodies with a moon or a ring, and the
+  // nine moons) plus Mercury, Venus and Ceres, which shadow nothing the GPU
+  // draws but which the ship can fly behind. SolarBodies and SolarMoons write
+  // them after this component runs: a frame old, a few hundredths of a unit.
   useFrame(() => {
-    for (let i = 0; i < CPU_ONLY_BODIES.length; i++) {
-      const b = bodies[CPU_ONLY_BODIES[i].id], o = CPU_ONLY_OCCLUDERS[i];
-      o.x = b.x; o.y = b.y; o.z = b.z;
-    }
-    SHIP_SUN_VIS.value = sunVisibility(pos.current, SHIP_OCCLUDERS, SUN_RADIUS);
+    SHIP_SUN_VIS.value = sunVisibility(pos.current, allOccluders, SUN_RADIUS);
   });
 
   return (

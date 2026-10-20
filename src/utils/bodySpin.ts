@@ -45,3 +45,14 @@ export function spinQuaternion(b: SolarBody, gameSeconds: number, out: THREE.Qua
 export function meshScale(b: SolarBody): [number, number, number] {
   return [1, 1 - b.flattening, 1];
 }
+
+const qRing = new THREE.Quaternion();
+/**
+ * A ring's plane normal: its planet's spin frame +Y, which spinQuaternion
+ * turns onto the IAU pole (the turn about the pole leaves it there). The rings
+ * lie in the equator, fixed in space, so their opening to the Sun follows the
+ * orbit (Saturn's over its 29.5 years). Writes and returns `out`.
+ */
+export function ringNormal(b: SolarBody, out: THREE.Vector3): THREE.Vector3 {
+  return out.copy(Y).applyQuaternion(spinQuaternion(b, 0, qRing));
+}

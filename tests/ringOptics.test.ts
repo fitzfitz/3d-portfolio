@@ -3,9 +3,16 @@ import sharp from "sharp";
 import * as THREE from "three";
 import { makePlanetRingMaterial } from "../src/components/canvas/guideLine";
 import { patchSunShadow } from "../src/components/canvas/sunShadow";
-import { bodyById } from "../src/data/solarSystem";
+import { BODY_REACH, bodyById } from "../src/data/solarSystem";
 import { irradianceVsAU } from "../src/utils/sunLight";
+import { readFileSync } from "node:fs";
+import { AU } from "../src/constants";
+import { JD_J2000, orbitShape } from "../src/utils/ephemeris";
+import { poleWorld, ringNormal, spinQuaternion } from "../src/utils/bodySpin";
+import { shellCullDistance } from "../src/utils/sphereLod";
+import { makeBodyRing, makeBodyRingMaterial, ringExtent } from "../src/components/canvas/bodyRings";
 import {
+  ringIrradiance, URANUS_EPSILON, uranusRingRadii, uranusRingTau,
   fluidRocheLimit, RING_ICE_DENSITY, RING_IN, RING_OUT, RING_TAU_MAX, RINGED_GIANT_DENSITY,
   ringRadiance, ringRadii, ringTransmission, ringViewOpacity,
 } from "../src/utils/ringOptics";
@@ -197,5 +204,111 @@ describe("Roche limit (L14)", () => {
   it("matches the strip generator's extent and τ scale", async () => {
     const gen = await import("../scripts/textures/gen_worlds.mjs");
     expect([gen.RING_IN, gen.RING_OUT, gen.RING_TAU_MAX]).toEqual([RING_IN, RING_OUT, RING_TAU_MAX]);
+  });
+});
+
+describe("ringIrradiance: the sunlight on a ring at its planet's live distance (L19, spec §4.8)", () => {
+  it("is 1 at 1 AU and falls as 1 / r², the same law as the rims (irradianceVsAU)", () => {
+    expect(ringIrradiance(1)).toBeCloseTo(1, 12);
+    expect(ringIrradiance(2)).toBeCloseTo(0.25, 12);
+    for (const r of [0.39, 5.2, 9.58, 19.2]) expect(ringIrradiance(r)).toBeCloseTo(irradianceVsAU(r * AU), 12);
+  });
+
+  it("is (Q/q)² times brighter at Saturn's perihelion than at its aphelion", () => {
+    const { a, e } = orbitShape(ringed.orbit.el, JD_J2000);
+    const q = a * (1 - e), Q = a * (1 + e);
+    expect(ringIrradiance(q) / ringIrradiance(Q)).toBeCloseTo((Q / q) ** 2, 12);
+    // e ≈ 0.054: about 24% more light at perihelion.
+    expect((Q / q) ** 2).toBeCloseTo(1.24, 1);
+  });
+
+  it("is what SolarBodies writes into each ring every frame, from the planet's live distance", () => {
+    const src = readFileSync("src/components/canvas/SolarBodies.tsx", "utf8");
+    expect(src).toMatch(/uIrradiance\.value = ringIrradiance\(/);
+    expect(src).not.toMatch(/uIrradiance\.value = irradianceVsAU\(/);
+  });
+});
+
+describe("Uranus's epsilon ring", () => {
+  const uranus = bodyById("uranus");
+
+  it("lies at 51,149 km over Uranus's 25,559 km equatorial radius: 2.00 R", () => {
+    expect(URANUS_EPSILON.radiusKm).toBe(51_149);
+    expect(URANUS_EPSILON.planetRadiusKm).toBe(25_559);
+    const [inner, outer] = uranusRingRadii(uranus.size);
+    expect((inner + outer) / 2 / uranus.size).toBeCloseTo(51_149 / 25_559, 9);
+    expect((inner + outer) / 2 / uranus.size).toBeCloseTo(2.0, 2);
+  });
+
+  it("is drawn 0.02 R wide, the visible minimum: its real 20-96 km would be under a pixel", () => {
+    const [inner, outer] = uranusRingRadii(uranus.size);
+    expect((outer - inner) / uranus.size).toBeCloseTo(0.02, 12);
+    expect(URANUS_EPSILON.widthKm).toEqual([20, 96]);
+    expect(URANUS_EPSILON.widthKm[1] / URANUS_EPSILON.planetRadiusKm).toBeLessThan(0.02);
+  });
+
+  it("has optical depth 0.5-2.5 across its width and albedo 0.02 (narrow, dark, faint)", () => {
+    expect(URANUS_EPSILON.tau).toEqual([0.5, 2.5]);
+    expect(URANUS_EPSILON.albedo).toBe(0.02);
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i <= 100; i++) {
+      const t = uranusRingTau(i / 100);
+      lo = Math.min(lo, t); hi = Math.max(hi, t);
+    }
+    expect(lo).toBeCloseTo(0.5, 6);
+    expect(hi).toBeCloseTo(2.5, 6);
+    // Within the strip's τ scale, so A = τ / RING_TAU_MAX never clips.
+    expect(hi).toBeLessThanOrEqual(RING_TAU_MAX);
+  });
+
+  it("sets Uranus's reach (its clearances and cruise sphere) to the ring's outer edge", () => {
+    const r = BODY_REACH.find((x) => x.key === "uranus")!;
+    expect(r.reach).toBeCloseTo(uranusRingRadii(uranus.size)[1], 12);
+  });
+});
+
+describe("the rings' planes and meshes", () => {
+  it("puts Saturn's ring normal on Saturn's pole, and Uranus's on Uranus's", () => {
+    for (const id of ["saturn", "uranus"] as const) {
+      const b = bodyById(id);
+      const n = ringNormal(b, new THREE.Vector3());
+      expect(n.angleTo(poleWorld(b)), id).toBeLessThan(1e-9);
+    }
+  });
+
+  it("lays each ring mesh in its pole frame's equator (the mesh's world +Z, as RingGeometry's normal, is the frame's +Y)", () => {
+    for (const id of ["saturn", "uranus"] as const) {
+      const b = bodyById(id);
+      const frame = new THREE.Group();
+      frame.quaternion.copy(spinQuaternion(b, 0, new THREE.Quaternion()));
+      const ring = makeBodyRing(b, makeBodyRingMaterial(b, new THREE.Texture()));
+      frame.add(ring);
+      frame.updateMatrixWorld(true);
+      const mesh = ring.getObjectByName(`BodyRing_${id}`) as THREE.Mesh;
+      expect(mesh, id).toBeDefined();
+      const n = mesh.getWorldDirection(new THREE.Vector3());
+      expect(Math.abs(n.dot(poleWorld(b))), id).toBeCloseTo(1, 9);
+      const g = mesh.geometry as THREE.RingGeometry;
+      expect([g.parameters.innerRadius, g.parameters.outerRadius], id).toEqual(ringExtent(b));
+    }
+  });
+
+  it("gives Earth (and every body but Saturn and Uranus) no ring (L14)", () => {
+    expect(bodyById("earth").look.rings).toBeUndefined();
+    for (const id of ["mercury", "venus", "earth", "mars", "ceres", "jupiter", "neptune"] as const) {
+      expect(ringExtent(bodyById(id)), id).toBeNull();
+    }
+    expect(ringExtent(ringed)).toEqual(ringRadii(ringed.size));
+  });
+
+  it("culls Uranus's thin ring once its width is under a pixel, so it costs no draw call from afar", () => {
+    const uranus = bodyById("uranus");
+    const ring = makeBodyRing(uranus, makeBodyRingMaterial(uranus, new THREE.Texture()));
+    expect((ring as THREE.LOD).isLOD).toBe(true);
+    const [inner, outer] = uranusRingRadii(uranus.size);
+    const levels = (ring as THREE.LOD).levels;
+    expect(levels).toHaveLength(2);
+    expect(levels[1].distance).toBeCloseTo(shellCullDistance(outer - inner), 9);
+    expect(levels[1].object.children).toHaveLength(0);
   });
 });

@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { makePlanetRingMaterial, RING_NIGHT_FLOOR } from "../src/components/canvas/guideLine";
-import { SUN_SHADOW_CORE_GLSL, SUN_SHADOW_GLSL, sunShadowUniforms } from "../src/components/canvas/sunShadow";
+import * as THREE from "three";
+import { bodySlot, SUN_SHADOW_CORE_GLSL, SUN_SHADOW_GLSL, sunShadowUniforms } from "../src/components/canvas/sunShadow";
+import { makeBodyRingMaterial, makeUranusRingStrip } from "../src/components/canvas/bodyRings";
+import { bodyById } from "../src/data/solarSystem";
+import { displayAlbedoGain } from "../src/utils/displayAlbedo";
+import { RING_TAU_MAX, URANUS_EPSILON, uranusRingTau } from "../src/utils/ringOptics";
 
 describe("SUN_SHADOW_CORE_GLSL (the shared coverage maths)", () => {
   it("defines one-occluder visibility and is what the lit-material patch uses", () => {
@@ -42,5 +47,43 @@ describe("makePlanetRingMaterial with a shadow slot", () => {
     expect(a.uniforms.uRingSlot.value).toBe(0);
     expect(b.uniforms.uRingSlot.value).toBe(9);
     expect(a.fragmentShader).toMatch(/uniform int uRingSlot;/);
+  });
+});
+
+describe("each ring is shadowed by its own planet (L20)", () => {
+  it("Saturn's by Saturn's slot (3), Uranus's by Uranus's (4), on one shared program", () => {
+    const saturn = bodyById("saturn"), uranus = bodyById("uranus");
+    const s = makeBodyRingMaterial(saturn, new THREE.Texture());
+    const u = makeBodyRingMaterial(uranus, new THREE.Texture());
+    expect(s.uniforms.uRingSlot.value).toBe(bodySlot("saturn"));
+    expect(u.uniforms.uRingSlot.value).toBe(bodySlot("uranus"));
+    expect([bodySlot("saturn"), bodySlot("uranus")]).toEqual([3, 4]);
+    // One program: the same defines and source; the strip, slot and colour are uniforms.
+    expect(u.defines).toEqual(s.defines);
+    expect(u.fragmentShader).toBe(s.fragmentShader);
+    expect(u.defines.SUN_SHADOW_RING).toBeDefined();
+    expect(u.defines.RING_MAP).toBeDefined();
+  });
+
+  it("draws Uranus's ring at its albedo on the scene scale (0.177 × 0.02) through the dark-surface curve (P3)", () => {
+    const uranus = bodyById("uranus");
+    const u = makeBodyRingMaterial(uranus, new THREE.Texture());
+    const lin = 0.177 * URANUS_EPSILON.albedo;
+    const c = u.uniforms.uColor.value as THREE.Color;
+    for (const ch of [c.r, c.g, c.b]) expect(ch).toBeCloseTo(lin * displayAlbedoGain(lin), 9);
+    // Saturn's colour lives in its strip: white.
+    expect((makeBodyRingMaterial(bodyById("saturn"), new THREE.Texture()).uniforms.uColor.value as THREE.Color).toArray()).toEqual([1, 1, 1]);
+  });
+
+  it("builds Uranus's strip from the ε profile: white, τ / RING_TAU_MAX in alpha, no mipmaps", () => {
+    const tex = makeUranusRingStrip();
+    const { data, width } = tex.image as { data: Uint8Array; width: number };
+    for (let x = 0; x < width; x++) {
+      expect(data[x * 4]).toBe(255);
+      const tau = (data[x * 4 + 3] / 255) * RING_TAU_MAX;
+      expect(tau).toBeCloseTo(uranusRingTau((x + 0.5) / width), 1);
+    }
+    expect(tex.generateMipmaps).toBe(false);
+    expect(tex.minFilter).toBe(THREE.LinearFilter);
   });
 });

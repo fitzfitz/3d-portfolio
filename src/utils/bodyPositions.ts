@@ -1,6 +1,6 @@
 import type { BodyId } from "../data/bodyIds";
 import { SOLAR_BODIES, type SolarBody } from "../data/solarSystem";
-import { bodySlot, setOccluder } from "../components/canvas/sunShadow";
+import { bodySlot, cpuOnlyIndex, setCpuOnlyOccluder, setOccluder } from "../components/canvas/sunShadow";
 import { eclipticToWorld, orbitShape, osculatingEcliptic, planetEcliptic, visVivaKmS, type Ecl } from "./ephemeris";
 import { orreryJd } from "./orreryClock";
 import type { Vec3 } from "./reactions";
@@ -39,6 +39,7 @@ export function heliocentric(b: SolarBody, gameSeconds: number): { rAU: number; 
 
 /** Fixed per body, computed once: the frame loop allocates nothing. */
 const SLOTS = SOLAR_BODIES.map((b) => bodySlot(b.id));
+const CPU_ONLY = SOLAR_BODIES.map((b) => cpuOnlyIndex(b.id));
 
 let lastGameSeconds = 0;
 /** The game time `bodies` was last written for: the HUD and the chart date themselves from it, so date and positions agree. */
@@ -49,8 +50,8 @@ export const bodiesGameSeconds = (): number => lastGameSeconds;
  * `out[b.id]` (in place; no other key is touched), its scannable (measured
  * from its surface, labelled with its real name) and, if it holds one, its
  * occluder slot at its equatorial radius. Mercury, Venus and Ceres have no GPU
- * slot (sunShadow.ts); the CPU lists read them from `bodies`. The moons' slots
- * are moonOrbits.ts updateMoons'.
+ * slot (sunShadow.ts): their CPU-only occluders (allOccluders) are written
+ * here instead. The moons' slots are moonOrbits.ts updateMoons'.
  */
 export function updateBodies(gameSeconds: number, out: Record<BodyId, Vec3>): void {
   lastGameSeconds = gameSeconds;
@@ -61,5 +62,6 @@ export function updateBodies(gameSeconds: number, out: Record<BodyId, Vec3>): vo
     eclipticToWorld(eclipticAt(b, jd, ecl), p);
     setScannable(b.id, p.x, p.y, p.z, b.name, b.size);
     if (SLOTS[i] >= 0) setOccluder(SLOTS[i], p.x, p.y, p.z, b.size);
+    else setCpuOnlyOccluder(CPU_ONLY[i], p.x, p.y, p.z);
   }
 }

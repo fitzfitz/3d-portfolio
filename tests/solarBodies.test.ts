@@ -16,13 +16,18 @@ describe("the bodies' transparent layers' draw order", () => {
     // Above 0 the ring would draw after every order-0 transparent, the ship's
     // plume in front of it included, whatever their depths.
     expect(ring).toBe(0);
-    for (const k of ["limb", "atmosphere", "ring"]) expect(src).toContain(`renderOrder={BODY_RENDER_ORDER.${k}}`);
+    for (const k of ["limb", "atmosphere"]) expect(src).toContain(`renderOrder={BODY_RENDER_ORDER.${k}}`);
+    expect(src).toContain("makeBodyRing(b, m, BODY_RENDER_ORDER.ring)");
   });
 });
 
 describe("what SolarBodies draws", () => {
-  it("draws Saturn's rings only: Earth's fictional ring is gone (spec §5.5)", () => {
-    expect(src).toMatch(/b\.look\.rings === "saturn" && \(/);
+  it("draws the rings Saturn and Uranus have, in their pole frames; Earth's fictional ring is gone (spec §5.5, L14)", () => {
+    expect(src).toMatch(/\{rings\[i\] && <primitive object=\{rings\[i\]\}/);
+    // The ring sits inside the pole-frame group (fixed in space, +Y on the pole).
+    const frame = src.slice(src.indexOf("<group quaternion={poleQuaternions[i]}>"));
+    expect(frame.indexOf("rings[i]")).toBeGreaterThan(0);
+    expect(frame.indexOf("rings[i]")).toBeLessThan(frame.indexOf("</group>"));
     expect(src).not.toMatch(/PlanetRing_|ruangrapi_ring/);
   });
 

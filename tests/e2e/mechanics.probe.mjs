@@ -332,15 +332,20 @@ async function eclipses(page, checks) {
   const darkV = await sunVis();
   checks.check("the ship goes dark in Earth's umbra", dark.ok, `sunVis=${darkV}`);
   await place(1);
-  // Beside Earth, only the other bodies can cover the sun. On the pinned date
-  // (2026-10-20) Venus is four days from inferior conjunction and covers part
-  // of the drawn (enlarged) Sun from Earth's neighbourhood, so the expectation
-  // is the CPU sunVisibility against every body but Earth, not a bare 1.
+  // Beside Earth, only the other bodies and the moons can cover the sun. On
+  // the pinned date (2026-10-20) Venus is four days from inferior conjunction
+  // and covers part of the drawn (enlarged) Sun from Earth's neighbourhood, so
+  // the expectation is the CPU sunVisibility against every body but Earth and
+  // every moon (the ship reads them all, sunShadow.ts allOccluders), not a bare 1.
   const besideRead = () => page.evaluate(async () => {
     const { SOLAR_BODIES } = await import("/src/data/solarSystem.ts");
+    const { SOLAR_MOONS } = await import("/src/data/solarMoons.ts");
     const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
     const { SUN_RADIUS } = await import("/src/constants.ts");
-    const occ = SOLAR_BODIES.filter((b) => b.id !== "earth").map((b) => ({ ...window.__fitz.bodies[b.id], r: b.size }));
+    const occ = [
+      ...SOLAR_BODIES.filter((b) => b.id !== "earth").map((b) => ({ ...window.__fitz.bodies[b.id], r: b.size })),
+      ...SOLAR_MOONS.map((m) => ({ ...window.__fitz.moons[m.id], r: m.size })),
+    ];
     return { got: window.__fitz.shipShadow.sunVis.value, want: sunVisibility(window.__fitz.flight, occ, SUN_RADIUS) };
   });
   let beside = await besideRead();
@@ -350,11 +355,118 @@ async function eclipses(page, checks) {
   checks.check("...and is lit beside it, Earth no longer in the way", lit.ok && besideWant > 0.9,
     `sunVis=${litV}, other bodies leave ${besideWant.toFixed(3)}`);
 
-  // The ring-in-umbra pixel check measured Earth's fictional ring, which is
-  // gone (Task 6). Saturn's rings take it back once their normal is Saturn's
-  // pole (Task 15): under the interim tilt the Sun can sit in their plane, so
-  // a sunlit reference read is not reliable yet. tests/ringShadow.test.ts
-  // keeps the shading maths covered.
+  // Saturn's rings darken where they pass through Saturn's umbra (L20).
+  // Measured on the GPU: right after the ring draws, the same 7x7 pixels are
+  // read with the ring's shadow on and then forced off (uNightFloor = 1), from
+  // above a ring point seen against empty space, with the ship hidden.
+  // Comparing one pixel block with itself cancels the ring's banding and the
+  // background, which a sunlit-vs-umbra comparison of two places would not.
+  // On the pinned date the Sun is a few degrees above the rings, so the umbra
+  // lies across them behind the planet.
+  const umbra = await ringShade(page, true);
+  checks.check("Saturn's ring goes dark in Saturn's umbra",
+    umbra.ok && umbra.ratio < 0.5, JSON.stringify(umbra));
+  const sunlit = await ringShade(page, false);
+  checks.check("...and keeps full brightness in sunlight",
+    sunlit.ok && sunlit.ratio > 0.9, JSON.stringify(sunlit));
+}
+
+/**
+ * Parks the camera 30u above a point of Saturn's ring (the B ring's core) that
+ * is in the planet's umbra (`dark`) or in full sun, on the ring's sunward
+ * face, then reads the ring's own pixels with its shadow on and forced off.
+ * Returns { ok, ratio = on / off, ... }. The PostFX buffer holds light
+ * before the exposure, so its readings are scaled by it.
+ */
+async function ringShade(page, dark) {
+  const setup = await page.evaluate(async (wantDark) => {
+    const f = window.__fitz;
+    const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
+    const { SUN_RADIUS } = await import("/src/constants.ts");
+    const { bodySlot } = await import("/src/components/canvas/sunShadow.ts");
+    const ring = f.scene.getObjectByName("BodyRing_saturn");
+    if (!ring) return { ok: false, why: "no ring" };
+    const V3 = f.camera.position.constructor;
+    const occ = f.sunShadow.uOccluders.value;
+    const s = occ[bodySlot("saturn")];
+    const planet = { x: s.x, y: s.y, z: s.z, r: s.w };
+    ring.updateWorldMatrix(true, false);
+    const { innerRadius: ri, outerRadius: ro } = ring.geometry.parameters;
+    // Mid-strip, 1.755 R: the B ring's opaque core (τ 2.5-5), so almost none
+    // of the bright sky behind it (Saturn's exposure) shows through.
+    const R = ri + 0.5 * (ro - ri);
+    const n = new V3(0, 0, 1).transformDirection(ring.matrixWorld);
+    const centre = new V3(planet.x, planet.y, planet.z);
+    if (n.dot(centre.clone().negate()) < 0) n.negate(); // the sunward face
+    const clear = (a, b) => {
+      const ab = b.clone().sub(a);
+      for (let i = 0; i < f.sunShadow.uOccluderCount.value; i++) {
+        const o = occ[i];
+        if (o.w <= 0) continue;
+        const c = new V3(o.x, o.y, o.z);
+        const t = Math.max(0, Math.min(1, c.clone().sub(a).dot(ab) / ab.lengthSq()));
+        if (a.clone().addScaledVector(ab, t).distanceTo(c) < o.w * 1.1 + 1) return false;
+      }
+      return true;
+    };
+    for (let deg = 0; deg < 360; deg += 3) {
+      const phi = (deg * Math.PI) / 180;
+      const pt = new V3(R * Math.cos(phi), R * Math.sin(phi), 0).applyMatrix4(ring.matrixWorld);
+      const vis = sunVisibility(pt, [planet], SUN_RADIUS);
+      if (wantDark ? vis > 0 : vis < 1) continue;
+      const cam = pt.clone().addScaledVector(n, 30);
+      if (!clear(cam, pt) || !clear(pt, pt.clone().addScaledVector(n, -400))) continue;
+      // Ship 4.6 ahead of the camera along the view direction (the chase cam
+      // sits 4.6 behind and 1.8 above it), nose at the point.
+      const nose = pt.clone().sub(cam).normalize();
+      const ship = cam.clone().addScaledVector(nose, 4.6);
+      ship.y -= 1.8;
+      f.teleport(ship.x, ship.y, ship.z);
+      f.setAttitude(Math.atan2(nose.x, nose.z), Math.asin(nose.y));
+      window.__ringPt = pt;
+      window.__ringCam = cam;
+      return { ok: true, deg, vis, sunElevDeg: +(Math.asin(Math.abs(n.dot(centre.clone().negate().normalize()))) * 180 / Math.PI).toFixed(2) };
+    }
+    return { ok: false, why: "no clear ring point" };
+  }, dark);
+  if (!setup.ok) return setup;
+  // The chase camera eases in; wait until it is parked above the point.
+  const parked = await pollUntil(() => page.evaluate(() => window.__fitz.camera.position.distanceTo(window.__ringCam) < 1),
+    { timeoutMs: 120_000, intervalMs: 500 });
+  if (!parked.ok) return { ok: false, why: "camera never parked", ...setup };
+  const read = (floor) => page.evaluate((fl) => new Promise((resolve) => {
+    const f = window.__fitz;
+    const ring = f.scene.getObjectByName("BodyRing_saturn");
+    const hull = [];
+    f.scene.traverse((o) => { if (o.isMesh && f.shipShadow.materials.includes(o.material) && o.visible) hull.push(o); });
+    for (const o of hull) o.visible = false;
+    const u = ring.material.uniforms.uNightFloor;
+    const keep = u.value;
+    if (fl !== null) u.value = fl;
+    let draws = 0;
+    ring.onAfterRender = (renderer, _scene, camera) => {
+      if (++draws < 2) return;
+      ring.onAfterRender = () => {};
+      u.value = keep;
+      for (const o of hull) o.visible = true;
+      const ctx = renderer.getContext();
+      const rt = renderer.getRenderTarget();
+      const W = rt ? rt.width : ctx.drawingBufferWidth, H = rt ? rt.height : ctx.drawingBufferHeight;
+      const v = window.__ringPt.clone().project(camera);
+      const cx = Math.round(((v.x + 1) / 2) * W), cy = Math.round(((v.y + 1) / 2) * H);
+      const S = 7, float = !!rt && rt.texture.type !== 1009;
+      const buf = float ? new Float32Array(S * S * 4) : new Uint8Array(S * S * 4);
+      ctx.readPixels(cx - 3, cy - 3, S, S, ctx.RGBA, float ? ctx.FLOAT : ctx.UNSIGNED_BYTE, buf);
+      let sum = 0;
+      for (let i = 0; i < S * S; i++) sum += buf[i * 4] + buf[i * 4 + 1] + buf[i * 4 + 2];
+      const scale = float ? renderer.toneMappingExposure : 1 / 255;
+      resolve({ lum: (sum / (S * S)) * scale, onScreen: Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 && v.z < 1 });
+    };
+  }), floor);
+  const on = await read(null);
+  const off = await read(1);
+  const ratio = off.lum > 0 ? on.lum / off.lum : NaN;
+  return { ok: on.onScreen && off.lum > 0.005, ratio: Number(ratio.toFixed(3)), on: Number(on.lum.toFixed(4)), off: Number(off.lum.toFixed(4)), ...setup };
 }
 
 export default async function run() {

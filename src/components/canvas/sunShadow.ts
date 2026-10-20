@@ -38,7 +38,7 @@ export const MAX_OCCLUDERS = 16;
  * for receivers: a planet takes its moons' shadows, a moon its parent's and
  * its siblings', a ring its planet's. Mercury, Venus and Ceres have no moon
  * or ring, and at their sizes their shadows never reach another body, so they
- * shadow only on the CPU (the ship and the sun's glare, from `bodies`).
+ * shadow only on the CPU (the ship and the sun's glare, through allOccluders).
  */
 const SLOTTED_BODIES: readonly BodyId[] = SOLAR_BODIES
   .filter((b) => b.look.rings !== undefined || SOLAR_MOONS.some((m) => m.parent === b.id))
@@ -105,6 +105,34 @@ export const sunShadowDebug = { countOverride: -1 };
  * r = 0, which covers nothing.
  */
 export const occluders: readonly Occluder[] = Array.from({ length: MAX_OCCLUDERS }, () => ({ x: 0, y: 0, z: 0, r: 0 }));
+
+/**
+ * The bodies with no GPU slot (Mercury, Venus, Ceres): they shadow nothing the
+ * GPU draws, but they can hide the sun from the ship and the camera.
+ */
+export const CPU_ONLY_BODIES: readonly BodyId[] = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0).map((b) => b.id);
+
+/** CPU_ONLY_BODIES' occluders, in that order, at their equatorial sizes; utils/bodyPositions.ts updateBodies writes them. */
+const cpuOnlyOccluders: Occluder[] = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0).map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
+
+/**
+ * Everything that can hide the sun, for the CPU's tests: the GPU slots (the
+ * same objects as `occluders`: the bodies with a moon or a ring, and the nine
+ * moons), then the CPU-only bodies. The ship's shadow (Spaceship) and the
+ * sun's glare (Sun.tsx) both read it with `sunVisibility`.
+ */
+export const allOccluders: readonly Occluder[] = [...occluders, ...cpuOnlyOccluders];
+
+/** Body `id`'s index in CPU_ONLY_BODIES, or -1 when it holds a GPU slot. */
+export function cpuOnlyIndex(id: BodyId): number {
+  return CPU_ONLY_BODIES.indexOf(id);
+}
+
+/** Writes CPU-only occluder `k` (CPU_ONLY_BODIES order) in place. Frame loops call this; it allocates nothing. */
+export function setCpuOnlyOccluder(k: number, x: number, y: number, z: number): void {
+  const o = cpuOnlyOccluders[k];
+  o.x = x; o.y = y; o.z = z;
+}
 
 /** Writes occluder slot `i` in place, GPU and CPU. Frame loops call this; it allocates nothing. */
 export function setOccluder(i: number, x: number, y: number, z: number, r: number): void {

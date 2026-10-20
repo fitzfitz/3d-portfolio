@@ -1,6 +1,6 @@
 import { PLAYER_SHIP_SCALE } from "../constants";
 import { SOLAR_BODIES, type SolarBody } from "../data/solarSystem";
-import { moonReach, SOLAR_MOONS } from "../data/solarMoons";
+import { moonReach, SOLAR_MOONS, type SolarMoon } from "../data/solarMoons";
 import type { Vec3 } from "./reactions";
 
 /**
@@ -71,6 +71,11 @@ export function bodyCameraRadius(b: SolarBody): number {
   return b.size * (b.look.atmosphere?.thickness ?? 1) + CAMERA_CLEARANCE;
 }
 
+/** As bodyCameraRadius for a moon: its reach, out to its haze shell (Titan's), plus CAMERA_CLEARANCE. */
+export function moonCameraRadius(m: SolarMoon): number {
+  return moonReach(m) * (m.look?.atmosphere?.thickness ?? 1) + CAMERA_CLEARANCE;
+}
+
 /** A body the ship cannot fly through: its `bodies` key, its equatorial size, and how close the camera may come to its centre. */
 export interface SolidBody { readonly id: string; readonly size: number; readonly cameraR: number }
 
@@ -78,12 +83,12 @@ export interface SolidBody { readonly id: string; readonly size: number; readonl
  * Every solid body: the nine bodies keyed as in `bodies` (project probes spec
  * §4.4), with bodyCameraRadius, then the nine moons keyed as in
  * `moonPositions` (store/moonState.ts), at their reach (moonReach: a sphere
- * moon's size, Phobos's and Deimos's shape tips) with CAMERA_CLEARANCE past
- * it. Saturn's rings are fly-through.
+ * moon's size, Phobos's and Deimos's shape tips), the camera kept out to
+ * moonCameraRadius (Titan's haze shell). Saturn's and Uranus's rings are fly-through.
  */
 export const SOLID_BODIES: readonly SolidBody[] = [
   ...SOLAR_BODIES.map((b) => ({ id: b.id, size: b.size, cameraR: bodyCameraRadius(b) })),
-  ...SOLAR_MOONS.map((m) => ({ id: m.id, size: moonReach(m), cameraR: moonReach(m) + CAMERA_CLEARANCE })),
+  ...SOLAR_MOONS.map((m) => ({ id: m.id, size: moonReach(m), cameraR: moonCameraRadius(m) })),
 ];
 
 /**

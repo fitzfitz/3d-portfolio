@@ -480,3 +480,16 @@ so they add no draw call to any measured state and up to 4 (3 plumes + 1 flare) 
 `probes.probe.mjs` now asserts the burn compiles no program (58 -> 58). Full run after the
 change: deep space 36 / 258,764 / 58, modal open 49, 40 anomalies 59 programs, beam on 37
 calls, and the `programs.probe.mjs` tour still adds 0 in both tiers. Ceilings changed: none.
+
+**Rings, rims and glow (real Solar System Task 15, 2026-10-20).** Uranus's epsilon ring
+draws Saturn's ring program (the strip, slot and colour are uniforms) inside a LOD that
+empties once its 0.02 R width is under a pixel, so it costs a draw call only near Uranus.
+Titan's haze rim is the bodies' `Atmosphere` program (+1 draw call and +1,104 triangles
+where Titan is in frame); Io's glow shares Earth's night-lights program (one compile hook).
+Transition probe on the M5, base 9e7a1ca -> change, same machine and session: deep space
+42 -> 42 calls, facing the sun 136 -> 136, ringed giant 48 -> 49 (ceiling 50: Titan's rim;
+triangles 280,386 -> 281,490), close approach 90 -> 87 and 97 in two runs (the chase camera
+is still easing in when it is read, so this state varies run to run), modal 56 -> 55 and 51;
+programs 56 in every
+state, the `programs.probe.mjs` tour adds 0 in both tiers. Ceilings changed: none. The
+ringed-giant state now has one draw call of headroom.

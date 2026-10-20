@@ -180,8 +180,9 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * against that one occluder slot (the uniform `uRingSlot`), from 1 in full sun
  * down to RING_NIGHT_FLOOR in the umbra.
  *
- * Every ring is scaled by `uIrradiance`, the sunlight at its orbit as a
- * fraction of 1 AU's (irradianceVsAU, L19), written each frame from the planet's live distance.
+ * Every ring is scaled by `uIrradiance`, the sunlight at its planet as a
+ * fraction of 1 AU's (ringOptics.ts ringIrradiance, L19), written each frame
+ * from the planet's live distance (bodyRings.ts, SolarBodies).
  *
  * With a ring map (`RING_MAP`, Saturn's rings, L14) the procedural
  * bands give way to a measured radial profile: a strip whose RGB is the
@@ -317,7 +318,7 @@ export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
 export interface PlanetRingOptions {
   /** The radial strip (RGB colour, A = τ / RING_TAU_MAX); turns on RING_MAP. */
   ringMap?: THREE.Texture;
-  /** Sunlight at the ring's orbit as a fraction of 1 AU's (irradianceVsAU). Default 1. */
+  /** Sunlight at the ring as a fraction of 1 AU's (ringOptics.ts ringIrradiance). Default 1. */
   irradiance?: number;
 }
 
