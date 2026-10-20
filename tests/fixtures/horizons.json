@@ -1,0 +1,186 @@
+{
+  "source": "JPL Horizons API, fetched 2026-10-20",
+  "frame": "heliocentric (CENTER=@10) ecliptic J2000, AU",
+  "vectors": [
+    {
+      "body": "mercury",
+      "command": "199",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27199%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.3326919101902536,
+      "y": -0.2160138866998702,
+      "z": -0.04816682887098727
+    },
+    {
+      "body": "mercury",
+      "command": "199",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27199%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.2387416045804995,
+      "y": -0.3565573467721776,
+      "z": -0.05102537864026348
+    },
+    {
+      "body": "venus",
+      "command": "299",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27299%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.662719487765875,
+      "y": 0.2915111169889648,
+      "z": -0.03423222634924485
+    },
+    {
+      "body": "venus",
+      "command": "299",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27299%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.6875297939410026,
+      "y": 0.2278299451942747,
+      "z": -0.03645142369161136
+    },
+    {
+      "body": "earth",
+      "command": "3",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%273%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.8932679672296114,
+      "y": 0.4404065955650375,
+      "z": -3.231766259168711e-05
+    },
+    {
+      "body": "earth",
+      "command": "3",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%273%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -0.1574347093273749,
+      "y": 0.9706900209623327,
+      "z": -0.0002176447797994902
+    },
+    {
+      "body": "mars",
+      "command": "499",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27499%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -0.1282525986940871,
+      "y": 1.57532772083272,
+      "z": 0.03615785354140626
+    },
+    {
+      "body": "mars",
+      "command": "499",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27499%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.6096557738716314,
+      "y": 1.380752260077868,
+      "z": 0.0141235799351885
+    },
+    {
+      "body": "jupiter",
+      "command": "599",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27599%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -3.598940226724914,
+      "y": 3.907982657114155,
+      "z": 0.06428773786635962
+    },
+    {
+      "body": "jupiter",
+      "command": "599",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27599%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -5.373760304528921,
+      "y": -0.9084799102285207,
+      "z": 0.1238877644450175
+    },
+    {
+      "body": "saturn",
+      "command": "699",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27699%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 9.232821325426142,
+      "y": 1.870436734252046,
+      "z": -0.4000967050453036
+    },
+    {
+      "body": "saturn",
+      "command": "699",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27699%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -9.153087247698588,
+      "y": -3.078992753104979,
+      "z": 0.4182399691810392
+    },
+    {
+      "body": "uranus",
+      "command": "799",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27799%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 8.863627500792688,
+      "y": 17.29921207165838,
+      "z": -0.05067916965102448
+    },
+    {
+      "body": "uranus",
+      "command": "799",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27799%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 18.86505817234219,
+      "y": 6.548936230922684,
+      "z": -0.2196576362155045
+    },
+    {
+      "body": "neptune",
+      "command": "899",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27899%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 29.83425758261653,
+      "y": 1.440035169290048,
+      "z": -0.7171769470128977
+    },
+    {
+      "body": "neptune",
+      "command": "899",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%27899%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": -29.05922741901618,
+      "y": 8.235187480545719,
+      "z": 0.5001933984409804
+    },
+    {
+      "body": "ceres",
+      "command": "1;",
+      "epoch": "2026-10-20T00:00 TDB",
+      "jd_tdb": 2461333.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%271%3B%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272461333.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 0.08103550256462683,
+      "y": 2.656802852728652,
+      "z": 0.06917951356891207
+    },
+    {
+      "body": "ceres",
+      "command": "1;",
+      "epoch": "2100-01-01T00:00 TDB",
+      "jd_tdb": 2488069.5,
+      "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=%271%3B%27&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=%27%4010%27&REF_PLANE=ECLIPTIC&REF_SYSTEM=J2000&OUT_UNITS=AU-D&VEC_TABLE=1&TLIST=%272488069.5%27&TIME_TYPE=TDB&CSV_FORMAT=NO",
+      "x": 1.716868948812041,
+      "y": 2.199900564300181,
+      "z": -0.2369326860286655
+    }
+  ]
+}
