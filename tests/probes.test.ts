@@ -7,7 +7,8 @@ import { PLANETS_AND_WORLDS } from "../src/data/worlds";
 import { orbitPosition } from "../src/utils/orbits";
 import { PROBES, PROBE_IDS, PROBE_RADIUS } from "../src/data/probes";
 import {
-  loadProbeSpots, nextSpot, spotPos, RELOCATE_S, relocationTravel, beaconLevel,
+  loadProbeSpots, nextSpot, spotPos, RELOCATE_S, RELOCATE_DIST, relocationTravel, beaconLevel,
+  POP_FADE_S, ARRIVE_S, relocationScale, arrivalScale, burnPlume,
 } from "../src/utils/probes";
 
 const S = [SPAWN.x, SPAWN.y, SPAWN.z] as const;
@@ -105,9 +106,10 @@ describe("loadProbeSpots", () => {
 });
 
 describe("relocationTravel", () => {
-  it("is 0 at 0, 60 at RELOCATE_S, monotonic and accelerating", () => {
+  it("is 0 at 0, RELOCATE_DIST (90) at RELOCATE_S, monotonic and accelerating", () => {
     expect(relocationTravel(0)).toBe(0);
-    expect(Math.abs(relocationTravel(RELOCATE_S) - 60)).toBeLessThan(1e-9);
+    expect(RELOCATE_DIST).toBe(90);
+    expect(Math.abs(relocationTravel(RELOCATE_S) - RELOCATE_DIST)).toBeLessThan(1e-9);
     let prev = 0;
     for (let i = 1; i <= 100; i++) {
       const v = relocationTravel((i / 100) * RELOCATE_S);
@@ -119,6 +121,38 @@ describe("relocationTravel", () => {
       const second = relocationTravel(t + h) - 2 * relocationTravel(t) + relocationTravel(t - h);
       expect(second).toBeGreaterThan(0);
     }
+  });
+});
+
+// Final review (spec §4.2 call 6): the probe dwindles out before the snap, so
+// the pop to its new spot never shows a full-size probe vanishing.
+describe("relocationScale / arrivalScale / burnPlume", () => {
+  it("holds full size until the last POP_FADE_S, then eases to 0 at the snap", () => {
+    expect(POP_FADE_S).toBeGreaterThanOrEqual(0.25);
+    expect(POP_FADE_S).toBeLessThanOrEqual(0.5);
+    expect(relocationScale(0)).toBe(1);
+    expect(relocationScale(RELOCATE_S - POP_FADE_S)).toBe(1);
+    expect(relocationScale(RELOCATE_S - POP_FADE_S / 2)).toBeCloseTo(0.5, 6);
+    expect(relocationScale(RELOCATE_S)).toBe(0);
+    let prev = 1;
+    for (let t = 0; t <= RELOCATE_S; t += 0.01) {
+      const v = relocationScale(t);
+      expect(v).toBeLessThanOrEqual(prev + 1e-12);
+      prev = v;
+    }
+  });
+  it("grows a relocated probe back in over ARRIVE_S; instantly under reduced motion", () => {
+    expect(arrivalScale(0, false)).toBe(0);
+    expect(arrivalScale(ARRIVE_S / 2, false)).toBeCloseTo(0.5, 6);
+    expect(arrivalScale(ARRIVE_S, false)).toBe(1);
+    expect(arrivalScale(0, true)).toBe(1);
+  });
+  it("lights the plume just after the close, holds it, and dies with the probe", () => {
+    expect(burnPlume(0)).toBe(0);
+    expect(burnPlume(0.5)).toBe(1);
+    expect(burnPlume(1.5)).toBe(1);
+    expect(burnPlume(RELOCATE_S)).toBe(0);
+    for (let t = 0; t <= RELOCATE_S; t += 0.01) expect(burnPlume(t)).toBeLessThanOrEqual(relocationScale(t));
   });
 });
 

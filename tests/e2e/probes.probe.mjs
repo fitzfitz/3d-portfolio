@@ -136,11 +136,19 @@ async function grabAndRelocate(page, checks) {
     };
     requestAnimationFrame(step);
   }, ID, next);
+  const progBefore = await page.evaluate(() => window.__fitz.gl.info.programs.length);
   await page.keyboard.press("Escape");
   await page.keyboard.down("KeyF");
   let reopened = false;
+  let plumeSeen = false;
   const settled = await pollUntil(async () => {
     reopened = reopened || (await readStore(page)).openDossier !== null;
+    plumeSeen = plumeSeen || await page.evaluate(() => {
+      const sc = window.__fitz.scene, f = sc.getObjectByName("ProbeBurnFlare");
+      let plume = false;
+      sc.traverse((o) => { if (o.name === "ProbeBurnPlume" && o.visible) plume = true; });
+      return plume && !!f?.visible;
+    });
     return page.evaluate(() => window.__relocRec.tSettled !== null);
   }, { timeoutMs: (RELOCATE_S + 6) * 1000, intervalMs: 100 });
   await page.keyboard.up("KeyF");
@@ -153,6 +161,10 @@ async function grabAndRelocate(page, checks) {
     `took ${took.toFixed(2)} s over ${rec.moving} moving frames, now ${fmt(await probeAt(page, ID))} want ${fmt(next)}`);
   checks.check("the relocation is a visible burn, not a jump cut", rec.moving > 5, `moving frames=${rec.moving}`);
   checks.check("F held through the burn grabs nothing (a relocating probe cannot be taken)", !reopened);
+  const progAfter = await page.evaluate(() => window.__fitz.gl.info.programs.length);
+  checks.check("the burn shows its plume and nozzle flare", plumeSeen);
+  checks.check("the burn's plume and flare compile no new shader program (they share the ship plume's and sparks')",
+    progAfter === progBefore, `${progBefore} -> ${progAfter}`);
   const line = rec.line ?? "";
   // The radio types 22 ms a character: wait for the line to show.
   const typed = await pollUntil(async () => ((await chatterText(page)) ?? "").includes("PROBE RELOCATING"), { timeoutMs: 3000, intervalMs: 100 });
@@ -274,6 +286,33 @@ async function jumpUnderDossier(page, checks) {
 }
 
 /**
+ * Key 1 pressed during probe 1's relocation burn (final review): the jump
+ * must aim at the spot the probe is about to snap to, not at its live
+ * mid-burn position, which the probe leaves 150-420 u behind when it snaps.
+ */
+async function jumpDuringBurn(page, checks) {
+  const got = await grabProbe(page, ID);
+  checks.check("jump during the burn: probe 1's dossier is open (precondition)", got.ok);
+  if (!got.ok) return;
+  const next = await spot(page, ID, 1);
+  await page.keyboard.press("Escape");
+  const burning = await pollUntil(() => probeRelocating(page, ID), { timeoutMs: 3000, intervalMs: 20 });
+  await page.evaluate(() => document.activeElement?.blur?.());
+  await page.keyboard.press("Digit1");
+  const pressedMidBurn = await probeRelocating(page, ID);
+  checks.check("jump during the burn: key 1 is pressed while probe 1 is still burning (precondition)", burning.ok && pressedMidBurn);
+  // Let the burn finish and the probe snap, then measure from its final spot.
+  await pollUntil(async () => !(await probeRelocating(page, ID)), { timeoutMs: 10_000, intervalMs: 100 });
+  await settle(page, 500);
+  const r = await page.evaluate((t) => {
+    const f = window.__fitz.flight, p = window.__fitz.probes.ruangrapi;
+    return { toSpot: Math.hypot(f.x - t[0], f.y - t[1], f.z - t[2]), probeAtSpot: Math.hypot(p.x - t[0], p.y - t[1], p.z - t[2]) };
+  }, next);
+  checks.check("jump during the burn: the ship ends within 30 u of probe 1's final spot",
+    r.toSpot <= 30 && r.probeAtSpot < 1e-3, `ship to spot 1 = ${r.toSpot.toFixed(1)} u, probe off its spot by ${r.probeAtSpot.toFixed(3)} u`);
+}
+
+/**
  * The last unread dossier closed by the classic-CV round trip: no burn plays
  * (the remounted canvas snaps the probe to its spot), so no relocation line
  * goes out; the next-stop hint must still arrive once the cabin is back.
@@ -305,6 +344,7 @@ export default async function run() {
     ["probes: reduced motion", reducedMotion, { emulateReducedMotion: true }],
     ["probes: photo mode", photoMode, {}],
     ["probes: jump key under an open dossier", jumpUnderDossier, {}],
+    ["probes: jump key during the relocation burn", jumpDuringBurn, {}],
     ["probes: classic-CV round trip on the last dossier", classicRoundTrip, { initScript: seedTwoRead }],
   ]) {
     const c = await withPage({ label, ...opts }, fn);

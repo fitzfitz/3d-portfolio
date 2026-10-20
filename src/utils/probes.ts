@@ -1,6 +1,7 @@
-import { PROBES, type ProbeDef, type Vec3T } from "../data/probes";
+import { PROBES, PROBE_IDS, type ProbeDef, type Vec3T } from "../data/probes";
 import { BEAM_RANGE, inCone } from "./tractorBeam";
 import { worldToRadar } from "./radarTransform";
+import { nextWaypoint } from "./navigation";
 
 /**
  * Pure probe logic (docs: project probes design). A probe's "spot" is where
@@ -30,13 +31,54 @@ export function spotPos(def: ProbeDef, spot: number): Vec3T {
 
 /** Seconds a closed probe's burn lasts before it vanishes. */
 export const RELOCATE_S = 2.5;
-/** Distance flown along the burn direction over the whole burn. */
-const RELOCATE_DIST = 60;
+/**
+ * Distance flown along the burn direction over the whole burn. Far enough
+ * that the probe has dwindled to a spark (or left the frame) before it
+ * dwindles out for good (relocationScale) and snaps to its new spot.
+ */
+export const RELOCATE_DIST = 90;
 
 /** Distance flown after t seconds: ease-in (quadratic), 0 at 0, RELOCATE_DIST at RELOCATE_S. */
 export function relocationTravel(t: number): number {
   const k = Math.min(Math.max(t / RELOCATE_S, 0), 1);
   return RELOCATE_DIST * k * k;
+}
+
+const smooth01 = (k: number): number => {
+  const c = Math.min(Math.max(k, 0), 1);
+  return c * c * (3 - 2 * c);
+};
+
+/** Seconds at the end of the burn over which the probe shrinks away before the snap. */
+export const POP_FADE_S = 0.35;
+/** Seconds a relocated probe takes to grow back in at its new spot. */
+export const ARRIVE_S = 0.6;
+
+/**
+ * The burning probe's scale at burn time t: 1, then eased down to 0 over the
+ * last POP_FADE_S, so the snap to the new spot (spec §4.2 call 6: "pops to
+ * the final spot outside view") never shows a probe vanishing at full size.
+ */
+export function relocationScale(t: number): number {
+  return 1 - smooth01((t - (RELOCATE_S - POP_FADE_S)) / POP_FADE_S);
+}
+
+/** A relocated probe's scale `t` seconds after the snap: eased 0 to 1 over ARRIVE_S; 1 under reduced motion. */
+export function arrivalScale(t: number, reducedMotion: boolean): number {
+  return reducedMotion ? 1 : smooth01(t / ARRIVE_S);
+}
+
+/** Burn seconds at which the main engine lights (the dish is still swinging onto the burn line). */
+const PLUME_IGNITE_S = 0.12;
+/** Burn seconds the plume takes to reach full length. */
+const PLUME_RISE_S = 0.35;
+
+/**
+ * The relocation plume's level (0..1) at burn time t: lights just after the
+ * close, rises over PLUME_RISE_S, holds, and shrinks with the probe at the end.
+ */
+export function burnPlume(t: number): number {
+  return smooth01((t - PLUME_IGNITE_S) / PLUME_RISE_S) * relocationScale(t);
 }
 
 /** Beacon pulse frequency (Hz): well under the 3 Hz flash limit. */
@@ -55,11 +97,48 @@ export function relocationDone(elapsed: number, reducedMotion: boolean): boolean
   return reducedMotion || elapsed >= RELOCATE_S;
 }
 
-/** A released probe drifts back to its spot at this speed (u/s). */
-export const PROBE_DRIFT_SPEED = 2;
-
 type PosMap = Readonly<Record<string, { x: number; y: number; z: number }>>;
 type FlagMap = Readonly<Record<string, boolean>>;
+type Vec3Out = { x: number; y: number; z: number };
+
+/**
+ * Where a jump to probe `id` should aim, written into `out`; false for an
+ * unknown id. A probe mid-burn is about to snap to its next spot (the close
+ * already advanced `spots`), so the jump targets that final spot rather than
+ * the live mid-burn position, which would leave the ship in empty space.
+ * Allocation-free.
+ */
+export function probeJumpTarget(id: string, pos: PosMap, relocating: FlagMap, spots: Readonly<Record<string, number>>, out: Vec3Out): boolean {
+  for (let i = 0; i < PROBES.length; i++) {
+    const def = PROBES[i];
+    if (def.id !== id) continue;
+    const p = pos[id];
+    if (relocating[id] || !p) {
+      const s = spotPos(def, spots[id] ?? 0);
+      out.x = s[0]; out.y = s[1]; out.z = s[2];
+    } else {
+      out.x = p.x; out.y = p.y; out.z = p.z;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * What the parked ship's pre-flight auto-aim faces, written into `out`: the
+ * probe the waypoint picks (the nearest unread one, nextWaypoint over
+ * PROBE_IDS), or probe 1's home once every dossier is read.
+ */
+export function spawnAimPoint(ship: Vec3Out, pos: PosMap, visited: readonly string[], out: Vec3Out): void {
+  const id = nextWaypoint(ship, PROBE_IDS, pos as Record<string, Vec3Out>, visited, "");
+  const p = id ? pos[id] : undefined;
+  if (p) { out.x = p.x; out.y = p.y; out.z = p.z; return; }
+  const h = PROBES[0].home;
+  out.x = h[0]; out.y = h[1]; out.z = h[2];
+}
+
+/** A released probe drifts back to its spot at this speed (u/s). */
+export const PROBE_DRIFT_SPEED = 2;
 
 /**
  * The probe the beam takes this frame: the nearest one inside the cone
@@ -179,21 +258,27 @@ export function burnDirection(ax: number, ay: number, az: number, i: number, out
   out.x /= ol; out.y /= ol; out.z /= ol;
 }
 
-/** What the HUD pickup tip says: the beam would take a probe, it is near but out of the cone, or out of reach. */
-export type ProbeTip = "grab" | "turn" | "closer" | null;
+/**
+ * What the HUD pickup tip says: the beam would take a probe, the probe is in
+ * the cone but tethered pebbles hold every beam slot, it is near but out of
+ * the cone, or out of reach.
+ */
+export type ProbeTip = "grab" | "full" | "turn" | "closer" | null;
 
 /**
  * The tip for `near` (the nearest probe in PROBE_IN_RANGE, or null), from
- * the beam's origin and unit direction: "grab" only when grabbableProbe
- * would select a probe this frame, "turn" inside BEAM_RANGE but outside the
- * cone, "closer" beyond it.
+ * the beam's origin and unit direction. `slots` is the beam budget left
+ * after tethered pebbles (BEAM_MAX_TARGETS - tetherCount(), TractorBeam's
+ * `budget`). "grab" only when TractorBeam would select a probe this frame
+ * (grabbableProbe, and a free slot), "full" when it is in the cone with no
+ * slot free, "turn" inside BEAM_RANGE but outside the cone, "closer" beyond it.
  */
 export function probeTip(
   ox: number, oy: number, oz: number, dx: number, dy: number, dz: number,
-  pos: PosMap, relocating: FlagMap, near: string | null,
+  pos: PosMap, relocating: FlagMap, near: string | null, slots: number,
 ): ProbeTip {
   if (near === null) return null;
-  if (grabbableProbe(ox, oy, oz, dx, dy, dz, pos, relocating) !== null) return "grab";
+  if (grabbableProbe(ox, oy, oz, dx, dy, dz, pos, relocating) !== null) return slots > 0 ? "grab" : "full";
   const p = pos[near];
   if (!p) return null;
   return Math.hypot(p.x - ox, p.y - oy, p.z - oz) <= BEAM_RANGE ? "turn" : "closer";
@@ -202,6 +287,7 @@ export function probeTip(
 export function probeTipText(tip: ProbeTip, pad: boolean, coarse: boolean): string | null {
   switch (tip) {
     case "grab": return `PROBE IN RANGE // HOLD ${pad ? "LB" : coarse ? "BEAM" : "F"} TO GRAB`;
+    case "full": return "PROBE IN RANGE // BEAM FULL OF ROCK, KEEP HOLDING";
     case "turn": return "PROBE NEARBY // TURN TOWARD IT";
     case "closer": return "PROBE NEARBY // FLY CLOSER";
     default: return null;

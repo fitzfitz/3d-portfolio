@@ -3,7 +3,7 @@ import { PROBE_IDS } from "../src/data/probes";
 import { BEAM_RANGE } from "../src/utils/tractorBeam";
 import {
   grabbableProbe, nearestProbe, relocationDone, relocationLine, rcsPuff, relocationSettled, spotPos,
-  burnDirection, probeTip, probeTipText, trimTone,
+  burnDirection, probeTip, probeTipText, trimTone, probeJumpTarget, spawnAimPoint,
   RELOCATE_S, RCS_PERIOD_S, TRIM_DESAT,
 } from "../src/utils/probes";
 import { PROBES } from "../src/data/probes";
@@ -198,17 +198,22 @@ describe("burnDirection", () => {
 // Task 12 (R13): the tip only says HOLD F when the beam would take the probe.
 describe("probeTip", () => {
   it("is null with no probe in range", () => {
-    expect(probeTip(0, 0, 0, 0, 0, 1, positions(), none(), null)).toBe(null);
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions(), none(), null, 3)).toBe(null);
   });
   it("is grab when the beam would select a probe", () => {
-    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 20] }), none(), "fuxx")).toBe("grab");
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 20] }), none(), "fuxx", 3)).toBe("grab");
+  });
+  it("is full, not grab, when tethered pebbles hold every beam slot", () => {
+    const pos = positions({ fuxx: [0, 0, 20] });
+    expect(probeTip(0, 0, 0, 0, 0, 1, pos, none(), "fuxx", 0)).toBe("full");
+    expect(probeTip(0, 0, 0, 0, 0, 1, pos, none(), "fuxx", 1)).toBe("grab");
   });
   it("is closer beyond the beam's 30 u, even dead ahead", () => {
-    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 34] }), none(), "fuxx")).toBe("closer");
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, 34] }), none(), "fuxx", 3)).toBe("closer");
   });
   it("is turn inside 30 u but outside the 20° cone", () => {
-    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [20, 0, 0] }), none(), "fuxx")).toBe("turn");
-    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, -20] }), none(), "fuxx")).toBe("turn");
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [20, 0, 0] }), none(), "fuxx", 3)).toBe("turn");
+    expect(probeTip(0, 0, 0, 0, 0, 1, positions({ fuxx: [0, 0, -20] }), none(), "fuxx", 3)).toBe("turn");
   });
 });
 
@@ -222,6 +227,7 @@ describe("probeTipText", () => {
   it("says to fly closer or turn otherwise, and nothing with no probe", () => {
     expect(probeTipText("closer", false, false)).toBe("PROBE NEARBY // FLY CLOSER");
     expect(probeTipText("turn", true, false)).toBe("PROBE NEARBY // TURN TOWARD IT");
+    expect(probeTipText("full", false, false)).not.toMatch(/HOLD F TO GRAB/);
     expect(probeTipText(null, false, false)).toBe(null);
   });
 });
@@ -237,5 +243,44 @@ describe("trimTone (matches turntable_probe.py toned())", () => {
     trimTone(0.5, 0.5, 0.5, out); // a grey is its own luminance
     expect(out).toEqual({ r: 0.5, g: 0.5, b: 0.5 });
     expect(TRIM_DESAT).toBe(0.6);
+  });
+});
+
+// Final review: a jump to a probe mid-burn lands by its final spot, not the burn.
+describe("probeJumpTarget", () => {
+  const spots = { ruangrapi: 1, portfolio: 0, fuxx: 0 };
+  it("targets the live position of a probe at rest", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    expect(probeJumpTarget("fuxx", positions({ fuxx: [5, 6, 7] }), none(), spots, out)).toBe(true);
+    expect(out).toEqual({ x: 5, y: 6, z: 7 });
+  });
+  it("targets the next spot, not the mid-burn position, while the probe relocates", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    const relocating = { ...none(), ruangrapi: true };
+    expect(probeJumpTarget("ruangrapi", positions({ ruangrapi: [-20, 90, 60] }), relocating, spots, out)).toBe(true);
+    const [x, y, z] = spotPos(PROBES[0], 1);
+    expect(out).toEqual({ x, y, z });
+  });
+  it("is false for an id that is not a probe", () => {
+    expect(probeJumpTarget("career", positions(), none(), spots, { x: 0, y: 0, z: 0 })).toBe(false);
+  });
+});
+
+// Final review: the spawn auto-aim follows the waypoint, not a relocated probe 1.
+describe("spawnAimPoint", () => {
+  const ship = { x: 0, y: 0, z: 0 };
+  it("aims at the nearest unread probe", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    const pos = positions({ ruangrapi: [0, 0, 300], portfolio: [0, 0, 50], fuxx: [0, 0, 80] });
+    spawnAimPoint(ship, pos, ["ruangrapi"], out);
+    expect(out).toEqual({ x: 0, y: 0, z: 50 });
+    spawnAimPoint(ship, pos, ["ruangrapi", "portfolio"], out);
+    expect(out).toEqual({ x: 0, y: 0, z: 80 });
+  });
+  it("falls back to probe 1's home once every dossier is read", () => {
+    const out = { x: 0, y: 0, z: 0 };
+    spawnAimPoint(ship, positions(), [...PROBE_IDS], out);
+    const [x, y, z] = PROBES[0].home;
+    expect(out).toEqual({ x, y, z });
   });
 });

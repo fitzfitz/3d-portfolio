@@ -7,11 +7,14 @@ import { probePos, probeRelocating } from "../../store/probeState";
 import { beamState } from "../../store/beamState";
 import { flight, selectModalOpen, useSpaceStore } from "../../store/spaceStore";
 import { projectById } from "../../constants";
-import { pullStep } from "../../utils/tractorBeam";
+import { BEAM_MAX_TARGETS, pullStep } from "../../utils/tractorBeam";
+import { tetherCount } from "../../utils/mining";
 import {
-  PROBE_DRIFT_SPEED, beaconLevel, burnDirection, nearestProbe, probeTip, rcsPuff, relocationDone, relocationLine,
-  relocationTravel, spotPos, trimTone,
+  ARRIVE_S, PROBE_DRIFT_SPEED, arrivalScale, beaconLevel, burnDirection, burnPlume, nearestProbe, probeTip, rcsPuff,
+  relocationDone, relocationLine, relocationScale, relocationTravel, spotPos, trimTone,
 } from "../../utils/probes";
+import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG } from "./enginePlume";
+import { softSprite } from "./softSprite";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -39,6 +42,26 @@ const _euler = new THREE.Euler();
 const _v = new THREE.Vector3();
 /** The model's dish boresight (gen_probe.py contract). */
 const BORESIGHT = new THREE.Vector3(0, 0, 1);
+/**
+ * Relocation plume (spec §4.2 "a visible animated burn ... plume puff"): the
+ * engine plume's own shader and settings (enginePlume.ts), so it shares the
+ * ship plume's compiled program, warm-tinted through uColor. One tube per
+ * probe, drawn only while that probe burns (no draw call otherwise), out of
+ * the aft of the bus along the model's -Z (the throats sit at z ~ -0.36).
+ */
+const PLUME_NOZZLE_R = 0.22;
+const PLUME_AFT_Z = -0.38;
+/** Full plume length (u) at burnPlume 1; about twice the model's length. */
+const PLUME_LEN = 5;
+/**
+ * The nozzle flare: one soft sprite per probe (softSprite, the ship sparks'
+ * exact PointsMaterial settings, so their program), so the burn still reads
+ * as a hot point once the probe is a few pixels across.
+ */
+const FLARE_SIZE = 1.8;
+const PLUME_WARM = new THREE.Color(1.0, 0.55, 0.18);
+/** Turns the plume tube's +Y (nozzle end) onto the probe's +Z, so it streams out along -Z. */
+const qPlumeTube = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 
 interface Burn { t: number; sx: number; sy: number; sz: number; dx: number; dy: number; dz: number }
 
@@ -131,12 +154,29 @@ export default function ProjectProbes() {
     return { geometry: g, material: m, glow: glowAttr };
   }, [scene]);
   useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
+  const plumeGeometry = useMemo(() => makePlumeGeometry(PLUME_NOZZLE_R), []);
+  const plumeMaterials = useMemo(() => PROBES.map((_, i) => makePlumeMaterial(5.3 + i * 1.9, PLUME_WARM)), []);
+  useEffect(() => () => { plumeGeometry.dispose(); plumeMaterials.forEach((m) => m.dispose()); }, [plumeGeometry, plumeMaterials]);
+  const plumeRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const flareRef = useRef<THREE.Points>(null);
+  const flareGeometry = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const pos = new THREE.BufferAttribute(new Float32Array(N * 3), 3);
+    const col = new THREE.BufferAttribute(new Float32Array(N * 3), 3);
+    pos.setUsage(THREE.DynamicDrawUsage); col.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute("position", pos);
+    g.setAttribute("color", col);
+    return g;
+  }, []);
+  useEffect(() => () => flareGeometry.dispose(), [flareGeometry]);
 
   // Per-probe frame state. Refs, not module state: a remount (classic résumé
   // round trip) snaps every probe home to its spot below and starts clean.
   const burns = useRef<Burn[]>(PROBES.map(() => ({ t: 0, sx: 0, sy: 0, sz: 0, dx: 0, dy: 0, dz: 0 })));
   const held = useRef<boolean[]>(PROBES.map(() => false));
   const opened = useRef<boolean[]>(PROBES.map(() => false));
+  /** Seconds since each probe last snapped to a new spot (it grows back in over ARRIVE_S). */
+  const arrived = useRef<number[]>(PROBES.map(() => ARRIVE_S));
   const lastSeq = useRef(useSpaceStore.getState().relocation?.seq ?? 0);
 
   useEffect(() => {
@@ -147,6 +187,7 @@ export default function ProjectProbes() {
       p.x = x; p.y = y; p.z = z;
       probeRelocating[def.id] = false;
     }
+    arrived.current.fill(ARRIVE_S);
     lastSeq.current = useSpaceStore.getState().relocation?.seq ?? 0;
   }, []);
 
@@ -210,6 +251,7 @@ export default function ProjectProbes() {
           const [x, y, z] = spotPos(def, s.probeSpots[id] ?? 0);
           p.x = x; p.y = y; p.z = z;
           probeRelocating[id] = false;
+          arrived.current[i] = 0;
           const title = (projectById(id)?.title ?? id).toUpperCase();
           s.sendBroadcast(relocationLine(title, x - flight.x, z - flight.z, Math.hypot(x - flight.x, y - flight.y, z - flight.z), flight.heading));
         } else {
@@ -219,6 +261,7 @@ export default function ProjectProbes() {
         continue;
       }
       if (!moving) continue;
+      if (arrived.current[i] < ARRIVE_S) arrived.current[i] += dt;
       if (held.current[i]) {
         // The latch holds until the probe is released or its burn starts.
         if (canOpen) {
@@ -241,37 +284,89 @@ export default function ProjectProbes() {
 
     // Matrices and glow.
     const ga = glow.array as Float32Array;
+    const fp = flareGeometry.attributes.position.array as Float32Array;
+    const fc = flareGeometry.attributes.color.array as Float32Array;
+    let flaring = false;
     for (let i = 0; i < N; i++) {
       const id = PROBES[i].id, p = probePos[id];
       dummy.position.set(p.x, p.y, p.z);
       _euler.set(0.22 * Math.sin(i * 2.1), t * SPIN + i * 2.1, 0.18 * Math.cos(i * 1.7));
       qIdle.setFromEuler(_euler);
+      const plume = plumeRefs.current[i];
+      let scale = 1, level = 0;
       if (probeRelocating[id]) {
         // Burning: the dish swings onto the burn line, so the aft thrusters
-        // (the lit B zone) face back toward the ship and the camera.
+        // (the lit B zone) and the plume face back toward the ship and the
+        // camera; the probe dwindles out just before the snap.
         const b = burns.current[i];
         qBurn.setFromUnitVectors(BORESIGHT, _v.set(b.dx, b.dy, b.dz));
         const k = Math.min(b.t / BURN_TURN_S, 1);
         dummy.quaternion.slerpQuaternions(qIdle, qBurn, k * k * (3 - 2 * k));
+        scale = relocationScale(b.t);
+        level = burnPlume(b.t);
       } else {
         dummy.quaternion.copy(qIdle);
+        scale = arrivalScale(arrived.current[i], s.reducedMotion);
       }
+      dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
+      if (plume) {
+        plume.visible = level > 1e-3;
+        if (plume.visible) {
+          // Nozzle at the aft of the bus; the tube's centre half a length further back.
+          const len = PLUME_LEN * level * scale;
+          _v.set(0, 0, PLUME_AFT_Z * scale - len / 2).applyQuaternion(dummy.quaternion);
+          plume.position.set(p.x + _v.x, p.y + _v.y, p.z + _v.z);
+          plume.quaternion.multiplyQuaternions(dummy.quaternion, qPlumeTube);
+          plume.scale.set(scale, len, scale);
+          const u = plumeMaterials[i].uniforms;
+          u.uTime.value = t;
+          u.uPower.value = 1.4 * level;
+          u.uSpread.value = plumeSpreadFor(len, PLUME_NOZZLE_R * scale, PLUME_HALF_ANGLE_DEG);
+        }
+      }
+      // Flare at the nozzle; black (additive: nothing) when not burning.
+      _v.set(0, 0, PLUME_AFT_Z * scale).applyQuaternion(dummy.quaternion);
+      fp[i * 3] = p.x + _v.x; fp[i * 3 + 1] = p.y + _v.y; fp[i * 3 + 2] = p.z + _v.z;
+      fc[i * 3] = PLUME_WARM.r * level * 1.6; fc[i * 3 + 1] = PLUME_WARM.g * level * 1.6; fc[i * 3 + 2] = PLUME_WARM.b * level * 1.6;
+      if (level > 1e-3) flaring = true;
       ga[i * 2] = beaconLevel(t, (i * 2 * Math.PI) / N);
       ga[i * 2 + 1] = probeRelocating[id] ? BURN_GLOW : rcsPuff(t, i * 2);
     }
     mesh.instanceMatrix.needsUpdate = true;
     glow.needsUpdate = true;
+    const flare = flareRef.current;
+    if (flare) {
+      flare.visible = flaring;
+      if (flaring) { flareGeometry.attributes.position.needsUpdate = true; flareGeometry.attributes.color.needsUpdate = true; }
+    }
 
     // HUD tip and chatter: the nearest probe in range, and whether the beam
-    // would take a probe from where it points now (both setters change-guarded).
+    // would take a probe from where it points now, with the slots tethered
+    // pebbles leave (TractorBeam's budget; both setters change-guarded).
     const near = nearestProbe(flight.x, flight.y, flight.z, probePos, probeRelocating, PROBE_IN_RANGE);
     s.setProbeNear(near);
-    s.setProbeTip(probeTip(beamState.ox, beamState.oy, beamState.oz, beamState.dx, beamState.dy, beamState.dz, probePos, probeRelocating, near));
+    s.setProbeTip(probeTip(beamState.ox, beamState.oy, beamState.oz, beamState.dx, beamState.dy, beamState.dz, probePos, probeRelocating, near,
+      BEAM_MAX_TARGETS - tetherCount()));
   });
 
   return (
-    <instancedMesh name="ProjectProbes" ref={meshRef} args={[geometry, material, N]} frustumCulled={false} />
+    <>
+      <instancedMesh name="ProjectProbes" ref={meshRef} args={[geometry, material, N]} frustumCulled={false} />
+      {/* Grouped, not at the scene root: sky.probe.mjs reads every root-level
+          Points as a star shell that must stay centred on the ship. */}
+      <group name="ProbeBurn">
+        {PROBES.map((def, i) => (
+          <mesh key={def.id} name="ProbeBurnPlume" ref={(m) => { plumeRefs.current[i] = m; }}
+            geometry={plumeGeometry} material={plumeMaterials[i]} visible={false} frustumCulled={false} />
+        ))}
+        <points ref={flareRef} name="ProbeBurnFlare" geometry={flareGeometry} visible={false} frustumCulled={false}>
+          {/* The ship sparks' settings (Spaceship.tsx) bar the size, a uniform: shares their program. */}
+          <pointsMaterial vertexColors={true} size={FLARE_SIZE} map={softSprite} transparent={true} opacity={1}
+            blending={THREE.AdditiveBlending} depthWrite={false} />
+        </points>
+      </group>
+    </>
   );
 }

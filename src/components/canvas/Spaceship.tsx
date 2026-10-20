@@ -10,7 +10,8 @@ import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
 import { PROBES, PROBE_JUMP_STANDOFF } from "../../data/probes";
-import { probePos } from "../../store/probeState";
+import { probePos, probeRelocating } from "../../store/probeState";
+import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
 import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
@@ -69,6 +70,9 @@ const ESCAPE_SPEED = 4;
 /** Chase-camera scratch vectors (no per-frame allocation). */
 const _camTarget = new THREE.Vector3();
 const _camSide = new THREE.Vector3();
+/** Jump and spawn-aim targets (no per-frame allocation). */
+const _jumpTarget = { x: 0, y: 0, z: 0 };
+const _aim = { x: 0, y: 0, z: 0 };
 
 /** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
 const FIRST_PROBE_HOME = PROBES[0].home;
@@ -500,9 +504,10 @@ export default function Spaceship() {
     if (pendingJump.current) {
       const id = pendingJump.current;
       pendingJump.current = null;
-      const probe = probePos[id];
+      // A probe mid-burn is headed for its next spot: aim there (probeJumpTarget).
+      const probe = probeJumpTarget(id, probePos, probeRelocating, store.probeSpots, _jumpTarget);
       const dest = probe ? undefined : destinationById(id);
-      const target = probe ?? (dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] });
+      const target = probe ? _jumpTarget : (dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] });
       const standoff = probe ? PROBE_JUMP_STANDOFF : dest?.jumpR;
       if (target && standoff !== undefined) {
         const j = jumpPoint(pos.current, target, standoff);
@@ -522,9 +527,9 @@ export default function Spaceship() {
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
-    // before touching anything. Probe 1 is static, so aim straight at it
-    // (yaw and pitch) until the first input, then hand over and never touch
-    // the controls again.
+    // before touching anything. Aim straight (yaw and pitch) at the probe the
+    // waypoint picks, the nearest unread one (spawnAimPoint), until the first
+    // input, then hand over and never touch the controls again.
     if (!hasFlown.current) {
       const touched = input.forward || input.backward || input.left || input.right
         || input.ascend || input.descend || input.boost || input.beam || input.steer !== 0 || input.thrust !== 0;
@@ -535,7 +540,8 @@ export default function Spaceship() {
         hasFlown.current = true;
         flight.hasFlown = true;
       } else {
-        const home = probePos[PROBES[0].id];
+        const home = _aim;
+        spawnAimPoint(pos.current, probePos, store.visitedDossiers, home);
         const aimYaw = headingToward(pos.current.x, pos.current.z, home.x, home.z);
         const aimPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX,
           Math.atan2(home.y - pos.current.y, Math.hypot(home.x - pos.current.x, home.z - pos.current.z))));

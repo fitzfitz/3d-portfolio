@@ -19,6 +19,7 @@ beforeEach(() => {
   resetMining();
   Object.assign(beamState, { active: true, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1, ore: 0 });
   beamState.vel.x = 0; beamState.vel.y = 0; beamState.vel.z = 0;
+  beamState.sel.count = 0;
 });
 
 describe("addOre", () => {
@@ -98,6 +99,15 @@ describe("stepMining", () => {
     expect(ore).toBeGreaterThanOrEqual(needed);
     expect(t).toBeGreaterThanOrEqual(40);
     expect(PEBBLE_GRAB_INTERVAL * needed).toBeGreaterThanOrEqual(40);
+  });
+  it("leaves a held probe its slot: at most 2 pebbles while the beam selects a probe", () => {
+    lineOfPebbles(10, 10);
+    beamState.sel.count = 1; beamState.sel.kind[0] = "probe"; beamState.sel.index[0] = 0;
+    for (let t = 0; t < 3; t += 1 / 60) {
+      stepMining(t, 1 / 60, ship);
+      expect(tetherCount()).toBeLessThanOrEqual(2);
+    }
+    expect(tetherCount()).toBe(2);
   });
   it("drops every tether when the beam switches off", () => {
     lineOfPebbles(5, 10);
