@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import PlumePicker from "../src/components/layout/PlumePicker";
 import HangarPanel from "../src/components/layout/HangarPanel";
 import { PLUME_COLORS } from "../src/data/plumeColors";
-import { WORLD_IDS } from "../src/data/worlds";
+import { BODY_IDS } from "../src/data/bodyIds";
 
 const none = { badges: [], visitedDossiers: [], shardsCollected: [] };
 
@@ -16,11 +16,11 @@ describe("PlumePicker", () => {
     expect(html).toMatch(/aria-checked="true"[^>]*data-testid="plume-stock"/);
     expect(html).toContain("GOLD plume, locked: earn Slingshot");
   });
-  it("locks AURUM until all five worlds are charted", () => {
+  it("locks AURUM until all nine bodies are charted", () => {
     const html = renderToStaticMarkup(createElement(PlumePicker, { progress: none, plumeColor: "stock", onPick: () => {} }));
-    expect(html).toContain('aria-label="AURUM plume, locked: chart all 5 worlds"');
-    expect(html).toContain('title="Chart all 5 worlds to unlock"');
-    const charted = WORLD_IDS.map((id) => ({ id, at: "2026-10-19" }));
+    expect(html).toContain('aria-label="AURUM plume, locked: chart all 9 worlds"');
+    expect(html).toContain('title="Chart all 9 worlds to unlock"');
+    const charted = BODY_IDS.map((id) => ({ id, at: "2026-10-19" }));
     const open = renderToStaticMarkup(createElement(PlumePicker, { progress: none, charted, plumeColor: "stock", onPick: () => {} }));
     expect(open).toContain('aria-label="AURUM plume"');
   });

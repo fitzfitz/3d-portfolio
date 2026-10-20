@@ -92,9 +92,9 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * down to RING_NIGHT_FLOOR in the umbra.
  *
  * Every ring is scaled by `uIrradiance`, the sunlight at its orbit as a
- * fraction of 1 AU's (irradianceVsAU, L19): Ruangrapi's sits at 1 AU, so ×1.
+ * fraction of 1 AU's (irradianceVsAU, L19), written each frame from the planet's live distance.
  *
- * With a ring map (`RING_MAP`, the ringed giant's rings, L14) the procedural
+ * With a ring map (`RING_MAP`, Saturn's rings, L14) the procedural
  * bands give way to a measured radial profile: a strip whose RGB is the
  * particle colour and whose alpha is the normal optical depth τ / uTauMax
  * (ringOptics.ts), u = 0 at the inner edge and 1 at the outer. Then:
@@ -217,7 +217,7 @@ const RING_FRAG = /* glsl */ `
  * tier, whose buffer is linear, and 0.267 in the low-perf tier, which draws
  * tone-mapped sRGB straight to the screen. The ring's shader writes its colour
  * raw in both, so it needs the floor of the space it lands in;
- * SpacePlanets switches it with the tier.
+ * SolarBodies switches it with the tier.
  */
 export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
 
@@ -255,7 +255,7 @@ export function makePlanetRingMaterial(
       uInner: { value: inner },
       uOuter: { value: outer },
       uOpacity: { value: 0.55 },
-      // The shared objects, so SpacePlanets' one write per frame reaches the ring.
+      // The shared objects, so SolarBodies' one write per frame reaches the ring.
       uOccluders: sunShadowUniforms.uOccluders,
       uOccluderCount: sunShadowUniforms.uOccluderCount,
       uNightFloor: { value: RING_NIGHT_FLOOR.linear },

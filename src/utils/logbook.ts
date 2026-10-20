@@ -92,7 +92,7 @@ export function convoySighted(ship: Vec3, ships: readonly Vec3[], radius = CONVO
 
 /**
  * Whether plume `id` may be selected: "stock" always; "cartographer" (AURUM)
- * once all five worlds are charted; otherwise a badge entry with a colour
+ * once every body is charted (charting.ts isCartographer); otherwise a badge entry with a colour
  * whose entry is done (derived badges count too).
  */
 export function plumeAllowed(

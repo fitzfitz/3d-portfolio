@@ -1,35 +1,33 @@
 import { describe, it, expect } from "vitest";
 import sharp from "sharp";
 import { existsSync, readFileSync } from "node:fs";
-import { PLANET_PROPS, planets } from "../src/constants";
-import { WORLDS } from "../src/data/worlds";
+import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
 import { DISPLAY_KNEE_LINEAR, DISPLAY_TOE_GAMMA, displayAlbedoGain } from "../src/utils/displayAlbedo";
 
 /**
  * The one shared display curve for dark surfaces (docs/UNIVERSE-RULES.md P3):
- * identity at and above Ruangrapi's texel median, a power toe below it that
- * keeps the order of real albedos, calibrated so Fuxx keeps its old 3× lift.
+ * identity at and above Earth's texel median, a power toe below it that
+ * keeps the order of real albedos, calibrated so the retired Fuxx map's
+ * median (0.0138) keeps its old 3× lift (Task 12 recalibrates on real maps).
  */
 
 const displayed = (a: number) => a * displayAlbedoGain(a);
 
 describe("displayAlbedoGain: one order-preserving curve", () => {
-  it("has its knee at Ruangrapi's texel median (~0.053 linear)", () => {
-    expect(DISPLAY_KNEE_LINEAR).toBe(PLANET_PROPS.ruangrapi.texelMedianLinear);
+  it("has its knee at Earth's texel median (~0.053 linear)", () => {
+    expect(DISPLAY_KNEE_LINEAR).toBe(bodyById("earth").texelMedianLinear);
     expect(DISPLAY_KNEE_LINEAR).toBeCloseTo(0.053, 3);
   });
 
-  it("is the identity at and above the knee: Ruangrapi, Portfolio and the giants are drawn as they are", () => {
+  it("is the identity at and above the knee: Earth, Venus and the giants are drawn as they are", () => {
     for (const a of [DISPLAY_KNEE_LINEAR, 0.06, 0.095, 0.3, 1]) expect(displayAlbedoGain(a)).toBe(1);
-    expect(displayAlbedoGain(PLANET_PROPS.ruangrapi.texelMedianLinear)).toBe(1);
-    expect(displayAlbedoGain(PLANET_PROPS.portfolio.texelMedianLinear)).toBe(1);
-    for (const w of WORLDS.filter((x) => x.texelMedianLinear >= DISPLAY_KNEE_LINEAR)) {
-      expect(displayAlbedoGain(w.texelMedianLinear), w.id).toBe(1);
+    for (const id of ["earth", "venus", "jupiter", "saturn", "uranus", "neptune"] as const) {
+      expect(displayAlbedoGain(bodyById(id).texelMedianLinear), id).toBe(1);
     }
   });
 
-  it("gives Fuxx exactly its old 3× lift: the special case is an instance of the rule", () => {
-    expect(displayAlbedoGain(PLANET_PROPS.fuxx.texelMedianLinear)).toBeCloseTo(3, 12);
+  it("gives the old calibration median (the retired Fuxx map's 0.0138) exactly its 3× lift", () => {
+    expect(displayAlbedoGain(0.0138)).toBeCloseTo(3, 12);
   });
 
   it("follows knee·(a/knee)^γ below the knee, with 0 < γ < 1", () => {
@@ -50,19 +48,18 @@ describe("displayAlbedoGain: one order-preserving curve", () => {
     expect(displayed(DISPLAY_KNEE_LINEAR * (1 - 1e-9))).toBeCloseTo(DISPLAY_KNEE_LINEAR, 9);
   });
 
-  it("keeps a darker real surface darker on screen: the rock above the dwarf", () => {
-    const rock = WORLDS.find((w) => w.id === "w-rock")!, dwarf = WORLDS.find((w) => w.id === "w-dwarf")!;
-    expect(displayed(rock.texelMedianLinear)).toBeGreaterThan(displayed(dwarf.texelMedianLinear));
+  it("keeps a darker real surface darker on screen: Mercury above Ceres", () => {
+    expect(displayed(bodyById("mercury").texelMedianLinear)).toBeGreaterThan(displayed(bodyById("ceres").texelMedianLinear));
   });
 
-  it("draws the worlds in the order of their real albedos", () => {
-    // Real geometric albedos of the namesakes (NASA NSSDC fact sheets; Ceres, Dawn): their order is the Bond order too.
-    const GEOMETRIC: Record<string, number> = { Saturn: 0.499, Uranus: 0.488, Neptune: 0.442, Mercury: 0.142, Ceres: 0.09 };
-    const byDisplayed = [...WORLDS].sort((a, b) => displayed(b.texelMedianLinear) - displayed(a.texelMedianLinear)).map((w) => w.id);
-    const byBond = [...WORLDS].sort((a, b) => b.bondAlbedo - a.bondAlbedo).map((w) => w.id);
-    const byGeometric = [...WORLDS].sort((a, b) => GEOMETRIC[b.namesake] - GEOMETRIC[a.namesake]).map((w) => w.id);
-    expect(byDisplayed).toEqual(byBond);
-    expect(byDisplayed).toEqual(byGeometric);
+  it("draws the bodies in the order of their real geometric albedos (ties where interim maps are shared)", () => {
+    // Geometric albedos: NASA NSSDC fact sheets; Ceres, Dawn. The interim maps
+    // (Task 12 replaces them) share medians: Jupiter with Saturn, Mars with Mercury.
+    const byGeometric = [...SOLAR_BODIES].sort((a, b) => b.geometricAlbedo - a.geometricAlbedo);
+    for (let i = 1; i < byGeometric.length; i++) {
+      const brighter = byGeometric[i - 1], darker = byGeometric[i];
+      expect(displayed(darker.texelMedianLinear), `${darker.id} ≤ ${brighter.id}`).toBeLessThanOrEqual(displayed(brighter.texelMedianLinear));
+    }
   });
 });
 
@@ -80,12 +77,10 @@ describe("each body's statistic matches its shipped map", () => {
     lum.sort();
     return lum[Math.floor(n / 2)];
   }
-  const bodies = [
-    ...planets.map((p) => ({ name: p.name, map: p.name, stat: p.texelMedianLinear })),
-    ...WORLDS.map((w) => ({ name: w.id, map: w.map, stat: w.texelMedianLinear })),
-  ];
+  // Venus has no map yet (a tint at its scene-scale albedo).
+  const bodies = SOLAR_BODIES.filter((b) => b.map !== "").map((b) => ({ name: b.id, map: b.map, stat: b.texelMedianLinear }));
   for (const b of bodies) {
-    // The desktop's 4k variant (SpacePlanets' HI_RES_MAPS) must agree too.
+    // The desktop's 4k variant (SolarBodies' HI_RES_MAPS) must agree too.
     for (const file of [`public/models/${b.map}.webp`, `public/models/${b.map}_4k.webp`].filter(existsSync)) {
       it(`${b.name}: ${file} median within 3% of ${b.stat}`, async () => {
         const m = await median(file);
@@ -96,12 +91,11 @@ describe("each body's statistic matches its shipped map", () => {
 });
 
 describe("the rule is applied to every body, through its material colour", () => {
-  it("SpacePlanets and SpaceWorlds set each surface's colour from the rule; the Fuxx-only lift is gone", () => {
-    const planetsSrc = readFileSync("src/components/canvas/SpacePlanets.tsx", "utf8");
-    const worldsSrc = readFileSync("src/components/canvas/SpaceWorlds.tsx", "utf8");
-    expect(planetsSrc).toMatch(/color\.setScalar\(displayAlbedoGain\(planets\[i\]\.texelMedianLinear\)\)/);
-    expect(worldsSrc).toMatch(/color\.setScalar\(displayAlbedoGain\(w\.texelMedianLinear\)\)/);
-    expect(planetsSrc).not.toMatch(/FUXX_ALBEDO_LIFT/);
+  it("SolarBodies sets each surface's colour from the rule; the Fuxx-only lift is gone", () => {
+    const src = readFileSync("src/components/canvas/SolarBodies.tsx", "utf8");
+    expect(src).toMatch(/multiplyScalar\(displayAlbedoGain\(b\.texelMedianLinear\)\)/);
+    expect(src).toMatch(/m\.color\.copy\(bodyColor\(b\)\)/);
+    expect(src).not.toMatch(/FUXX_ALBEDO_LIFT/);
     expect(readFileSync("src/utils/sunLight.ts", "utf8")).not.toMatch(/FUXX_ALBEDO_LIFT|FUXX_TEXEL_P90_LINEAR/);
   });
 });

@@ -54,6 +54,13 @@ export interface SolarBody {
   hint: string;
 }
 
+/**
+ * The ice giants' terminator tint. Methane absorbs red, so their terminator
+ * band does not redden the way a nitrogen sky's does: it stays a cool, deeper
+ * cyan-blue (atmosphereMaterial.ts's uDusk).
+ */
+export const ICE_GIANT_DUSK = "#4a86b8";
+
 /** Uranus's epsilon ring edge over its equatorial radius (51,149 km / 25,559 km). */
 const URANUS_RING_OUT = 2.0;
 
@@ -108,7 +115,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     obliquityDeg: 3.13, pole: { raDeg: 268.056595, decDeg: 64.495303 }, rotationHours: 9.925,
     orbit: { kind: "jpl", el: JPL_PLANETS.jupiter }, geometricAlbedo: 0.538, bondAlbedo: 0.343,
     map: "w-ringed", texelMedianLinear: 0.0866, color: "#c9a98a",
-    look: { atmosphere: { color: "#e0c8a8", thickness: 1.04, intensity: 0.6 } },
+    look: { atmosphere: { color: "#e0c8a8", thickness: 1.04, intensity: 0.6 }, limb: 0.8 },
     facts: { moons: 95, dayHours: 9.925, yearDays: 4332.589, meanTempC: -110 },
     hint: "the largest planet, banded, with four great moons",
   }),
@@ -126,7 +133,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     obliquityDeg: 97.77, pole: { raDeg: 257.311, decDeg: -15.175 }, rotationHours: -17.24,
     orbit: { kind: "jpl", el: JPL_PLANETS.uranus }, geometricAlbedo: 0.488, bondAlbedo: 0.3,
     map: "w-tilted", texelMedianLinear: 0.0857, color: "#a8d0d4",
-    look: { rings: "uranus", atmosphere: { color: "#a8e0e6", thickness: 1.04, intensity: 0.5 } },
+    look: { rings: "uranus", atmosphere: { color: "#a8e0e6", thickness: 1.04, intensity: 0.5, dusk: ICE_GIANT_DUSK }, limb: 0.7 },
     facts: { moons: 28, dayHours: 17.24, yearDays: 30685.4, meanTempC: -195 },
     hint: "the pale cyan ice giant, rolling on its side",
   }),
@@ -135,7 +142,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     obliquityDeg: 28.32, pole: { raDeg: 299.36, decDeg: 43.46 }, rotationHours: 16.11,
     orbit: { kind: "jpl", el: JPL_PLANETS.neptune }, geometricAlbedo: 0.442, bondAlbedo: 0.29,
     map: "w-blue", texelMedianLinear: 0.0785, color: "#6f93c9",
-    look: { atmosphere: { color: "#5f88e0", thickness: 1.04, intensity: 0.6 } },
+    look: { atmosphere: { color: "#5f88e0", thickness: 1.04, intensity: 0.6, dusk: ICE_GIANT_DUSK }, limb: 0.7 },
     facts: { moons: 16, dayHours: 16.11, yearDays: 60189, meanTempC: -200 },
     hint: "the outermost planet, deep blue, with captured Triton",
   }),

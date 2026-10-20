@@ -3,12 +3,12 @@ import { fluxEarth, equilibriumTempK } from "../utils/worldPhysics";
 /**
  * The world-type law (spec "Built to scale", rule 1): each type declares the
  * physical conditions it needs as functions of its orbit, and
- * tests/worldTypes.test.ts fails if a world in WORLDS sits where its type
+ * tests/worldTypes.test.ts fails if a real body sits where its type
  * cannot exist. Thresholds are approximate where the science is.
  *
- * venus-type and nitrogen-dwarf have no world in the roster; they exist so the
- * law can reject them (no Venus-type fits inside ~109 u, no Pluto-type inside
- * the system edge).
+ * Each real body obeys its type's law (Venus is the venus-type). The
+ * nitrogen-dwarf has no body in the roster; it exists so the law can reject
+ * it (no Pluto-type inside Saturn's orbit).
  */
 export type WorldTypeId = "airless-rock" | "ringed-giant" | "ice-giant" | "salt-dwarf" | "venus-type" | "nitrogen-dwarf";
 

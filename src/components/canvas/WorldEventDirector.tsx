@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, worldEventElapsed, type WorldEventState } from "../../store/spaceStore";
-import { planets, SUN_RADIUS } from "../../constants";
+import { SUN_RADIUS } from "../../constants";
 import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent, type DirectorStep, type DirectorInput } from "../../utils/eventDirector";
 import { planCometPass, planConvoy, convoyShipOffsetAt, CONVOY_APPROACH_S, CONVOY_ORBIT_S, type Sphere } from "../../utils/worldEvents";
 import { convoySighted } from "../../utils/logbook";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
-import { orbitPosition } from "../../utils/orbits";
-import { PLANETS_AND_WORLDS } from "../../data/worlds";
+import { bodyPositionAt } from "../../utils/bodyPositions";
+import { orbitShape, visVivaKmS, JD_J2000 } from "../../utils/ephemeris";
+import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND } from "../../utils/realUnits";
+import { SOLAR_BODIES } from "../../data/solarSystem";
 import { eventLines } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 
 /**
- * Pad on each planet and world for a comet line cleared against where they
- * are at the start: the fastest one's drift over the whole pass (fuxx
- * ~1.94u/s), plus the visitor's coma (~4.2u) and a margin.
+ * Pad on each body for a comet line cleared against where they are at the
+ * start: the fastest one's drift over the whole pass (Mercury at perihelion,
+ * ~3.4 u/s by vis-viva), plus the visitor's coma (~4.2u) and a margin.
  */
-const COMET_PLANET_PAD =
-  Math.max(...PLANETS_AND_WORLDS.map((p) => p.orbit.radius * Math.abs(p.orbit.angularSpeed))) * EVENT_DURATION.comet + 6;
+const FASTEST_BODY_U_PER_S = Math.max(...SOLAR_BODIES.map((b) => {
+  const s = orbitShape(b.orbit.el, JD_J2000);
+  return (visVivaKmS(s.a * (1 - s.e), s.a) * SECONDS_PER_GAME_SECOND) / KM_PER_UNIT;
+}));
+const COMET_PLANET_PAD = FASTEST_BODY_U_PER_S * EVENT_DURATION.comet + 6;
+/** Convoy-route scratch: a body's position along the route's 40 s. */
+const routeTarget = { x: 0, y: 0, z: 0 };
+const routeOther = { x: 0, y: 0, z: 0 };
 const pick = (lines: string[]) => lines[Math.floor(Math.random() * lines.length)];
 /** Convoy ship positions for the logbook sighting check (reused). */
 const sightShips = [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0 }));
@@ -28,8 +36,8 @@ const sightOff = { x: 0, y: 0, z: 0 };
  * Turns a director start into a stored event with its target, or null when no
  * clear route exists (the event is then skipped and the next is scheduled).
  * Comet: a line past the player's current position, clear of the sun and of
- * every planet and world padded for its drift. Convoy: the planet nearest the player,
- * on an approach that clears the other planets and the sun at their positions
+ * every body padded for its drift. Convoy: the body nearest the player, on an
+ * approach that clears the other bodies and the sun at their positions
  * through the next 40s.
  */
 function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventState; line: string } | null {
@@ -39,39 +47,39 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
   if (ev.kind === "comet") {
     const avoid: Sphere[] = [
       { x: 0, y: 0, z: 0, r: SUN_RADIUS + 6 },
-      ...PLANETS_AND_WORLDS.map((p) => ({ ...bodies[p.key], r: p.size + COMET_PLANET_PAD })),
+      ...SOLAR_BODIES.map((b) => ({ ...bodies[b.id], r: b.size + COMET_PLANET_PAD })),
     ];
     const comet = planCometPass(flight, avoid, Math.random);
     return comet ? { state: { ...base, comet }, line: pick(eventLines.comet) } : null;
   }
 
-  // convoy: the nearest planet
-  let target = planets[0];
+  // convoy: the nearest body
+  let target = SOLAR_BODIES[0];
   let best = Infinity;
-  for (const p of planets) {
-    const b = bodies[p.name];
-    const d = Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z);
-    if (d < best) { best = d; target = p; }
+  for (const b of SOLAR_BODIES) {
+    const p = bodies[b.id];
+    const d = Math.hypot(p.x - flight.x, p.y - flight.y, p.z - flight.z);
+    if (d < best) { best = d; target = b; }
   }
   const off = { x: 0, y: 0, z: 0 };
-  const plan = planConvoy(bodies[target.name], target.size, (candidate) => {
+  const plan = planConvoy(bodies[target.id], target.size, (candidate) => {
     for (let t = 0; t <= 40; t += 0.5) {
-      const c = orbitPosition(target.orbit, ambientNow + t);
+      const c = bodyPositionAt(target, ambientNow + t, routeTarget);
       for (const slot of [0, 1, 2] as const) {
         convoyShipOffsetAt(off, candidate, t, slot);
         const x = c.x + off.x, y = c.y + off.y, z = c.z + off.z;
         if (Math.hypot(x, y, z) < SUN_RADIUS + 10) return false;
-        for (const p of planets) {
-          if (p.name === target.name) continue;
-          const q = orbitPosition(p.orbit, ambientNow + t);
-          if (Math.hypot(x - q.x, y - q.y, z - q.z) < p.size + 6) return false;
+        for (const b of SOLAR_BODIES) {
+          if (b === target) continue;
+          const q = bodyPositionAt(b, ambientNow + t, routeOther);
+          if (Math.hypot(x - q.x, y - q.y, z - q.z) < b.size + 6) return false;
         }
       }
     }
     return true;
   });
   return plan
-    ? { state: { ...base, convoy: { planet: target.name, plan } }, line: pick(eventLines.convoy[target.name] ?? eventLines.convoyAny) }
+    ? { state: { ...base, convoy: { planet: target.id, plan } }, line: pick(eventLines.convoy[target.id] ?? eventLines.convoyAny) }
     : null;
 }
 
@@ -96,10 +104,10 @@ export default function WorldEventDirector() {
   useEffect(() => () => useSpaceStore.getState().endWorldEvent(), []);
 
   useFrame((state) => {
-    // The director runs on the planets' clock (ambient time): comet lines and
-    // convoy routes are cleared against planet positions on that clock, so the
+    // The director runs on the bodies' clock (ambient time): comet lines and
+    // convoy routes are cleared against body positions on that clock, so the
     // event must play on it too. It also freezes under reduced motion, as the
-    // planets do, so an event caught by that setting freezes with the scene.
+    // bodies do, so an event caught by that setting freezes with the scene.
     const elapsed = state.clock.getElapsedTime();
     const ambientNow = ambientTime(elapsed);
     const dt = ambientStep(lastAmbient.current, ambientNow);

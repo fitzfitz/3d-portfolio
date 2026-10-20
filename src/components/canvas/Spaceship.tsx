@@ -34,9 +34,9 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
-import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
+import { bodySlot, occluders, patchSunShadow } from "./sunShadow";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
-import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
+import { BODY_REACH, SOLAR_BODIES } from "../../data/solarSystem";
 import { resolveWorldContact, keepCameraOutsideBodies, SOLID_BODIES } from "../../utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
@@ -80,21 +80,21 @@ const FIRST_PROBE_HOME = PROBES[0].home;
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 /**
- * Every solid body's live centre, by SOLID_BODIES id: the planets' and
- * worlds' `bodies` entries and the moons' `moonCenters` entries. Merged once:
+ * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
+ * entries and the moons' `moonCenters` entries (none until Task 14). Merged once:
  * it holds the same objects their writers update in place, so it stays live
  * and the frame loop reads it without allocating.
  */
 const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonCenters };
 
 /**
- * Gravity wells, one per planet and world plus the sun, reused every frame:
+ * Gravity wells, one per body plus the sun, reused every frame:
  * body entries are refreshed from `bodies`, and the active ones are copied to
  * the front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
-const BODY_WELLS: Well[] = PLANETS_AND_WORLDS.map(planetWell);
+const BODY_WELLS: Well[] = BODY_REACH.map(planetWell);
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
-const ACTIVE_WELLS: Well[] = Array.from({ length: PLANETS_AND_WORLDS.length + 1 }, () => ({ ...SUN_WELL }));
+const ACTIVE_WELLS: Well[] = Array.from({ length: BODY_REACH.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
 /**
  * The engine material's original emissive colour, captured the first time the
@@ -118,12 +118,12 @@ const _total = new THREE.Vector3();
  */
 const SHIP_SUN_VIS = { value: 1 };
 /**
- * What shadows the ship: every GPU occluder slot, plus the worlds that have
- * none (the outermost, w-blue: it shadows nothing the GPU draws, but the ship
- * can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
+ * What shadows the ship: every GPU occluder slot, plus the bodies that have
+ * none (the outermost, Neptune: it shadows nothing the GPU draws, but the
+ * ship can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
  */
-const CPU_ONLY_WORLDS = WORLDS.filter((w) => worldSlot(w.id) < 0);
-const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_WORLDS.map((w) => ({ x: 0, y: 0, z: 0, r: w.size }));
+const CPU_ONLY_BODIES = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0);
+const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
 const SHIP_OCCLUDERS: readonly Occluder[] = [...occluders, ...CPU_ONLY_OCCLUDERS];
 
 export default function Spaceship() {
@@ -623,8 +623,8 @@ export default function Spaceship() {
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
     idleFor.current = thrustInput > 0 || reeling ? 0 : idleFor.current + dt;
     let wellCount = 0;
-    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
-      const b = bodies[PLANETS_AND_WORLDS[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
+    for (let i = 0; i < BODY_REACH.length; i++) {
+      const b = bodies[BODY_REACH[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
       dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
     }
     const sunDst = ACTIVE_WELLS[wellCount++];
@@ -653,7 +653,7 @@ export default function Spaceship() {
         break;
       }
     }
-    // The planets', worlds' and moons' solid surfaces (worldCollide.ts):
+    // The bodies' (and, from Task 14, the moons') solid surfaces (worldCollide.ts):
     // they move, so each is read live from SOLID_CENTERS, at its equatorial
     // size. The rings are fly-through.
     for (let i = 0; i < SOLID_BODIES.length; i++) {
@@ -664,11 +664,11 @@ export default function Spaceship() {
     const totalSpeed = _total.length();
     beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
-    // Which planet or world well the ship is in now; leaving one fast is a slingshot.
+    // Which body's well the ship is in now; leaving one fast is a slingshot.
     let wellNow: string | null = null;
-    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
-      const b = bodies[PLANETS_AND_WORLDS[i].key];
-      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = PLANETS_AND_WORLDS[i].key; break; }
+    for (let i = 0; i < BODY_REACH.length; i++) {
+      const b = bodies[BODY_REACH[i].key];
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = BODY_REACH[i].key; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
@@ -790,13 +790,13 @@ export default function Spaceship() {
     store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
   });
 
-  // The ship in a planet's, moon's or world's shadow. Runs after the flight
-  // loop above, so it sees this frame's position. The occluder slots and
-  // `bodies` are SpacePlanets' and SpaceWorlds', which run after this
-  // component: a frame old, a few hundredths of a unit.
+  // The ship in a body's shadow. Runs after the flight loop above, so it
+  // sees this frame's position. The occluder slots and `bodies` are
+  // SolarBodies', which runs after this component: a frame old, a few
+  // hundredths of a unit.
   useFrame(() => {
-    for (let i = 0; i < CPU_ONLY_WORLDS.length; i++) {
-      const b = bodies[CPU_ONLY_WORLDS[i].id], o = CPU_ONLY_OCCLUDERS[i];
+    for (let i = 0; i < CPU_ONLY_BODIES.length; i++) {
+      const b = bodies[CPU_ONLY_BODIES[i].id], o = CPU_ONLY_OCCLUDERS[i];
       o.x = b.x; o.y = b.y; o.z = b.z;
     }
     SHIP_SUN_VIS.value = sunVisibility(pos.current, SHIP_OCCLUDERS, SUN_RADIUS);

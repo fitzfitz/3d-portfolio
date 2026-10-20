@@ -1,6 +1,6 @@
 /**
  * The one spawn point (F3 revision): 0.92 AU from the sun, so the ship starts
- * in about Ruangrapi's sunlight. No imports: beacons.ts, which the Cloudflare
+ * in about Earth's sunlight (1 AU). No imports: beacons.ts, which the Cloudflare
  * Worker bundles, reads this.
  */
 export const SPAWN = { x: -50, y: 62, z: 69 } as const;

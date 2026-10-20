@@ -2,15 +2,17 @@ import { describe, it, expect, vi } from "vitest";
 import {
   parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, MAX_MESSAGE_BYTES,
 } from "../src/utils/liveSkyProtocol";
-import { WORLD_COUNT } from "../src/data/worlds";
+import { LEGACY_CHART_TOTAL } from "../src/data/bodyIds";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
 
 describe("the charted count (C2)", () => {
   it("is 5 worlds at most", () => expect(CHART_TOTAL).toBe(5));
-  it("is every world there is: a sixth world must raise it, or 5/6 would fly AURUM", () => {
-    expect(CHART_TOTAL).toBe(WORLD_COUNT);
+  // The wire still counts the five legacy worlds until Task 8 moves it to
+  // the nine bodies with the legacy-5 rule (old cached clients keep AURUM).
+  it("is still the legacy chart's total on the wire (Task 8 raises it to 9)", () => {
+    expect(CHART_TOTAL).toBe(LEGACY_CHART_TOTAL);
   });
   it("defaults to 0, so a client that never sends it stays visible", () => {
     expect(parseMe(me())?.ch).toBe(0);
@@ -87,8 +89,8 @@ describe("parseMe", () => {
     ["a prototype key as plume", me({ plume: "toString" })],
     ["a short position", me({ p: [1, 2] })],
     ["a non-finite position", me({ p: [1, null, 3] })],
-    ["a position outside the world", me({ p: [525, 0, 0] })],
-    ["a corner outside the validation sphere", me({ p: [310, 310, 310] })],
+    ["a position outside the world", me({ p: [3810, 0, 0] })], // VALIDATION_RADIUS 3800
+    ["a corner outside the validation sphere", me({ p: [2200, 2200, 2200] })], // r 3811
     ["a zero quaternion", me({ q: [0, 0, 0, 0] })],
     ["a stretched quaternion", me({ q: [0, 0, 0, 2] })],
     ["a JSON array", "[1,2,3]"],

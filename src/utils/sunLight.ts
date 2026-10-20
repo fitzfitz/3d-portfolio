@@ -4,7 +4,7 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * Inverse-square sunlight and the camera's exposure (F3; law L19).
  *
  * The sun is a point light with decay 2, so a surface at distance d gets
- * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at Ruangrapi's orbit (1 AU).
+ * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at 1 AU.
  * The camera adapts fully, like a spacecraft camera exposing for its target
  * (lawful, L22): exposure = clamp((d / AU)^2, EXPOSURE_MIN, EXPOSURE_MAX), d
  * being the camera's distance from the sun. It is exactly 1 at 1 AU and
@@ -17,7 +17,7 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * adaptation, clamp((d / AU)^1.5, 0.15, 2.5).)
  */
 
-/** Irradiance at 1 AU: the old decay-0 intensity, so Ruangrapi looks as it did. */
+/** Irradiance at 1 AU: the old decay-0 intensity, so 1 AU looks as it did. */
 export const SUN_IRRADIANCE_AT_AU = 2.1;
 /** The point light's intensity under decay 2 (three: I / d²). */
 export const SUN_LIGHT_INTENSITY = SUN_IRRADIANCE_AT_AU * AU * AU;
@@ -53,7 +53,7 @@ export function stepExposure(current: number, target: number, dt: number, snap: 
 }
 
 /**
- * Sunlight at `d` as a fraction of what Ruangrapi gets at 1 AU: (AU / d)².
+ * Sunlight at `d` as a fraction of what 1 AU gets: (AU / d)².
  * Scales lit effects drawn by custom shaders that the point light never
  * reaches, such as the atmosphere rims (Rayleigh scattering, L27).
  */
@@ -139,7 +139,7 @@ export function applyFill(scene: { environmentIntensity: number }, cameraDistanc
  * Shared uniform for the sun's self-luminous parts and the instrument
  * overlays: the sun's core and corona, and the orbit rings, zone circles and
  * guide lines (guideLine.ts). They multiply their output by it, so they look
- * the same at every exposure. Lit matter, such as Ruangrapi's planetary ring,
+ * the same at every exposure. Lit matter, such as Saturn's rings,
  * is NOT compensated: it follows exposure like its planet. The sun's glare
  * sprites and the ring-course gates are compensated too, but through their
  * colour each frame (Sun.tsx, RingCourse.tsx), since they are built-in

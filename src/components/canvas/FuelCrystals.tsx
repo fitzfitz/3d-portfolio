@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
-import { PLANETS_AND_WORLDS } from "../../data/worlds";
+import { BODY_REACH } from "../../data/solarSystem";
 import { ambientTime } from "../../utils/ambientTime";
 import { refuel, refuelOutcome, FUEL_MAX } from "../../utils/fuel";
 import {
@@ -66,9 +66,9 @@ export default function FuelCrystals() {
 
   useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
-  /** Places to keep clear of, rebuilt per spawn from live positions: planets and worlds alike. */
+  /** Places to keep clear of, rebuilt per spawn from live positions: every body. */
   const avoidFor = () => crystalAvoidPoints(
-    PLANETS_AND_WORLDS.map((p) => ({ ...bodies[p.key], size: p.size, reach: p.reach })),
+    BODY_REACH.map((p) => ({ ...bodies[p.key], size: p.size, reach: p.reach })),
     CRYSTAL_LANDMARKS,
     flight,
   );

@@ -46,12 +46,12 @@ async function events(page, checks) {
   await trigger(page, "convoy");
   await settle(page, 300);
   const ev = (await readStore(page)).worldEvent;
-  checks.check("the convoy targets a planet", ev?.kind === "convoy" && !!ev.convoy?.planet, `planet=${ev?.convoy?.planet}`);
+  checks.check("the convoy targets a body", ev?.kind === "convoy" && !!ev.convoy?.planet, `body=${ev?.convoy?.planet}`);
   const orbiting = (await pollUntil(async () => {
     const r = await page.evaluate(async (name) => {
-      const { planets } = await import("/src/constants.ts");
+      const { bodyById } = await import("/src/data/solarSystem.ts");
       const { convoyRadius } = await import("/src/utils/worldEvents.ts");
-      const want = convoyRadius(planets.find((p) => p.name === name).size);
+      const want = convoyRadius(bodyById(name).size);
       const g = window.__fitz.scene.getObjectByName("ConvoyShip0");
       const b = window.__fitz.bodies[name];
       if (!g || !g.visible) return null;

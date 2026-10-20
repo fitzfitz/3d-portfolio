@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { SUN_RADIUS } from "../src/constants";
-import { WORLD_IDS } from "../src/data/worlds";
+import { BODY_IDS } from "../src/data/bodyIds";
 import { sunVisibility } from "../src/utils/sunOcclusion";
 import {
   MAX_OCCLUDERS,
@@ -9,7 +9,8 @@ import {
   SUN_SHADOW_GLSL,
   patchSunShadow,
   sunShadowCoverage,
-  worldSlot,
+  bodySlot,
+  OCCLUDER_COUNT,
   setOccluder,
   sunShadowUniforms,
   updateSunView,
@@ -289,16 +290,16 @@ describe("the self-skip (a body never shadows its own surface)", () => {
 });
 
 describe("OCCLUDER_SLOTS (fixed, no per-frame selection)", () => {
-  it("planets 0-2, moons 3-7, worlds 8-11, all inside MAX_OCCLUDERS", () => {
-    expect(OCCLUDER_SLOTS.planets).toEqual({ first: 0, count: 3 });
-    expect(OCCLUDER_SLOTS.moons).toEqual({ first: 3, count: 5 });
-    expect(OCCLUDER_SLOTS.worlds).toEqual({ first: 8, count: 4 });
-    expect(OCCLUDER_SLOTS.worlds.first + OCCLUDER_SLOTS.worlds.count).toBeLessThanOrEqual(MAX_OCCLUDERS);
+  it("bodies 0-7, no moons until Task 14, all inside MAX_OCCLUDERS", () => {
+    expect(OCCLUDER_SLOTS.bodies).toEqual({ first: 0, count: 8 });
+    expect(OCCLUDER_SLOTS.moons).toEqual({ first: 8, count: 0 });
+    expect(OCCLUDER_COUNT).toBe(8);
+    expect(OCCLUDER_COUNT).toBeLessThanOrEqual(MAX_OCCLUDERS);
   });
 
-  it("worldSlot gives the four inner worlds 8-11 in WORLDS order and the outermost, w-blue, no GPU slot", () => {
-    expect(Object.fromEntries(WORLD_IDS.map((id) => [id, worldSlot(id)]))).toEqual({
-      "w-rock": 8, "w-ringed": 9, "w-tilted": 10, "w-blue": -1, "w-dwarf": 11,
+  it("bodySlot gives the bodies 0-7 in BODY_IDS order and the outermost, Neptune, no GPU slot", () => {
+    expect(Object.fromEntries(BODY_IDS.map((id) => [id, bodySlot(id)]))).toEqual({
+      mercury: 0, venus: 1, earth: 2, mars: 3, ceres: 4, jupiter: 5, saturn: 6, uranus: 7, neptune: -1,
     });
   });
 });

@@ -1,4 +1,4 @@
-import { PLANET_PROPS } from "../constants";
+import { bodyById } from "../data/solarSystem";
 
 /**
  * One shared display curve for dark surfaces (docs/UNIVERSE-RULES.md P3, a
@@ -6,28 +6,28 @@ import { PLANET_PROPS } from "../constants";
  * albedo so they stay visible; their relative order is real.
  *
  * The input is one statistic for every body: the median linear luminance of
- * its shipped map (`texelMedianLinear` in PLANET_PROPS and WORLDS). The output
+ * its shipped map (`texelMedianLinear` in SOLAR_BODIES). The output
  * multiplies the body's material colour, a uniform, so no shader changes.
  *
- * - At and above the knee, Ruangrapi's own median (~0.053), the gain is 1:
- *   Ruangrapi, Portfolio and the giants are drawn as they are.
+ * - At and above the knee, Earth's own map median (~0.053), the gain is 1:
+ *   Earth, Venus and the giants are drawn as they are.
  * - Below it a power toe draws albedo a as knee·(a/knee)^γ, so the gain is
  *   (a/knee)^(γ−1). It is continuous at the knee and strictly increasing, so a
  *   darker real surface always stays darker on screen.
- * - γ (~0.19) is set so Fuxx's median (~0.014) gets exactly 3×, the lift it
- *   already had (I1): the one special case became an instance of the rule,
- *   and Fuxx looks as before.
+ * - γ (~0.19) is set so a median of 0.0138 (the retired Fuxx map's, the
+ *   curve's original calibration, I1) gets exactly 3×. Task 12 recalibrates
+ *   γ by the "dimmest named body" method once the real maps land.
  */
 
-/** Ruangrapi's texel median: the identity starts here. */
-export const DISPLAY_KNEE_LINEAR = PLANET_PROPS.ruangrapi.texelMedianLinear;
+/** Earth's texel median: the identity starts here. */
+export const DISPLAY_KNEE_LINEAR = bodyById("earth").texelMedianLinear;
 
-/** Fuxx's gain under the curve: its old FUXX_ALBEDO_LIFT, the calibration point. */
-const FUXX_GAIN = 3;
+/** The calibration point: the retired Fuxx map's median and the 3× lift it had. */
+const TOE_CALIBRATION = { median: 0.0138, gain: 3 } as const;
 
-/** The toe's exponent: displayAlbedoGain(Fuxx's median) is exactly FUXX_GAIN. */
+/** The toe's exponent: displayAlbedoGain(TOE_CALIBRATION.median) is exactly TOE_CALIBRATION.gain. */
 export const DISPLAY_TOE_GAMMA =
-  1 + Math.log(FUXX_GAIN) / Math.log(PLANET_PROPS.fuxx.texelMedianLinear / DISPLAY_KNEE_LINEAR);
+  1 + Math.log(TOE_CALIBRATION.gain) / Math.log(TOE_CALIBRATION.median / DISPLAY_KNEE_LINEAR);
 
 /** The material-colour multiplier for a surface whose map's median linear luminance is `texelMedianLinear` (> 0). */
 export function displayAlbedoGain(texelMedianLinear: number): number {

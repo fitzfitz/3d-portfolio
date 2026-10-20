@@ -87,8 +87,8 @@ export interface FitzDebug {
   perfStats: typeof perfStats;
   /**
    * The shared eclipse uniforms (sunShadow.ts), live, registered by
-   * SpacePlanets in dev: `uOccluders.value[i]` is slot i (xyz world position,
-   * w radius; planets first, then moons in MOONS order), `uOccluderCount` how
+   * SolarBodies in dev: `uOccluders.value[i]` is slot i (xyz world position,
+   * w radius; the bodies in BODY_IDS order less the outermost), `uOccluderCount` how
    * many are read.
    */
   sunShadow: typeof import("../components/canvas/sunShadow").sunShadowUniforms | null;
@@ -101,7 +101,7 @@ export interface FitzDebug {
   /**
    * Set `countOverride` to 0 to switch the per-fragment eclipse loop off
    * (frame-cost measurement, docs/PERF-BUDGETS.md); -1 restores it.
-   * Registered by SpacePlanets in dev.
+   * Registered by SolarBodies in dev.
    */
   sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
   /** Set `holdRegen` to pause the fuel auto-refill (e2e fuel probe). Registered by Spaceship in dev. */

@@ -8,7 +8,7 @@ export interface CometOrbit {
   periodSeconds: number;
   /** mean-anomaly offset (radians) so comets don't sync up */
   phase: number;
-  /** orbital-plane inclination (rad, rotation about X — same convention as utils/orbits.ts) */
+  /** orbital-plane inclination (rad, rotation about X, then the node about Y) */
   inclination: number;
   /** ascending-node rotation (rad, about Y, applied after inclination) */
   node: number;

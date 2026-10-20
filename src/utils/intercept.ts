@@ -1,11 +1,16 @@
-import { orbitPosition, type OrbitalElements } from "./orbits";
 import { PITCH_MAX } from "./pitchFlight";
 
 interface Vec3 { x: number; y: number; z: number }
+
+/** A moving target: its id and where it is at game time `t` (e.g. bodyPositionAt). */
+export interface InterceptTarget {
+  name: string;
+  positionAt(t: number, out: Vec3): Vec3;
+}
 interface Sphere extends Vec3 { r: number }
 
 export interface Aim {
-  /** Planet name (= project id) being aimed at. */
+  /** The target's name (a body id) being aimed at. */
   target: string;
   yaw: number;
   pitch: number;
@@ -29,7 +34,7 @@ function segmentDistance(a: Vec3, b: Vec3, c: Vec3): number {
 
 /**
  * Heading that takes a ship flying straight at `speed` from `from` into a
- * planet, leading it along its orbit. Planets drift ~1.7 u/s, so aiming at
+ * body, leading it along its orbit. Inner bodies drift ~1–3 u/s, so aiming at
  * where one *is* misses by tens of units over a 10-second flight.
  *
  * Prefers the soonest arrival whose straight path clears every obstacle
@@ -39,7 +44,7 @@ function segmentDistance(a: Vec3, b: Vec3, c: Vec3): number {
  */
 export function interceptAim(
   from: Vec3,
-  planets: { name: string; orbit: OrbitalElements }[],
+  targets: readonly InterceptTarget[],
   now: number,
   speed: number,
   obstacles: Sphere[],
@@ -47,15 +52,15 @@ export function interceptAim(
 ): Aim | null {
   let best: Aim | null = null;
   let bestClear = false;
-  for (const p of planets) {
+  for (const p of targets) {
     let eta = 0;
-    let pos = orbitPosition(p.orbit, now);
+    let pos = p.positionAt(now, { x: 0, y: 0, z: 0 });
     // Fixed-point iteration on arrival time; converges in a few steps since
     // orbital speed is far below cruise speed.
     for (let i = 0; i < 4; i++) {
       eta = Math.hypot(pos.x - from.x, pos.y - from.y, pos.z - from.z) / speed + SPOOL_S;
       if (!lead) break;
-      pos = orbitPosition(p.orbit, now + eta);
+      pos = p.positionAt(now + eta, pos);
     }
     const clear = obstacles.every((o) => segmentDistance(from, pos, o) > o.r + CLEARANCE);
     const better = !best || (clear && !bestClear) || (clear === bestClear && eta < best.eta);

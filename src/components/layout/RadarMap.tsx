@@ -1,17 +1,16 @@
 import { useEffect, useRef } from "react";
-import { planets, projectById } from "../../constants";
+import { projectById } from "../../constants";
 import { PROBE_IDS } from "../../data/probes";
 import { probePos } from "../../store/probeState";
 import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
-import { WORLDS, WORLD_MARK_COLOR } from "../../data/worlds";
+import { SOLAR_BODIES } from "../../data/solarSystem";
 import { flight, useSpaceStore, bodies, crystalSlots, worldVisibility } from "../../store/spaceStore";
 import { worldToRadar, altitudeCue, radarShowsWorld, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
 const SIZE = 148;
-const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 /** Destinations are fixed: one blip each, in the table's colour. */
 const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
 
@@ -23,7 +22,7 @@ const PROBE_DIAMOND_RIM = "rgba(0, 0, 0, 0.8)";
 
 const blip = { px: 0, py: 0, onRim: false };
 
-/** A blip; `free` ones (uncharted worlds, in range only) are never rim-clamped or dimmed. */
+/** A blip; `free` ones (uncharted bodies, in range only) are never rim-clamped or dimmed. */
 interface RadarTarget { name: string; x: number; y: number; z: number; color: string; free?: boolean }
 
 /** Heading-up radar. Canvas 2D, own rAF loop, zero React renders. */
@@ -71,19 +70,16 @@ export default function RadarMap() {
       const a = flight.heading;
       const { activeZone, visitedDossiers: visited } = useSpaceStore.getState();
       const targets: RadarTarget[] = [
-        ...PLANET_COLORS.map((p) => {
-          const b = bodies[p.name];
-          return { name: p.name, x: b.x, y: b.y, z: b.z, color: p.color };
-        }),
         ...DESTINATION_BLIPS,
         { name: "sun", x: 0, y: 0, z: 0, color: "#ff5500" },
       ];
-      // Worlds (radarShowsWorld): uncharted only in range and free, charted like a planet.
-      for (const w of WORLDS) {
-        const b = bodies[w.id];
-        const show = radarShowsWorld(worldVisibility[w.id].charted, Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z));
+      // The bodies (radarShowsWorld): uncharted only in range and free;
+      // charted, rim-clamped like a destination (charting's radar arrow).
+      for (const sb of SOLAR_BODIES) {
+        const b = bodies[sb.id];
+        const show = radarShowsWorld(worldVisibility[sb.id].charted, Math.hypot(b.x - flight.x, b.y - flight.y, b.z - flight.z));
         if (show === "hidden") continue;
-        targets.push({ name: w.id, x: b.x, y: b.y, z: b.z, color: WORLD_MARK_COLOR, free: show === "free" });
+        targets.push({ name: sb.id, x: b.x, y: b.y, z: b.z, color: sb.color, free: show === "free" });
       }
       for (const t of targets) {
         const dx = (t.x - flight.x);

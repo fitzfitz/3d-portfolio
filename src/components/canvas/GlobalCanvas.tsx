@@ -8,7 +8,7 @@ import Spaceship from "./Spaceship";
 import TractorBeam from "./TractorBeam";
 import ProjectProbes from "./ProjectProbes";
 import SpacePlanets from "./SpacePlanets";
-import SpaceWorlds from "./SpaceWorlds";
+import SolarBodies from "./SolarBodies";
 import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
@@ -523,9 +523,10 @@ function GlobalCanvas() {
           alpha: true,
           powerPreference: "high-performance",
         }}
-        // far 1500, not R3F's default 1000: from the edge (SYSTEM_RADIUS 480)
-        // a body on the far side of the system is up to ~960 away.
-        camera={{ position: [SPAWN.x, SPAWN.y + 5, SPAWN.z + 8], fov: 60, far: 1500 }}
+        // far 8000, not R3F's default 1000: the system is 7,200 across
+        // (SYSTEM_RADIUS 3600), so a body on the far side of it stays in view.
+        // Plain depth for now; Task 9 picks the depth mode and adds CAMERA_FAR.
+        camera={{ position: [SPAWN.x, SPAWN.y + 5, SPAWN.z + 8], fov: 60, far: 8000 }}
         // Neutral rather than R3F's ACES default: it leaves in-gamut neon
         // colours nearly untouched and only rolls off highlights. PostFX's
         // ToneMapping pass uses the same curve, so the grade no longer shifts
@@ -586,10 +587,10 @@ function GlobalCanvas() {
             {/* The three project probes: grabbed by the beam, so after it */}
             <ProjectProbes />
 
-            {/* Orbiting planets */}
+            {/* The contact portal, the destinations and the nebulae */}
             <SpacePlanets />
-            {/* The five worlds: textures load here, so ShaderWarmup compiles them */}
-            <SpaceWorlds />
+            {/* The nine real bodies: textures load here, so ShaderWarmup compiles them */}
+            <SolarBodies />
 
             {/* Central sun core + corona/flare shell */}
             <Sun />

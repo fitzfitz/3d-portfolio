@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useSpaceStore, worldClock, worldEventElapsed } from "../src/store/spaceStore";
 import { eventLines } from "../src/data/chatterLines";
-import { planets } from "../src/constants";
+import { SOLAR_BODIES } from "../src/data/solarSystem";
 
 beforeEach(() => { useSpaceStore.setState({ worldEvent: null, broadcast: null }); worldClock.now = 0; });
 
@@ -23,9 +23,9 @@ describe("world event store", () => {
     expect(useSpaceStore.getState().worldEvent).toBeNull();
     expect(worldEventElapsed("comet")).toBeNull();
   });
-  it("has radio lines for every event and every planet's convoy", () => {
+  it("has radio lines for every event and every body's convoy", () => {
     expect(eventLines.comet.length).toBeGreaterThan(0);
     expect(eventLines.flare.length).toBeGreaterThan(0);
-    for (const p of planets) expect(eventLines.convoy[p.name]?.length, p.name).toBeGreaterThan(0);
+    for (const b of SOLAR_BODIES) expect(eventLines.convoy[b.id]?.length, b.id).toBeGreaterThan(0);
   });
 });

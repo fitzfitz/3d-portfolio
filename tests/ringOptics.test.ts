@@ -3,8 +3,7 @@ import sharp from "sharp";
 import * as THREE from "three";
 import { makePlanetRingMaterial } from "../src/components/canvas/guideLine";
 import { patchSunShadow } from "../src/components/canvas/sunShadow";
-import { planets } from "../src/constants";
-import { WORLDS } from "../src/data/worlds";
+import { bodyById } from "../src/data/solarSystem";
 import { irradianceVsAU } from "../src/utils/sunLight";
 import {
   fluidRocheLimit, RING_ICE_DENSITY, RING_IN, RING_OUT, RING_TAU_MAX, RINGED_GIANT_DENSITY,
@@ -17,7 +16,7 @@ import {
  * mirrors, and the Roche limit the A ring's edge sits at.
  */
 
-const ringed = WORLDS.find((w) => w.id === "w-ringed")!;
+const ringed = bodyById("saturn");
 
 describe("ringViewOpacity: 1 − exp(−τ/|μ|)", () => {
   it("equals 1 − e^(−τ) face-on, from either side", () => {
@@ -117,9 +116,11 @@ describe("ringRadiance: single scattering in a layer of depth τ, both faces", (
 });
 
 describe("the ring material", () => {
-  it("leaves Ruangrapi's ring without RING_MAP (its program is unchanged), at ×1 irradiance", () => {
-    const m = makePlanetRingMaterial("#7dffc0", planets[0].size * 1.15, planets[0].size * 1.6, 0, {
-      irradiance: irradianceVsAU(planets[0].orbit.radius),
+  // Earth's fictional ring is gone (Task 6); the procedural path stays for a
+  // ring drawn without a strip, its program unchanged.
+  it("leaves a ring without RING_MAP on the procedural bands, at ×1 irradiance at 1 AU", () => {
+    const m = makePlanetRingMaterial("#7dffc0", 12 * 1.15, 12 * 1.6, 0, {
+      irradiance: irradianceVsAU(115),
     });
     expect(m.defines.RING_MAP).toBeUndefined();
     expect(m.fragmentShader).toContain("#ifdef RING_MAP");

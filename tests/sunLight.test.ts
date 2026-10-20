@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { AU, PLANET_ORBITS, SYSTEM_RADIUS } from "../src/constants";
+import { AU, SYSTEM_RADIUS } from "../src/constants";
+import { bodyById } from "../src/data/solarSystem";
+import { heliocentric } from "../src/utils/bodyPositions";
+import { orbitShape, JD_J2000 } from "../src/utils/ephemeris";
 import { makePlanetRingMaterial } from "../src/components/canvas/guideLine";
 import { makeAtmosphereMaterial } from "../src/components/canvas/atmosphereMaterial";
-import { ICE_GIANT_DUSK } from "../src/components/canvas/SpaceWorlds";
+import { ICE_GIANT_DUSK } from "../src/data/solarSystem";
 import {
   sunIrradiance,
   targetExposure,
@@ -32,8 +35,9 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
   });
   it("the exposure ceiling is the edge's own exposure, derived from SYSTEM_RADIUS", () => {
     expect(EXPOSURE_MAX).toBe((SYSTEM_RADIUS / AU) ** EXPOSURE_POWER);
-    expect(EXPOSURE_MAX).toBeCloseTo((480 / 115) ** 2, 9);
-    expect(EXPOSURE_MAX).toBeCloseTo(17.42, 2);
+    // (SYSTEM_RADIUS / AU)² ≈ 980 at the 3,600 u edge (spec §6.1); 17.42 at the old 480.
+    expect(EXPOSURE_MAX).toBeCloseTo((3600 / 115) ** 2, 9);
+    expect(EXPOSURE_MAX).toBeCloseTo(979.96, 2);
     expect(targetExposure(SYSTEM_RADIUS)).toBeCloseTo(EXPOSURE_MAX, 12);
   });
   it("the near-sun floor 0.15 starts at AU·√0.15 ≈ 44.5, just inside the belt (r 40-70), not at the spawn", () => {
@@ -103,9 +107,14 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(cool.b).toBeGreaterThan(cool.r); // methane absorbs red: the terminator does not redden
   });
   it("atmosphere rims scale with the sunlight at each planet's orbit (L27 under L19)", () => {
-    expect(irradianceVsAU(PLANET_ORBITS.ruangrapi.radius)).toBeCloseTo(1, 12);
-    expect(irradianceVsAU(PLANET_ORBITS.portfolio.radius)).toBeCloseTo(0.588, 3);
-    expect(irradianceVsAU(PLANET_ORBITS.fuxx.radius)).toBeCloseTo(0.386, 3);
+    expect(irradianceVsAU(AU)).toBeCloseTo(1, 12);
+    // Live (§4.8): Mercury's sunlight at perihelion over aphelion is ((1 + e) / (1 − e))², about 2.3×.
+    const { a, e } = orbitShape(bodyById("mercury").orbit.el, JD_J2000);
+    expect(irradianceVsAU(a * (1 - e) * AU) / irradianceVsAU(a * (1 + e) * AU)).toBeCloseTo(((1 + e) / (1 - e)) ** 2, 9);
+    expect(((1 + e) / (1 - e)) ** 2).toBeCloseTo(2.3, 1);
+    // Jupiter's rim at its live distance, about 1/27 of Earth's.
+    const r = heliocentric(bodyById("jupiter"), 0).rAU;
+    expect(irradianceVsAU(r * AU)).toBeCloseTo(1 / r ** 2, 12);
   });
   it("a camera cut re-meters the exposure on the spot, tier-correct (I2)", () => {
     const gl = { toneMappingExposure: 0.15 }; // adapted to the sun's glare

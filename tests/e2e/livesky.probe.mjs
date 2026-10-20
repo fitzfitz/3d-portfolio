@@ -129,12 +129,14 @@ export default async function run() {
     checks.check("a ghost scan earns no badge", !after.badges.some((b) => b.id === "comet"));
 
     // --- C2: the cartographer in the live sky ---
-    // This pilot charts all five worlds (in memory only: setState skips the
-    // store's persistence) with the shout-out due, and flies AURUM.
+    // This pilot charts all nine bodies (in memory only: setState skips the
+    // store's persistence) with the shout-out due, and flies AURUM. The wire
+    // still counts the legacy five until Task 8, so the pose carries ch 5.
     await inPage(page, () => {
       const st = window.__fitz.store;
       const at = new Date().toISOString().slice(0, 10);
-      st.setState({ charted: ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at })), chartShoutAt: Date.now() });
+      const ids = ["mercury", "venus", "earth", "mars", "ceres", "jupiter", "saturn", "uranus", "neptune"];
+      st.setState({ charted: ids.map((id) => ({ id, at })), chartShoutAt: Date.now() });
       st.getState().setPlumeColor("cartographer");
     });
     await hold(page, ["KeyW"], 1500); // moving keeps poses going out after the first

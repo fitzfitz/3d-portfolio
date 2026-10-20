@@ -21,7 +21,9 @@ describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () =
       expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo((d / AU) ** BACKDROP_EXPOSURE_POWER, 9);
     }
     expect(backdropScale(SYSTEM_RADIUS)).toBeCloseTo((AU / SYSTEM_RADIUS) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER), 12);
-    expect(backdropScale(SYSTEM_RADIUS)).toBeCloseTo(0.489, 3);
+    // 0.179 at the 3,600 u edge (0.489 at the old 480): Task 8 caps the net
+    // backdrop gain (BACKDROP_NET_MAX) so the band cannot glare at Neptune.
+    expect(backdropScale(SYSTEM_RADIUS)).toBeCloseTo(0.179, 3);
   });
   it("only tones down: 1 at and inside 1 AU, and held at the edge's value beyond it", () => {
     expect(backdropScale(AU)).toBe(1);

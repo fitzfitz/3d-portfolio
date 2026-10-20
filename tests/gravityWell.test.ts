@@ -6,8 +6,7 @@ import {
 } from "../src/utils/gravityWell";
 import { resolveWorldContact, SHIP_HALF_LENGTH } from "../src/utils/worldCollide";
 import { cruiseCap } from "../src/utils/speedCap";
-import { planets } from "../src/constants";
-import { WORLDS, PLANETS_AND_WORLDS } from "../src/data/worlds";
+import { BODY_REACH, SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
 import { SUN_COLLIDER } from "../src/data/asteroids";
 
 const MAX = 10.8, ACCEL = 25.2, DRAG = 0.982;
@@ -131,18 +130,18 @@ describe("gravityMode", () => {
 
 describe("planetWell", () => {
   it("scales the gas giant's tuning by size: g by size², radius and softening by size", () => {
-    for (const p of planets) {
+    for (const p of SOLAR_BODIES) {
       const w = planetWell(p);
-      expect(w.g, p.name).toBeCloseTo(PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, 9);
-      expect(w.radius, p.name).toBeCloseTo(p.size * PLANET_WELL_RADIUS_FACTOR, 9);
-      expect(w.rMin, p.name).toBe(p.size);
+      expect(w.g, p.id).toBeCloseTo(PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, 9);
+      expect(w.radius, p.id).toBeCloseTo(p.size * PLANET_WELL_RADIUS_FACTOR, 9);
+      expect(w.rMin, p.id).toBe(p.size);
     }
     expect(planetWell({ size: WELL_REF_SIZE }).g).toBe(PLANET_WELL_G);
   });
-  it("is built for every planet and world, sizes read from the data", () => {
-    expect(PLANETS_AND_WORLDS.map((b) => b.key)).toEqual([...planets.map((p) => p.name), ...WORLDS.map((w) => w.id)]);
-    expect(PLANETS_AND_WORLDS.map((b) => b.size)).toEqual([...planets, ...WORLDS].map((b) => b.size));
-    for (const b of PLANETS_AND_WORLDS) {
+  it("is built for every body, sizes read from the data", () => {
+    expect(BODY_REACH.map((b) => b.key)).toEqual(SOLAR_BODIES.map((b) => b.id));
+    expect(BODY_REACH.map((b) => b.size)).toEqual(SOLAR_BODIES.map((b) => b.size));
+    for (const b of BODY_REACH) {
       const w = planetWell(b);
       expect(w.g, b.key).toBeCloseTo(PLANET_WELL_G * (b.size / WELL_REF_SIZE) ** 2, 9);
       expect(w.radius, b.key).toBeCloseTo(b.size * PLANET_WELL_RADIUS_FACTOR, 9);
@@ -160,7 +159,12 @@ describe("planetWell", () => {
  * longer dock (project probes, spec §4.4): a skim leaves, a straight run meets
  * the solid surface, and nothing passes through.
  */
-describe.each(planets.map((p) => [p.name, p.size] as const))("tuning targets (spec §5.6) around %s (size %d)", (_name, size) => {
+// Flown around Earth and Mars, two of the bodies the three old planets became.
+// Jupiter (size 22, past the gas giant's 16 these targets were tuned at) is
+// left out: its b = 30 (scaled) skim now meets the surface, since a bigger
+// well is crossed for longer. The well law is unchanged (spec §5.2), and its
+// slingshot stays earnable (tests/smallBodyField.test.ts, Task 4).
+describe.each((["earth", "mars"] as const).map((id) => [id, bodyById(id).size] as const))("tuning targets (spec §5.6) around %s (size %d)", (_name, size) => {
   const k = size / WELL_REF_SIZE;
   const ref = size === WELL_REF_SIZE;
   const reach = size + SHIP_HALF_LENGTH;

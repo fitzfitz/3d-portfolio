@@ -1,27 +1,13 @@
 import { beaconRegistry, beaconReport } from "./beacons";
 import { ghostRegistry, ghostReport } from "./liveSky";
 import { BUOYS } from "../data/careerTrail";
-import { planets } from "../constants";
-import { formatOrbit } from "./realUnits";
-import { WORLDS } from "../data/worlds";
+import { isBodyId } from "../data/bodyIds";
+import { bodyById } from "../data/solarSystem";
 import { worldReport } from "./worldReports";
 
 /** One report per career buoy: the posting it marks, from src/data/career.ts. */
 const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
   `SCAN[${b.label}] // ${b.entry.role} · ${b.entry.company} · ${b.entry.start} – ${b.entry.end ?? "Present"} // ${b.entry.summary}`.toUpperCase()]));
-
-/**
- * Each planet's scan facts, by planet name. The title is the planet's label
- * (PLANET_PROPS), not its project: planets are scan-only bodies now (project
- * probes, spec §4.4), and the orbit in real units closes the report.
- */
-const PLANET_FACTS: Record<string, string> = {
-  ruangrapi: "CORE: SUPABASE+POSTGRES · CRUST: REACT+TYPESCRIPT · SHIELD: ROW-LEVEL SECURITY // INHABITANTS: KOS LANDLORDS",
-  portfolio: "CORE: THREE.JS · ATMOSPHERE: REACT THREE FIBER · MOONS: BLENDER-SCRIPTED GLBS // ORBITING IT: TWO MOONS, THE ICY ONE CAPTURED AND RETROGRADE",
-  fuxx: "CORE: RUST · SURFACE: GPUI, GPU-RENDERED · POPULATION: PARALLEL AI CODING AGENTS",
-};
-const PLANET_REPORTS = new Map(planets.filter((p) => p.name in PLANET_FACTS).map((p) =>
-  [p.name, `SCAN[${p.label}] // ${PLANET_FACTS[p.name]} // ${formatOrbit(p.orbit)}`]));
 
 const FIXED_REPORTS: Record<string, string> = {
   contact: "SCAN[PORTAL_SUN] // COMM-GATE RESONANT. THE PILOT ANSWERS TRANSMISSIONS. DOCK TO COMPOSE",
@@ -45,19 +31,20 @@ function hash(id: string): number {
   return h >>> 0;
 }
 
-export function generateScanReport(id: string): string {
+/**
+ * The report for scannable `id`. A body's numbers are live (its distance from
+ * the Sun), so it takes the ambient clock's `gameSeconds`.
+ */
+export function generateScanReport(id: string, gameSeconds = 0): string {
   const ghost = ghostRegistry.get(id);
   if (ghost) return ghostReport(ghost.cc, ghost.ch);
   const beacon = beaconRegistry.get(id);
   if (beacon) return beaconReport(beacon, Date.now());
   const buoy = BUOY_REPORTS.get(id);
   if (buoy) return buoy;
-  const planet = PLANET_REPORTS.get(id);
-  if (planet) return planet;
+  if (isBodyId(id)) return worldReport(bodyById(id), gameSeconds);
   const fixed = FIXED_REPORTS[id];
   if (fixed) return fixed;
-  const world = WORLDS.find((w) => w.id === id);
-  if (world) return worldReport(world);
   const h = hash(id);
   const e1 = ELEMENTS[h % ELEMENTS.length];
   const e2 = ELEMENTS[(h >> 3) % ELEMENTS.length];

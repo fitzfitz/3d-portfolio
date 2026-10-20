@@ -1,7 +1,7 @@
 import { withPage, hold, settle, sceneQuery, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
-const SYSTEM_RADIUS = 480; // src/constants.ts
-const EDGE_BOUND = 520; // the burn must never let the ship out this far (VALIDATION_RADIUS, what the Worker accepts)
+const SYSTEM_RADIUS = 3600; // src/constants.ts
+const EDGE_BOUND = 3800; // the burn must never let the ship out this far (VALIDATION_RADIUS, what the Worker accepts)
 const RANGE = 220; // RadarMap RANGE
 const SIZE = 148;  // RadarMap SIZE
 
@@ -58,8 +58,8 @@ export default async function run() {
     // produce more than 2 buckets (green ring/sweep/ladder + white ship
     // chevron) with zero planet/portal blips rendered. Strengthened below by
     // also checking for the exact quantized colours of bodies that are drawn
-    // NOWHERE else on the canvas: portfolio (#00f0ff) and fuxx (#bd00ff) planets
-    // and the contact portal (#ec4899). (ruangrapi's #00ff87 is excluded from the
+    // NOWHERE else on the canvas: the portfolio (#00f0ff) and fuxx (#bd00ff)
+    // probes and the contact portal (#ec4899). (ruangrapi's #00ff87 is excluded from the
     // strong check because it quantizes to the same bucket as the green
     // rings/sweep/pitch-dot, so its presence alone wouldn't prove a blip was
     // drawn.) RadarMap draws every target every frame — clamped to the rim
@@ -95,10 +95,10 @@ export default async function run() {
     // back inside. Start 20u inside the edge facing +X (yaw pi/2 points the
     // nose down +X), hold warp until the edge is crossed, release, then poll
     // generously in case the machine is slow.
-    await page.evaluate(() => {
-      window.__fitz.teleport(460, 0, 0);
+    await page.evaluate((r) => {
+      window.__fitz.teleport(r - 20, 0, 0);
       window.__fitz.setAttitude(Math.PI / 2, 0);
-    });
+    }, SYSTEM_RADIUS);
     // The in-page recorder (harness.mjs) timestamps the crossing and the return
     // per animation frame and remembers any "RETURN BURN" broadcast, so none of
     // this depends on poll timing. It also sums simulated time (clamped frame

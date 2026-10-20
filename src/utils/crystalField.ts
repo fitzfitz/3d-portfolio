@@ -1,10 +1,17 @@
-import { SYSTEM_RADIUS, LOCK_RETAIN_FACTOR } from "../constants";
+import { LOCK_RETAIN_FACTOR } from "../constants";
 import { DESTINATIONS } from "../data/destinations";
 import { GATE_POS } from "../data/dormantGate";
 import { PROBES } from "../data/probes";
 
-/** A sphere spawns must stay clear of — a planet, a landmark, or the ship. */
+/** A sphere spawns must stay clear of — a body, a landmark, or the ship. */
 export interface AvoidPoint { x: number; y: number; z: number; r: number }
+
+/**
+ * Crystals keep to the inner system, where visitors spend their time
+ * (real-solar-system spec §6.4): the old playable edge, now well inside the
+ * 3,600 u system (out to Ceres, short of Jupiter).
+ */
+export const CRYSTAL_FIELD_RADIUS = 480;
 
 /** Slots in the field. Mean spacing at this count is ~146 units. */
 export const CRYSTAL_MAX = 40;
@@ -62,10 +69,10 @@ export const CRYSTAL_LANDMARKS: readonly (readonly [number, number, number])[] =
 const SHIP_KEEP_OUT = 30;
 
 /**
- * Spheres a crystal spawn must avoid. A planet's keep-out follows its size:
+ * Spheres a crystal spawn must avoid. A body's keep-out follows its size:
  * its lock-retain radius plus the pickup radius, so collecting a crystal never
  * drags the ship into orbit lock. A fixed radius here went stale the moment
- * planets grew past it. A body whose `reach` (the ringed giant's rings) lies
+ * planets grew past it. A body whose `reach` (Saturn's rings) lies
  * beyond that radius keeps crystals out to its reach instead, so none sits
  * in its rings.
  */
@@ -94,16 +101,16 @@ export function crystalAvoidPoints(
 export function randomCrystalPos(rand: () => number, avoid: AvoidPoint[]): [number, number, number] {
   let x = 0, y = 0, z = 0;
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    x = (rand() * 2 - 1) * SYSTEM_RADIUS;
-    y = (rand() * 2 - 1) * SYSTEM_RADIUS;
-    z = (rand() * 2 - 1) * SYSTEM_RADIUS;
-    // Rejection-sample the cube down to the ball: uniform in the system sphere.
-    if (x * x + y * y + z * z > SYSTEM_RADIUS * SYSTEM_RADIUS) continue;
+    x = (rand() * 2 - 1) * CRYSTAL_FIELD_RADIUS;
+    y = (rand() * 2 - 1) * CRYSTAL_FIELD_RADIUS;
+    z = (rand() * 2 - 1) * CRYSTAL_FIELD_RADIUS;
+    // Rejection-sample the cube down to the ball: uniform in the field's sphere.
+    if (x * x + y * y + z * z > CRYSTAL_FIELD_RADIUS * CRYSTAL_FIELD_RADIUS) continue;
     if (!isRejectedSpawn(x, y, z, avoid)) return [x, y, z];
   }
   // Out of attempts: keep the last candidate, pulled inside the sphere if it fell outside.
   const r = Math.hypot(x, y, z);
-  if (r > SYSTEM_RADIUS) { const k = SYSTEM_RADIUS / r; x *= k; y *= k; z *= k; }
+  if (r > CRYSTAL_FIELD_RADIUS) { const k = CRYSTAL_FIELD_RADIUS / r; x *= k; y *= k; z *= k; }
   return [x, y, z];
 }
 

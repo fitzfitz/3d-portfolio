@@ -1,6 +1,7 @@
 import { LOGBOOK, plumeAllowed, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../../data/plumeColors";
 import type { ChartRecord } from "../../utils/charting";
+import { BODY_COUNT } from "../../data/solarSystem";
 
 /**
  * The engine-plume picker (moved from the logbook to the shipyard's Hangar,
@@ -20,7 +21,7 @@ export default function PlumePicker({ progress, charted = [], plumeColor, onPick
           const allowed = plumeAllowed(id, progress, hasPlumeColour, charted);
           const badge = LOGBOOK.find((e) => e.id === id);
           // AURUM is the survey's reward, not a badge's.
-          const unlock = id === "cartographer" ? "chart all 5 worlds" : `earn ${badge?.title ?? id}`;
+          const unlock = id === "cartographer" ? `chart all ${BODY_COUNT} worlds` : `earn ${badge?.title ?? id}`;
           return (
             <button key={id} type="button" role="radio" aria-checked={plumeColor === id} disabled={!allowed}
               data-testid={`plume-${id}`}

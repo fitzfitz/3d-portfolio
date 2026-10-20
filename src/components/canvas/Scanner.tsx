@@ -5,9 +5,9 @@ import { nearestScannable, SCAN_RANGE } from "../../utils/scannables";
 import { generateScanReport } from "../../utils/scanReport";
 import { soundManager } from "../../audio/soundManager";
 import { scanState } from "../../utils/scanState";
-import { gameTime } from "../../utils/ambientTime";
+import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { buoyCardState, buoyIndex, BUOY_SCAN_HOLD_S } from "../../utils/buoyCard";
-import { isWorld } from "../../data/worlds";
+import { isBodyId } from "../../data/bodyIds";
 
 
 /** Headless: drives scan targeting/progress/report dispatch each frame. Renders nothing. */
@@ -41,10 +41,10 @@ export default function Scanner() {
     if (near && flight.input.scan && !latched.current) {
       scanState.progress = Math.min(1, scanState.progress + dt / 1.6);
       if (scanState.progress >= 1) {
-        store.sendBroadcast(generateScanReport(near.id));
+        store.sendBroadcast(generateScanReport(near.id, ambientTime(state.clock.getElapsedTime())));
         soundManager.scanBeep();
         if (near.id === "comet_visitor") store.recordBadge("comet"); // logbook: Comet chaser
-        if (isWorld(near.id)) store.chartWorld(near.id); // the first scan charts a world
+        if (isBodyId(near.id)) store.chartWorld(near.id); // the first scan charts a body
         // A scanned career buoy keeps its HUD card up for a while (CareerTrail shows it).
         const buoy = buoyIndex(near.id);
         if (buoy >= 0) buoyCardState.scan = { index: buoy, until: gameTime(state.clock.getElapsedTime()) + BUOY_SCAN_HOLD_S };

@@ -3,13 +3,14 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ATMOSPHERE_VERT, makeAtmosphereMaterial } from "./atmosphereMaterial";
 import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
+import { irradianceVsAU } from "../../utils/sunLight";
 
 interface AtmosphereProps {
   radius: number;
   color: string;
   /**
    * Planet's world position — the sun sits at the origin. The planet orbits,
-   * so this is the same mutable `bodies[name]` object SpacePlanets writes
+   * so this is the same mutable `bodies[id]` object SolarBodies writes
    * every frame (not a fresh array), read here each frame so the Rayleigh
    * gradient keeps pointing at the origin as the planet moves.
    */
@@ -17,21 +18,27 @@ interface AtmosphereProps {
   /** overall strength at 1 AU; earth-like ~1, thin mars haze ~0.4 */
   intensity?: number;
   /**
-   * The planet's orbit radius. The rim is scattered sunlight (L27), so it is
-   * scaled by the sunlight there, (AU / r)² (L19). Orbits are circles, so this
-   * is fixed per planet: a uniform value, set once. Omit for 1 AU.
+   * A fixed distance from the sun for the rim's sunlight. The rim is
+   * scattered sunlight (L27), so it is scaled by the sunlight there,
+   * (AU / r)² (L19). Omit for 1 AU, or set `liveSunlight`.
    */
   orbitRadius?: number;
+  /**
+   * Scale the rim by the sunlight at `planetPos`'s live distance each frame
+   * instead (real-solar-system spec §4.8: orbits are ellipses, so Mercury's
+   * sunlight varies 2.3× around its orbit). Needs `planetPos`.
+   */
+  liveSunlight?: boolean;
   /** shell thickness multiplier (1.12 = earth-like, 1.05 = thin haze) */
   thickness?: number;
   /** The terminator band's tint; omit for the sunset orange (atmosphereMaterial.ts). */
   dusk?: THREE.ColorRepresentation;
-  /** Explicit draw order among a world's transparent shells (SpaceWorlds' WORLD_RENDER_ORDER). */
+  /** Explicit draw order among a body's transparent shells (SolarBodies' BODY_RENDER_ORDER). */
   renderOrder?: number;
 }
 
 /** Sun-aware fresnel scattering shell. Place inside a planet group. */
-export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, dusk, renderOrder = 0 }: AtmosphereProps) {
+export default function Atmosphere({ radius, color, planetPos, intensity = 1.15, thickness = 1.12, orbitRadius, liveSunlight = false, dusk, renderOrder = 0 }: AtmosphereProps) {
   const material = useMemo(
     () => makeAtmosphereMaterial({ color, planetPos, intensity, thickness, orbitRadius, dusk }),
     // planetPos is a stable mutated-in-place object; only its identity (not
@@ -40,13 +47,16 @@ export default function Atmosphere({ radius, color, planetPos, intensity = 1.15,
     [color, intensity, thickness, orbitRadius, dusk],
   );
 
-  // Planet moves every frame (SpacePlanets writes into the same object) — the
+  // Planet moves every frame (SolarBodies writes into the same object) — the
   // sun-facing gradient must track it live rather than freeze at mount time.
   useFrame(() => {
     if (!planetPos) return;
     (material.uniforms.uSunDir.value as THREE.Vector3)
       .set(-planetPos.x, -planetPos.y, -planetPos.z)
       .normalize();
+    if (liveSunlight) {
+      material.uniforms.uIntensity.value = intensity * irradianceVsAU(Math.hypot(planetPos.x, planetPos.y, planetPos.z));
+    }
   });
 
   // Detail by distance with its planet (sphereLod.ts). Drawn from its back

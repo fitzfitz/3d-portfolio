@@ -46,11 +46,11 @@ function tour({ label, init, tier }) {
 
     const keys = () => page.evaluate(() => window.__fitz.gl.info.programs.map((p) => p.cacheKey));
     const before = await keys();
-    // Chart every world after warm-up, so their orbit lines first show during
-    // the tour (charting toggles visibility only: it must compile nothing).
+    // Chart every body after warm-up (charting changes the radar and the
+    // chart only: it must compile nothing).
     await page.evaluate(async () => {
-      const { WORLD_IDS } = await import("/src/data/worlds.ts");
-      for (const id of WORLD_IDS) window.__fitz.store.getState().chartWorld(id);
+      const { BODY_IDS } = await import("/src/data/bodyIds.ts");
+      for (const id of BODY_IDS) window.__fitz.store.getState().chartWorld(id);
     });
     const stops = await page.evaluate(async () => {
       const { STATION_POS, BUOYS } = await import("/src/data/careerTrail.ts");
@@ -75,8 +75,8 @@ function tour({ label, init, tier }) {
         ["world edge", 240, 200, 240],
       ];
     });
-    const worldIds = await page.evaluate(async () => (await import("/src/data/worlds.ts")).WORLD_IDS);
-    checks.check(`${tier}: the tour stops at every world`, worldIds.every((id) => stops.some(([name]) => name === id)),
+    const bodyIds = await page.evaluate(async () => (await import("/src/data/bodyIds.ts")).BODY_IDS);
+    checks.check(`${tier}: the tour stops at every body`, bodyIds.every((id) => stops.some(([name]) => name === id)),
       `stops=${stops.map(([name]) => name).join(", ")}`);
     const probeIds = await page.evaluate(async () => (await import("/src/data/probes.ts")).PROBE_IDS);
     checks.check(`${tier}: the tour stops at every project probe`, probeIds.every((id) => stops.some(([name]) => name === `probe ${id}`)),

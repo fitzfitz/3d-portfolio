@@ -9,7 +9,8 @@ import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { planets, ZONE_FACTOR } from "../../constants";
+import { ZONE_FACTOR } from "../../constants";
+import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
 import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
 import { fitzDebug } from "../../debug/bridge";
@@ -108,7 +109,7 @@ export default function SpaceJellyfish() {
   const basePos = useMemo(() => new THREE.Vector3(), []);
   const tangent = useMemo(() => new THREE.Vector3(), []);
   const keepOut = useMemo<JellyKeepOut[]>(
-    () => planets.map((p) => ({ x: 0, y: 0, z: 0, r: p.size * ZONE_FACTOR + JELLY_RADIUS, body: p.size + JELLY_RADIUS })), []);
+    () => SOLAR_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size * ZONE_FACTOR + JELLY_RADIUS, body: b.size + JELLY_RADIUS })), []);
   /** Reused every frame: the mood step's input, so the loop allocates nothing. */
   const jellyInput = useMemo<JellyInput>(
     () => ({ pathPos, basePos, player: flight, playerSpeed: 0, boosting: false, keepOut, dt: 0 }),
@@ -222,8 +223,8 @@ export default function SpaceJellyfish() {
     // Mood: an eased offset off the path toward or away from the pilot.
     const store = useSpaceStore.getState();
     if (!store.reducedMotion) {
-      for (let i = 0; i < planets.length; i++) {
-        const b = bodies[planets[i].name];
+      for (let i = 0; i < SOLAR_BODIES.length; i++) {
+        const b = bodies[SOLAR_BODIES[i].id];
         keepOut[i].x = b.x; keepOut[i].y = b.y; keepOut[i].z = b.z;
       }
       jellyInput.playerSpeed = flight.speed;

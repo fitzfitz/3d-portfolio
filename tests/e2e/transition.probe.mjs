@@ -192,8 +192,8 @@ const RINGED_VIEW_ELEVATION_DEG = 35;
 async function nearRingedGiant(page) {
   await page.evaluate(([dist, elevDeg]) => {
     const d = window.__fitz;
-    const c = d.bodies["w-ringed"];
-    const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+    const c = d.bodies.saturn;
+    const ring = d.scene.getObjectByName("BodyRing_saturn");
     ring.updateWorldMatrix(true, false);
     const n = ring.getWorldDirection(d.camera.position.clone());
     const r = Math.hypot(c.x, c.y, c.z);
@@ -207,7 +207,7 @@ async function nearRingedGiant(page) {
     d.teleport(c.x + u.x * dist, c.y + u.y * dist, c.z + u.z * dist);
   }, [RINGED_VIEW_DISTANCE, RINGED_VIEW_ELEVATION_DEG]);
   await settle(page, 1500);
-  const c = await page.evaluate(() => { const b = window.__fitz.bodies["w-ringed"]; return [b.x, b.y, b.z]; });
+  const c = await page.evaluate(() => { const b = window.__fitz.bodies.saturn; return [b.x, b.y, b.z]; });
   await faceFrom(page, c, true);
 }
 
@@ -221,8 +221,8 @@ const ringsInView = (page) => page.evaluate(() => {
   const d = window.__fitz;
   const cam = d.camera;
   cam.updateMatrixWorld();
-  const b = d.bodies["w-ringed"];
-  const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+  const b = d.bodies.saturn;
+  const ring = d.scene.getObjectByName("BodyRing_saturn");
   ring.updateWorldMatrix(true, false);
   const n = ring.getWorldDirection(cam.position.clone());
   const c = cam.position.clone().set(b.x, b.y, b.z);
@@ -242,13 +242,12 @@ const ringsInView = (page) => page.evaluate(() => {
 });
 
 /**
- * Every planet and world draws through a LOD on the shared unit spheres
+ * Every body draws through a LOD on the shared unit spheres
  * (src/utils/sphereLod.ts), its levels all on that body's one material.
  */
 const bodiesUseLods = (page) => page.evaluate(async () => {
-  const { planets } = await import("/src/constants.ts");
-  const { WORLD_IDS } = await import("/src/data/worlds.ts");
-  const names = [...planets.map((p) => `Planet_${p.name}`), ...WORLD_IDS.map((id) => `World_${id}`)];
+  const { BODY_IDS } = await import("/src/data/bodyIds.ts");
+  const names = BODY_IDS.map((id) => `Body_${id}`);
   return names.map((name) => {
     const mesh = window.__fitz.scene.getObjectByName(name);
     const lod = mesh?.parent;
@@ -260,7 +259,7 @@ const bodiesUseLods = (page) => page.evaluate(async () => {
 });
 
 /**
- * Teleports close to a planet: 1.45x its size out along its outward radial.
+ * Teleports close to Earth: 1.45x its size out along its outward radial.
  *
  * That is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
  * planets used to set activeZone and outside the 1.3x where they used to
@@ -272,16 +271,15 @@ const bodiesUseLods = (page) => page.evaluate(async () => {
  */
 async function approachPlanet(page) {
   return page.evaluate(async () => {
-    const { planets } = await import("/src/constants.ts");
-    const b = window.__fitz.bodies;
-    const name = Object.keys(b)[0];
-    const p = b[name];
+    const { bodyById } = await import("/src/data/solarSystem.ts");
+    const name = "earth";
+    const p = window.__fitz.bodies[name];
     // On the planet's outward radial (away from the sun at the origin), at
     // 1.45x the planet size. Orbits are centred on the origin, so planet
     // motion is perpendicular to this line and the gap can only grow while
     // the probe waits: the planet never sweeps into the ship.
     const r = Math.hypot(p.x, p.y, p.z) || 1;
-    const d = planets.find((pl) => pl.name === name).size * 1.45;
+    const d = bodyById(name).size * 1.45;
     window.__fitz.teleport(p.x + (p.x / r) * d, p.y + (p.y / r) * d, p.z + (p.z / r) * d);
     return name;
   });
@@ -333,12 +331,12 @@ export default async function run() {
 
     // ---- renderer counter budgets: near the ringed giant, rings in frame (docs/PERF-BUDGETS.md) ----
     const lods = await bodiesUseLods(page);
-    checks.check("every planet and world draws through a 64/24/12 LOD on its one material",
+    checks.check("every body draws through a 64/24/12 LOD on its one material",
       lods.every((l) => l.ok), lods.filter((l) => !l.ok).map((l) => l.name).join(", ") || "all");
     await nearRingedGiant(page);
     const ringed = await readPerfCounters(page);
     const ringedView = await ringsInView(page);
-    checks.check("ringed-giant state has the planet and its rings in frame, opened, sun behind (precondition)",
+    checks.check("Saturn state has the planet and its rings in frame, opened, sun behind (precondition)",
       ringedView.onScreen && ringedView.outside && ringedView.open && ringedView.drawn && ringedView.sunBehind,
       JSON.stringify(ringedView));
     checks.check("ringed-giant draw calls within budget", ringed.calls <= RINGED_CALLS_CEILING,
@@ -366,8 +364,8 @@ export default async function run() {
     // (the module import below) changes what is in frame.
     const approach = await readPerfCounters(page);
     const close = await page.evaluate(async (name) => {
-      const { planets } = await import("/src/constants.ts");
-      const size = planets.find((p) => p.name === name).size;
+      const { bodyById } = await import("/src/data/solarSystem.ts");
+      const size = bodyById(name).size;
       const b = window.__fitz.bodies[name], f = window.__fitz.flight;
       const st = window.__fitz.store.getState();
       return { k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked };

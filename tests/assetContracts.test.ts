@@ -272,10 +272,13 @@ describe("moons (moon.glb)", () => {
     for (const m of ["MoonIce", "MoonRock", "MoonVolcanic"]) expect(triangles(doc, m)).toBe(4480);
   });
 
-  // OrbitingMoon centres each variant and scales it by the moon's size; the
-  // collider takes that size as the radius, the camera keep-out MOON_MESH_RADIUS × it.
+  // The old OrbitingMoon centred each variant and scaled it by the moon's
+  // size; its collider took that size as the radius, the camera keep-out
+  // 1.02 × it. The fictional moons left the scene with the real-system
+  // cut-over (Task 6); the file still ships until Task 14 replaces it, so its
+  // contract holds with the old data/moons.ts MOON_MESH_RADIUS restated here.
   it("draws every variant as a unit sphere with relief no higher than MOON_MESH_RADIUS", async () => {
-    const { MOON_MESH_RADIUS } = await import("../src/data/moons");
+    const MOON_MESH_RADIUS = 1.02;
     const doc = await load("moon");
     for (const mat of ["MoonIce", "MoonRock", "MoonVolcanic"]) {
       const { min, max } = materialBounds(doc, mat);

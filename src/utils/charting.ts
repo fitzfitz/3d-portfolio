@@ -1,12 +1,24 @@
-import { WORLDS, WORLD_COUNT, isWorld, type WorldId } from "../data/worlds";
-import { WORLD_FACTS } from "./worldReports";
+import { isBodyId, LEGACY_WORLD_TO_BODY, type BodyId } from "../data/bodyIds";
+import { BODY_COUNT, bodyById } from "../data/solarSystem";
+import { BODY_FACTS } from "./worldReports";
 
 /**
- * Charting the worlds (spec "Charting, logbook and title"): the first scan of
- * a world charts it. Pure. Records persist in their own key, fitz-charted,
- * never fitz-logbook: an older bundle would drop unknown ids and overwrite it.
+ * Charting the bodies (spec "Charting, logbook and title"; real-solar-system
+ * spec §7): the first scan of a body charts it. Pure. Records persist in their
+ * own key, fitz-charted, never fitz-logbook: an older bundle would drop
+ * unknown ids and overwrite it.
  */
-export interface ChartRecord { id: WorldId; at: string /* YYYY-MM-DD */ }
+export interface ChartRecord { id: BodyId; at: string /* YYYY-MM-DD */ }
+
+/**
+ * A stored id in today's terms: a body id as it is, one of the five old
+ * fictional worlds' ids as the real body it became (w-rock → mercury …), and
+ * anything else null. No stored progress is lost (§7).
+ */
+function currentBodyId(id: string): BodyId | null {
+  if (isBodyId(id)) return id;
+  return Object.hasOwn(LEGACY_WORLD_TO_BODY, id) ? LEGACY_WORLD_TO_BODY[id as keyof typeof LEGACY_WORLD_TO_BODY] : null;
+}
 
 const DATE_STAMP = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -19,17 +31,20 @@ function isDateStamp(s: string): boolean {
 }
 
 /**
- * Stored charting, sanitised like loadBadges: world ids and real dates only,
- * one record per world (its earliest date). Hand-edited or corrupt storage
- * must not crash the store or grant anything.
+ * Stored charting, sanitised like loadBadges: body ids (legacy world ids
+ * mapped through LEGACY_WORLD_TO_BODY first) and real dates only, one record
+ * per body (its earliest date). Hand-edited or corrupt storage must not crash
+ * the store or grant anything. The store rewrites fitz-charted in the new ids
+ * on its next charting write.
  */
 export function loadCharted(raw: unknown): ChartRecord[] {
   if (!Array.isArray(raw)) return [];
   const out: ChartRecord[] = [];
   for (const r of raw) {
     if (!r || typeof r !== "object") continue;
-    const { id, at } = r as { id?: unknown; at?: unknown };
-    if (typeof id !== "string" || typeof at !== "string" || !isWorld(id) || !isDateStamp(at)) continue;
+    const { id: storedId, at } = r as { id?: unknown; at?: unknown };
+    const id = typeof storedId === "string" ? currentBodyId(storedId) : null;
+    if (id === null || typeof at !== "string" || !isDateStamp(at)) continue;
     const seen = out.find((c) => c.id === id);
     // Same-shape stamps compare as dates.
     if (seen) { if (at < seen.at) seen.at = at; continue; }
@@ -38,15 +53,14 @@ export function loadCharted(raw: unknown): ChartRecord[] {
   return out;
 }
 
-/** The title is derived, never stored: every world charted. */
+/** The title is derived, never stored: every body charted. */
 export function isCartographer(c: readonly ChartRecord[]): boolean {
-  return new Set(c.filter((r) => isWorld(r.id)).map((r) => r.id)).size === WORLD_COUNT;
+  return new Set(c.filter((r) => isBodyId(r.id)).map((r) => r.id)).size === BODY_COUNT;
 }
 
-/** The radio line for the `count`th world charted: its namesake type and one fact. */
-export function chartLine(id: WorldId, count: number): string {
-  const w = WORLDS.find((x) => x.id === id)!;
-  return `WORLD CHARTED ${count}/${WORLD_COUNT} — ${w.namesake.toUpperCase()}-TYPE: ${WORLD_FACTS[id][0]}`;
+/** The radio line for the `count`th body charted: its name and one fact. */
+export function chartLine(id: BodyId, count: number): string {
+  return `WORLD CHARTED ${count}/${BODY_COUNT} — ${bodyById(id).name}: ${BODY_FACTS[id][0]}`;
 }
 
 /** The rarer line, once, when the last world is charted. */
@@ -54,7 +68,7 @@ export const SURVEY_LINE = "SYSTEM SURVEY COMPLETE — EVERY WORLD CHARTED. YOU 
 /** Follows the survey line: the title's reward and where to fit it. */
 export const AURUM_LINE = "AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR";
 
-/** How long a shout-out waits for company after the fifth world: a day, then it is dropped. */
+/** How long a shout-out waits for company after the last body: a day, then it is dropped. */
 export const SHOUT_PENDING_MS = 24 * 60 * 60 * 1000;
 
 /** Whether the "new cartographer" shout-out armed at `pendingAt` may still go out. */

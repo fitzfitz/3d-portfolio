@@ -59,7 +59,7 @@ export default async function run() {
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
       const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s) && Math.hypot(s.x, s.y, s.z) <= 370);
       if (!cr) return null;
-      // Keep the teleport target well inside the system (SYSTEM_RADIUS 480),
+      // Keep the teleport target well inside the crystal field (480, the old edge),
       // so it can never land in the edge burn: offset toward the centre if needed.
       let z = cr.z + dzv;
       const r = Math.hypot(cr.x, cr.y, z);

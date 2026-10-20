@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { SUN_RADIUS, planets } from "../src/constants";
+import { SUN_RADIUS } from "../src/constants";
+import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { SUN_COLLIDER, ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { SHARDS } from "../src/data/shards";
 import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
@@ -15,7 +16,7 @@ describe("L35 a sun bigger than its planets", () => {
   it("the core is 24 and the collider wraps it", () => {
     expect(SUN_RADIUS).toBe(24);
     expect(SUN_COLLIDER.r).toBe(25.5);
-    for (const p of planets) expect(SUN_RADIUS).toBeGreaterThan(p.size);
+    for (const b of SOLAR_BODIES) expect(SUN_RADIUS, b.id).toBeGreaterThan(b.size);
   });
   it("the corona ends before the belt's inner edge", () => {
     expect(CORONA_SIZE / 2).toBeGreaterThan(SUN_RADIUS);

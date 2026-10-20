@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { validateDrop, beaconVisible, parseBeacons, beaconReport, BEACON_LIMIT, SPAWN_KEEP_OUT } from "../src/utils/beacons";
 import { SPAWN } from "../src/data/spawn";
 import { BEACON_PHRASES } from "../src/data/beaconPhrases";
+import { SYSTEM_RADIUS, VALIDATION_RADIUS } from "../src/constants";
 
 const good = { x: 10, y: -4.26, z: 120, phrase: 2 };
 
@@ -17,7 +18,7 @@ describe("validateDrop", () => {
     }
   });
   it("rejects positions outside the system or not finite", () => {
-    for (const x of [525, -525, Number.NaN, Infinity, "3"]) expect(validateDrop({ ...good, x }).ok).toBe(false);
+    for (const x of [VALIDATION_RADIUS + 5, -VALIDATION_RADIUS - 5, Number.NaN, Infinity, "3"]) expect(validateDrop({ ...good, x }).ok).toBe(false);
   });
   // Every visitor starts at the spawn pad (src/data/spawn.ts): a pile of beacons there
   // would be the first thing a recruiter sees.
@@ -32,13 +33,16 @@ describe("validateDrop", () => {
 
 describe("sphere bounds", () => {
   it("validates within the sphere, not a cube", () => {
-    expect(validateDrop({ ...good, x: 515, y: 0, z: 0 }).ok).toBe(true);
-    expect(validateDrop({ ...good, x: 525, y: 0, z: 0 }).ok).toBe(false);
-    expect(validateDrop({ ...good, x: 320, y: 320, z: 320 }).ok).toBe(false);
+    // VALIDATION_RADIUS 3800 (spec §6.1): r 3790 in, r 3810 out, and a cube corner of side 2 × 2200 (r 3811) out.
+    expect(VALIDATION_RADIUS).toBe(3800);
+    expect(validateDrop({ ...good, x: 3790, y: 0, z: 0 }).ok).toBe(true);
+    expect(validateDrop({ ...good, x: 3810, y: 0, z: 0 }).ok).toBe(false);
+    expect(validateDrop({ ...good, x: 2200, y: 2200, z: 2200 }).ok).toBe(false);
   });
   it("draws a beacon only inside the system radius", () => {
-    expect(beaconVisible({ x: 280, y: 280, z: 280 })).toBe(false); // r 485, past the 480 edge
-    expect(beaconVisible({ x: 200, y: 200, z: 200 })).toBe(true);
+    expect(SYSTEM_RADIUS).toBe(3600);
+    expect(beaconVisible({ x: 2080, y: 2080, z: 2080 })).toBe(false); // r 3603, past the 3600 edge
+    expect(beaconVisible({ x: 2070, y: 2070, z: 2070 })).toBe(true); // r 3585
   });
 });
 

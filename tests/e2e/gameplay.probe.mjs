@@ -154,11 +154,11 @@ export default async function run() {
     // size plus the ship's half length (src/utils/worldCollide.ts); the ship
     // must stop there, never get inside it, and never lock or open anything.
     const orbit = await page.evaluate(async () => {
-      const { planets } = await import("/src/constants.ts");
+      const { bodyById } = await import("/src/data/solarSystem.ts");
       const { SHIP_HALF_LENGTH } = await import("/src/utils/worldCollide.ts");
-      const p = planets[0];
-      const b = window.__fitz.bodies[p.name]; // live position — planets orbit continuously
-      return { name: p.name, size: p.size, reach: p.size + SHIP_HALF_LENGTH, bx: b.x, by: b.y, bz: b.z };
+      const p = bodyById("earth");
+      const b = window.__fitz.bodies[p.id]; // live position — bodies orbit continuously
+      return { name: p.id, size: p.size, reach: p.size + SHIP_HALF_LENGTH, bx: b.x, by: b.y, bz: b.z };
     });
     await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 1.6);
     await settle(page, 300);
