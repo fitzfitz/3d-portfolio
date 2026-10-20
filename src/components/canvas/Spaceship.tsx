@@ -2,14 +2,14 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS } from "../../constants";
+import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { moonCenters } from "../../store/moonState";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
-import { PROBES, PROBE_JUMP_STANDOFF } from "../../data/probes";
+import { PROBES, PROBE_JUMP_STANDOFF, PROBE_RADIUS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
 import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
@@ -24,6 +24,8 @@ import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
+import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
+import { CRYSTAL_LANDMARKS } from "../../utils/crystalField";
 import {
   stepGravity, gravityMode, SlingshotWatch, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
@@ -46,6 +48,16 @@ const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
 const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
+/** Clear radius of a fixed landmark (the gate's frame is 15) for cruise's free-space measure. */
+const LANDMARK_CRUISE_R = 15;
+/**
+ * Every sphere warp must leave room for, reused each frame (utils/cruise.ts
+ * freeDistance): bodies, the Sun, fixed landmarks, probes. Moons join in Task 14.
+ */
+const CRUISE_SPHERES: { x: number; y: number; z: number; r: number }[] = Array.from(
+  { length: BODY_REACH.length + 1 + CRYSTAL_LANDMARKS.length + PROBES.length },
+  () => ({ x: 0, y: 0, z: 0, r: 0 }),
+);
 const BRAKE = 0.92;         // per-frame decay basis
 /**
  * Idle bob amplitude, calibrated by eye at animScale 4 and baked. Started at
@@ -231,6 +243,7 @@ export default function Spaceship() {
     }
   };
   const edgeCut = useRef(false);
+  const warpSpeed = useRef(WARP_SPEED);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on the first probe, so the first W press flies toward a project.
   const hasFlown = useRef(false);
@@ -603,8 +616,26 @@ export default function Spaceship() {
 
     // Caps sit before the drag below; cruiseCap keeps the post-drag speed the
     // same at every frame rate (the tuning targets are measured at 60 fps).
+    // Each warp starts at the base speed and builds (utils/cruise.ts).
+    if (!warpActive) warpSpeed.current = WARP_SPEED;
     if (warpActive) {
-      const warp = cruiseCap(WARP_SPEED, SPACE_DRAG, dt);
+      let n = 0;
+      for (let i = 0; i < BODY_REACH.length; i++) {
+        const b = bodies[BODY_REACH[i].key], c = CRUISE_SPHERES[n++];
+        c.x = b.x; c.y = b.y; c.z = b.z; c.r = BODY_REACH[i].reach;
+      }
+      const sun = CRUISE_SPHERES[n++];
+      sun.x = SUN_WELL.x; sun.y = SUN_WELL.y; sun.z = SUN_WELL.z; sun.r = SUN_RADIUS;
+      for (let i = 0; i < CRYSTAL_LANDMARKS.length; i++) {
+        const l = CRYSTAL_LANDMARKS[i], c = CRUISE_SPHERES[n++];
+        c.x = l[0]; c.y = l[1]; c.z = l[2]; c.r = LANDMARK_CRUISE_R;
+      }
+      for (let i = 0; i < PROBES.length; i++) {
+        const q = probePos[PROBES[i].id], c = CRUISE_SPHERES[n++];
+        c.x = q.x; c.y = q.y; c.z = q.z; c.r = PROBE_RADIUS;
+      }
+      warpSpeed.current = stepCruise(warpSpeed.current, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
+      const warp = cruiseCap(warpSpeed.current, SPACE_DRAG, dt);
       vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {
       vel.current.x += nose.x * ACCEL * thrustInput * dt;

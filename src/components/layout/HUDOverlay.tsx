@@ -45,6 +45,9 @@ let completionAnnounced = false;
 /** How long after leaving the spawn pad the HUD quiets down. */
 const QUIET_AFTER_MS = 6000;
 
+/** c in km/s, for the speed readout's percent of light. */
+const LIGHT_KM_S = 299_792.458;
+
 export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?: boolean }) {
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isWarping = useSpaceStore((s) => s.isWarping);
@@ -104,7 +107,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     const tick = () => {
       if (locRef.current)
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
-      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${speedKmS(flight.speed).toFixed(0)} KM/S`;
+      const kmS = speedKmS(flight.speed);
+      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S · ${((kmS / LIGHT_KM_S) * 100).toFixed(3)}% C`;
       if (sunDistRef.current)
         sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
       // Accent while a gravity assist carries the ship past cruise speed.

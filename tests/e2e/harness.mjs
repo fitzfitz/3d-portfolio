@@ -493,7 +493,8 @@ export function lockFullFidelity() {
  * broadcast ever contained "RETURN BURN" (store subscription, so a later
  * broadcast replacing it cannot hide it). Read it back with readEdgeRecorder.
  */
-export function installEdgeRecorder(page, edge = 480) {
+// Default edge is SYSTEM_RADIUS (src/constants.ts); a .mjs cannot import TS, so the literal.
+export function installEdgeRecorder(page, edge = 3600) {
   return page.evaluate((E) => {
     const rec = {
       maxR: 0, opAtMax: 0, tCross: null, tBack: null,
