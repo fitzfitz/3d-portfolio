@@ -8,21 +8,9 @@ export const BELT_PUSH_HALFLIFE = 0.04;
 export const BELT_RETURN_HALFLIFE = 0.6;
 
 /**
- * The ship's position in a ring's local frame. Each BeltRing sits in a group
- * rotated `tilt` about X, so this applies the inverse rotation, Rx(-tilt).
- */
-export function toRingLocal(out: Vec3, p: Vec3, tilt: number): Vec3 {
-  const c = Math.cos(tilt), s = Math.sin(tilt);
-  const y = c * p.y + s * p.z;
-  const z = -s * p.y + c * p.z;
-  out.x = p.x; out.y = y; out.z = z;
-  return out;
-}
-
-/**
  * Whether the ship can reach any rock of a ring spanning rMin..rMax from the
  * origin. Distance from the origin is the same in every frame, so this needs
- * no tilt. Most frames the ship is nowhere near a belt and the push is skipped.
+ * no frame change. Most frames the ship is nowhere near a belt and the push is skipped.
  */
 export function nearRing(p: Vec3, rMin: number, rMax: number): boolean {
   const r = Math.hypot(p.x, p.y, p.z);
@@ -32,7 +20,7 @@ export function nearRing(p: Vec3, rMin: number, rMax: number): boolean {
 /**
  * Eases rock `i`'s displacement (disp[i*3 .. i*3+2]) toward its target. A rock
  * whose orbit position (rx, ry, rz) is within the push radius of `ship` (both
- * ring-local) targets the radius surface, directly away from the ship;
+ * world) targets the radius surface, directly away from the ship;
  * otherwise it targets zero. Distance is measured from the orbit position, not
  * the displaced one, so a pushed rock holds still rather than oscillating.
  * `kPush`/`kReturn` come from `decay(halfLife, dt)`, computed once per frame.
@@ -60,7 +48,7 @@ export function stepRock(
 
 /**
  * Sets rock `i`'s displacement so its orbit position (rx, ry, rz) plus the
- * displacement lands on (px, py, pz), all ring-local. Used while the tractor
+ * displacement lands on (px, py, pz), all world. Used while the tractor
  * beam holds a pebble, so on release stepRock eases it home from there
  * instead of it snapping back to its slot.
  */

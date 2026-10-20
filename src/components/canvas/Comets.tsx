@@ -6,7 +6,7 @@ import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt, type CometPass } from "../../utils/worldEvents";
 import { COMET_ELEMENTS } from "../../data/smallBodyField";
-import { cometWorldPosition } from "../../utils/beltRocks";
+import { orbitWorldPosition } from "../../utils/beltRocks";
 import { orreryJd } from "../../utils/orreryClock";
 import { dustEmitBack } from "../../utils/cometDust";
 import { ambientTime } from "../../utils/ambientTime";
@@ -71,7 +71,7 @@ const comaFragment = /* glsl */ `
 
 /** Slot `i`'s position at its own time `t` (orbit time, or seconds into the visitor's pass). */
 function cometPos(i: number, t: number, pass: CometPass | undefined, out: THREE.Vector3): THREE.Vector3 {
-  if (i < VISITOR) { cometWorldPosition(COMET_ELEMENTS[i], orreryJd(t), out); return out; }
+  if (i < VISITOR) { orbitWorldPosition(COMET_ELEMENTS[i], orreryJd(t), out); return out; }
   if (pass) cometPassAt(out, pass, t);
   return out;
 }

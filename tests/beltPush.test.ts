@@ -3,7 +3,7 @@ import { beltRockPosition } from "../src/utils/beltRocks";
 import { makeBelt, makeTrojans, BELT_COUNT, TROJAN_COUNT } from "../src/data/smallBodyField";
 import { ORRERY_TEST_JD } from "../src/utils/orreryClock";
 import {
-  toRingLocal, nearRing, stepRock, holdAt,
+  nearRing, stepRock, holdAt,
   BELT_PUSH_RADIUS, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../src/utils/beltPush";
 import { decay } from "../src/utils/reactions";
@@ -13,25 +13,6 @@ const DT = 1 / 60;
 const kP = decay(BELT_PUSH_HALFLIFE, DT);
 const kR = decay(BELT_RETURN_HALFLIFE, DT);
 const dispLen = (d: Float32Array, i = 0) => Math.hypot(d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
-
-describe("toRingLocal", () => {
-  it("is the identity for an untilted ring", () => {
-    expect(toRingLocal(v(), v(1, 2, 3), 0)).toEqual(v(1, 2, 3));
-  });
-  // Both shipped rings: BeltMain (0.436) and the near-vertical BeltHalo (1.31).
-  for (const tilt of [0.436, 1.31]) {
-    it(`inverts the ring's X tilt of ${tilt}`, () => {
-      // A ring-local point (0,0,10), rotated into the world by Rx(tilt)...
-      const c = Math.cos(tilt), s = Math.sin(tilt);
-      const world = v(0, -s * 10, c * 10);
-      // ...comes back to (0,0,10).
-      const back = toRingLocal(v(), world, tilt);
-      expect(back.x).toBeCloseTo(0, 9);
-      expect(back.y).toBeCloseTo(0, 9);
-      expect(back.z).toBeCloseTo(10, 9);
-    });
-  }
-});
 
 describe("nearRing", () => {
   it("is true inside the ring's band, padded by the push radius", () => {

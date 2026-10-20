@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { SUN_RADIUS, GM_SUN, PROGRADE } from "../src/constants";
 import { keplerGM, keplerOmega, keplerPeriod } from "../src/utils/kepler";
 import { COMET_ELEMENTS } from "../src/data/smallBodyField";
-import { cometWorldPosition } from "../src/utils/beltRocks";
+import { orbitWorldPosition } from "../src/utils/beltRocks";
 import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { bodyPositionAt } from "../src/utils/bodyPositions";
 import { orbitShape, JD_J2000 } from "../src/utils/ephemeris";
@@ -76,7 +76,7 @@ describe("L9 everything orbits the sun the same way (prograde)", () => {
     expect(dot(orbitAxis(b), reference)).toBeGreaterThan(0);
   });
   it.each(COMET_ELEMENTS.map((c, i) => [i === 0 ? "Encke" : "67P", c] as const))("comet %s turns prograde (angular momentum along +Y)", (_, c) => {
-    const pos = (t: number) => cometWorldPosition(c, c.epochJd + t, { x: 0, y: 0, z: 0 });
+    const pos = (t: number) => orbitWorldPosition(c, c.epochJd + t, { x: 0, y: 0, z: 0 });
     expect(dot(turnAxis(pos, 3.7), ECLIPTIC_NORTH)).toBeGreaterThan(0);
   });
   it("PROGRADE rotation.y turns the same way as the bodies' orbits (angular momentum along +Y)", () => {

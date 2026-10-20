@@ -10,33 +10,10 @@ import { PORTAL_POS, LOCK_RETAIN_FACTOR as RETAIN } from "../src/constants";
 import { SOLAR_BODIES } from "../src/data/solarSystem";
 
 describe("isRejectedSpawn", () => {
-  it("rejects inside the asteroid belt band", () => {
-    // Belt is radius 40-70, measured as distance from the origin.
-    expect(isRejectedSpawn(55, 0, 0, [])).toBe(true);
-    expect(isRejectedSpawn(0, 0, 45, [])).toBe(true);
-  });
-
-  it("rejects inside the polar halo band", () => {
-    // Halo is radius 80-95.
-    expect(isRejectedSpawn(88, 0, 0, [])).toBe(true);
-  });
-
-  it("measures the bands as 3D radius, so the tilted halo is covered", () => {
-    // Both belt rings are TILTED (BeltMain 0.436 rad, BeltHalo 1.31 rad), and a
-    // tilt preserves distance from the origin while destroying XZ radius. The
-    // 75-degree halo at ring radius 88 therefore reaches y ~= 85 at an XZ radius
-    // of only ~22 — so an XZ-radius test would happily place a crystal in the
-    // thick of the halo. Straight up the pole at 88 units must reject.
-    expect(isRejectedSpawn(0, 88, 0, [])).toBe(true);
-    // And a point whose XZ radius lands in the belt band but whose true distance
-    // is far outside it must be accepted.
-    expect(isRejectedSpawn(55, 240, 0, [])).toBe(false);
-  });
-
-  it("accepts the gaps between and beyond the bands", () => {
-    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // the belt's inner hole
-    expect(isRejectedSpawn(75, 0, 0, [])).toBe(false);   // between belt and halo
-    expect(isRejectedSpawn(200, 0, 0, [])).toBe(false);  // beyond both
+  it("has no static belt exclusion: the old band and halo radii are accepted", () => {
+    for (const p of [[55, 0, 0], [0, 0, 45], [88, 0, 0], [0, 88, 0], [20, 0, 0], [200, 0, 0]]) {
+      expect(isRejectedSpawn(p[0], p[1], p[2], []), p.join(",")).toBe(false);
+    }
   });
 
   it("rejects near an avoid point, and accepts outside its radius", () => {
@@ -49,8 +26,6 @@ describe("isRejectedSpawn", () => {
     // Discriminating on purpose. An XZ-only avoid check would drop the y term and
     // compute distance 0 for a point directly above the avoid centre, rejecting
     // it — so the ACCEPT case below is what actually catches that regression.
-    // Origin radius 25 also sits clear of the belt band (40-70), so only the
-    // avoid logic decides these two verdicts.
     const avoid = [{ x: 0, y: 0, z: 0, r: 20 }];
     // Inside the sphere in 3D: reject.
     expect(isRejectedSpawn(0, 15, 0, avoid)).toBe(true);
@@ -125,7 +100,6 @@ describe("respawnTick", () => {
 describe("crystalAvoidPoints", () => {
   it("keeps every landmark clear, not only the portal", () => {
     const avoid = crystalAvoidPoints([], [[0, 95, -150], [0, -108, 156]], { x: 0, y: 0, z: 0 });
-    // Both points are outside the belt bands and far from the ship.
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT - 1, 156, avoid)).toBe(true);
     expect(isRejectedSpawn(0, 95, -150 + LANDMARK_KEEP_OUT - 1, avoid)).toBe(true);
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT + 1, 156, avoid)).toBe(false);
@@ -182,7 +156,6 @@ describe("crystal spawns near bodies", () => {
     );
     for (const p of SOLAR_BODIES) {
       const r = p.size * RETAIN - 0.5;
-      // Off the belt and halo bands, so only the planet keep-out can reject it.
       expect(isRejectedSpawn(at.x + r, at.y, at.z, avoid)).toBe(true);
     }
   });

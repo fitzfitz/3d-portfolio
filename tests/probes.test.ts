@@ -4,7 +4,6 @@ import { SPAWN } from "../src/data/spawn";
 import { SYSTEM_RADIUS, SUN_RADIUS } from "../src/constants";
 import { SUN_COLLIDER } from "../src/data/asteroids";
 import { BODY_ORBITS } from "./helpers/solarClearance";
-import { beltClearance } from "./helpers/clearance";
 import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { SHARDS } from "../src/data/shards";
 import { DESTINATIONS } from "../src/data/destinations";
@@ -190,11 +189,10 @@ describe("project probes clear the other fixed things they could touch (orbits: 
     ...p.remote.map((r, i) => ({ name: `${p.id} remote ${i + 1}`, pos: r })),
   ]);
 
-  it("clears the sun, the asteroid belt and the halo", () => {
+  // Belt and Trojan clearance: tests/solarClearance.test.ts (real swept orbits).
+  it("clears the sun", () => {
     for (const s of spots) {
       expect(Math.hypot(s.pos[0], s.pos[1], s.pos[2]), `${s.name} vs sun`).toBeGreaterThan(SUN_COLLIDER.r + PROBE_RADIUS + MARGIN);
-      expect(beltClearance(s.pos, 0.436, 40, 70, 2.5), `${s.name} vs belt`).toBeGreaterThan(PROBE_RADIUS);
-      expect(beltClearance(s.pos, 1.31, 80, 95, 4.5), `${s.name} vs halo`).toBeGreaterThan(PROBE_RADIUS);
     }
   });
 

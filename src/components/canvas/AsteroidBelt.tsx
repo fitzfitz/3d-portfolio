@@ -10,7 +10,7 @@ import { orreryJd } from "../../utils/orreryClock";
 import { AU } from "../../constants";
 import { decay } from "../../utils/reactions";
 import {
-  toRingLocal, nearRing, stepRock, holdAt, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
+  nearRing, stepRock, holdAt, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../../utils/beltPush";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { registerRing, pebbleWorld, isTethered, regrowScale, stepMining, miningState, tetherPos, addOre, FirstOreLine } from "../../utils/mining";
@@ -28,8 +28,6 @@ const ROCK_SCALE = 0.14;
 /** Position scratch: rocks are written in place, never allocated per frame. */
 const rockPos = { x: 0, y: 0, z: 0 };
 const dummy = new THREE.Object3D();
-/** Scratch for the ship's ring-local position (one per frame per ring). */
-const shipLocal = { x: 0, y: 0, z: 0 };
 /** Tether position scratch (mining). */
 const _tp = { x: 0, y: 0, z: 0 };
 /** Module-level so it survives the classic-résumé remount (like FuelCrystals' ventedAnnounced). */
@@ -73,11 +71,11 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
     const t = ambientTime(state.clock.getElapsedTime());
     const dt = Math.min(delta, 0.05);
     const react = !useSpaceStore.getState().reducedMotion;
-    const ship = react && nearRing(flight, rMin, rMax) ? toRingLocal(shipLocal, flight, 0) : null;
+    const ship = react && nearRing(flight, rMin, rMax) ? flight : null;
     const kPush = decay(BELT_PUSH_HALFLIFE, dt);
     const kReturn = decay(BELT_RETURN_HALFLIFE, dt);
     const now = gameTime(state.clock.getElapsedTime());
-    const jd = orreryJd(state.clock.getElapsedTime());
+    const jd = orreryJd(t);
     for (let i = 0; i < count; i++) {
       const r = rocks[i], sp = spins[i];
       beltRockPosition(r, jd, rockPos);
@@ -89,7 +87,7 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
       // still eases home instead of staying where the beam let go.
       if (!isTethered(ring, i)) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
       const lx = x + disp[j], ly = y + disp[j + 1], lz = z + disp[j + 2];
-      // Rocks are already in world space (no ring group, no tilt).
+      // Rocks are already in world space.
       world[j] = lx; world[j + 1] = ly; world[j + 2] = lz;
       dummy.position.set(lx, ly, lz);
       dummy.rotation.set(i + t * sp.x, t * sp.y, t * sp.z);
@@ -101,7 +99,7 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
     // Pebbles past the drawn count (low-perf) are not in the scene: unmineable.
     if (count < total) world.fill(NaN, count * 3);
 
-    // Tethered pebbles draw where the beam has pulled them (world -> ring-local).
+    // Tethered pebbles draw where the beam has pulled them (world space).
     // The offset from their orbit slot goes into `disp`, so on release they
     // ease home from here rather than snapping back.
     for (let k = 0; k < miningState.tetherCount; k++) {
