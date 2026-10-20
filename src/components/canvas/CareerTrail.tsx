@@ -10,7 +10,7 @@ import { flight } from "../../store/spaceStore";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 import { arcPlacement } from "../../utils/trailGuide";
-import { makeGuideLineMaterial } from "./guideLine";
+import { makeGuideLineMaterial, withGuideOffsets } from "./guideLine";
 
 /** The model is ~3.3 tall; at 1.8x a buoy reads from the next one, about 50 units away (see TRAIL_ARC). */
 const BUOY_SCALE = 1.8;
@@ -43,9 +43,9 @@ export default function CareerTrail() {
   useEffect(() => () => { geometry.dispose(); material.dispose(); }, [geometry, material]);
 
   const guide = useMemo(() => {
-    const g = new THREE.RingGeometry(
+    const g = withGuideOffsets(new THREE.RingGeometry(
       TRAIL_ARC.radius - GUIDE_HALF_WIDTH, TRAIL_ARC.radius + GUIDE_HALF_WIDTH, 160, 1, 0, TRAIL_ARC.span,
-    );
+    ));
     const m = makeGuideLineMaterial({
       color: CAREER_AMBER, opacity: 0.5,
       dashes: Math.round((2 * Math.PI * TRAIL_ARC.radius) / DASH_LENGTH),

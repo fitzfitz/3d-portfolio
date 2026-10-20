@@ -21,8 +21,11 @@ import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PAR
  * tick (orbitRibbon.ts) keeps at least that half-length; ticks are solid,
  * not dashed. Both read the geometry's `aSide` / `aAlong` offsets from the
  * line's centre (orbitRibbonGeometry), in the mesh's local units (the orbit
- * meshes are unscaled). At 0 (the default) the geometry draws as built, and
- * a RingGeometry guide, which has no offsets, shares the same program.
+ * meshes are unscaled, their plane local XY). The width and a tick's bar are
+ * turned about the line to face the camera, so an orbit seen edge-on from in
+ * the ecliptic keeps them. At 0 (the default) the geometry draws as built;
+ * a RingGeometry guide shares the same program, given zero offsets
+ * (withGuideOffsets) so the attributes are never active but unbound.
  */
 export interface GuideLineOptions {
   color: THREE.ColorRepresentation;
@@ -37,6 +40,19 @@ export interface GuideLineOptions {
   minHalfPx?: number;
   /** Least tick half-length on screen (CSS px); needs aAlong. 0 = as built. */
   tickHalfPx?: number;
+}
+
+/**
+ * Gives a guide geometry built without them (a RingGeometry) zero `aSide` /
+ * `aAlong` offsets, so the guide-line program's attributes are always bound.
+ * Returns the geometry.
+ */
+export function withGuideOffsets(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const n = g.getAttribute("position").count;
+  for (const name of ["aSide", "aAlong"]) {
+    if (!g.getAttribute(name)) g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  }
+  return g;
 }
 
 /**
@@ -60,23 +76,44 @@ const VERT = /* glsl */ `
     float l = length(off);
     return l > 0.0 ? off * (max(l, minLen) / l) : off;
   }
+  // An in-plane offset o (world), turned about the line's own direction
+  // t = n × o to face the camera, grown to minLen: along t × toCam, so the
+  // width survives an edge-on view. orbitRibbon.ts facingOffset mirrors it.
+  vec3 facing(vec3 o, vec3 n, vec3 toCam, float minLen) {
+    float l = length(o);
+    if (l == 0.0) return o;
+    vec3 t = cross(n, o);
+    vec3 f = cross(t, toCam);
+    float fl = length(f);
+    vec3 dir = fl > 1e-6 * length(t) * length(toCam) ? f / fl : o / l;
+    return dir * max(l, minLen);
+  }
   void main() {
     // RingGeometry lies in its local XY plane; the angle drives the dashes.
     vAngle = atan(position.y, position.x);
-    vec3 p = position;
+    vec3 p = (modelMatrix * vec4(position, 1.0)).xyz;
     vTick = 0.0;
-    // Off (0) for guides without the offsets, whose attributes are unbound.
+    // Off (0) for guides built without the offsets (zero there anyway).
     if (uMinHalfPx > 0.0) {
-      vec3 centre = position - aSide - aAlong;
+      // The line lies in its local XY plane (the orbit's perifocal frame).
+      mat3 m = mat3(modelMatrix);
+      vec3 centre = (modelMatrix * vec4(position - aSide - aAlong, 1.0)).xyz;
+      vec3 n = normalize(m * vec3(0.0, 0.0, 1.0));
+      vec3 toCam = cameraPosition - centre;
       // One CSS px in units at the centre's depth: 2 z tan(fov / 2) / H.
-      float depth = max(-(modelViewMatrix * vec4(centre, 1.0)).z, 0.0);
+      float depth = max(-(viewMatrix * vec4(centre, 1.0)).z, 0.0);
       float px = 2.0 * depth / (projectionMatrix[1][1] * uViewportH);
-      p = centre + atLeast(aSide, uMinHalfPx * px) + atLeast(aAlong, uTickHalfPx * px);
-      vTick = dot(aAlong, aAlong) > 0.0 ? 1.0 : 0.0;
+      if (dot(aAlong, aAlong) > 0.0) {
+        // A tick: its bar across the orbit faces the camera; its thickness
+        // runs along the orbit, in the plane.
+        vTick = 1.0;
+        p = centre + atLeast(m * aSide, uMinHalfPx * px) + facing(m * aAlong, n, toCam, uTickHalfPx * px);
+      } else {
+        p = centre + facing(m * aSide, n, toCam, uMinHalfPx * px);
+      }
     }
-    vec4 w = modelMatrix * vec4(p, 1.0);
-    vWorld = w.xyz;
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vWorld = p;
+    gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
     ${LOG_DEPTH_VERT}
   }
 `;

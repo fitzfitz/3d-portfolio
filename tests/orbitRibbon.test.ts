@@ -4,10 +4,11 @@ import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { orbitShape } from "../src/utils/ephemeris";
 import { ORRERY_TEST_JD } from "../src/utils/orreryClock";
 import {
-  apsides, orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse, ORBIT_RIBBON_SAMPLES,
+  apsides, facingOffset, pxAtDepth, orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse, ORBIT_RIBBON_SAMPLES,
   ORBIT_MIN_HALF_PX, ORBIT_TICK_HALF_LENGTH, ORBIT_TICK_MIN_HALF_PX,
 } from "../src/components/canvas/orbitRibbon";
 import { sweptOrbit } from "./helpers/solarClearance";
+import { withGuideOffsets } from "../src/components/canvas/guideLine";
 import { AU } from "../src/constants";
 
 const circle = (n: number, r: number) =>
@@ -152,5 +153,80 @@ describe("apsis ticks: short crossbars at perihelion (E = 0) and aphelion (E = �
       expect(cx).toBeCloseTo(at.x, 4);
       expect(cy).toBeCloseTo(at.y, 4);
     }
+  });
+});
+
+describe("facingOffset: the line's width turned to face the camera (guideLine.ts mirror)", () => {
+  // An orbit of radius 1000 in the XY plane (normal +z), seen exactly edge-on
+  // from 3000 u away in the plane: the in-plane offset projects to nothing.
+  const n = { x: 0, y: 0, z: 1 };
+  const H = 800, fov = Math.PI / 3;
+  const cam = new THREE.PerspectiveCamera(60, 1280 / 800, 0.1, 8000);
+  cam.position.set(0, -4000, 0);
+  cam.up.set(0, 0, 1);
+  cam.lookAt(0, 0, 0);
+  cam.updateMatrixWorld();
+  const toPx = (v: THREE.Vector3) => {
+    const s = v.clone().project(cam);
+    return new THREE.Vector2(s.x * 640, s.y * 400);
+  };
+  const across = (centre: THREE.Vector3, off: { x: number; y: number; z: number }) =>
+    toPx(centre.clone().add(new THREE.Vector3(off.x, off.y, off.z))).distanceTo(toPx(centre.clone().sub(new THREE.Vector3(off.x, off.y, off.z))));
+
+  it("one CSS px at a depth: 2 z tan(fov / 2) / H", () => {
+    expect(pxAtDepth(400, fov, H)).toBeCloseTo((2 * 400 * Math.tan(fov / 2)) / H, 12);
+  });
+
+  it("edge-on, the strip stays at least 2 px wide (1 px each side); in-plane it would vanish", () => {
+    // The near side of the circle: its tangent (x) runs across the screen, its
+    // radius (−y) points at the camera, so the built offset is pure depth.
+    const centre = new THREE.Vector3(0, -1000, 0);
+    const toCam = { x: cam.position.x - centre.x, y: cam.position.y - centre.y, z: cam.position.z - centre.z };
+    const px = pxAtDepth(-centre.clone().applyMatrix4(cam.matrixWorldInverse).z, fov, H);
+    expect(across(centre, { x: 0, y: -Math.max(0.06, px), z: 0 })).toBeLessThan(0.01);
+    const f = facingOffset({ x: 0, y: -0.06, z: 0 }, n, toCam, px);
+    expect(across(centre, f)).toBeGreaterThanOrEqual(2 - 1e-6);
+    // Still across the line: ⟂ its tangent (x).
+    expect(f.x).toBeCloseTo(0, 9);
+  });
+
+  it("face-on, it is the offset as built (only grown to the pixel)", () => {
+    const f = facingOffset({ x: 0.06, y: 0, z: 0 }, n, { x: 0, y: 0, z: 3000 }, 0.01);
+    expect(f.x).toBeCloseTo(0.06, 9);
+    expect(f.y).toBeCloseTo(0, 9);
+    expect(f.z).toBeCloseTo(0, 9);
+    const g = facingOffset({ x: -0.06, y: 0, z: 0 }, n, { x: 0, y: 0, z: 3000 }, 1);
+    expect(g.x).toBeCloseTo(-1, 9);
+  });
+
+  it("the two edges and a tick's two ends go opposite ways", () => {
+    const toCam = { x: 30, y: -4000, z: 5 };
+    const a = facingOffset({ x: 0.06, y: 0, z: 0 }, n, toCam, 1);
+    const b = facingOffset({ x: -0.06, y: 0, z: 0 }, n, toCam, 1);
+    expect(a.x + b.x).toBeCloseTo(0, 9);
+    expect(a.y + b.y).toBeCloseTo(0, 9);
+    expect(a.z + b.z).toBeCloseTo(0, 9);
+  });
+
+  it("looking straight along the line, it keeps the built direction (no NaN)", () => {
+    // Offset along x, line tangent along y, camera straight down the tangent.
+    const f = facingOffset({ x: 0.06, y: 0, z: 0 }, n, { x: 0, y: 3000, z: 0 }, 1);
+    expect(f.x).toBeCloseTo(1, 9);
+    expect(Number.isNaN(f.y)).toBe(false);
+  });
+});
+
+describe("withGuideOffsets: a RingGeometry guide binds the guide-line attributes", () => {
+  it("adds zero aSide and aAlong, one per vertex, and keeps any already there", () => {
+    const g = withGuideOffsets(new THREE.RingGeometry(10, 11, 16, 1));
+    const n = g.getAttribute("position").count;
+    for (const name of ["aSide", "aAlong"]) {
+      const a = g.getAttribute(name) as THREE.BufferAttribute;
+      expect(a.count).toBe(n);
+      expect(Array.from(a.array as Float32Array).every((v) => v === 0)).toBe(true);
+    }
+    const r = orbitRibbonGeometry(circle(8, 10), 0.06);
+    const side = r.getAttribute("aSide");
+    expect(withGuideOffsets(r).getAttribute("aSide")).toBe(side);
   });
 });

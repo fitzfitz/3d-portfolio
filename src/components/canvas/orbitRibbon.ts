@@ -72,6 +72,34 @@ export function orbitFrameQuaternion(
   return out.setFromRotationMatrix(_m);
 }
 
+/** One CSS px in units at view depth `depth`: 2 z tan(fov / 2) / H (guideLine.ts, the same sum). */
+export function pxAtDepth(depth: number, fovYRad: number, viewportH: number): number {
+  return (2 * Math.max(depth, 0) * Math.tan(fovYRad / 2)) / viewportH;
+}
+
+/**
+ * An in-plane offset `o` (from a line's centre, across the line), turned
+ * about the line's own direction to face the camera, and grown to at least
+ * `minLen`: the guide-line shader's `facing()` (guideLine.ts), mirrored for
+ * tests. The line runs along t = n × o (n the plane's normal); the result is
+ * along t × toCam, ⟂ both the line and the view, so it keeps its screen
+ * width when the orbit is seen edge-on, from in the ecliptic. Face-on it is
+ * o's own direction; −o gives the opposite. Looking straight down the line,
+ * where that is undefined, it keeps o's direction.
+ */
+export function facingOffset(o: Vec3, n: Vec3, toCam: Vec3, minLen: number): Vec3 {
+  const l = Math.hypot(o.x, o.y, o.z);
+  if (l === 0) return { x: 0, y: 0, z: 0 };
+  const tx = n.y * o.z - n.z * o.y, ty = n.z * o.x - n.x * o.z, tz = n.x * o.y - n.y * o.x;
+  const fx = ty * toCam.z - tz * toCam.y, fy = tz * toCam.x - tx * toCam.z, fz = tx * toCam.y - ty * toCam.x;
+  const fl = Math.hypot(fx, fy, fz);
+  const k = Math.max(l, minLen);
+  if (fl <= 1e-6 * Math.hypot(tx, ty, tz) * Math.hypot(toCam.x, toCam.y, toCam.z)) {
+    return { x: (o.x / l) * k, y: (o.y / l) * k, z: (o.z / l) * k };
+  }
+  return { x: (fx / fl) * k, y: (fy / fl) * k, z: (fz / fl) * k };
+}
+
 /**
  * The apsides of an ellipse in its perifocal frame (Sun at the origin):
  * perihelion at E = 0, (a(1 − e), 0, 0), and aphelion at E = π, (−a(1 + e), 0, 0).
