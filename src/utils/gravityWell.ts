@@ -31,14 +31,15 @@ export function planetWell(p: { size: number }): Well {
   return { x: 0, y: 0, z: 0, g: PLANET_WELL_G * (p.size / WELL_REF_SIZE) ** 2, radius: p.size * PLANET_WELL_RADIUS_FACTOR, rMin: p.size };
 }
 /**
- * The sun keeps G = 1000 at every size. Its softening radius follows its
- * collider (25.5 since the core grew to 24), so its grazing pull is now the
- * gentlest in the system; scaling G like the planets would make every pull
- * across the belt ~9x stronger (docs/UNIVERSE-RULES.md L4).
+ * The sun's well is only 34u wide now (inside Mercury's perihelion, 35.36u),
+ * so a G of 1000 no longer slingshots: a skim at r 30 left at 11. 3500 makes
+ * that skim leave at 16 (SLINGSHOT_SPEED 14) without the surface touch that
+ * 4000 brings (tests/smallBodyField.test.ts). The pull stays confined to the
+ * 8.5u between the corona and the rim, so the belt is unaffected.
  */
-export const SUN_WELL_G = 1000;
-/** Stops short of the inner planet orbit (115). */
-export const SUN_WELL_RADIUS = 110;
+export const SUN_WELL_G = 3500;
+/** Stops short of Mercury's perihelion (35.36 u): the well never reaches a planet's orbit. */
+export const SUN_WELL_RADIUS = 34;
 export const G_HALF_LIFE = 3;
 export const G_HALF_LIFE_KEEPING = 0.4;
 export const G_HALF_LIFE_WARP = 0.2;
