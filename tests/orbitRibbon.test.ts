@@ -3,7 +3,10 @@ import * as THREE from "three";
 import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { orbitShape } from "../src/utils/ephemeris";
 import { ORRERY_TEST_JD } from "../src/utils/orreryClock";
-import { orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse, ORBIT_RIBBON_SAMPLES } from "../src/components/canvas/orbitRibbon";
+import {
+  apsides, orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse, ORBIT_RIBBON_SAMPLES,
+  ORBIT_MIN_HALF_PX, ORBIT_TICK_HALF_LENGTH, ORBIT_TICK_MIN_HALF_PX,
+} from "../src/components/canvas/orbitRibbon";
 import { sweptOrbit } from "./helpers/solarClearance";
 import { AU } from "../src/constants";
 
@@ -76,5 +79,78 @@ describe("perifocalEllipse + orbitFrameQuaternion: the true ellipse, in its plan
     expect(Math.min(...r)).toBeCloseTo(80, 6);
     expect(Math.max(...r)).toBeCloseTo(120, 3);
     expect(ORBIT_RIBBON_SAMPLES).toBe(512);
+  });
+});
+
+describe("orbitRibbonGeometry: readable at any range (spec §6.2)", () => {
+  const pts = circle(512, 100);
+  const g = orbitRibbonGeometry(pts, 0.06);
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const side = g.getAttribute("aSide") as THREE.BufferAttribute;
+  const along = g.getAttribute("aAlong") as THREE.BufferAttribute;
+
+  it("carries each vertex's offset from the centre line, for the shader to widen to a pixel", () => {
+    expect(side.count).toBe(pos.count);
+    for (let k = 0; k < pos.count; k += 2) {
+      const col = (k / 2) % 512;
+      for (const v of [k, k + 1]) {
+        expect(Math.hypot(side.getX(v), side.getY(v), side.getZ(v))).toBeCloseTo(0.06, 6);
+        // position − aSide is the centre line.
+        expect(pos.getX(v) - side.getX(v)).toBeCloseTo(pts[col].x, 4);
+        expect(pos.getY(v) - side.getY(v)).toBeCloseTo(pts[col].y, 4);
+        expect(along.getX(v)).toBe(0);
+        expect(along.getY(v)).toBe(0);
+        expect(along.getZ(v)).toBe(0);
+      }
+    }
+  });
+
+  it("never thinner than 1 px, ticks never shorter than 4 px half-length", () => {
+    expect(ORBIT_MIN_HALF_PX).toBe(1);
+    expect(ORBIT_TICK_MIN_HALF_PX).toBeGreaterThan(ORBIT_MIN_HALF_PX);
+    expect(ORBIT_TICK_HALF_LENGTH).toBeGreaterThan(0.06);
+  });
+});
+
+describe("apsis ticks: short crossbars at perihelion (E = 0) and aphelion (E = π)", () => {
+  const a = 100, e = 0.2;
+  const [peri, aph] = apsides(a, e);
+  const pts = perifocalEllipse(a, e, ORBIT_RIBBON_SAMPLES);
+  const plain = orbitRibbonGeometry(pts, 0.06);
+  const g = orbitRibbonGeometry(pts, 0.06, [peri, aph]);
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const side = g.getAttribute("aSide") as THREE.BufferAttribute;
+  const along = g.getAttribute("aAlong") as THREE.BufferAttribute;
+  const base = plain.getAttribute("position").count;
+
+  it("finds the apsides on the perifocal x axis, the Sun at the origin", () => {
+    expect(peri).toEqual({ x: 80, y: 0, z: 0 });
+    expect(aph.x).toBeCloseTo(-120, 9);
+    expect(aph.y).toBe(0);
+  });
+
+  it("adds four vertices and two triangles per tick, after the ribbon", () => {
+    expect(pos.count).toBe(base + 8);
+    expect(g.getIndex()!.count).toBe(plain.getIndex()!.count + 12);
+  });
+
+  it("each tick crosses the orbit along the radius, centred on its apsis", () => {
+    for (const [t, at] of [[0, peri], [1, aph]] as const) {
+      let cx = 0, cy = 0;
+      for (let v = base + t * 4; v < base + t * 4 + 4; v++) {
+        // The bar runs along the radius (x), ORBIT_TICK_HALF_LENGTH each way, and is the ribbon's width across (y).
+        expect(Math.abs(along.getX(v))).toBeCloseTo(ORBIT_TICK_HALF_LENGTH, 6);
+        expect(along.getY(v)).toBeCloseTo(0, 9);
+        expect(Math.abs(side.getY(v))).toBeCloseTo(0.06, 6);
+        expect(side.getX(v)).toBeCloseTo(0, 9);
+        expect(pos.getZ(v)).toBeCloseTo(0, 9);
+        // position − aSide − aAlong is the apsis itself.
+        expect(pos.getX(v) - side.getX(v) - along.getX(v)).toBeCloseTo(at.x, 4);
+        expect(pos.getY(v) - side.getY(v) - along.getY(v)).toBeCloseTo(at.y, 4);
+        cx += pos.getX(v) / 4; cy += pos.getY(v) / 4;
+      }
+      expect(cx).toBeCloseTo(at.x, 4);
+      expect(cy).toBeCloseTo(at.y, 4);
+    }
   });
 });

@@ -19,9 +19,10 @@ import { orreryJd } from "../../utils/orreryClock";
 import { ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { irradianceVsAU } from "../../utils/sunLight";
-import { makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
+import { guideViewportHeight, makeGuideLineMaterial, makePlanetRingMaterial, RING_NIGHT_FLOOR } from "./guideLine";
 import {
-  ORBIT_RIBBON_HALF_WIDTH, ORBIT_RIBBON_SAMPLES, orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse,
+  apsides, ORBIT_MIN_HALF_PX, ORBIT_RIBBON_HALF_WIDTH, ORBIT_RIBBON_SAMPLES, ORBIT_TICK_MIN_HALF_PX,
+  orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse,
 } from "./orbitRibbon";
 import { bodySlot, OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 
@@ -140,7 +141,9 @@ function useNightSideEmissive() {
 
 /**
  * Orbit lines: one ribbon per body, its true ellipse for the orrery date
- * (orbitRibbon.ts), in the body's HUD colour with the guide-line program.
+ * (orbitRibbon.ts), in the body's HUD colour with the guide-line program,
+ * never under 2 px wide from anywhere, with a solid tick across it at
+ * perihelion and at aphelion (§6.2).
  * All nine are always visible: they are known orbits (charting keeps the
  * radar arrow and the chart as its reward). Steady, fainter than the old
  * planets' breathing rings at their peak.
@@ -254,8 +257,12 @@ export default function SolarBodies() {
   // move an orbit by well under a degree in a long session's millennia.
   const orbits = useMemo(() => SOLAR_BODIES.map((b) => {
     const shape = orbitShape(b.orbit.el, orreryJd(0));
-    const geometry = orbitRibbonGeometry(perifocalEllipse(shape.a * AU, shape.e, ORBIT_RIBBON_SAMPLES), ORBIT_RIBBON_HALF_WIDTH);
-    const material = makeGuideLineMaterial({ color: b.color, opacity: ORBIT_LINE_OPACITY, dashes: 220, fadeIn: [10, 55] });
+    const a = shape.a * AU;
+    const geometry = orbitRibbonGeometry(perifocalEllipse(a, shape.e, ORBIT_RIBBON_SAMPLES), ORBIT_RIBBON_HALF_WIDTH, apsides(a, shape.e));
+    const material = makeGuideLineMaterial({
+      color: b.color, opacity: ORBIT_LINE_OPACITY, dashes: 220, fadeIn: [10, 55],
+      minHalfPx: ORBIT_MIN_HALF_PX, tickHalfPx: ORBIT_TICK_MIN_HALF_PX,
+    });
     return { geometry, material, quaternion: orbitFrameQuaternion(shape, new THREE.Quaternion()) };
   }), []);
   useEffect(() => () => orbits.forEach((o) => { o.geometry.dispose(); o.material.dispose(); }), [orbits]);
@@ -272,6 +279,8 @@ export default function SolarBodies() {
   useFrame((state) => {
     const time = ambientTime(state.clock.getElapsedTime());
     updateBodies(time, bodies);
+    // The orbit lines' screen-constant width is measured in CSS px of this view.
+    guideViewportHeight.value = state.size.height;
     sunShadowUniforms.uOccluderCount.value = sunShadowDebug.countOverride >= 0 ? sunShadowDebug.countOverride : OCCLUDER_COUNT;
     for (let i = 0; i < SOLAR_BODIES.length; i++) {
       const b = SOLAR_BODIES[i];

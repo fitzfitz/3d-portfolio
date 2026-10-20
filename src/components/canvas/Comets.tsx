@@ -13,6 +13,7 @@ import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
@@ -42,11 +43,13 @@ const activityAt = (distSun: number) => Math.min(1.2, (60 / Math.max(distSun, 1)
 const comaVertex = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vNormal = normalize(normalMatrix * normal);
     vViewDir = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
+    ${LOG_DEPTH_VERT}
   }
 `;
 const comaFragment = /* glsl */ `
@@ -54,7 +57,9 @@ const comaFragment = /* glsl */ `
   uniform float uAct;
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float facing = clamp(abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0);
     // Two-part coma: a tight, hot inner glow around the nucleus and a faint
     // wide halo. The old single pow(facing, 1.6) term was a flat, dense green

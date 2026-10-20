@@ -14,6 +14,7 @@ import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
 import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
 import { fitzDebug } from "../../debug/bridge";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 // Propulsion cycle (3.2s): slow refill, then a sharp contraction stroke.
 // Mirrored in JS below for the swim surge — keep the two in sync.
@@ -32,6 +33,7 @@ const vertexShader = /* glsl */ `
   varying float vContract;
   ${""}
   ${PULSE_GLSL}
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vec3 p = position;
     float bell = smoothstep(-0.3, 0.5, p.y);
@@ -57,6 +59,7 @@ const vertexShader = /* glsl */ `
     vNormal = normalize(normalMatrix * normal);
     vViewDir = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -66,7 +69,9 @@ const fragmentShader = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   varying float vContract;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float fresnel = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 1.8);
     // Bell (above the rim) vs tentacles/oral arms (below), by authored height.
     float bellMask = smoothstep(-0.3, 0.25, vY);

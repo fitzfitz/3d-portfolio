@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { exposureCompensation } from "../../utils/sunLight";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 // Photosphere: boiling granulation cells and limb darkening, in HDR so
 // bloom keeps its punch. Replaces a flat
@@ -8,12 +9,14 @@ const surfaceVertex = /* glsl */ `
   varying vec3 vPos;
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vPos = position;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vNormal = normalize(normalMatrix * normal);
     vViewDir = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
+    ${LOG_DEPTH_VERT}
   }
 `;
 const NOISE = /* glsl */ `
@@ -34,7 +37,9 @@ const surfaceFragment = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   ${NOISE}
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     vec3 p = normalize(vPos);
     // Two scales of convection, slowly churning.
     float cells = fbm3(p * 6.0 + vec3(0.0, uTime * 0.05, uTime * 0.03));
@@ -58,9 +63,11 @@ const surfaceFragment = /* glsl */ `
 // shell plus two round flare sprites.
 const coronaVertex = /* glsl */ `
   varying vec2 vUv;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vUv = uv * 2.0 - 1.0;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    ${LOG_DEPTH_VERT}
   }
 `;
 const coronaFragment = /* glsl */ `
@@ -69,7 +76,9 @@ const coronaFragment = /* glsl */ `
   uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying vec2 vUv;
   ${NOISE}
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float r = length(vUv);
     if (r > 1.0) discard;
     float a = atan(vUv.y, vUv.x);

@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { ATMOSPHERE_VERT, makeAtmosphereMaterial } from "./atmosphereMaterial";
 import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
 import { irradianceVsAU } from "../../utils/sunLight";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS } from "./logDepth";
 
 interface AtmosphereProps {
   radius: number;
@@ -74,7 +75,9 @@ const limbFragment = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   varying vec3 vWorldNormal;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float rim = pow(clamp(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0), 1.6);
     gl_FragColor = vec4(0.0, 0.0, 0.0, rim * uStrength);
   }

@@ -11,6 +11,7 @@ import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 import { assetUrl } from "../../utils/assetUrl";
 import { backdropDim } from "../../utils/sunLight";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
  * Wispy gas sprite: 4-octave value-noise fBm under a soft radial falloff,
@@ -62,15 +63,19 @@ const nebulaTexture = (() => {
 // core, replacing the GLB's static portal_glow texture.
 const membraneVertex = /* glsl */ `
   varying vec2 vUv;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    ${LOG_DEPTH_VERT}
   }
 `;
 const membraneFragment = /* glsl */ `
   uniform float uTime;
   varying vec2 vUv;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     vec2 p = vUv - 0.5;
     float r = length(p) * 2.0;
     float a = atan(p.y, p.x);
