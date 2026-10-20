@@ -157,10 +157,12 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   // Once every dossier is read, point the pilot at the next destination (the
   // career station, then the contact portal), announced on leaving the last
   // dossier, when the chatter line is actually visible, and only after that
-  // probe has relocated: its PROBE RELOCATING line goes first, so it cannot
-  // cut the hint's 8 s hold short (ruling R12). probePos and probeRelocating
-  // are not store state, but ProjectProbes settles a probe and then sends
-  // its line in the same tick, and that store write re-runs this selector.
+  // probe has relocated (rulings R12, R12b): its PROBE RELOCATING line goes
+  // first and stays readable, since the hint is queued through
+  // announceLogbook, which yields ~4.5 s to a fresh broadcast; the hint then
+  // holds its 8 s. probePos and probeRelocating are not store state, but
+  // ProjectProbes settles a probe and then sends its line in the same tick,
+  // and that store write re-runs this selector.
   const allRead = visitedDossiers.length >= PROBES.length;
   const relocated = useSpaceStore((s) => relocationSettled(s.relocation?.id ?? null, s.probeSpots, probePos, probeRelocating));
   useEffect(() => {
@@ -169,7 +171,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     const next = destinationById(afterProbes(useSpaceStore.getState().badges));
     if (!next) return;
     const key = jumpKey(next.id);
-    useSpaceStore.getState().sendBroadcast(
+    useSpaceStore.getState().announceLogbook(
       `ALL ${PROBES.length} DOSSIERS READ // NEXT STOP: THE ${next.label} — PRESS ${key} TO JUMP THERE`
     );
   }, [allRead, modalOpen, relocated]);

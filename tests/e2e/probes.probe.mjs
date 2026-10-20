@@ -243,11 +243,38 @@ async function photoMode(page, checks) {
   await page.keyboard.press("KeyP");
 }
 
+/**
+ * The last unread dossier closed by the classic-CV round trip: no burn plays
+ * (the remounted canvas snaps the probe to its spot), so no relocation line
+ * goes out; the next-stop hint must still arrive once the cabin is back.
+ */
+function seedTwoRead() {
+  localStorage.setItem("fitz-dossiers", JSON.stringify(["portfolio", "fuxx"]));
+}
+async function classicRoundTrip(page, checks) {
+  const got = await grabProbe(page, ID);
+  checks.check("round trip: grabbing the last unread probe opens its dossier", got.ok);
+  if (!got.ok) return;
+  await page.evaluate(() => {
+    window.__rtLog = [];
+    window.__fitz.store.subscribe((st) => st.broadcast, (b) => { if (b) window.__rtLog.push(b.text); });
+    window.__fitz.store.getState().setShowClassicCV(true);
+  });
+  await settle(page, 1500);
+  const during = await page.evaluate(() => window.__rtLog.slice());
+  await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(false));
+  const hint = await pollUntil(() => page.evaluate(() => window.__rtLog.find((t) => t.startsWith("ALL 3 DOSSIERS READ // NEXT STOP")) ?? null),
+    { timeoutMs: 30_000, intervalMs: 200 });
+  checks.check("round trip: no hint behind the classic résumé", !during.some((t) => t.startsWith("ALL 3 DOSSIERS READ")), JSON.stringify(during));
+  checks.check("round trip: the next-stop hint arrives once the cabin is back", hint.ok, hint.value ?? JSON.stringify(await page.evaluate(() => window.__rtLog)));
+}
+
 export default async function run() {
   const checks = await withPage({ label: "probes" }, grabAndRelocate);
   for (const [label, fn, opts] of [
     ["probes: reduced motion", reducedMotion, { emulateReducedMotion: true }],
     ["probes: photo mode", photoMode, {}],
+    ["probes: classic-CV round trip on the last dossier", classicRoundTrip, { initScript: seedTwoRead }],
   ]) {
     const c = await withPage({ label, ...opts }, fn);
     checks.results.push(...c.results);

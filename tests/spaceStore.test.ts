@@ -129,6 +129,23 @@ describe("spaceStore", () => {
     vi.useRealTimers();
   });
 
+  // Rulings R12/R12b: the next-stop hint is queued through announceLogbook
+  // right after the last probe's PROBE RELOCATING line, so both are read.
+  it("a line queued just after a fresh broadcast leaves it readable, then goes out audible", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("PROBE RELOCATING // FUXX SIGNAL REACQUIRED BEARING 298 AT 418 U");
+    s.announceLogbook("ALL 3 DOSSIERS READ // NEXT STOP: THE CAREER STATION — PRESS 4 TO JUMP THERE");
+    await Promise.resolve();
+    vi.advanceTimersByTime(4400);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/^PROBE RELOCATING/);
+    vi.advanceTimersByTime(100);
+    const b = useSpaceStore.getState().broadcast;
+    expect(b?.text).toMatch(/^ALL 3 DOSSIERS READ/);
+    expect(b?.silent).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("logbook lines queue one after another instead of cutting each other off", async () => {
     vi.useFakeTimers();
     const s = useSpaceStore.getState();

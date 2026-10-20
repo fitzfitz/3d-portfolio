@@ -48,10 +48,10 @@ export default async function run() {
     });
 
     // Read all three probe dossiers (key 1-3, then hold F): the radio then
-    // points at the career station. Ruling R12: after the last close, that
-    // probe's PROBE RELOCATING line plays first, and the next-stop hint goes
-    // out once the relocation has finished, so the burn's line cannot cut the
-    // hint's 8 s hold short. An in-page store subscription logs every
+    // points at the career station. Rulings R12/R12b: after the last close,
+    // that probe's PROBE RELOCATING line plays first and stays readable; the
+    // next-stop hint is queued once the relocation has finished and goes out
+    // ~4.5 s later, then holds its 8 s. An in-page store subscription logs every
     // broadcast with its time, so the order is read, not raced.
     await page.evaluate(() => {
       window.__careerLog = [];
@@ -69,28 +69,41 @@ export default async function run() {
       await pollUntil(async () => (await readStore(page)).openDossier === null, { timeoutMs: 8_000, intervalMs: 100 });
     }
     const isHint = (text) => /CAREER STATION/.test(text) && /PRESS 4/.test(text);
+    const isLastReloc = (text) => text.startsWith("PROBE RELOCATING // FUXX");
+    const since = (t) => page.evaluate((x) => performance.now() - x, t);
+    // 1. The last probe's PROBE RELOCATING line goes out when its burn ends...
+    const relocGot = await pollUntil(() => page.evaluate(() => window.__careerLog.some((e) => e.text.startsWith("PROBE RELOCATING // FUXX"))),
+      { timeoutMs: 15_000, intervalMs: 100 });
+    const reloc = relocGot.ok ? await page.evaluate(() => window.__careerLog.find((e) => e.text.startsWith("PROBE RELOCATING // FUXX"))) : null;
+    // 2. ...and is still the radio line 3 s later: the hint waits for it.
+    if (reloc) await settle(page, Math.max(0, 3000 - (await since(reloc.t))));
+    const at3s = (await chatterText(page)) ?? "";
+    const relocHeld = reloc ? await since(reloc.t) : NaN;
+    checks.check("the last probe's PROBE RELOCATING line is still on the radio 3 s after it plays",
+      !!reloc && isLastReloc(at3s.replace(/^>\s?/, "")), `${relocHeld.toFixed(0)}ms after it: ${at3s}`);
+    // 3. Then the hint, as the very next broadcast.
     const got = await pollUntil(() => page.evaluate(() => window.__careerLog.some((e) => /CAREER STATION/.test(e.text) && /PRESS 4/.test(e.text))),
       { timeoutMs: 15_000, intervalMs: 100 });
     const log = await page.evaluate(() => ({ entries: window.__careerLog.filter((e) => e.t >= window.__careerClosedAt), closedAt: window.__careerClosedAt }));
     const hintAt = log.entries.findIndex((e) => isHint(e.text));
-    const relocAt = log.entries.findIndex((e) => e.text.startsWith("PROBE RELOCATING // FUXX"));
+    const relocAt = log.entries.findIndex((e) => isLastReloc(e.text));
     const hint = hintAt >= 0 ? log.entries[hintAt] : null;
+    const trace = log.entries.map((e) => `${((e.t - log.closedAt) / 1000).toFixed(2)}s ${e.text.slice(0, 40)}`).join(" | ");
     checks.check("after all three dossiers the radio names the career station and key 4", got.ok && !!hint, hint?.text ?? (await chatterText(page)));
-    checks.check("the last probe's PROBE RELOCATING line plays before the next-stop hint",
-      relocAt >= 0 && hintAt > relocAt,
-      log.entries.map((e) => `${((e.t - log.closedAt) / 1000).toFixed(2)}s ${e.text.slice(0, 40)}`).join(" | "));
-    // The hint is content, not flavour: zone entry / ambient chatter and the
-    // relocation line must not overwrite it for 8 s (src/utils/radioHold.ts).
-    // Check the line itself ~5 s after it went out (the relocation finished
-    // then). Under load the polls above can run long; past 7 s the 8 s hold is
-    // nearly over and the check would measure the probe's lateness, not the hold.
-    const sinceHint = hint ? await page.evaluate((t) => performance.now() - t, hint.t) : Infinity;
+    checks.check("the hint follows the relocation line, next and at least 3 s later",
+      relocAt >= 0 && hintAt === relocAt + 1 && hint.t - log.entries[relocAt].t >= 3000, trace);
+    // The hint is content, not flavour: zone entry / ambient chatter must not
+    // overwrite it for 8 s (src/utils/radioHold.ts). Check the line itself ~5 s
+    // after it went out. Under load the polls above can run long; past 7 s the
+    // 8 s hold is nearly over and the check would measure the probe's
+    // lateness, not the hold.
+    const sinceHint = hint ? await since(hint.t) : Infinity;
     checks.check("precondition: the hint was caught in time to test the hold", sinceHint <= 7000,
       `${sinceHint.toFixed(0)}ms after the hint went out`);
     await settle(page, Math.max(0, 5000 - sinceHint));
     const heldLine = (await chatterText(page)) ?? "";
-    const heldFor = hint ? await page.evaluate((t) => performance.now() - t, hint.t) : NaN;
-    checks.check("the next-stop hint is still on the radio ~5 s after the relocation completes",
+    const heldFor = hint ? await since(hint.t) : NaN;
+    checks.check("the next-stop hint is still on the radio ~5 s after it appears",
       isHint(heldLine), `${heldFor.toFixed(0)}ms after the hint: ${heldLine}`);
 
     // [4] Career: jump, dock, dossier, essential.
