@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { SUN_RADIUS, GM_SUN, PROGRADE } from "../src/constants";
 import { keplerGM, keplerOmega, keplerPeriod } from "../src/utils/kepler";
-import { COMETS } from "../src/data/comets";
+import { COMET_ELEMENTS } from "../src/data/smallBodyField";
+import { cometWorldPosition } from "../src/utils/beltRocks";
 import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { bodyPositionAt } from "../src/utils/bodyPositions";
 import { orbitShape, JD_J2000 } from "../src/utils/ephemeris";
@@ -60,9 +61,10 @@ describe("L7 one sun: every heliocentric orbit obeys Kepler's third law with GM_
     const keplerDays = (keplerPeriod(a, GM_SUN) / 420) * 365.25;
     expect(Math.abs(b.facts.yearDays / keplerDays - 1)).toBeLessThan(0.005);
   });
-  // The fictional comets until Task 7 swaps them for Encke and 67P.
-  it.each(COMETS.map((c, i) => [i + 1, c] as const))("comet %i", (_, c) => {
-    expect(c.periodSeconds).toBeCloseTo(keplerPeriod(c.a, GM_SUN), 9);
+  // Encke and 67P: Kepler on GM_SUN gives the SBDB mean motion (within 0.5%).
+  it.each(COMET_ELEMENTS.map((c, i) => [i === 0 ? "Encke" : "67P", c] as const))("comet %s", (_, c) => {
+    const keplerDays = (keplerPeriod(c.a * 115, GM_SUN) / 420) * 365.25;
+    expect(Math.abs(360 / c.nDegPerDay / keplerDays - 1)).toBeLessThan(0.005);
   });
 });
 
@@ -72,6 +74,10 @@ describe("L9 everything orbits the sun the same way (prograde)", () => {
   });
   it.each(SOLAR_BODIES.map((b) => [b.id, b] as const))("body %s", (_, b) => {
     expect(dot(orbitAxis(b), reference)).toBeGreaterThan(0);
+  });
+  it.each(COMET_ELEMENTS.map((c, i) => [i === 0 ? "Encke" : "67P", c] as const))("comet %s turns prograde (angular momentum along +Y)", (_, c) => {
+    const pos = (t: number) => cometWorldPosition(c, c.epochJd + t, { x: 0, y: 0, z: 0 });
+    expect(dot(turnAxis(pos, 3.7), ECLIPTIC_NORTH)).toBeGreaterThan(0);
   });
   it("PROGRADE rotation.y turns the same way as the bodies' orbits (angular momentum along +Y)", () => {
     expect(dot(spinAxis(PROGRADE), reference)).toBeGreaterThan(0);

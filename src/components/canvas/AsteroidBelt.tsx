@@ -4,6 +4,10 @@ import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 import { useSpaceStore, flight } from "../../store/spaceStore";
 import { mulberry32 } from "../../utils/mulberry32";
+import { makeBelt, makeTrojans, BELT_COUNT, BELT_COUNT_LOW, TROJAN_COUNT, type FieldRock } from "../../data/smallBodyField";
+import { beltRockPosition } from "../../utils/beltRocks";
+import { orreryJd } from "../../utils/orreryClock";
+import { AU } from "../../constants";
 import { decay } from "../../utils/reactions";
 import {
   toRingLocal, nearRing, stepRock, holdAt, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
@@ -18,10 +22,11 @@ import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 import { assetUrl } from "../../utils/assetUrl";
 import { lowPolyRock } from "../../utils/lowPolyRock";
-import { sunOmega } from "../../constants";
 
-const COUNT_FULL = 400;
-const COUNT_LOW = 200;
+/** Rock radius per unit of FieldRock.scale (scales 0.6-1.5 land on the old 0.05-0.22). */
+const ROCK_SCALE = 0.14;
+/** Position scratch: rocks are written in place, never allocated per frame. */
+const rockPos = { x: 0, y: 0, z: 0 };
 const dummy = new THREE.Object3D();
 /** Scratch for the ship's ring-local position (one per frame per ring). */
 const shipLocal = { x: 0, y: 0, z: 0 };
@@ -32,50 +37,28 @@ const firstOreLine = new FirstOreLine();
 const lastBroadcast = { id: 0, at: -Infinity };
 const oreLines = new ChatterScheduler(chatterPools);
 
-interface BeltRock {
-  radius: number; y: number; speed: number; phase: number;
-  spinX: number; spinY: number; spinZ: number; scale: number;
-}
+interface Spin { x: number; y: number; z: number }
 
 interface BeltRingProps {
   geometry: THREE.BufferGeometry; material: THREE.Material;
-  count: number; total: number; seed: number;
-  rMin: number; rMax: number; yJitter: number;
-  /** plane tilt about X (rad) */
-  tilt: number;
+  count: number; rocks: readonly FieldRock[];
+  /** Orbit-distance band (scene units) the ring's rocks can reach, for the push early-out. */
+  rMin: number; rMax: number;
   /** scene name so e2e probes can assert instance counts */
   name: string;
-  /** Mining ring id (0 main belt, 1 halo): indexes pebble state in mining.ts. */
+  /** Mining ring id (0 main belt, 1 Trojans): indexes pebble state in mining.ts. */
   ring: number;
 }
 
-function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter, tilt, name, ring }: BeltRingProps) {
+function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: BeltRingProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const rocks = useMemo<BeltRock[]>(() => {
-    const rand = mulberry32(seed);
-    const span = rMax - rMin;
-    return Array.from({ length: total }, () => {
-      const radius = rMin + rand() * span;
-      return {
-        radius,
-        y: (rand() - 0.5) * yJitter,
-        // Kepler's third law around the same sun as the planets
-        // (docs/UNIVERSE-RULES.md L7): ~86 s a lap at r 40, ~199 s at r 70.
-        speed: sunOmega(radius),
-        phase: rand() * Math.PI * 2,
-        spinX: 0.2 + rand() * 0.6,
-        spinY: 0.2 + rand() * 0.6,
-        // Third tumble axis. Z was hardcoded to 0 for all 560 rocks, so every
-        // one of them tumbled in a constrained two-axis way that reads
-        // subtly mechanical across a whole belt. This is genuinely free:
-        // Euler->matrix composition below computes sin/cos of all three angles
-        // regardless of whether Z is zero, so a real value costs nothing.
-        // Signed, so rocks tumble both directions rather than all one way.
-        spinZ: (rand() - 0.5) * 0.9,
-        scale: 0.05 + rand() * 0.17,
-      };
-    });
-  }, [total, seed, rMin, rMax, yJitter]);
+  const total = rocks.length;
+  // Tumble rates only: the orbits come from each rock's own elements.
+  const spins = useMemo<Spin[]>(() => {
+    const rand = mulberry32(total * 7919 + ring);
+    // Signed Z so rocks tumble both directions rather than all one way.
+    return Array.from({ length: total }, () => ({ x: 0.2 + rand() * 0.6, y: 0.2 + rand() * 0.6, z: (rand() - 0.5) * 0.9 }));
+  }, [total, ring]);
 
   // Per-rock push displacement (spec: belt parts around the ship). Sized to
   // `total` so a low-perf count change never reallocates.
@@ -90,15 +73,15 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
     const t = ambientTime(state.clock.getElapsedTime());
     const dt = Math.min(delta, 0.05);
     const react = !useSpaceStore.getState().reducedMotion;
-    const ship = react && nearRing(flight, rMin, rMax) ? toRingLocal(shipLocal, flight, tilt) : null;
+    const ship = react && nearRing(flight, rMin, rMax) ? toRingLocal(shipLocal, flight, 0) : null;
     const kPush = decay(BELT_PUSH_HALFLIFE, dt);
     const kReturn = decay(BELT_RETURN_HALFLIFE, dt);
     const now = gameTime(state.clock.getElapsedTime());
-    const c = Math.cos(tilt), s = Math.sin(tilt);
+    const jd = orreryJd(state.clock.getElapsedTime());
     for (let i = 0; i < count; i++) {
-      const r = rocks[i];
-      const angle = r.phase + t * r.speed;
-      const x = Math.cos(angle) * r.radius, y = r.y, z = Math.sin(angle) * r.radius;
+      const r = rocks[i], sp = spins[i];
+      beltRockPosition(r, jd, rockPos);
+      const x = rockPos.x, y = rockPos.y, z = rockPos.z;
       const j = i * 3;
       // A tethered pebble is pulled by mining.ts in world space; it stops
       // following its orbit and the belt's push until absorbed or released.
@@ -106,12 +89,12 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
       // still eases home instead of staying where the beam let go.
       if (!isTethered(ring, i)) stepRock(disp, i, x, y, z, ship, kPush, kReturn);
       const lx = x + disp[j], ly = y + disp[j + 1], lz = z + disp[j + 2];
-      // Ring-local -> world (the group rotates by `tilt` about X).
-      world[j] = lx; world[j + 1] = c * ly - s * lz; world[j + 2] = s * ly + c * lz;
+      // Rocks are already in world space (no ring group, no tilt).
+      world[j] = lx; world[j + 1] = ly; world[j + 2] = lz;
       dummy.position.set(lx, ly, lz);
-      dummy.rotation.set(r.phase + t * r.spinX, t * r.spinY, t * r.spinZ);
+      dummy.rotation.set(i + t * sp.x, t * sp.y, t * sp.z);
       // 1 for a pebble never mined; 0 while absorbed, easing back once regrown.
-      dummy.scale.setScalar(r.scale * regrowScale(ring, i, now));
+      dummy.scale.setScalar(r.scale * ROCK_SCALE * regrowScale(ring, i, now));
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
     }
@@ -125,13 +108,12 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
       const tt = miningState.tethers[k];
       if (tt.ring !== ring || tt.index >= count) continue;
       tetherPos(k, _tp);
-      const rk = rocks[tt.index];
-      dummy.position.set(_tp.x, c * _tp.y + s * _tp.z, -s * _tp.y + c * _tp.z);
-      const a = rk.phase + t * rk.speed;
-      holdAt(disp, tt.index, Math.cos(a) * rk.radius, rk.y, Math.sin(a) * rk.radius,
-        dummy.position.x, dummy.position.y, dummy.position.z);
-      dummy.rotation.set(rk.phase + t * rk.spinX, t * rk.spinY, t * rk.spinZ);
-      dummy.scale.setScalar(rk.scale);
+      const rk = rocks[tt.index], sk = spins[tt.index];
+      dummy.position.set(_tp.x, _tp.y, _tp.z);
+      beltRockPosition(rk, jd, rockPos);
+      holdAt(disp, tt.index, rockPos.x, rockPos.y, rockPos.z, _tp.x, _tp.y, _tp.z);
+      dummy.rotation.set(tt.index + t * sk.x, t * sk.y, t * sk.z);
+      dummy.scale.setScalar(rk.scale * ROCK_SCALE);
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(tt.index, dummy.matrix);
     }
@@ -164,14 +146,14 @@ function BeltRing({ geometry, material, count, total, seed, rMin, rMax, yJitter,
   });
 
   return (
-    <group rotation={[tilt, 0, 0]}>
-      <instancedMesh name={name} key={count} ref={meshRef} args={[geometry, material, count]}
-        frustumCulled={false} dispose={null} />
-    </group>
+    <instancedMesh name={name} key={count} ref={meshRef} args={[geometry, material, count]}
+      frustumCulled={false} dispose={null} />
   );
 }
 
-const HALO_FULL = 160;
+// Orbit-distance bands: belt a 2.1-3.3 AU, e <= 0.3; Trojans a = 5.2 AU, e < 0.15.
+const BELT_R_MIN = 2.1 * 0.7 * AU, BELT_R_MAX = 3.3 * 1.3 * AU;
+const TROJAN_R_MIN = 5.2 * 0.85 * AU, TROJAN_R_MAX = 5.2 * 1.15 * AU;
 const BELT_ROCK_RADIUS = 1.1;
 
 export default function AsteroidBelt() {
@@ -182,7 +164,9 @@ export default function AsteroidBelt() {
     fitzDebug.mining = miningState;
     return () => { fitzDebug.mining = null; };
   }, []);
-  const count = isLowPerf ? COUNT_LOW : COUNT_FULL;
+  const count = isLowPerf ? BELT_COUNT_LOW : BELT_COUNT;
+  const belt = useMemo(() => makeBelt(BELT_COUNT, 42), []);
+  const trojans = useMemo(() => makeTrojans(TROJAN_COUNT, 1337), []);
 
   const { geometry, material } = useMemo(() => {
     let src: THREE.Mesh | undefined;
@@ -203,14 +187,14 @@ export default function AsteroidBelt() {
 
   return (
     <>
-      {/* Main belt: 25° inclined plane (spec §5) */}
-      <BeltRing geometry={geometry} material={material} count={count} total={COUNT_FULL}
-        seed={42} rMin={40} rMax={70} yJitter={5} tilt={0.436} name="BeltMain" ring={0} />
-      {/* Polar halo: sparse steep band crossing the main belt — climbing threads
-          asteroid country. Skipped in low-perf mode. */}
+      {/* Main belt: 2.1-3.3 AU, real inclinations, Kirkwood gaps */}
+      <BeltRing geometry={geometry} material={material} count={count} rocks={belt}
+        rMin={BELT_R_MIN} rMax={BELT_R_MAX} name="BeltMain" ring={0} />
+      {/* Jupiter's Trojans: two lobes 60 degrees ahead of and behind Jupiter.
+          Skipped in low-perf mode. */}
       {!isLowPerf && (
-        <BeltRing geometry={geometry} material={material} count={HALO_FULL} total={HALO_FULL}
-          seed={1337} rMin={80} rMax={95} yJitter={9} tilt={1.31} name="BeltHalo" ring={1} />
+        <BeltRing geometry={geometry} material={material} count={TROJAN_COUNT} rocks={trojans}
+          rMin={TROJAN_R_MIN} rMax={TROJAN_R_MAX} name="BeltHalo" ring={1} />
       )}
     </>
   );
