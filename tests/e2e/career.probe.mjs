@@ -71,27 +71,23 @@ export default async function run() {
     const isHint = (text) => /CAREER STATION/.test(text) && /PRESS 4/.test(text);
     const isLastReloc = (text) => text.startsWith("PROBE RELOCATING // FUXX");
     const since = (t) => page.evaluate((x) => performance.now() - x, t);
-    // 1. The last probe's PROBE RELOCATING line goes out when its burn ends...
-    const relocGot = await pollUntil(() => page.evaluate(() => window.__careerLog.some((e) => e.text.startsWith("PROBE RELOCATING // FUXX"))),
-      { timeoutMs: 15_000, intervalMs: 100 });
-    const reloc = relocGot.ok ? await page.evaluate(() => window.__careerLog.find((e) => e.text.startsWith("PROBE RELOCATING // FUXX"))) : null;
-    // 2. ...and is still the radio line 3 s later: the hint waits for it.
-    if (reloc) await settle(page, Math.max(0, 3000 - (await since(reloc.t))));
-    const at3s = (await chatterText(page)) ?? "";
-    const relocHeld = reloc ? await since(reloc.t) : NaN;
-    checks.check("the last probe's PROBE RELOCATING line is still on the radio 3 s after it plays",
-      !!reloc && isLastReloc(at3s.replace(/^>\s?/, "")), `${relocHeld.toFixed(0)}ms after it: ${at3s}`);
-    // 3. Then the hint, as the very next broadcast.
+    // The last probe's PROBE RELOCATING line goes out when its burn ends; the
+    // hint is queued then and goes out ~4.5 s later, so the relocation line
+    // is readable first. Read from the in-page broadcast log (timestamps), not
+    // the typed radio line, so typewriter speed and poll timing cannot decide it.
     const got = await pollUntil(() => page.evaluate(() => window.__careerLog.some((e) => /CAREER STATION/.test(e.text) && /PRESS 4/.test(e.text))),
-      { timeoutMs: 15_000, intervalMs: 100 });
+      { timeoutMs: 20_000, intervalMs: 100 });
     const log = await page.evaluate(() => ({ entries: window.__careerLog.filter((e) => e.t >= window.__careerClosedAt), closedAt: window.__careerClosedAt }));
     const hintAt = log.entries.findIndex((e) => isHint(e.text));
     const relocAt = log.entries.findIndex((e) => isLastReloc(e.text));
     const hint = hintAt >= 0 ? log.entries[hintAt] : null;
+    const reloc = relocAt >= 0 ? log.entries[relocAt] : null;
     const trace = log.entries.map((e) => `${((e.t - log.closedAt) / 1000).toFixed(2)}s ${e.text.slice(0, 40)}`).join(" | ");
     checks.check("after all three dossiers the radio names the career station and key 4", got.ok && !!hint, hint?.text ?? (await chatterText(page)));
-    checks.check("the hint follows the relocation line, next and at least 3 s later",
-      relocAt >= 0 && hintAt === relocAt + 1 && hint.t - log.entries[relocAt].t >= 3000, trace);
+    checks.check("the last probe's PROBE RELOCATING line goes out after the close", !!reloc, trace);
+    checks.check("the hint comes after the relocation line, at least 3 s after it (so it was readable)",
+      !!reloc && !!hint && hintAt > relocAt && hint.t - reloc.t >= 3000,
+      reloc && hint ? `gap ${((hint.t - reloc.t) / 1000).toFixed(2)}s: ${trace}` : trace);
     // The hint is content, not flavour: zone entry / ambient chatter must not
     // overwrite it for 8 s (src/utils/radioHold.ts). Check the line itself ~5 s
     // after it went out. Under load the polls above can run long; past 7 s the

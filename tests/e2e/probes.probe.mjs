@@ -244,6 +244,36 @@ async function photoMode(page, checks) {
 }
 
 /**
+ * A jump key pressed while a probe dossier is open. Current behaviour
+ * (App.tsx's number keys and the pad's d-pad both call requestJump, which
+ * Spaceship's frame loop applies): the request is held while the dossier
+ * freezes the scene, the dossier stays open, and the jump lands after the
+ * dossier closes.
+ */
+async function jumpUnderDossier(page, checks) {
+  const got = await grabProbe(page, ID);
+  checks.check("jump under a dossier: probe 1's dossier is open (precondition)", got.ok);
+  if (!got.ok) return;
+  const before = await page.evaluate(() => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
+  await page.keyboard.press("Digit2");
+  await settle(page, 1000);
+  await nextFrames(page, 3).catch(() => {});
+  const s = await readStore(page);
+  const after = await page.evaluate(() => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
+  const moved = Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z);
+  checks.check("jump under a dossier: key 2 keeps the dossier open and holds the jump (the ship has not moved)",
+    s.openDossier === ID && s.jumpRequest?.id === "portfolio" && moved < 1e-6,
+    `openDossier=${s.openDossier} jump=${s.jumpRequest?.id} moved=${moved.toFixed(3)}`);
+  await page.keyboard.press("Escape");
+  const landed = await pollUntil(() => page.evaluate(() => {
+    const p = window.__fitz.probes.portfolio, f = window.__fitz.flight;
+    return Math.abs(Math.hypot(f.x - p.x, f.y - p.y, f.z - p.z) - 12) < 0.75;
+  }), { timeoutMs: 10_000, intervalMs: 100 });
+  checks.check("jump under a dossier: the held jump lands beside probe 2 once Esc closes the dossier",
+    landed.ok && (await readStore(page)).openDossier === null);
+}
+
+/**
  * The last unread dossier closed by the classic-CV round trip: no burn plays
  * (the remounted canvas snaps the probe to its spot), so no relocation line
  * goes out; the next-stop hint must still arrive once the cabin is back.
@@ -274,6 +304,7 @@ export default async function run() {
   for (const [label, fn, opts] of [
     ["probes: reduced motion", reducedMotion, { emulateReducedMotion: true }],
     ["probes: photo mode", photoMode, {}],
+    ["probes: jump key under an open dossier", jumpUnderDossier, {}],
     ["probes: classic-CV round trip on the last dossier", classicRoundTrip, { initScript: seedTwoRead }],
   ]) {
     const c = await withPage({ label, ...opts }, fn);

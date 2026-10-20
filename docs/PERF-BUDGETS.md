@@ -70,7 +70,8 @@ Every calls, triangles and lights ceiling in `transition.probe.mjs` now
 comes from this table by the rule above. The programs ceilings do not: they
 stay at the deliberate 79 (deep-space family) and 84 (planet states), for the
 low-perf-before-warm-up path described below. Each figure is the highest of 11 serial runs of
-`npm run test:e2e transition`, with the worlds in the scene and the LOD in
+`npm run test:e2e transition` (except the modal-open row, re-derived 2026-10-20 from 12 runs; see
+"Probes measured 2026-10-20" below), with the worlds in the scene and the LOD in
 place; see the dated note at the end of this section for what was added and
 what is in frame in each state.
 
