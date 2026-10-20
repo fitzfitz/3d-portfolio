@@ -4,6 +4,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import SystemChart from "../src/components/dom/SystemChart";
 import type { BodyId } from "../src/data/bodyIds";
 import { BODY_IDS } from "../src/data/bodyIds";
+import { bodies } from "../src/store/spaceStore";
+import { updateBodies } from "../src/utils/bodyPositions";
+import { ORRERY_TEST_JD, setOrreryEpochJd } from "../src/utils/orreryClock";
 
 const html = renderToStaticMarkup(createElement(SystemChart, { charted: new Set<BodyId>(["ceres"]) }));
 
@@ -47,5 +50,42 @@ describe("SystemChart: real ellipses", () => {
     expect(body).toContain('data-testid="system-chart-inset-dot-mercury"');
     expect(body).toContain('data-testid="system-chart-inset-dot-jupiter"');
     expect(body).not.toContain("inset-dot-saturn");
+  });
+});
+
+describe("SystemChart: handedness", () => {
+  setOrreryEpochJd(ORRERY_TEST_JD);
+  const render = (t: number) => { updateBodies(t, bodies); return renderToStaticMarkup(createElement(SystemChart, { charted: new Set<BodyId>() })); };
+  const dotOf = (h: string, id: string) => {
+    const m = new RegExp(`data-testid="system-chart-dot-${id}" cx="(-?[\\d.]+)" cy="(-?[\\d.]+)"`).exec(h)!;
+    return [Number(m[1]), Number(m[2])];
+  };
+  const pathOf = (h: string, id: string) => {
+    const d = new RegExp(`data-testid="system-chart-orbit-${id}"[^>]*? d="([^"]*)"`).exec(h)![1];
+    return [...d.matchAll(/(-?\d+\.?\d*),(-?\d+\.?\d*)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+  };
+  const distToPath = (p: number[], pts: number[][]) => {
+    let best = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      const dx = bx - ax, dy = by - ay;
+      const u = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / (dx * dx + dy * dy || 1)));
+      best = Math.min(best, Math.hypot(p[0] - ax - u * dx, p[1] - ay - u * dy));
+    }
+    return best;
+  };
+
+  it("every body's dot lies on its own ellipse", () => {
+    const h = render(20);
+    for (const id of BODY_IDS) expect(distToPath(dotOf(h, id), pathOf(h, id)), id).toBeLessThan(0.5);
+  });
+
+  it("Earth's dot moves counter-clockwise on screen (SVG y points down)", () => {
+    const a = dotOf(render(0), "earth"), b = dotOf(render(2), "earth");
+    const ang = (p: number[]) => Math.atan2(-p[1], p[0]);
+    let d = ang(b) - ang(a);
+    if (d > Math.PI) d -= 2 * Math.PI;
+    if (d < -Math.PI) d += 2 * Math.PI;
+    expect(d).toBeGreaterThan(0);
   });
 });

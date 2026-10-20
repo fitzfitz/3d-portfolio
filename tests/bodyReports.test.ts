@@ -68,3 +68,23 @@ describe("bodyReport: the real scan, line by line", () => {
     }
   });
 });
+
+describe("facts agree with the scan's own numbers", () => {
+  it("Venus: the day the scan prints is the 117-day sunrise-to-sunrise one, and no fact claims the day outlasts the year", () => {
+    const v = bodyById("venus");
+    const r = bodyReport(v, T);
+    expect(r).toContain(`DAY ${v.facts.dayHours.toFixed(1)} H`);
+    expect(Math.round(v.facts.dayHours / 24)).toBe(117);
+    expect(r).toContain("TAKES 117 EARTH DAYS");
+    expect(r).not.toMatch(/OUTLASTS/);
+    expect(v.facts.dayHours / 24).toBeLessThan(v.facts.yearDays);
+  });
+
+  it("any 'N EARTH DAYS' in a fact is the scan's DAY, rounded", () => {
+    for (const b of SOLAR_BODIES) for (const f of BODY_FACTS[b.id]) {
+      const m = /(\d+) EARTH DAYS/.exec(f);
+      if (m) expect(Number(m[1]), b.id).toBe(Math.round(b.facts.dayHours / 24));
+    }
+  });
+});
+
