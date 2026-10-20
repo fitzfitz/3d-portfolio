@@ -31,8 +31,10 @@ import { bodySlot, OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUnif
  * (real-solar-system spec §5): each body is one LOD sphere at its JPL position
  * for the orrery date (utils/bodyPositions.ts updateBodies, the one writer of
  * `bodies` and of the bodies' occluder slots), flattened, mapped or tinted,
- * lit, shadowed (sunShadow.ts "fragment" mode) and scanned. Earth adds its
- * clouds and night lights, Saturn its rings, and `look` adds the limb
+ * lit, shadowed (sunShadow.ts "fragment" mode) and scanned. Each wears its
+ * NASA/USGS public-domain map (or a seeded one where no true-colour global
+ * map exists; spec §5.5, data/solarSystem.ts). Earth adds its clouds and
+ * night lights, Saturn its rings, and `look` adds the limb
  * darkening and the atmosphere rims. Every orbit is drawn as its true ellipse.
  */
 
@@ -71,48 +73,38 @@ const INTERIM_SPIN: Readonly<Record<BodyId, number>> = {
 const CLOUD_SPIN = 0.168;
 
 /**
- * Maps with a 4096-wide variant (assets-src/4k/), drawn on desktops
- * (utils/hiResMaps.ts). Up close a body fills the screen and the hard-edged
- * 2048 texels show as blocks; the soft-banded giants don't need it.
+ * Maps with a 4096-wide variant (`mapHiRes`: Mercury, Earth, Mars), drawn on
+ * desktops (utils/hiResMaps.ts). Up close a body fills the screen and the
+ * sharp 2048 texels show as blocks; the soft giants don't need it.
  */
-const HI_RES_MAPS: ReadonlySet<string> = new Set(["ruangrapi"]);
-/** Earth's night lights (Black Marble arrives in Task 12; the Ocean World's lights until then). */
-const NIGHT_LIGHTS_MAP = "ruangrapi_glow";
-/** The maps with a surface normal map: the cratered rock and the dwarf. */
-const NORMAL_MAPPED: ReadonlySet<string> = new Set(["w-rock", "w-dwarf"]);
+const HI_RES_MAPS: ReadonlySet<string> = new Set(SOLAR_BODIES.filter((b) => b.mapHiRes).map((b) => b.map));
+/** Earth's night lights (Black Marble 2016) and cloud cover (The Blue Marble's clouds). */
+const EARTH = bodyById("earth");
+const NIGHT_LIGHTS_MAP = EARTH.look.nightLights!;
+const CLOUDS = EARTH.look.clouds!;
 /** Saturn's ring strip (ringOptics.ts profile). */
 const SATURN = bodyById("saturn");
 const RING_MAP = `${SATURN.map}_ring`;
 const [RING_INNER, RING_OUTER] = ringRadii(SATURN.size);
 const RING_SEGMENTS = 256;
 
-/** The distinct maps the bodies draw, in a fixed order; Venus has none (tint only). */
-const MAPS: readonly string[] = [...new Set(SOLAR_BODIES.map((b) => b.map).filter((m) => m !== ""))];
-const NORMALS: readonly string[] = MAPS.filter((m) => NORMAL_MAPPED.has(m));
-/** One texture list: maps, then normal maps, then the night lights and the ring strip. */
-const TEX_NORMAL0 = MAPS.length;
-const TEX_NIGHT = TEX_NORMAL0 + NORMALS.length;
+/** The distinct maps the bodies draw, in a fixed order. */
+const MAPS: readonly string[] = [...new Set(SOLAR_BODIES.map((b) => b.map))];
+/** One texture list: maps, then the night lights, the ring strip and the cloud cover. */
+const TEX_NIGHT = MAPS.length;
 const TEX_RING = TEX_NIGHT + 1;
+const TEX_CLOUDS = TEX_RING + 1;
 const mapUrl = (file: string, hiRes: boolean) => {
   const variant = hiRes && HI_RES_MAPS.has(file) ? `${file}_4k` : file;
   return assetUrl(`/models/${variant}.webp`);
 };
 
 /**
- * A body's material colour: the dark-surface display curve (displayAlbedo.ts,
- * P3) times its tint. A tint over a map keeps the map's luminance (it changes
- * the hue only: the interim maps are borrowed, Task 12 replaces them); a
- * body with no map (Venus) is its tint at the scene-scale albedo of its map
- * statistic (0.177 × geometric).
+ * A body's material colour: white times the dark-surface display curve
+ * (displayAlbedo.ts, P3). Its map carries the colour and the honest albedo.
  */
 function bodyColor(b: SolarBody): THREE.Color {
-  const c = new THREE.Color(1, 1, 1);
-  if (b.tint) {
-    c.set(b.tint);
-    const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-    c.multiplyScalar((b.map ? 1 : b.texelMedianLinear) / lum);
-  }
-  return c.multiplyScalar(displayAlbedoGain(b.texelMedianLinear));
+  return new THREE.Color(1, 1, 1).multiplyScalar(displayAlbedoGain(b.texelMedianLinear));
 }
 
 /**
@@ -159,9 +151,9 @@ export default function SolarBodies() {
   // asset pack, which can still be downloading while this module loads.
   const textures = useTexture([
     ...MAPS.map((m) => mapUrl(m, hiRes)),
-    ...NORMALS.map((m) => mapUrl(`${m}_normal`, false)),
     mapUrl(NIGHT_LIGHTS_MAP, false),
     mapUrl(RING_MAP, false),
+    mapUrl(CLOUDS.map, false),
   ]);
   const gl = useThree((s) => s.gl);
   const cityLights = useNightSideEmissive();
@@ -189,8 +181,8 @@ export default function SolarBodies() {
     textures.forEach((tex, i) => {
       if (i === TEX_RING) return; // set up with ringMap
       tex.anisotropy = maxAniso;
-      // Normal maps are data, not colour: they stay linear.
-      tex.colorSpace = i >= TEX_NORMAL0 && i < TEX_NIGHT ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+      // The cloud cover is an opacity, not a colour: it stays as stored.
+      tex.colorSpace = i === TEX_CLOUDS ? THREE.NoColorSpace : THREE.SRGBColorSpace;
       tex.needsUpdate = true;
     });
   }, [textures, gl]);
@@ -208,12 +200,9 @@ export default function SolarBodies() {
   // over the shadow patch. Fragment mode skips each body's own sphere by
   // distance, so all share the same programs.
   const materials = useMemo(() => SOLAR_BODIES.map((b) => {
-    const mi = MAPS.indexOf(b.map);
-    const ni = NORMALS.indexOf(b.map);
     const m = new THREE.MeshStandardMaterial({
-      map: mi >= 0 ? textures[mi] : null,
-      normalMap: ni >= 0 ? textures[TEX_NORMAL0 + ni] : null,
-      // Earth's oceans take a sheen (the Ocean World's 0.5); every other surface is matte.
+      map: textures[MAPS.indexOf(b.map)],
+      // Earth takes a sheen for its oceans (0.5, as before); every other surface is matte.
       roughness: b.id === "earth" ? 0.5 : 0.95, metalness: 0,
     });
     m.color.copy(bodyColor(b));
@@ -301,7 +290,10 @@ export default function SolarBodies() {
             {/* The spin frame: +Y is the axis, leaning its obliquity. */}
             <group rotation={[b.obliquityDeg * DEG, 0, 0]}>
               <primitive object={lods[i]} dispose={null} />
-              {b.look.clouds && <CloudLayer radius={b.size} tint="#ffffff" speed={PROGRADE * CLOUD_SPIN} sunShadow />}
+              {b.look.clouds && (
+                <CloudLayer radius={b.size} alphaMap={textures[TEX_CLOUDS]} linear={b.look.clouds.linear}
+                  speed={PROGRADE * CLOUD_SPIN} sunShadow />
+              )}
               {/* In the equatorial plane: the spin frame's XZ (RingGeometry's
                   XY turned down), so the ring and the shadow's normal share
                   the one tilt and cannot disagree. */}

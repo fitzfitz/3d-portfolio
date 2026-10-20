@@ -8,7 +8,7 @@ import { createPackLoader, type PackLoader, type PackProgress, type PackSet } fr
  * URLs through assetUrl().
  *
  * The build (vite.config.ts) splits public/models three ways: `common`
- * (everything the scene draws), `hd` (the planets' 4096 maps) and `sd` (their
+ * (everything the scene draws), `hd` (the bodies' 4096 maps) and `sd` (their
  * 2048 originals). A device downloads common plus the one texture tier it
  * draws (utils/hiResMaps.ts), never both. The loading itself is
  * utils/packLoader.ts.

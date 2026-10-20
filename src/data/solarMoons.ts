@@ -10,6 +10,12 @@ import { bodyById } from "./solarSystem";
  * for these moons): Io 0.0, Europa 0.5, Ganymede 0.2, Callisto 0.3, Phobos 1.1,
  * Deimos 1.8, Titan 0.3. The Moon is 5.145 deg to the ecliptic (JPL lists 5.16);
  * Triton is retrograde, 156.885 deg to Neptune's equator.
+ * Geometric albedos: NASA NSSDC satellite fact sheets (Moon, Martian, Jovian,
+ * Saturnian, Neptunian). Maps: NASA/USGS public-domain global mosaics (Titan's
+ * seeded haze), each `<id>.webp` scaled to 0.177 × geometric albedo
+ * (scripts/textures/process_body_maps.mjs); `texelMedianLinear` is the shipped
+ * map's measured linear median (tests/bodyMaps.test.ts). Phobos and Deimos are
+ * shape models (Task 14): theirs is the scene-scale albedo itself.
  */
 export const MOON_IDS = ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"] as const;
 export type MoonId = (typeof MOON_IDS)[number];
@@ -29,6 +35,8 @@ export interface SolarMoon {
   inclinationDeg: number;
   retrograde: boolean;
   map: string;
+  geometricAlbedo: number;
+  texelMedianLinear: number;
   shape?: "phobos" | "deimos";
 }
 
@@ -37,15 +45,15 @@ const moon = (m: Omit<SolarMoon, "size" | "retrograde" | "map"> & { retrograde?:
 });
 
 export const SOLAR_MOONS: readonly SolarMoon[] = [
-  moon({ id: "moon", name: "MOON", parent: "earth", diameterKm: 3474.8, aKm: 384_400, periodHours: 655.72, plane: "ecliptic", inclinationDeg: 5.145 }),
-  moon({ id: "phobos", name: "PHOBOS", parent: "mars", diameterKm: 22.5, aKm: 9_376, periodHours: 7.6539, plane: "equator", inclinationDeg: 1.1, shape: "phobos" }),
-  moon({ id: "deimos", name: "DEIMOS", parent: "mars", diameterKm: 12.4, aKm: 23_463, periodHours: 30.312, plane: "equator", inclinationDeg: 1.8, shape: "deimos" }),
-  moon({ id: "io", name: "IO", parent: "jupiter", diameterKm: 3643.2, aKm: 421_700, periodHours: 42.459, plane: "equator", inclinationDeg: 0 }),
-  moon({ id: "europa", name: "EUROPA", parent: "jupiter", diameterKm: 3121.6, aKm: 671_034, periodHours: 85.228, plane: "equator", inclinationDeg: 0.5 }),
-  moon({ id: "ganymede", name: "GANYMEDE", parent: "jupiter", diameterKm: 5268.2, aKm: 1_070_412, periodHours: 171.709, plane: "equator", inclinationDeg: 0.2 }),
-  moon({ id: "callisto", name: "CALLISTO", parent: "jupiter", diameterKm: 4820.6, aKm: 1_882_709, periodHours: 400.536, plane: "equator", inclinationDeg: 0.3 }),
-  moon({ id: "titan", name: "TITAN", parent: "saturn", diameterKm: 5149.5, aKm: 1_221_870, periodHours: 382.69, plane: "equator", inclinationDeg: 0.3 }),
-  moon({ id: "triton", name: "TRITON", parent: "neptune", diameterKm: 2706.8, aKm: 354_759, periodHours: 141.045, plane: "equator", inclinationDeg: 156.885, retrograde: true }),
+  moon({ id: "moon", name: "MOON", parent: "earth", diameterKm: 3474.8, aKm: 384_400, periodHours: 655.72, plane: "ecliptic", inclinationDeg: 5.145, geometricAlbedo: 0.12, texelMedianLinear: 0.0211 }),
+  moon({ id: "phobos", name: "PHOBOS", parent: "mars", diameterKm: 22.5, aKm: 9_376, periodHours: 7.6539, plane: "equator", inclinationDeg: 1.1, shape: "phobos", geometricAlbedo: 0.07, texelMedianLinear: 0.177 * 0.07 }),
+  moon({ id: "deimos", name: "DEIMOS", parent: "mars", diameterKm: 12.4, aKm: 23_463, periodHours: 30.312, plane: "equator", inclinationDeg: 1.8, shape: "deimos", geometricAlbedo: 0.08, texelMedianLinear: 0.177 * 0.08 }),
+  moon({ id: "io", name: "IO", parent: "jupiter", diameterKm: 3643.2, aKm: 421_700, periodHours: 42.459, plane: "equator", inclinationDeg: 0, geometricAlbedo: 0.62, texelMedianLinear: 0.11 }),
+  moon({ id: "europa", name: "EUROPA", parent: "jupiter", diameterKm: 3121.6, aKm: 671_034, periodHours: 85.228, plane: "equator", inclinationDeg: 0.5, geometricAlbedo: 0.68, texelMedianLinear: 0.1194 }),
+  moon({ id: "ganymede", name: "GANYMEDE", parent: "jupiter", diameterKm: 5268.2, aKm: 1_070_412, periodHours: 171.709, plane: "equator", inclinationDeg: 0.2, geometricAlbedo: 0.44, texelMedianLinear: 0.0782 }),
+  moon({ id: "callisto", name: "CALLISTO", parent: "jupiter", diameterKm: 4820.6, aKm: 1_882_709, periodHours: 400.536, plane: "equator", inclinationDeg: 0.3, geometricAlbedo: 0.19, texelMedianLinear: 0.0333 }),
+  moon({ id: "titan", name: "TITAN", parent: "saturn", diameterKm: 5149.5, aKm: 1_221_870, periodHours: 382.69, plane: "equator", inclinationDeg: 0.3, geometricAlbedo: 0.22, texelMedianLinear: 0.0381 }),
+  moon({ id: "triton", name: "TRITON", parent: "neptune", diameterKm: 2706.8, aKm: 354_759, periodHours: 141.045, plane: "equator", inclinationDeg: 156.885, retrograde: true, geometricAlbedo: 0.72, texelMedianLinear: 0.1274 }),
 ];
 
 /** Parents' equatorial radii (km). */

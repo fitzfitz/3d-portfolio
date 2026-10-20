@@ -1,14 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
+import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
+import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
 
 /**
- * Every shipped asset must be original work with a generator in this repo.
- * Until 2026-10-10 five shipped files (ship base mesh, portal, fuel crystal,
- * Earth and Mars maps) had no recorded source or licence; they were replaced
- * by scripted originals. This keeps an unowned file from slipping back in:
- * add the generator first, then the asset.
+ * Every shipped asset must have a script in this repo that makes it. Until
+ * 2026-10-10 five shipped files (ship base mesh, portal, fuel crystal, Earth
+ * and Mars maps) had no recorded source or licence; they were replaced by
+ * scripted originals. Since the real Solar System (2026-10-20, spec §5.5)
+ * the bodies' and moons' maps are NASA/USGS public-domain mosaics:
+ * scripts/textures/fetch_nasa_maps.mjs pins each source's URL and SHA-256
+ * (tests/bodyMaps.test.ts checks the licence evidence) and
+ * process_body_maps.mjs makes the shipped file from it, or a seeded generator
+ * makes it where no true-colour global map exists. This keeps an unowned file
+ * from slipping back in: add the script first, then the asset.
  */
-const GENERATORS: Record<string, string> = {
+const MODEL_GENERATORS: Record<string, string> = {
   "spaceship.glb": "scripts/blender/gen_spaceship.py",
   "portal_gateway.glb": "scripts/blender/gen_portal.py",
   "space_crystal.glb": "scripts/blender/gen_crystal.py",
@@ -23,25 +30,18 @@ const GENERATORS: Record<string, string> = {
   "shipyard.glb": "scripts/blender/gen_shipyard.py",
   "dormant_gate.glb": "scripts/blender/gen_dormant_gate.py",
   "probe.glb": "scripts/blender/gen_probe.py",
-  "ruangrapi.webp": "scripts/textures/gen_planets.mjs",
-  "ruangrapi_glow.webp": "scripts/textures/gen_planets.mjs",
-  "portfolio.webp": "scripts/textures/gen_planets.mjs",
-  "fuxx.webp": "scripts/textures/gen_planets.mjs",
-  "fuxx_glow.webp": "scripts/textures/gen_planets.mjs",
-  // Desktop-only 4096-wide variants (--width=4096, see SpacePlanets HI_RES_MAPS).
-  "ruangrapi_4k.webp": "scripts/textures/gen_planets.mjs",
-  "fuxx_4k.webp": "scripts/textures/gen_planets.mjs",
-  "fuxx_glow_4k.webp": "scripts/textures/gen_planets.mjs",
-  // The new worlds (2026-10-17). NASA imagery was reference only (MANIFEST).
-  "w-rock.webp": "scripts/blender/gen_world_rock.py",
-  "w-rock_normal.webp": "scripts/blender/gen_world_rock.py",
-  "w-ringed.webp": "scripts/textures/gen_worlds.mjs",
+  // Saturn's ring strip (its maps are in BODY_MAPS).
   "w-ringed_ring.webp": "scripts/textures/gen_worlds.mjs",
-  "w-tilted.webp": "scripts/textures/gen_worlds.mjs",
-  "w-blue.webp": "scripts/textures/gen_worlds.mjs",
-  "w-dwarf.webp": "scripts/blender/gen_world_dwarf.py",
-  "w-dwarf_normal.webp": "scripts/blender/gen_world_dwarf.py",
 };
+
+/** The body and moon maps: each recipe's maker (its `_4k` desktop variant too). */
+const MAP_GENERATORS: Record<string, string> = Object.fromEntries(
+  Object.entries(BODY_MAPS).flatMap(([name, r]) => {
+    const maker = "sources" in r ? "scripts/textures/process_body_maps.mjs" : r.generator;
+    return r.hiRes ? [[`${name}.webp`, maker], [`${name}_4k.webp`, maker]] : [[`${name}.webp`, maker]];
+  }),
+);
+const GENERATORS: Record<string, string> = { ...MODEL_GENERATORS, ...MAP_GENERATORS };
 
 describe("asset provenance", () => {
   const shipped = readdirSync("public/models");
@@ -53,6 +53,12 @@ describe("asset provenance", () => {
   it("every listed generator exists", () => {
     for (const [asset, script] of Object.entries(GENERATORS)) {
       expect(existsSync(script), `${asset} -> ${script}`).toBe(true);
+    }
+  });
+
+  it("every sourced map's sources are pinned", () => {
+    for (const r of Object.values(BODY_MAPS)) {
+      if ("sources" in r) for (const id of r.sources) expect(SOURCES[id]?.sha256, id).toMatch(/^[0-9a-f]{64}$/);
     }
   });
 

@@ -1,33 +1,37 @@
-# Cycles turntables of the new worlds: the realism gate (spec "Assets").
-#   $BLENDER --background --python scripts/blender/turntable_worlds.py -- --out=DIR \
-#       [--only=w-ringed,w-blue] [--samples=96] [--res=768] [--node=node] [--extra-stops=0]
+# Cycles turntables of the real bodies and the sphere moons, each in its
+# shipped map: the owner's look check (the C1 method, adapted from the
+# 2026-10-17 worlds' turntable_worlds.py for the real Solar System's maps).
+#   $BLENDER --background --python scripts/blender/turntable_bodies.py -- --out=DIR \
+#       [--only=earth,io] [--samples=64] [--res=640] [--frames=4] [--node=node] [--extra-stops=0]
 #
-# Look-dev only: renders are never shipped or committed. Each world is drawn
-# with its SHIPPED maps (public/models/*.webp) on a UV sphere laid out like
+# Look-dev only: renders are never shipped or committed. Each body is drawn
+# with its SHIPPED map (public/models/*.webp) on a UV sphere laid out like
 # THREE.SphereGeometry, so what is judged is what visitors download.
 #
 # Light and exposure follow the game, read live from the TypeScript sources
-# (src/data/worlds.ts, src/utils/worldPhysics.ts, src/utils/sunLight.ts) via
-# node, so nothing here hard-codes an orbit:
-#   - a sun lamp from +X with irradiance SUN_IRRADIANCE_AT_AU * fluxEarth(r):
-#     three's punctual light gives albedo/PI * E, as does a Cycles sun of strength E;
-#   - the ambient fill, 0.15 / PI * fluxEarth(r) as a uniform world the camera
-#     does not see (the spec scales the game's 0.15 ambient by irradianceVsAU);
-#   - exposure (r / AU)^EXPOSURE_POWER, the camera's adaptation, under
-#     Khronos PBR Neutral (the game's NeutralToneMapping). Net brightness falls
-#     as (AU / r)^0.5, so dim stays dim.
-# The giants get a facing-ratio limb darkening standing in for the game's
-# LimbDarkening shader. The rings take tau from the strip's alpha
-# (tau = A * RING_TAU_MAX): opacity 1 - exp(-tau / |mu|) for the view ray and
-# exp(-tau / mu0) for sunlight, since Cycles evaluates the same shader on
-# shadow rays; thin parts also transmit diffusely, so a backlit ring glows.
+# (src/data/solarSystem.ts, solarMoons.ts, src/utils/sunLight.ts,
+# displayAlbedo.ts) via node:
+#   - the camera's exposure, (d / AU)^2, cancels the inverse-square sunlight
+#     (L19), so every body is lit as at 1 AU: a sun lamp of irradiance
+#     SUN_IRRADIANCE_AT_AU (three's punctual light gives albedo/PI * E, as
+#     does a Cycles sun of strength E) and the 0.15 / PI ambient fill, as a
+#     uniform world the camera does not see; exposure 0 stops under Khronos
+#     PBR Neutral (the game's NeutralToneMapping);
+#   - the material colour is the dark-surface display curve's gain
+#     (displayAlbedoGain(texelMedianLinear), P3), as SolarBodies sets it;
+#   - Earth's cloud shell (1.03 R): alpha from earth_clouds, colour its
+#     `look.clouds.linear`; its night lights are not drawn (the game masks
+#     them to the night side);
+#   - the giants' `look.limb` as a facing-ratio limb darkening; Saturn's
+#     rings take tau from the strip's alpha (tau = A * RING_TAU_MAX): opacity
+#     1 - exp(-tau / |mu|) for the view ray and exp(-tau / mu0) for sunlight.
 #
-# --extra-stops brightens a look-dev set past the game's exposure, to judge
-# texture on worlds the game's tone mapping crushes toward black. The default
-# (0) is the game's exposure.
+# --extra-stops brightens past the game's exposure, to judge texture the
+# tone mapping crushes. The default (0) is the game's exposure.
 #
-# Output: DIR/<id>/f0.png .. f7.png (45-degree spin steps), plus
-# DIR/w-ringed/edgeon.png and DIR/w-ringed/backlit.png.
+# Output: DIR/<id>/f0.png .. f<frames-1>.png (spin steps of 360/frames deg)
+# at 40 degrees phase, the pole tipped 15 degrees toward the viewer and rolled
+# by the obliquity (Saturn: rings open by its obliquity).
 import json
 import math
 import os
@@ -40,8 +44,7 @@ from mathutils import Matrix, Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SEG, RINGS = 256, 128
 PHASE_DEG = 40.0          # sun-planet-camera angle of the turntable frames
-LIMB = {"w-ringed": 0.5, "w-tilted": 0.45, "w-blue": 0.65}
-NORMAL_MAPPED = {"w-rock", "w-dwarf"}     # they ship <map>_normal.webp
+CLOUD_SHELL = 1.03        # CloudLayer.tsx
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OPT = dict(a[2:].split("=", 1) for a in argv if a.startswith("--") and "=" in a)
@@ -49,21 +52,27 @@ if "out" not in OPT:
     sys.exit("turntable_worlds.py: pass -- --out=DIR (renders are never written into the repo)")
 OUT = os.path.abspath(OPT["out"])
 ONLY = set(OPT["only"].split(",")) if "only" in OPT else None
-SAMPLES = int(OPT.get("samples", 96))
-RES = int(OPT.get("res", 768))
+SAMPLES = int(OPT.get("samples", 64))
+RES = int(OPT.get("res", 640))
+FRAMES = int(OPT.get("frames", 4))
 EXTRA_STOPS = float(OPT.get("extra-stops", 0))
 
 NODE_JS = r"""
 const root = process.argv[1];
 const jiti = require(root + "/node_modules/jiti")(root + "/turntable.js");
-const { WORLDS } = jiti(root + "/src/data/worlds.ts");
-const { fluxEarth } = jiti(root + "/src/utils/worldPhysics.ts");
-const { SUN_IRRADIANCE_AT_AU, EXPOSURE_POWER } = jiti(root + "/src/utils/sunLight.ts");
-const { AU } = jiti(root + "/src/constants.ts");
+const { SOLAR_BODIES } = jiti(root + "/src/data/solarSystem.ts");
+const { SOLAR_MOONS } = jiti(root + "/src/data/solarMoons.ts");
+const { displayAlbedoGain } = jiti(root + "/src/utils/displayAlbedo.ts");
+const { SUN_IRRADIANCE_AT_AU, AMBIENT_BASE } = jiti(root + "/src/utils/sunLight.ts");
 import(root + "/scripts/textures/gen_worlds.mjs").then((g) => console.log(JSON.stringify({
-  AU, SUN_IRRADIANCE_AT_AU, EXPOSURE_POWER, RING_TAU_MAX: g.RING_TAU_MAX, RING_IN: g.RING_IN, RING_OUT: g.RING_OUT,
-  worlds: WORLDS.map((w) => ({ id: w.id, map: w.map, flattening: w.flattening, axialTiltDeg: w.axialTiltDeg,
-    radius: w.orbit.radius, flux: fluxEarth(w.orbit.radius) })),
+  SUN_IRRADIANCE_AT_AU, AMBIENT_BASE, RING_TAU_MAX: g.RING_TAU_MAX, RING_IN: g.RING_IN, RING_OUT: g.RING_OUT,
+  bodies: [
+    ...SOLAR_BODIES.map((b) => ({ id: b.id, map: b.map, flattening: b.flattening, tiltDeg: b.obliquityDeg,
+      gain: displayAlbedoGain(b.texelMedianLinear), limb: b.look.limb ?? null, rings: b.look.rings === "saturn",
+      clouds: b.look.clouds ?? null })),
+    ...SOLAR_MOONS.filter((m) => !m.shape).map((m) => ({ id: m.id, map: m.map, flattening: 0, tiltDeg: 0,
+      gain: displayAlbedoGain(m.texelMedianLinear), limb: null, rings: false, clouds: null })),
+  ],
 })));
 """
 
@@ -216,14 +225,21 @@ def planet_material(w):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = image(w["map"])
     tex.interpolation = "Cubic"
-    col = tex.outputs["Color"]
-    if w["id"] in LIMB:
+    # the display curve's gain, the game's material colour (P3)
+    gain = nt.nodes.new("ShaderNodeMix")
+    gain.data_type = "RGBA"
+    gain.blend_type = "MULTIPLY"
+    gain.inputs["Factor"].default_value = 1.0
+    gain.inputs["B"].default_value = (w["gain"], w["gain"], w["gain"], 1)
+    nt.links.new(tex.outputs["Color"], gain.inputs["A"])
+    col = gain.outputs["Result"]
+    if w["limb"] is not None:
         # colour * (1 - k * (1 - mu)), mu = |N . V|: the giants' limb darkening
         lw = nt.nodes.new("ShaderNodeLayerWeight")
         lw.inputs["Blend"].default_value = 0.5
         k = nt.nodes.new("ShaderNodeMath")
         k.operation = "MULTIPLY_ADD"
-        k.inputs[1].default_value = -LIMB[w["id"]]
+        k.inputs[1].default_value = -w["limb"]
         k.inputs[2].default_value = 1.0
         nt.links.new(lw.outputs["Facing"], k.inputs[0])
         mul = nt.nodes.new("ShaderNodeMix")
@@ -236,14 +252,28 @@ def planet_material(w):
     else:
         bsdf.inputs["Roughness"].default_value = 1.0     # regolith: flatter than Lambert at the limb
     nt.links.new(col, bsdf.inputs["Color"])
-    if w["id"] in NORMAL_MAPPED:
-        ntex = nt.nodes.new("ShaderNodeTexImage")
-        ntex.image = image(w["map"] + "_normal", non_color=True)
-        nmap = nt.nodes.new("ShaderNodeNormalMap")
-        nmap.uv_map = "UVMap"
-        nt.links.new(ntex.outputs["Color"], nmap.inputs["Color"])
-        nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
     nt.links.new(bsdf.outputs[0], out.inputs["Surface"])
+    return mat
+
+
+def cloud_material(clouds):
+    """CloudLayer.tsx: colour `linear`, opacity the cloud map's grey (stored linear)."""
+    mat = bpy.data.materials.new("Clouds")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image(clouds["map"], non_color=True)
+    dif = nt.nodes.new("ShaderNodeBsdfDiffuse")
+    c = clouds["linear"]
+    dif.inputs["Color"].default_value = (c, c, c, 1)
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(tex.outputs["Color"], mix.inputs["Fac"])
+    nt.links.new(clear.outputs[0], mix.inputs[1])
+    nt.links.new(dif.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
     return mat
 
 
@@ -255,7 +285,7 @@ def ring_material(tau_max):
     L = nt.links
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image("w-ringed_ring")
+    tex.image = image("w-ringed_ring")  # Saturn
     tex.image.alpha_mode = "CHANNEL_PACKED"
     tex.interpolation = "Linear"
     tex.extension = "EXTEND"
@@ -327,22 +357,26 @@ def tilted_pole(cam, toward_cam_deg, roll_deg):
     return (Matrix.Rotation(math.radians(roll_deg), 3, cam) @ p).normalized()
 
 
-def world_scene(w, g, params):
+def body_scene(w, g, params):
     sc = setup_scene()
-    E = g["SUN_IRRADIANCE_AT_AU"] * w["flux"]
-    setup_world(sc, 0.15 / math.pi * w["flux"])
+    E = g["SUN_IRRADIANCE_AT_AU"]
+    setup_world(sc, g["AMBIENT_BASE"] / math.pi)
     add_sun(E)
-    sc.view_settings.exposure = g["EXPOSURE_POWER"] * math.log2(w["radius"] / g["AU"]) + EXTRA_STOPS
-    print(f"{w['id']}: r={w['radius']} flux={w['flux']:.4f} sun={E:.4f} exposure={sc.view_settings.exposure:+.3f} stops"
-          f" view={sc.view_settings.view_transform}")
+    sc.view_settings.exposure = EXTRA_STOPS
+    print(f"{w['id']}: sun={E:.3f} gain={w['gain']:.3f} exposure={sc.view_settings.exposure:+.2f} stops")
     tilt = bpy.data.objects.new("Tilt", None)
     sc.collection.objects.link(tilt)
     body = three_sphere(w["id"])
     body.parent = tilt
     body.scale = (1, 1, 1 - w["flattening"])
     body.data.materials.append(planet_material(w))
+    if w["clouds"]:
+        shell = three_sphere(w["id"] + "_clouds")
+        shell.parent = body
+        shell.scale = (CLOUD_SHELL, CLOUD_SHELL, CLOUD_SHELL)
+        shell.data.materials.append(cloud_material(w["clouds"]))
     extent = 1.0
-    if w["id"] == "w-ringed":
+    if w["rings"]:
         ring = ring_mesh("Rings", g["RING_IN"], g["RING_OUT"])
         ring.parent = tilt
         ring.data.materials.append(ring_material(g["RING_TAU_MAX"]))
@@ -355,29 +389,20 @@ def world_scene(w, g, params):
 
 def main():
     g = game_params()
-    for w in g["worlds"]:
+    for w in g["bodies"]:
         if ONLY and w["id"] not in ONLY:
             continue
         cam = cam_dir(PHASE_DEG)
-        if w["id"] == "w-ringed":
-            # open: the pole tipped toward the viewer by the axial tilt (rings at full opening)
-            pole = (Vector((0, 0, 1)) * math.cos(math.radians(w["axialTiltDeg"])) + cam * math.sin(math.radians(w["axialTiltDeg"]))).normalized()
+        if w["rings"]:
+            # open: the pole tipped toward the viewer by the obliquity (rings at full opening)
+            pole = (Vector((0, 0, 1)) * math.cos(math.radians(w["tiltDeg"])) + cam * math.sin(math.radians(w["tiltDeg"]))).normalized()
         else:
-            # pole tipped 15 degrees toward the viewer, the axis rolled by the axial tilt
-            pole = tilted_pole(cam, 15.0, w["axialTiltDeg"])
-        body = world_scene(w, g, {"phase": PHASE_DEG, "pole": pole})
-        for i in range(8):
-            body.rotation_euler = (0, 0, math.radians(45 * i))
+            # pole tipped 15 degrees toward the viewer, the axis rolled by the obliquity
+            pole = tilted_pole(cam, 15.0, w["tiltDeg"])
+        body = body_scene(w, g, {"phase": PHASE_DEG, "pole": pole})
+        for i in range(FRAMES):
+            body.rotation_euler = (0, 0, math.radians(360 / FRAMES * i))
             render(os.path.join(OUT, w["id"], f"f{i}.png"))
-        if w["id"] == "w-ringed":
-            # near edge-on: rings 3 degrees open to the viewer
-            pole = (Vector((0, 0, 1)) * math.cos(math.radians(3)) + cam * math.sin(math.radians(3))).normalized()
-            world_scene(w, g, {"phase": PHASE_DEG, "pole": pole})
-            render(os.path.join(OUT, w["id"], "edgeon.png"))
-            # backlit: viewer at 140 degrees phase on the rings' unlit face, the sun 20 degrees above them
-            pole = (Vector((0, 0, 1)) * math.cos(math.radians(20)) + Vector((1, 0, 0)) * math.sin(math.radians(20))).normalized()
-            world_scene(w, g, {"phase": 140.0, "pole": pole})
-            render(os.path.join(OUT, w["id"], "backlit.png"))
 
 
 main()

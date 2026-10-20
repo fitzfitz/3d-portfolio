@@ -65,40 +65,15 @@ for (const name of MODELS) {
   await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })]);
 }
 
-// Planet equirect maps (one per project planet, original procedural art from
-// scripts/textures/ or scripts/blender/): keep 2048x1024, convert JPEG -> WebP.
-// A `<name>_glow.jpg` emissive map is optional per planet.
-for (const name of ["ruangrapi", "portfolio", "fuxx"]) {
-  if (!wanted(name)) continue;
-  for (const file of [name, `${name}_glow`]) {
-    if (!existsSync(`${SRC}/${file}.jpg`)) continue;
-    await sharp(`${SRC}/${file}.jpg`).webp({ quality: 88 }).toFile(`${OUT}/${file}.webp`);
-    console.log(`${file}.webp  ${mb(`${SRC}/${file}.jpg`)} -> ${mb(`${OUT}/${file}.webp`)}`);
-    // Optional desktop-only 4096x2048 variant (assets-src/4k/, same generator
-    // at --width=4096): planets fill the screen in orbit lock, where 2048
-    // texels show as blocks. SpacePlanets picks it on fine-pointer devices.
-    const hi = `${SRC}/4k/${file}.jpg`;
-    if (!existsSync(hi)) continue;
-    await sharp(hi).webp({ quality: 88 }).toFile(`${OUT}/${file}_4k.webp`);
-    console.log(`${file}_4k.webp  ${mb(hi)} -> ${mb(`${OUT}/${file}_4k.webp`)}`);
-  }
-}
-
-// The new worlds' maps (scripts/textures/gen_worlds.mjs, scripts/blender/gen_world_rock.py,
-// scripts/blender/gen_world_dwarf.py), at their authored sizes. `-- w-rock`
-// also takes w-rock_normal (and `-- w-dwarf` w-dwarf_normal). The ring strip
+// Saturn's, Uranus's and Neptune's seeded maps and Saturn's ring strip
+// (scripts/textures/gen_worlds.mjs), at their authored sizes. The ring strip
 // is lossless and keeps the colour under transparent texels: its alpha is the
-// rings' optical depth, which lossy alpha would smear. A normal map's R and G
-// are independent vector components, so plain 4:2:0 chroma subsampling would
-// tilt every texel (~3.4 levels RMS); sharp-YUV (smartSubsample) at q90
-// brings that to ~2.5 inside the 90 KB cap (tests/worldMaps.test.ts).
-const NORMAL_WEBP = { quality: 90, smartSubsample: true };
-const WORLD_WEBP = {
-  "w-ringed_ring": { lossless: true, exact: true },
-  "w-rock_normal": NORMAL_WEBP,
-  "w-dwarf_normal": NORMAL_WEBP,
-};
-for (const file of ["w-rock", "w-rock_normal", "w-ringed", "w-ringed_ring", "w-tilted", "w-blue", "w-dwarf", "w-dwarf_normal"]) {
+// rings' optical depth, which lossy alpha would smear. Every other body and
+// moon map (NASA/USGS mosaics, Venus, Titan) is encoded by
+// scripts/textures/process_body_maps.mjs, which also makes it. The retired
+// fictional maps (ruangrapi, portfolio, fuxx, w-rock, w-dwarf) no longer ship.
+const WORLD_WEBP = { "w-ringed_ring": { lossless: true, exact: true } };
+for (const file of ["w-ringed", "w-ringed_ring", "w-tilted", "w-blue"]) {
   if (!wanted(file) && !wanted(file.split("_")[0])) continue;
   const src = [`${SRC}/${file}.jpg`, `${SRC}/${file}.png`].find((p) => existsSync(p));
   if (!src) {

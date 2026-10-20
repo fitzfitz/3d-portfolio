@@ -5,7 +5,7 @@ import { useSpaceStore } from "../src/store/spaceStore";
 describe("hiResChoice", () => {
   it("holds its first answer after low-perf switches on", () => {
     // The asset pack loader picks a texture tier from this answer before the
-    // canvas mounts; if SpacePlanets asked again after a perf decline, it
+    // canvas mounts; if SolarBodies asked again after a perf decline, it
     // would request the other tier, which this page never downloaded.
     vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
     useSpaceStore.setState({ isLowPerf: false });

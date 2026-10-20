@@ -17,9 +17,14 @@ import type { BodyId } from "./bodyIds";
  * - Mars pole only: IAU 2009 (Archinal et al. 2011, Celest. Mech. Dyn. Astron. 109:101),
  *   because the 2015 constants need that model's periodic terms.
  * - Orbits: JPL Table 2a (src/data/jplElements.ts), Ceres from SBDB (src/data/smallBodies.ts).
- * Maps are interim (the fictional worlds' maps) until the real ones land (Task 12);
- * texelMedianLinear is each map's current value. `color` is the HUD swatch,
- * to be re-derived from the real maps.
+ * - Maps (real-solar-system spec §5.5): NASA/USGS public-domain global mosaics
+ *   (scripts/textures/fetch_nasa_maps.mjs pins each source; process_body_maps.mjs
+ *   makes the shipped map), seeded where no true-colour global map exists
+ *   (Venus: gen_body_maps.mjs; Saturn, Uranus, Neptune: gen_worlds.mjs).
+ *   Each is scaled in linear light to 0.177 × its geometric albedo;
+ *   `texelMedianLinear` is the shipped map's measured linear-luminance median
+ *   (Earth's under its cloud layer; tests/bodyMaps.test.ts). `color` (the HUD
+ *   swatch, orbit lines and far dots) is the map's mean colour at one brightness.
  */
 export interface SolarBody {
   id: BodyId;
@@ -39,13 +44,17 @@ export interface SolarBody {
   orbit: { kind: "jpl"; el: JplPlanetElements } | { kind: "osculating"; el: OsculatingElements };
   geometricAlbedo: number;
   bondAlbedo: number;
+  /** The equirect map in public/models (`<map>.webp`). */
   map: string;
-  tint?: string;
+  /** Also ships a desktop-only `<map>_4k.webp` (utils/hiResMaps.ts). */
+  mapHiRes?: true;
   texelMedianLinear: number;
   color: string;
   look: {
-    clouds?: true;
-    nightLights?: true;
+    /** A cloud shell: `map` is its alpha (stored linear), `linear` its colour on the scene's albedo scale. */
+    clouds?: { map: string; linear: number };
+    /** The night-side emissive map. */
+    nightLights?: string;
     rings?: "saturn" | "uranus";
     atmosphere?: { color: string; thickness: number; intensity: number; dusk?: string };
     limb?: number;
@@ -71,7 +80,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "mercury", name: "MERCURY", ordinal: "1ST PLANET", diameterKm: 4879.4, flattening: 0,
     obliquityDeg: 0.034, pole: { raDeg: 281.0103, decDeg: 61.4155 }, rotationHours: 1407.6,
     orbit: { kind: "jpl", el: JPL_PLANETS.mercury }, geometricAlbedo: 0.142, bondAlbedo: 0.068,
-    map: "w-rock", texelMedianLinear: 0.0255, color: "#b8b1a8", look: {},
+    map: "mercury", mapHiRes: true, texelMedianLinear: 0.0254, color: "#9c9993", look: {},
     facts: { moons: 0, dayHours: 4222.6, yearDays: 87.969, meanTempC: 167 },
     hint: "the innermost planet, small, cratered and airless",
   }),
@@ -79,7 +88,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "venus", name: "VENUS", ordinal: "2ND PLANET", diameterKm: 12103.6, flattening: 0,
     obliquityDeg: 177.36, pole: { raDeg: 272.76, decDeg: 67.16 }, rotationHours: -5832.5,
     orbit: { kind: "jpl", el: JPL_PLANETS.venus }, geometricAlbedo: 0.689, bondAlbedo: 0.76,
-    map: "", tint: "#e6d8b4", texelMedianLinear: 0.177 * 0.689, color: "#d9c99c",
+    map: "venus", texelMedianLinear: 0.1224, color: "#9e998d",
     look: { atmosphere: { color: "#f0dca0", thickness: 1.06, intensity: 0.8 } },
     facts: { moons: 0, dayHours: 2802, yearDays: 224.701, meanTempC: 464 },
     hint: "inside Earth's orbit, wrapped in a cream cloud deck, spinning backwards",
@@ -88,8 +97,8 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "earth", name: "EARTH", ordinal: "3RD PLANET", diameterKm: 12756.2, flattening: 0.00335,
     obliquityDeg: 23.44, pole: { raDeg: 0, decDeg: 90 }, rotationHours: 23.9345,
     orbit: { kind: "jpl", el: JPL_PLANETS.earth }, geometricAlbedo: 0.434, bondAlbedo: 0.306,
-    map: "ruangrapi", texelMedianLinear: 0.0533, color: "#7fa8c9",
-    look: { clouds: true, nightLights: true, atmosphere: { color: "#6aa8ff", thickness: 1.05, intensity: 1, dusk: "#ff9a5a" } },
+    map: "earth", mapHiRes: true, texelMedianLinear: 0.0766, color: "#9299ad",
+    look: { clouds: { map: "earth_clouds", linear: 0.2432 }, nightLights: "earth_night", atmosphere: { color: "#6aa8ff", thickness: 1.05, intensity: 1, dusk: "#ff9a5a" } },
     facts: { moons: 1, dayHours: 24, yearDays: 365.256, meanTempC: 15 },
     hint: "the third planet, the blue one, with one Moon",
   }),
@@ -97,7 +106,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "mars", name: "MARS", ordinal: "4TH PLANET", diameterKm: 6792.4, flattening: 0.00589,
     obliquityDeg: 25.19, pole: { raDeg: 317.68143, decDeg: 52.8865 }, rotationHours: 24.6229,
     orbit: { kind: "jpl", el: JPL_PLANETS.mars }, geometricAlbedo: 0.17, bondAlbedo: 0.25,
-    map: "w-rock", tint: "#b5653a", texelMedianLinear: 0.0255, color: "#c4805e",
+    map: "mars", mapHiRes: true, texelMedianLinear: 0.0301, color: "#b3928f",
     look: { atmosphere: { color: "#d9a07a", thickness: 1.03, intensity: 0.5, dusk: "#6a8fd0" } },
     facts: { moons: 2, dayHours: 24.6597, yearDays: 686.98, meanTempC: -65 },
     hint: "past Earth, the rust-red planet with two small moons",
@@ -106,7 +115,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "ceres", name: "CERES", ordinal: "DWARF PLANET", diameterKm: 939.4, flattening: 0,
     obliquityDeg: 4, pole: { raDeg: 291.418, decDeg: 66.764 }, rotationHours: 9.074,
     orbit: { kind: "osculating", el: CERES }, geometricAlbedo: 0.09, bondAlbedo: 0.034,
-    map: "w-dwarf", texelMedianLinear: 0.016, color: "#9a9a96", look: {},
+    map: "ceres", texelMedianLinear: 0.016, color: "#999999", look: {},
     facts: { moons: 0, dayHours: 9.074, yearDays: 1681.6, meanTempC: -106 },
     hint: "a dwarf planet in the asteroid belt, small and dark",
   }),
@@ -114,7 +123,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "jupiter", name: "JUPITER", ordinal: "5TH PLANET", diameterKm: 142984, flattening: 0.06487,
     obliquityDeg: 3.13, pole: { raDeg: 268.056595, decDeg: 64.495303 }, rotationHours: 9.925,
     orbit: { kind: "jpl", el: JPL_PLANETS.jupiter }, geometricAlbedo: 0.538, bondAlbedo: 0.343,
-    map: "w-ringed", texelMedianLinear: 0.0866, color: "#c9a98a",
+    map: "jupiter", texelMedianLinear: 0.0957, color: "#9b9993",
     look: { atmosphere: { color: "#e0c8a8", thickness: 1.04, intensity: 0.6 }, limb: 0.8 },
     facts: { moons: 95, dayHours: 9.925, yearDays: 4332.589, meanTempC: -110 },
     hint: "the largest planet, banded, with four great moons",
@@ -123,7 +132,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "saturn", name: "SATURN", ordinal: "6TH PLANET", diameterKm: 120536, flattening: 0.09796,
     obliquityDeg: 26.73, pole: { raDeg: 40.589, decDeg: 83.537 }, rotationHours: 10.656,
     orbit: { kind: "jpl", el: JPL_PLANETS.saturn }, geometricAlbedo: 0.499, bondAlbedo: 0.342,
-    map: "w-ringed", texelMedianLinear: 0.0866, color: "#d6c49a",
+    map: "w-ringed", texelMedianLinear: 0.0866, color: "#a6987b",
     look: { rings: "saturn", atmosphere: { color: "#e6d6a8", thickness: 1.04, intensity: 0.5 } },
     facts: { moons: 146, dayHours: 10.656, yearDays: 10759.22, meanTempC: -140 },
     hint: "the ringed planet, with Titan",
@@ -132,7 +141,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "uranus", name: "URANUS", ordinal: "7TH PLANET", diameterKm: 51118, flattening: 0.02293,
     obliquityDeg: 97.77, pole: { raDeg: 257.311, decDeg: -15.175 }, rotationHours: -17.24,
     orbit: { kind: "jpl", el: JPL_PLANETS.uranus }, geometricAlbedo: 0.488, bondAlbedo: 0.3,
-    map: "w-tilted", texelMedianLinear: 0.0857, color: "#a8d0d4",
+    map: "w-tilted", texelMedianLinear: 0.0857, color: "#849ea8",
     look: { rings: "uranus", atmosphere: { color: "#a8e0e6", thickness: 1.04, intensity: 0.5, dusk: ICE_GIANT_DUSK }, limb: 0.7 },
     facts: { moons: 28, dayHours: 17.24, yearDays: 30685.4, meanTempC: -195 },
     hint: "the pale cyan ice giant, rolling on its side",
@@ -141,7 +150,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "neptune", name: "NEPTUNE", ordinal: "8TH PLANET", diameterKm: 49528, flattening: 0.01708,
     obliquityDeg: 28.32, pole: { raDeg: 299.36, decDeg: 43.46 }, rotationHours: 16.11,
     orbit: { kind: "jpl", el: JPL_PLANETS.neptune }, geometricAlbedo: 0.442, bondAlbedo: 0.29,
-    map: "w-blue", texelMedianLinear: 0.0785, color: "#6f93c9",
+    map: "w-blue", texelMedianLinear: 0.0785, color: "#4c83ff",
     look: { atmosphere: { color: "#5f88e0", thickness: 1.04, intensity: 0.6, dusk: ICE_GIANT_DUSK }, limb: 0.7 },
     facts: { moons: 16, dayHours: 16.11, yearDays: 60189, meanTempC: -200 },
     hint: "the outermost planet, deep blue, with captured Triton",

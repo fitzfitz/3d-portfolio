@@ -36,9 +36,11 @@ describe("roster", () => {
     expect(r.uranus.reach).toBeGreaterThan(r.uranus.size);
     expect(r.earth.reach).toBe(r.earth.size);
   });
-  it("Venus map is tint-only with the 0.177 rule", () => {
+  it("every body draws a real (or generated) map, none a tint; Venus is on the 0.177 rule", () => {
+    for (const b of SOLAR_BODIES) expect(b.map, b.id).not.toBe("");
     const v = bodyById("venus");
-    expect(v.texelMedianLinear).toBeCloseTo(0.177 * v.geometricAlbedo);
+    expect(v.map).toBe("venus");
+    expect(Math.abs(v.texelMedianLinear / (0.177 * v.geometricAlbedo) - 1)).toBeLessThan(0.03);
   });
 });
 

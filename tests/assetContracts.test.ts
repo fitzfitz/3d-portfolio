@@ -587,8 +587,13 @@ describe("project probe (probe.glb)", () => {
 describe("public/models", () => {
   // 8 → 9 MiB on purpose (2026-10-17): the five new worlds' maps add ~0.6–0.8
   // MiB and the old cap was 665 KiB from full (spec "Assets", Budget).
-  it("stays under 9 MiB in total", () => {
+  // 9 → 10 MiB on purpose (2026-10-20, real-solar-system Task 12): NASA/USGS
+  // photographic maps compress worse than the seeded ones, Earth gains its
+  // cloud and Black Marble maps, and the seven sphere moons' maps (~1 MiB,
+  // drawn from Task 14) ship now. This total counts both texture tiers; a
+  // device downloads common plus one (tests/bodyMaps.test.ts caps each).
+  it("stays under 10 MiB in total", () => {
     const total = readdirSync("public/models").reduce((s, f) => s + statSync(`public/models/${f}`).size, 0);
-    expect(total / 1024 / 1024).toBeLessThan(9);
+    expect(total / 1024 / 1024).toBeLessThan(10);
   });
 });

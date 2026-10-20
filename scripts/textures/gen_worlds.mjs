@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * The new worlds' surface maps — original work, no source imagery
+ * Saturn's, Uranus's and Neptune's surface maps (the real-solar-system spec
+ * §5.5 keeps them: no true-colour global map of the three exists) — original
+ * work, no source imagery
  * (spec docs/superpowers/specs/2026-10-17-new-worlds-design.md, "Assets").
  *
  *   node scripts/textures/gen_worlds.mjs                       # all, native widths
@@ -9,7 +11,7 @@
  * Writes to assets-src/:
  *   w-ringed.jpg        2048  Saturn-type: butterscotch bands, cool polar caps, north polar hexagon
  *   w-tilted.jpg        1024  Uranus-type: pale cyan, almost featureless, faint polar brightening
- *   w-blue.jpg          2048  Neptune-type: deep blue bands, one dark storm, white ammonia-ice streaks
+ *   w-blue.jpg          2048  Neptune: deep blue bands, one dark storm, white methane-ice streaks
  *   w-ringed_ring.png   2048x4 RGBA ring strip: RGB = particle colour, A = tau / RING_TAU_MAX
  * (w-rock, the Mercury-type, is scripts/blender/gen_world_rock.py and w-dwarf,
  * the Ceres-type, scripts/blender/gen_world_dwarf.py: both need the shared
@@ -181,10 +183,11 @@ function genTilted(W) {
 }
 
 // =================================================================
-// w-blue — Neptune-type: deep blue bands, a dark storm, ammonia-ice streaks
-// The bright streaks are ammonia-ice clouds, not methane: at this world's
-// T_eq (~137 K) methane stays gaseous, whereas real Neptune's streaks (at
-// ~55 K) are methane ice.
+// w-blue — Neptune: deep blue bands, a dark storm, methane-ice streaks
+// The bright streaks are methane-ice clouds, as Voyager 2 saw them: at 30 AU
+// (T_eq ~47 K, ~55 K at the cloud tops) methane condenses. (The fictional
+// Neptune-type world this map was made for sat at ~3 AU, too warm for
+// methane ice, where the note said ammonia; the pixels are unchanged.)
 // =================================================================
 
 function genBlue(W) {
@@ -198,7 +201,7 @@ function genBlue(W) {
   // The dark storm (Great-Dark-Spot-like): an oval at 22 S with white companion clouds on its poleward side.
   const gds = { ...frameAt(dirFromLatLon(-22, 205)), a: 0.26, b: 0.13, s: 1.6 };
   const d2 = { ...frameAt(dirFromLatLon(-55, 80)), a: 0.06, b: 0.04, s: -2.2 };
-  // Bright ammonia-ice streak latitudes (deg) and half-widths.
+  // Bright methane-ice streak latitudes (deg) and half-widths.
   const streaks = [[27, 0.9], [33, 0.6], [-42, 0.8], [-29, 0.55], [61, 0.7], [-67, 0.6]];
   const rgb = new Float32Array(W * (W / 2) * 3);
   const q = [0, 0, 0], c = [0, 0, 0];
@@ -230,7 +233,7 @@ function genBlue(W) {
     const L = Math.asin(clamp(qy, -1, 1)) / DEG + 1.6 * wa + 0.7 * wb;
     let v = lat(L) + 0.05 * nB(L * 0.5, 3.3, 1.1) + 0.015 * fbm(nB, qx * 5, qy * 50, qz * 5, 3);
     pal(clamp(v), c);
-    // white ammonia-ice streaks: thin, long in longitude, broken
+    // white methane-ice streaks: thin, long in longitude, broken
     let st = 0;
     for (let i = 0; i < streaks.length; i++) {
       const [sl, sw] = streaks[i];
@@ -356,7 +359,7 @@ async function main() {
   }
 }
 
-// Run only as a script: turntable_worlds.py imports the ring constants above.
+// Run only as a script: turntable_bodies.py imports the ring constants above.
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch((e) => { console.error(e); process.exit(1); });
 }
