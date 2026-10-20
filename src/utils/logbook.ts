@@ -1,4 +1,5 @@
 import type { Vec3 } from "./reactions";
+import { PROBE_IDS } from "../data/probes";
 import { jumpKey } from "../data/destinations";
 import { isCartographer, type ChartRecord } from "./charting";
 
@@ -21,12 +22,15 @@ export const SHARDS_FOR_BADGE = 3;
 export const CONVOY_SIGHT_RADIUS = 120;
 
 /** Entry ids derived from other state, never recorded. */
-const DOSSIERS: readonly string[] = ["ruangrapi", "portfolio", "fuxx"];
+const DOSSIERS: readonly string[] = PROBE_IDS;
+
+/** True for the project-dossier entries (re-openable from the logbook once read). */
+export const isDossierEntry = (id: string): boolean => DOSSIERS.includes(id);
 
 export const LOGBOOK: readonly LogbookEntry[] = [
-  { id: "ruangrapi", section: "essential", title: "Read the RuangRapi dossier", hint: "READ THE RUANGRAPI DOSSIER", hintShort: "RUANGRAPI DOSSIER", plume: false },
-  { id: "portfolio", section: "essential", title: "Read the Flight-Sim CV dossier", hint: "READ THE FLIGHT-SIM CV DOSSIER", hintShort: "CV DOSSIER", plume: false },
-  { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "READ THE FUXX DOSSIER", hintShort: "FUXX DOSSIER", plume: false },
+  { id: "ruangrapi", section: "essential", title: "Read the RuangRapi dossier", hint: "GRAB THE RUANGRAPI PROBE (HOLD F)", hintShort: "RUANGRAPI PROBE", plume: false },
+  { id: "portfolio", section: "essential", title: "Read the Flight-Sim CV dossier", hint: "GRAB THE FLIGHT-SIM CV PROBE (HOLD F)", hintShort: "CV PROBE", plume: false },
+  { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "GRAB THE FUXX PROBE (HOLD F)", hintShort: "FUXX PROBE", plume: false },
   { id: "career", section: "essential", title: "Read the career dossier", hint: "DOCK AT THE CAREER STATION", hintShort: "CAREER DOSSIER", plume: false },
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
   { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR WORLD", hintShort: "SLINGSHOT A PLANET", plume: true },

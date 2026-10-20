@@ -6,8 +6,8 @@ import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS 
 // (srgb-linear variants of anything not on screen at load). After that, the
 // sun still compiled one more about one run in four, from a since-removed
 // post pass that flipped its material transparent after warm-up.
-// The tour stops include the shipyard and the dormant gate, and every world,
-// charted once warm-up is over.
+// The tour stops include the shipyard, the dormant gate and the three project
+// probes, and every world, charted once warm-up is over.
 //
 // Low-perf is locked off before load, as on a real GPU: headless SwiftShader
 // otherwise declines to low-perf while assets load, warm-up then rightly
@@ -59,6 +59,9 @@ function tour({ label, init, tier }) {
       const mid = BUOYS[2].pos;
       return [
         ...Object.entries(window.__fitz.bodies).map(([name, b]) => [name, b.x, b.y, b.z + 30]),
+        // 12 u from each project probe, where a jump parks: its material,
+        // beacon and trim are in frame up close.
+        ...Object.entries(window.__fitz.probes).map(([id, p]) => [`probe ${id}`, p.x, p.y, p.z + 12]),
         ["contact portal", 0, 95, -140],
         // 14 out: outside the station's 8.5 zone, so the tour never docks.
         ["career station", STATION_POS[0], STATION_POS[1], STATION_POS[2] + 14],
@@ -75,10 +78,15 @@ function tour({ label, init, tier }) {
     const worldIds = await page.evaluate(async () => (await import("/src/data/worlds.ts")).WORLD_IDS);
     checks.check(`${tier}: the tour stops at every world`, worldIds.every((id) => stops.some(([name]) => name === id)),
       `stops=${stops.map(([name]) => name).join(", ")}`);
-    // A stop that orbit-locks freezes the render loop (frameloop "never"),
-    // so nothing there would be drawn or compiled and the check below would
-    // pass without looking: every stop must stay unlocked.
+    const probeIds = await page.evaluate(async () => (await import("/src/data/probes.ts")).PROBE_IDS);
+    checks.check(`${tier}: the tour stops at every project probe`, probeIds.every((id) => stops.some(([name]) => name === `probe ${id}`)),
+      `probes=${probeIds.join(", ")}`);
+    // A stop that orbit-locks or opens a dossier freezes the render loop
+    // (frameloop "never"), so nothing there would be drawn or compiled and the
+    // check below would pass without looking: every stop must stay unlocked,
+    // with no dossier open (a probe opens only when grabbed, never on approach).
     const lockedAt = [];
+    const openedAt = [];
     for (const [name, x, y, z] of stops) {
       await page.evaluate((p) => window.__fitz.teleport(p[0], p[1], p[2]), [x, y, z]);
       await settle(page, 1000); // ~60 frames on the GPU
@@ -87,9 +95,15 @@ function tour({ label, init, tier }) {
         lockedAt.push(name);
         await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
       }
+      if (await page.evaluate(() => window.__fitz.store.getState().openDossier !== null)) {
+        openedAt.push(name);
+        await page.evaluate(() => window.__fitz.store.getState().closeDossier());
+      }
     }
     checks.check(`${tier}: no tour stop orbit-locked (a lock freezes rendering, so nothing there would compile)`,
       lockedAt.length === 0, lockedAt.length ? `locked at ${lockedAt.join(", ")}` : "");
+    checks.check(`${tier}: no tour stop opened a dossier`, openedAt.length === 0,
+      openedAt.length ? `opened at ${openedAt.join(", ")}` : "");
     await page.keyboard.down("KeyW");
     await page.keyboard.down("ShiftLeft");
     await settle(page, 2500);

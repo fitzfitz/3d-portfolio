@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { flight, useSpaceStore, type SpaceState } from "../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen, type SpaceState } from "../store/spaceStore";
 import {
   PAD_NEUTRAL, padActions, padFlightChanges, pressedButtons, readPadFlight,
   type PadAction, type PadFlight,
@@ -18,8 +18,8 @@ function firstPad(): Gamepad | null {
 }
 
 type PadStore = Pick<SpaceState,
-  "showClassicCV" | "beaconPickerOpen" | "photoMode" | "isOrbitLocked" | "logbookOpen" |
-  "setPhotoMode" | "breakOrbit" | "setLogbookOpen" | "requestJump">;
+  "showClassicCV" | "beaconPickerOpen" | "photoMode" | "isOrbitLocked" | "openDossier" | "logbookOpen" |
+  "setPhotoMode" | "breakOrbit" | "closeDossier" | "setLogbookOpen" | "requestJump">;
 
 /**
  * One pad button press. Same guards as the keyboard: nothing while the
@@ -28,9 +28,18 @@ type PadStore = Pick<SpaceState,
 export function runPadAction(a: PadAction, s: PadStore): void {
   if (s.showClassicCV || s.beaconPickerOpen) return;
   if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
-  else if (a.kind === "close") { if (s.isOrbitLocked) s.breakOrbit(); }
-  else if (a.kind === "logbook") { if (!s.photoMode && !s.isOrbitLocked) s.setLogbookOpen(!s.logbookOpen); }
+  else if (a.kind === "close") {
+    // A project dossier is not an orbit lock: B closes whichever is up.
+    if (s.openDossier !== null) s.closeDossier();
+    else if (s.isOrbitLocked) s.breakOrbit();
+  }
+  else if (a.kind === "logbook") { if (!s.photoMode && !selectModalOpen(s)) s.setLogbookOpen(!s.logbookOpen); }
   else if (!s.photoMode) s.requestJump(a.id);
+}
+
+/** The sticks write nothing behind the classic résumé or under an open dossier. */
+export function padShouldIdle(s: Pick<SpaceState, "showClassicCV" | "openDossier">): boolean {
+  return s.showClassicCV || s.openDossier !== null;
 }
 
 /**
@@ -72,12 +81,11 @@ export function useGamepadInput() {
       // The classic résumé is a normal page: the pad must not fly the ship
       // behind it. And an unfocused tab gets no pad input at all — the keyboard
       // hook releases everything on blur, and the pad must not undo that.
-      if (useSpaceStore.getState().showClassicCV || !document.hasFocus()) {
-        write({ ...PAD_NEUTRAL });
-      } else {
-        write(readPadFlight(pad));
-        if (buttons) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState());
-      }
+      if (padShouldIdle(useSpaceStore.getState()) || !document.hasFocus()) write({ ...PAD_NEUTRAL });
+      else write(readPadFlight(pad));
+      // Buttons still act under an open dossier (only the sticks idle there):
+      // B is how a pad closes it. runPadAction keeps the résumé/picker guards.
+      if (buttons && document.hasFocus()) for (const a of padActions(buttons, next)) runPadAction(a, useSpaceStore.getState());
       buttons = next;
       raf = requestAnimationFrame(tick);
     };

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { escapePosition } from "../src/utils/orbitEscape";
-import { LOCK_ENGAGE_FACTOR, ZONE_FACTOR, planets } from "../src/constants";
+import { DESTINATIONS, escapeR } from "../src/data/destinations";
 
 describe("escapePosition", () => {
   it("places the ship on the escape radius, along the centre->ship direction", () => {
@@ -19,13 +19,11 @@ describe("escapePosition", () => {
     expect(Math.hypot(p.x - 1, p.y - 1, p.z - 1)).toBeCloseTo(5);
   });
 
-  it("the planet escape radius clears both the lock and the proximity zone", () => {
-    // Regression: the old fixed 2.8u push left the ship inside the 6.24u lock
-    // radius, so a planet drifting toward it re-locked once cooldown ended.
-    for (const p of planets) {
-      const r = p.size * ZONE_FACTOR * 1.15;
-      expect(r).toBeGreaterThan(p.size * LOCK_ENGAGE_FACTOR);
-      expect(r).toBeGreaterThan(p.size * ZONE_FACTOR);
+  // Planets no longer dock (spec §4.4); the escape push is the destinations' alone.
+  it("a destination's escape radius clears both its lock and its proximity zone", () => {
+    for (const d of DESTINATIONS) {
+      expect(escapeR(d), d.id).toBeGreaterThan(d.lockR);
+      expect(escapeR(d), d.id).toBeGreaterThan(d.zoneR);
     }
   });
 });

@@ -128,8 +128,8 @@ export default async function run() {
       const { planets } = await import("/src/constants.ts");
       const b = window.__fitz.bodies[planets[0].name];
       // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
-      // PLANET_STANDOFF x size: outside the lock-retain radius (1.9x), inside
-      // scan range of the surface.
+      // PLANET_STANDOFF x size: clear of the solid surface, inside scan range
+      // of it (planets are scan-only).
       window.__fitz.teleport(b.x, b.y, b.z + planets[0].size * standoff);
       return planets[0].name;
     }, PLANET_STANDOFF);

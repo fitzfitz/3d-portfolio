@@ -141,19 +141,6 @@ export function stepGravity(G: Vec3, pos: Vec3, v: Vec3, wells: readonly Well[],
 }
 
 /**
- * After breaking orbit, the escape push leaves the ship inside the planet's
- * well; pulling it straight back would relock it. The planet just left is
- * skipped until the ship is outside that planet's well.
- */
-export class EscapeGrace {
-  private name: string | null = null;
-  arm(name: string): void { this.name = name; }
-  get skip(): string | null { return this.name; }
-  update(distToBody: number, wellRadius: number): void { if (this.name && distToBody >= wellRadius) this.name = null; }
-  clear(): void { this.name = null; }
-}
-
-/**
  * Radio line for a slingshot: on a fast well exit, at most once per
  * SLINGSHOT_COOLDOWN_S, never over a busy radio or during a race. A
  * suppressed exit is spent, not deferred, like cargo hails (HailGate).

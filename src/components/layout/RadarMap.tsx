@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
-import { planets } from "../../constants";
+import { planets, projectById } from "../../constants";
+import { PROBE_IDS } from "../../data/probes";
+import { probePos } from "../../store/probeState";
 import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
@@ -12,6 +14,12 @@ const SIZE = 148;
 const PLANET_COLORS = planets.map((p) => ({ name: p.name, color: p.color }));
 /** Destinations are fixed: one blip each, in the table's colour. */
 const DESTINATION_BLIPS = DESTINATIONS.map((d) => ({ name: d.id, x: d.pos[0], y: d.pos[1], z: d.pos[2], color: d.color }));
+
+/** One diamond per probe, in its project's colour; preallocated so the frame loop allocates nothing. */
+const PROBE_BLIPS = PROBE_IDS.map((id) => ({ id, color: projectById(id)?.color ?? "#00ff87" }));
+/** Probe diamond half-diagonal (px): big enough to read as a diamond, not a dot (R13). */
+const PROBE_DIAMOND = 3.5;
+const PROBE_DIAMOND_RIM = "rgba(0, 0, 0, 0.8)";
 
 const blip = { px: 0, py: 0, onRim: false };
 
@@ -88,8 +96,9 @@ export default function RadarMap() {
         ctx.beginPath();
         ctx.arc(c + px, c + py, (t.name === "sun" ? 3 : 2.4) * pulse, 0, Math.PI * 2);
         ctx.fill();
-        // Read dossiers get an outline ring, so what's left reads at a glance.
-        if (visited.includes(t.name)) {
+        // Read dossiers get an outline ring on the career station and the
+        // contact portal, so what's left reads at a glance (probes ring below).
+        if (visited.includes(t.name) && !PROBE_IDS.includes(t.name)) {
           ctx.strokeStyle = t.color;
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -102,6 +111,47 @@ export default function RadarMap() {
         if (cue.dir !== 0) {
           ctx.globalAlpha = cue.alpha * (onRim ? 0.45 : 0.9);
           const by = c + py - cue.dir * 6; // apex offset from the blip
+          ctx.beginPath();
+          ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
+          ctx.lineTo(c + px, by);
+          ctx.lineTo(c + px + 2.5, by + cue.dir * 2.5);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Project probes: a filled diamond in the project's colour, rim-clamped
+      // and never hidden by range. A ring marks a probe whose dossier is read.
+      for (const pb of PROBE_BLIPS) {
+        const q = probePos[pb.id];
+        const { x: sx, up } = worldToRadar(q.x - flight.x, q.z - flight.z, a);
+        const { px, py, onRim } = radarBlip(sx, up, scale, rimR, true, blip);
+        ctx.globalAlpha = onRim ? 0.45 : 1;
+        ctx.fillStyle = pb.color;
+        ctx.beginPath();
+        ctx.moveTo(c + px, c + py - PROBE_DIAMOND);
+        ctx.lineTo(c + px + PROBE_DIAMOND, c + py);
+        ctx.lineTo(c + px, c + py + PROBE_DIAMOND);
+        ctx.lineTo(c + px - PROBE_DIAMOND, c + py);
+        ctx.closePath();
+        // A 1 px dark rim (half of a 2 px stroke, the fill covers the inner
+        // half) so the diamond's corners read against other blips.
+        ctx.strokeStyle = PROBE_DIAMOND_RIM;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fill();
+        if (visited.includes(pb.id)) {
+          ctx.strokeStyle = pb.color;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(c + px, c + py, PROBE_DIAMOND + 3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        const cue = altitudeCue(q.y - flight.y);
+        if (cue.dir !== 0) {
+          ctx.globalAlpha = cue.alpha * (onRim ? 0.45 : 0.9);
+          const by = c + py - cue.dir * (PROBE_DIAMOND + 4.5);
           ctx.beginPath();
           ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
           ctx.lineTo(c + px, by);

@@ -47,6 +47,8 @@ export interface FitzDebug {
    * Registered by Spaceship in dev. Null until Spaceship mounts.
    */
   setAttitude: ((yaw: number, pitch: number) => void) | null;
+  /** Live probe positions (probeState.ts), registered by ProjectProbes in dev. Null until mounted. */
+  probes: typeof import("../store/probeState").probePos | null;
   /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
   crystals: { x: number; y: number; z: number; active: boolean }[] | null;
   /**
@@ -118,6 +120,7 @@ export const fitzDebug: FitzDebug = {
   canvasRenderCount: 0,
   teleport: null,
   setAttitude: null,
+  probes: null,
   crystals: null,
   anomalies: null,
   cargoSwerve: null,

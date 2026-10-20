@@ -25,7 +25,8 @@ describe("makeBeamGeometry", () => {
       if (Math.abs(pos.getY(i)) < 1e-6) nose = Math.max(nose, r);
       if (Math.abs(pos.getY(i) + 1) < 1e-6) far = Math.max(far, r);
     }
-    expect(nose).toBeLessThan(0.05);
+    // Exactly a point: an open apex ring reads as a dark disc from the chase camera.
+    expect(nose).toBe(0);
     expect(far).toBeCloseTo(1, 5);
   });
 });

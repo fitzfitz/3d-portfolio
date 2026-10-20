@@ -4,6 +4,9 @@ import { WORLD_IDS } from "../src/data/worlds";
 import { SURVEY_LINE, AURUM_LINE, chartLine } from "../src/utils/charting";
 import { CHANGELOG } from "../src/data/changelog";
 import { DESTINATIONS } from "../src/data/destinations";
+import { PROBES } from "../src/data/probes";
+import { spotPos } from "../src/utils/probes";
+import { selectModalOpen } from "../src/store/spaceStore";
 
 beforeEach(() => {
   useSpaceStore.setState({
@@ -16,7 +19,8 @@ beforeEach(() => {
     fuelEmpty: false, sceneReady: false,
     visitedDossiers: [], jumpRequest: null, warmingUp: false, pendingLowPerf: null, worldEvent: null,
     badges: [], plumeColor: "stock", logbookOpen: false, changelogOpen: false, logbookLineAt: 0,
-    charted: [],
+    charted: [], openDossier: null, dossierVia: null, relocation: null, probeNear: null, probeTip: null,
+    probeSpots: { ruangrapi: 0, portfolio: 0, fuxx: 0 },
   });
   for (const id of WORLD_IDS) worldVisibility[id].charted = false;
 });
@@ -122,6 +126,23 @@ describe("spaceStore", () => {
     expect(useSpaceStore.getState().broadcast?.text).toBe("LAP 0:42 // UNDER PAR");
     vi.advanceTimersByTime(4500);
     expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
+    vi.useRealTimers();
+  });
+
+  // Rulings R12/R12b: the next-stop hint is queued through announceLogbook
+  // right after the last probe's PROBE RELOCATING line, so both are read.
+  it("a line queued just after a fresh broadcast leaves it readable, then goes out audible", async () => {
+    vi.useFakeTimers();
+    const s = useSpaceStore.getState();
+    s.sendBroadcast("PROBE RELOCATING // FUXX SIGNAL REACQUIRED BEARING 298 AT 418 U");
+    s.announceLogbook("ALL 3 DOSSIERS READ // NEXT STOP: THE CAREER STATION — PRESS 4 TO JUMP THERE");
+    await Promise.resolve();
+    vi.advanceTimersByTime(4400);
+    expect(useSpaceStore.getState().broadcast?.text).toMatch(/^PROBE RELOCATING/);
+    vi.advanceTimersByTime(100);
+    const b = useSpaceStore.getState().broadcast;
+    expect(b?.text).toMatch(/^ALL 3 DOSSIERS READ/);
+    expect(b?.silent).toBe(false);
     vi.useRealTimers();
   });
 
@@ -338,7 +359,7 @@ describe("spaceStore", () => {
 
 describe("selectSceneFrozen", () => {
   const base = {
-    isOrbitLocked: false, activeZone: null, photoMode: false, showClassicCV: false,
+    isOrbitLocked: false, openDossier: null, activeZone: null, photoMode: false, showClassicCV: false,
   } as Parameters<typeof selectSceneFrozen>[0];
 
   it("is false during ordinary flight", () => {
@@ -431,14 +452,129 @@ describe("hasWebGL", () => {
   });
 });
 
+describe("probe HUD fields", () => {
+  it("setProbeTip writes only on a change", () => {
+    const seen: unknown[] = [];
+    const unsub = useSpaceStore.subscribe((s) => seen.push(s.probeTip));
+    const st = useSpaceStore.getState();
+    st.setProbeTip("closer"); st.setProbeTip("closer"); st.setProbeTip("grab"); st.setProbeTip("grab"); st.setProbeTip(null);
+    unsub();
+    expect(seen).toEqual(["closer", "grab", null]);
+  });
+});
+
 describe("dossier progress", () => {
-  it("locking onto a project planet records it once", () => {
-    useSpaceStore.setState({ activeZone: "ruangrapi" });
-    useSpaceStore.getState().setOrbitLocked(true);
-    useSpaceStore.getState().setOrbitLocked(false);
-    useSpaceStore.setState({ activeZone: "ruangrapi" });
-    useSpaceStore.getState().setOrbitLocked(true);
+  it("openProjectDossier records the visit once and persists fitz-dossiers", () => {
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem });
+    useSpaceStore.setState({ isWarping: true });
+    useSpaceStore.getState().openProjectDossier("ruangrapi", "logbook");
+    expect(useSpaceStore.getState()).toMatchObject({ openDossier: "ruangrapi", dossierVia: "logbook", visitedDossiers: ["ruangrapi"], isWarping: false });
+    expect(setItem).toHaveBeenCalledWith("fitz-dossiers", JSON.stringify(["ruangrapi"]));
+    useSpaceStore.getState().closeDossier();
+    useSpaceStore.getState().openProjectDossier("ruangrapi", "logbook");
     expect(useSpaceStore.getState().visitedDossiers).toEqual(["ruangrapi"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("openProjectDossier while one is open is ignored", () => {
+    useSpaceStore.getState().openProjectDossier("ruangrapi", "probe");
+    useSpaceStore.getState().openProjectDossier("fuxx", "logbook");
+    expect(useSpaceStore.getState()).toMatchObject({ openDossier: "ruangrapi", dossierVia: "probe", visitedDossiers: ["ruangrapi"] });
+  });
+
+  it("unknown id is ignored", () => {
+    useSpaceStore.getState().openProjectDossier("contact", "probe");
+    useSpaceStore.getState().openProjectDossier("nowhere", "logbook");
+    expect(useSpaceStore.getState()).toMatchObject({ openDossier: null, visitedDossiers: [] });
+  });
+
+  it("closeDossier via probe advances and persists fitz-probes before relocation is set", () => {
+    const events: string[] = [];
+    vi.stubGlobal("localStorage", {
+      getItem: () => null,
+      setItem: (k: string, v: string) => { if (k === "fitz-probes") events.push(`persist:${v}`); },
+    });
+    const unsub = useSpaceStore.subscribe((st, prev) => { if (st.relocation !== prev.relocation) events.push("relocation"); });
+    useSpaceStore.getState().openProjectDossier("portfolio", "probe");
+    useSpaceStore.getState().closeDossier();
+    unsub();
+    vi.unstubAllGlobals();
+    const st = useSpaceStore.getState();
+    expect(st).toMatchObject({ openDossier: null, dossierVia: null, relocation: { id: "portfolio", seq: 1 } });
+    expect(st.probeSpots).toEqual({ ruangrapi: 0, portfolio: 1, fuxx: 0 });
+    expect(events).toEqual([`persist:${JSON.stringify({ ruangrapi: 0, portfolio: 1, fuxx: 0 })}`, "relocation"]);
+  });
+
+  it("closeDossier via logbook leaves probeSpots and relocation untouched", () => {
+    useSpaceStore.getState().openProjectDossier("fuxx", "logbook");
+    useSpaceStore.getState().closeDossier();
+    expect(useSpaceStore.getState()).toMatchObject({ openDossier: null, dossierVia: null, relocation: null, probeSpots: { ruangrapi: 0, portfolio: 0, fuxx: 0 } });
+  });
+
+  it("setShowClassicCV(true) closes an open dossier and the scene is not frozen afterwards", () => {
+    useSpaceStore.getState().openProjectDossier("fuxx", "logbook");
+    useSpaceStore.getState().setShowClassicCV(true);
+    useSpaceStore.getState().setShowClassicCV(false);
+    expect(useSpaceStore.getState().openDossier).toBe(null);
+    expect(selectSceneFrozen(useSpaceStore.getState())).toBe(false);
+  });
+
+  it("setShowClassicCV(true) with a probe-origin dossier advances that probe's spot, persists fitz-probes and sets relocation", () => {
+    const setItem = vi.fn();
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem });
+    useSpaceStore.getState().openProjectDossier("fuxx", "probe");
+    useSpaceStore.getState().setShowClassicCV(true);
+    vi.unstubAllGlobals();
+    const st = useSpaceStore.getState();
+    expect(st).toMatchObject({ openDossier: null, dossierVia: null, relocation: { id: "fuxx", seq: 1 } });
+    expect(st.probeSpots).toEqual({ ruangrapi: 0, portfolio: 0, fuxx: 1 });
+    expect(setItem).toHaveBeenCalledWith("fitz-probes", JSON.stringify({ ruangrapi: 0, portfolio: 0, fuxx: 1 }));
+  });
+
+  it("a reload after close starts the probe at its new spot", async () => {
+    const stored: Record<string, string> = {};
+    vi.stubGlobal("localStorage", { getItem: (k: string) => stored[k] ?? null, setItem: (k: string, v: string) => { stored[k] = v; } });
+    useSpaceStore.getState().openProjectDossier("ruangrapi", "probe");
+    useSpaceStore.getState().closeDossier();
+    vi.resetModules();
+    const fresh = await import("../src/store/probeState");
+    const freshStore = await import("../src/store/spaceStore");
+    vi.unstubAllGlobals();
+    const def = PROBES.find((p) => p.id === "ruangrapi")!;
+    const [x, y, z] = spotPos(def, 1);
+    expect(fresh.probePos.ruangrapi).toEqual({ x, y, z });
+    expect(freshStore.useSpaceStore.getState().probeSpots.ruangrapi).toBe(1);
+    expect(fresh.probeRelocating.ruangrapi).toBe(false);
+  });
+
+  it("fitz-dossiers with stale ids keeps only project ids", async () => {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => (k === "fitz-dossiers" ? JSON.stringify(["saas", "contact", "fuxx", "mars"]) : null), setItem: () => {} });
+    const fresh = await import("../src/store/spaceStore");
+    vi.unstubAllGlobals();
+    expect(fresh.useSpaceStore.getState().visitedDossiers).toEqual(["fuxx"]);
+  });
+
+  it("selectSceneFrozen: dossier open → frozen; photo mode → not frozen; orbit lock still freezes", () => {
+    const base = { isOrbitLocked: false, openDossier: null, photoMode: false };
+    expect(selectSceneFrozen(base)).toBe(false);
+    expect(selectSceneFrozen({ ...base, openDossier: "fuxx" })).toBe(true);
+    expect(selectSceneFrozen({ ...base, openDossier: "fuxx", photoMode: true })).toBe(false);
+    expect(selectSceneFrozen({ ...base, isOrbitLocked: true })).toBe(true);
+    expect(selectModalOpen(base)).toBe(false);
+    expect(selectModalOpen({ ...base, openDossier: "fuxx" })).toBe(true);
+  });
+
+  it("requestJump accepts probe ids and destinations, rejects world ids", () => {
+    for (const id of ["ruangrapi", "portfolio", "fuxx", "career"]) {
+      useSpaceStore.setState({ jumpRequest: null });
+      useSpaceStore.getState().requestJump(id);
+      expect(useSpaceStore.getState().jumpRequest?.id).toBe(id);
+    }
+    useSpaceStore.setState({ jumpRequest: null });
+    useSpaceStore.getState().requestJump("mars");
+    expect(useSpaceStore.getState().jumpRequest).toBe(null);
   });
 
   it("the contact portal is not a dossier", () => {

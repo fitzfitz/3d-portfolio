@@ -2,13 +2,16 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, planets, ORBIT_RADIUS_FACTOR, ZONE_FACTOR, SUN_RADIUS } from "../../constants";
+import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { moonCenters } from "../../store/moonState";
 import { fitzDebug } from "../../debug/bridge";
-import { pitchStep, noseDirection, headingToward } from "../../utils/pitchFlight";
+import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
-import { interceptAim } from "../../utils/intercept";
+import { PROBES, PROBE_JUMP_STANDOFF } from "../../data/probes";
+import { probePos, probeRelocating } from "../../store/probeState";
+import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
 import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
@@ -17,13 +20,12 @@ import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
 import { edgeReturn, edgeLatch } from "../../utils/edgeHaze";
-import { keepOutside, CAPTURE_SURFACE_MARGIN } from "../../utils/capture";
 import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
 import {
-  stepGravity, gravityMode, EscapeGrace, SlingshotWatch, type Well,
+  stepGravity, gravityMode, SlingshotWatch, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
@@ -35,7 +37,7 @@ import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
 import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
-import { resolveWorldContact, keepCameraOutsideWorlds } from "../../utils/worldCollide";
+import { resolveWorldContact, keepCameraOutsideBodies, SOLID_BODIES } from "../../utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -56,21 +58,8 @@ const SHIP_IDLE_BOB = 0.48;
 // Frame-rate independent lerp: equivalent to lerp(a, b, k) once per frame at 60fps.
 const frameLerp = (k: number, dt: number) => 1 - Math.pow(1 - k, dt * 60);
 
-/**
- * Breaking orbit puts the ship this far past the body's proximity zone, so it
- * leaves both the lock radius and the "fly closer" tooltip radius. Planets
- * drift ~1.8 u/s, so the margin also outlasts the 1.8s lock cooldown.
- */
-const ESCAPE_MARGIN = 1.15;
 /** Outward drift after breaking orbit, so the ship keeps opening the gap. */
 const ESCAPE_SPEED = 4;
-
-/**
- * Jump standoff for planets: inside the lock radius (1.3x size) and outside
- * the body, so the lock engages on the frame the ship arrives. Destinations
- * carry their own standoff (`jumpR`, src/data/destinations.ts).
- */
-const JUMP_PLANET_FACTOR = 1.2;
 
 /**
  * Nozzle exit centres in ship space: the GLB's Engine_Emissive clusters at
@@ -81,12 +70,22 @@ const JUMP_PLANET_FACTOR = 1.2;
 /** Chase-camera scratch vectors (no per-frame allocation). */
 const _camTarget = new THREE.Vector3();
 const _camSide = new THREE.Vector3();
+/** Jump and spawn-aim targets (no per-frame allocation). */
+const _jumpTarget = { x: 0, y: 0, z: 0 };
+const _aim = { x: 0, y: 0, z: 0 };
 
-/** The first planet the ship faces from the spawn point (src/data/spawn.ts). */
-const FIRST_TARGET = planets[0];
+/** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
+const FIRST_PROBE_HOME = PROBES[0].home;
 
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
+/**
+ * Every solid body's live centre, by SOLID_BODIES id: the planets' and
+ * worlds' `bodies` entries and the moons' `moonCenters` entries. Merged once:
+ * it holds the same objects their writers update in place, so it stays live
+ * and the frame loop reads it without allocating.
+ */
+const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonCenters };
 
 /**
  * Gravity wells, one per planet and world plus the sun, reused every frame:
@@ -94,8 +93,6 @@ const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
  * the front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
 const BODY_WELLS: Well[] = PLANETS_AND_WORLDS.map(planetWell);
-/** Well radius by planet name, for the per-frame escape-grace check (only a planet's lock arms it). */
-const WELL_RADIUS_BY_NAME = new Map(planets.map((p) => [p.name, planetWell(p).radius]));
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: PLANETS_AND_WORLDS.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
@@ -180,7 +177,6 @@ export default function Spaceship() {
   // by vel + gravity. Zeroed wherever the ship is placed, docked or bounced.
   const gravity = useRef({ x: 0, y: 0, z: 0 });
   const idleFor = useRef(0);
-  const escapeGrace = useRef(new EscapeGrace());
   /** Well exits -> whoosh and slingshot callout (gravityWell.ts). */
   const slingshotWatch = useRef(new SlingshotWatch());
   const zeroGravity = () => { gravity.current.x = 0; gravity.current.y = 0; gravity.current.z = 0; };
@@ -213,13 +209,9 @@ export default function Spaceship() {
     return () => { fitzDebug.teleport = null; fitzDebug.setAttitude = null; fitzDebug.gravity = null; fitzDebug.beam = null; fitzDebug.fuelDebug = null; };
   }, []);
 
-  // Spawn nose-on to the first planet, so the first W press flies toward a
-  // project rather than into empty space. bodies[] is seeded at t=0 at import.
-  const angle = useRef(
-    FIRST_TARGET
-      ? headingToward(SPAWN.x, SPAWN.z, bodies[FIRST_TARGET.name].x, bodies[FIRST_TARGET.name].z)
-      : 0
-  );
+  // Spawn nose-on to the first probe, so the first W press flies toward a
+  // project rather than into empty space.
+  const angle = useRef(headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
   const roll = useRef(0);
   const pitch = useRef(0);
   const turnVelocity = useRef(0); // rad/second
@@ -240,7 +232,7 @@ export default function Spaceship() {
   };
   const edgeCut = useRef(false);
   // False until the pilot's first input. Until then the parked ship keeps its
-  // nose on an intercept course, so the first W press flies into a planet.
+  // nose on the first probe, so the first W press flies toward a project.
   const hasFlown = useRef(false);
   // A requested jump target, applied by the frame loop. Held in a ref rather
   // than applied in the store subscription: an open dossier freezes the frame
@@ -259,42 +251,28 @@ export default function Spaceship() {
 
   const lockedCenter = useRef(new THREE.Vector3());
   const targetLockRadius = useRef(6);
-  /** Closest a docked ship may sit to the body's centre (0 = no limit, e.g. the portal). */
-  const dockMinRadius = useRef(0);
   const escapeRadius = useRef(10);
   const orbitRadius = useRef(6); // eased ring radius — starts at arrival distance, eases toward targetLockRadius
   const orbitAngle = useRef(0);
 
   const prevOrbitLocked = useRef(false);
-  const lockedZone = useRef<string | null>(null);
   useEffect(() => {
     const wasLocked = prevOrbitLocked.current;
     prevOrbitLocked.current = isOrbitLocked;
 
     if (!wasLocked && isOrbitLocked) {
-      // Lock entry: resolve the locked body and start the orbit from wherever
-      // the ship arrived (no snap).
+      // Lock entry: resolve the locked destination (only destinations dock;
+      // planets are solid, spec §4.4) and start the orbit from wherever the
+      // ship arrived (no snap).
       zeroGravity();
-      escapeGrace.current.clear();
-      const activeZone = useSpaceStore.getState().activeZone;
-      lockedZone.current = activeZone;
-      const planet = activeZone ? planets.find((p) => p.name === activeZone) : undefined;
-      const dest = destinationById(activeZone);
-      if (planet) {
-        const b = bodies[planet.name];
-        lockedCenter.current.set(b.x, b.y, b.z);
-        targetLockRadius.current = planet.size * ORBIT_RADIUS_FACTOR;
-        dockMinRadius.current = planet.size + CAPTURE_SURFACE_MARGIN;
-        escapeRadius.current = planet.size * ZONE_FACTOR * ESCAPE_MARGIN;
-      } else if (dest) {
+      const dest = destinationById(useSpaceStore.getState().activeZone);
+      if (dest) {
         lockedCenter.current.set(dest.pos[0], dest.pos[1], dest.pos[2]);
-        dockMinRadius.current = 0;
         targetLockRadius.current = dest.orbitR;
         escapeRadius.current = escapeR(dest);
       } else {
         // Shouldn't happen, but never crash: orbit in place.
         lockedCenter.current.copy(pos.current);
-        dockMinRadius.current = 0;
         targetLockRadius.current = 6;
         escapeRadius.current = 10;
       }
@@ -312,20 +290,13 @@ export default function Spaceship() {
     }
 
     if (!wasLocked || isOrbitLocked) return; // only true→false = real orbit break
-    // Out along the body->ship line past the proximity zone, then drift
-    // outward. The old fixed 2.8u push backwards along the nose left the ship
-    // inside the lock radius, so a planet drifting toward it re-locked it.
-    // The live body position is used: the lock centre was captured at entry.
-    const zoneBody = bodies[lockedZone.current ?? ""];
-    if (zoneBody) lockedCenter.current.set(zoneBody.x, zoneBody.y, zoneBody.z);
+    // Out along the destination->ship line past its zone and retain radius
+    // (escapeR), then drift outward. The old fixed 2.8u push backwards along
+    // the nose left the ship inside the lock radius.
     const out = escapePosition(pos.current, lockedCenter.current, escapeRadius.current);
     pos.current.set(out.x, out.y, out.z);
     vel.current.subVectors(pos.current, lockedCenter.current).setLength(ESCAPE_SPEED);
     zeroGravity();
-    // The escape push leaves the ship inside this planet's well; skip its pull
-    // until the ship is clear, or it would be dragged straight back into lock.
-    const left = lockedZone.current;
-    if (left && planets.some((p) => p.name === left)) escapeGrace.current.arm(left);
   }, [isOrbitLocked]);
 
   const shipRef = useRef<THREE.Group>(null);
@@ -472,9 +443,9 @@ export default function Spaceship() {
       const f = cut ? 1 : frameLerp(orbiting ? 0.02 : 0.05, dt);
       snapCamera.current = false;
       state.camera.position.lerp(_camTarget, f);
-      // The ship rests only half a length off a world's surface, so the
-      // camera behind it would sit inside: keep it out (worldCollide.ts).
-      keepCameraOutsideWorlds(state.camera.position, bodies);
+      // The ship rests only half a length off a planet's, world's or moon's surface,
+      // so the camera behind it would sit inside: keep it out (worldCollide.ts).
+      keepCameraOutsideBodies(state.camera.position, SOLID_CENTERS);
       // The exposure, the fill and the backdrop are re-metered with the camera (I2):
       // ExposureDriver ran earlier this frame, so without this the cut frame
       // is mis-exposed.
@@ -492,11 +463,7 @@ export default function Spaceship() {
     };
 
     if (isOrbitLocked) {
-      // The locked body orbits the sun — ride along with it (spec §1).
-      const zone = store.activeZone;
-      const live = zone ? bodies[zone] : undefined;
-      if (live) lockedCenter.current.set(live.x, live.y, live.z);
-
+      // Destinations hold still, so the lock centre captured at entry stands.
       orbitRadius.current += (targetLockRadius.current - orbitRadius.current) * frameLerp(0.03, dt);
       // Continuing revolution is the involuntary, large-field motion reduced
       // motion targets — gate only this increment. The easings above/below
@@ -506,8 +473,6 @@ export default function Spaceship() {
       pos.current.x = lockedCenter.current.x + Math.sin(orbitAngle.current) * orbitRadius.current;
       pos.current.z = lockedCenter.current.z + Math.cos(orbitAngle.current) * orbitRadius.current;
       pos.current.y += (lockedCenter.current.y - pos.current.y) * frameLerp(0.04, dt);
-      // Settling into orbit must not dip the ship toward the surface (utils/capture.ts).
-      if (dockMinRadius.current > 0) keepOutside(pos.current, lockedCenter.current, dockMinRadius.current);
       angle.current = orbitAngle.current + Math.PI / 2; // face the orbit tangent
       roll.current = THREE.MathUtils.lerp(roll.current, -0.15, frameLerp(0.05, dt)); // gentle bank
       pitch.current = THREE.MathUtils.lerp(pitch.current, 0, frameLerp(0.05, dt)); // level out in orbit
@@ -533,16 +498,17 @@ export default function Spaceship() {
       return;
     }
 
-    // Jump: drop in nose-on at the target's lock standoff. SpacePlanets runs
-    // after this component each frame, so the lock (and dossier) engage on
-    // this same frame. The post-break cooldown would block that, so clear it.
+    // Jump: drop in nose-on, level with the target, at its standoff. A probe
+    // has no lock and opens nothing: the pilot grabs it with the beam. The
+    // post-break cooldown is cleared so a destination's lock engages at once.
     if (pendingJump.current) {
       const id = pendingJump.current;
       pendingJump.current = null;
-      const planet = planets.find((p) => p.name === id);
-      const dest = planet ? undefined : destinationById(id);
-      const target = planet ? bodies[planet.name] : dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] };
-      const standoff = planet ? planet.size * JUMP_PLANET_FACTOR : dest?.jumpR;
+      // A probe mid-burn is headed for its next spot: aim there (probeJumpTarget).
+      const probe = probeJumpTarget(id, probePos, probeRelocating, store.probeSpots, _jumpTarget);
+      const dest = probe ? undefined : destinationById(id);
+      const target = probe ? _jumpTarget : (dest && { x: dest.pos[0], y: dest.pos[1], z: dest.pos[2] });
+      const standoff = probe ? PROBE_JUMP_STANDOFF : dest?.jumpR;
       if (target && standoff !== undefined) {
         const j = jumpPoint(pos.current, target, standoff);
         pos.current.set(j.x, j.y, j.z);
@@ -561,27 +527,29 @@ export default function Spaceship() {
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
-    // before touching anything, and the planets drift meanwhile, so a heading
-    // fixed at spawn goes stale. Track an intercept (with orbital lead) until
-    // the first input, then hand over and never touch the controls again.
+    // before touching anything. Aim straight (yaw and pitch) at the probe the
+    // waypoint picks, the nearest unread one (spawnAimPoint), until the first
+    // input, then hand over and never touch the controls again.
     if (!hasFlown.current) {
       const touched = input.forward || input.backward || input.left || input.right
         || input.ascend || input.descend || input.boost || input.beam || input.steer !== 0 || input.thrust !== 0;
       // Leaving the spawn pad by any other route (a dev/e2e teleport, a
       // collision push) also ends the auto-aim: it only exists to point a
-      // parked, untouched ship at a planet.
+      // parked, untouched ship at the first probe.
       if (touched || !store.isNearSpawn) {
         hasFlown.current = true;
         flight.hasFlown = true;
       } else {
-        const aim = interceptAim(pos.current, planets, ambient, MAX_SPEED, COLLIDERS, !store.reducedMotion);
-        if (aim) {
-          const k = frameLerp(0.04, dt);
-          // Shortest way round, so the nose never spins the long way.
-          const dYaw = Math.atan2(Math.sin(aim.yaw - angle.current), Math.cos(aim.yaw - angle.current));
-          angle.current += dYaw * k;
-          pitch.current += (aim.pitch - pitch.current) * k;
-        }
+        const home = _aim;
+        spawnAimPoint(pos.current, probePos, store.visitedDossiers, home);
+        const aimYaw = headingToward(pos.current.x, pos.current.z, home.x, home.z);
+        const aimPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX,
+          Math.atan2(home.y - pos.current.y, Math.hypot(home.x - pos.current.x, home.z - pos.current.z))));
+        const k = frameLerp(0.04, dt);
+        // Shortest way round, so the nose never spins the long way.
+        const dYaw = Math.atan2(Math.sin(aimYaw - angle.current), Math.cos(aimYaw - angle.current));
+        angle.current += dYaw * k;
+        pitch.current += (aimPitch - pitch.current) * k;
       }
     }
 
@@ -654,16 +622,8 @@ export default function Spaceship() {
 
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
     idleFor.current = thrustInput > 0 || reeling ? 0 : idleFor.current + dt;
-    const grace = escapeGrace.current;
-    if (grace.skip) {
-      const gb = bodies[grace.skip];
-      const gr = WELL_RADIUS_BY_NAME.get(grace.skip);
-      if (gb && gr !== undefined) grace.update(Math.hypot(pos.current.x - gb.x, pos.current.z - gb.z, pos.current.y - gb.y), gr);
-      else grace.clear();
-    }
     let wellCount = 0;
     for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
-      if (PLANETS_AND_WORLDS[i].key === grace.skip) continue;
       const b = bodies[PLANETS_AND_WORLDS[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
       dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
     }
@@ -693,10 +653,11 @@ export default function Spaceship() {
         break;
       }
     }
-    // The worlds' solid surfaces (worldCollide.ts): they move, so each is
-    // read from `bodies`, at its equatorial size. The rings are fly-through.
-    for (let i = 0; i < WORLDS.length; i++) {
-      if (resolveWorldContact(pos.current, vel.current, bodies[WORLDS[i].id], WORLDS[i].size)) { impact(time); break; }
+    // The planets', worlds' and moons' solid surfaces (worldCollide.ts):
+    // they move, so each is read live from SOLID_CENTERS, at its equatorial
+    // size. The rings are fly-through.
+    for (let i = 0; i < SOLID_BODIES.length; i++) {
+      if (resolveWorldContact(pos.current, vel.current, SOLID_CENTERS[SOLID_BODIES[i].id], SOLID_BODIES[i].size)) { impact(time); break; }
     }
 
     _total.set(vel.current.x + gravity.current.x, vel.current.y + gravity.current.y, vel.current.z + gravity.current.z);

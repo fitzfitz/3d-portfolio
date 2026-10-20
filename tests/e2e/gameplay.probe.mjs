@@ -1,4 +1,4 @@
-import { withPage, hold, settle, readStore, chatterText, pollUntil, SCENE_READY_TIMEOUT_MS, PLANET_STANDOFF } from "./harness.mjs";
+import { withPage, hold, settle, readStore, chatterText, pollUntil, toDeepSpace, SCENE_READY_TIMEOUT_MS, PLANET_STANDOFF } from "./harness.mjs";
 
 /**
  * Teleports the ship next to a world point and zeroes its velocity.
@@ -146,60 +146,56 @@ export default async function run() {
         `+${after - mid} impacts over ${windowMs.toFixed(0)}ms real elapsed time (0.5s cooldown allows <=${maxAllowed})`);
     }
 
-    // ---- orbit entry traces a ring around a MOVING body ----
+    // ---- a slow approach to a planet doesn't stick, and stops at the surface ----
+    // Planets no longer dock (the dossiers moved onto probes): they are solid
+    // and scan-only. Nose straight at the planet from 1.6 sizes out, hold W
+    // at cruise, and follow the gap every poll (the planet orbits, so the aim
+    // is refreshed each time). The surface the ship meets is the planet's
+    // size plus the ship's half length (src/utils/worldCollide.ts); the ship
+    // must stop there, never get inside it, and never lock or open anything.
     const orbit = await page.evaluate(async () => {
       const { planets } = await import("/src/constants.ts");
+      const { SHIP_HALF_LENGTH } = await import("/src/utils/worldCollide.ts");
       const p = planets[0];
       const b = window.__fitz.bodies[p.name]; // live position — planets orbit continuously
-      return { name: p.name, size: p.size, bx: b.x, by: b.y, bz: b.z };
+      return { name: p.name, size: p.size, reach: p.size + SHIP_HALF_LENGTH, bx: b.x, by: b.y, bz: b.z };
     });
-    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 1.2);
-    await settle(page, 2500);
-    s = await readStore(page);
-    checks.check("approaching a planet engages orbit lock", s.isOrbitLocked,
-      `locked=${s.isOrbitLocked} zone=${s.activeZone}`);
-
-    if (s.isOrbitLocked) {
-      const samples = await page.evaluate(async (name) => {
-        const out = [];
-        for (let i = 0; i < 12; i++) {
-          const f = window.__fitz.flight, b = window.__fitz.bodies[name];
-          out.push(Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z));
-          await new Promise((r) => setTimeout(r, 250));
-        }
-        return out;
-      }, orbit.name);
-      const min = Math.min(...samples), max = Math.max(...samples);
-      checks.check("locked ship holds a ring radius around the moving planet",
-        max - min < orbit.size * 0.9,
-        `radius ${min.toFixed(2)}..${max.toFixed(2)} over 3s`);
-      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-      await settle(page, 2000);
-
-      // Task 6 binds the scene freeze to isOrbitLocked, so a re-lock here
-      // doesn't just re-open the dossier — it re-freezes the canvas, and
-      // nothing but another breakOrbit() (or a real teleport, which itself
-      // needs a running frame to take effect) can undo that. The escape push
-      // on unlock (Spaceship.tsx:120-125) only nudges the ship ~2.8 units
-      // back, which is well inside this planet's LOCK_ENGAGE_FACTOR radius —
-      // the ship never eased out to the full orbit ring before the freeze
-      // stopped that animation, so it's still sitting close in. The instant
-      // the 1800ms isOrbitCooldown above expires, SpacePlanets' own proximity
-      // check re-engages the lock with nothing in this probe having asked for
-      // it, re-freezing the canvas before the scan section below ever runs —
-      // stalling it, since a frozen canvas can't advance Scanner's useFrame
-      // no matter how long the probe holds the key. Break it again
-      // defensively rather than assume one breakOrbit() call is permanent.
-      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-      await settle(page, 300);
+    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 1.6);
+    await settle(page, 300);
+    const gapNow = () => page.evaluate((n) => {
+      const d = window.__fitz, f = d.flight, b = d.bodies[n];
+      // Keep the nose on the planet's live centre (yaw and pitch).
+      const dx = b.x - f.x, dy = b.y - f.y, dz = b.z - f.z;
+      d.setAttitude(Math.atan2(dx, dz), Math.atan2(dy, Math.hypot(dx, dz)));
+      const st = d.store.getState();
+      return { gap: Math.hypot(dx, dy, dz), locked: st.isOrbitLocked, zone: st.activeZone, dossier: st.openDossier, impacts: st.impactCount };
+    }, orbit.name);
+    const impactsBefore = (await readStore(page)).impactCount;
+    let minGap = Infinity, stuck = false, touched = false;
+    await page.keyboard.down("KeyW");
+    try {
+      for (let i = 0; i < 40; i++) {
+        const r = await gapNow();
+        minGap = Math.min(minGap, r.gap);
+        stuck = stuck || r.locked || r.zone !== null || r.dossier !== null;
+        touched = touched || r.impacts > impactsBefore || r.gap < orbit.reach + 0.5;
+        await settle(page, 100);
+      }
+    } finally {
+      await page.keyboard.up("KeyW");
     }
+    s = await readStore(page);
+    checks.check("a slow approach reaches the planet's surface (precondition)", touched,
+      `min gap ${minGap.toFixed(2)}, surface at ${orbit.reach.toFixed(2)}`);
+    checks.check("the ship stops at the surface: it never gets inside the planet", minGap >= orbit.reach - 0.05,
+      `min gap ${minGap.toFixed(2)}, surface at ${orbit.reach.toFixed(2)}`);
+    checks.check("a slow approach to a planet doesn't stick (no lock, no zone, no dossier)", !stuck && !s.isOrbitLocked,
+      `locked=${s.isOrbitLocked} zone=${s.activeZone} openDossier=${s.openDossier}`);
 
     // ---- scan loop ----
-    // 2.5x size: outside the lock-retain radius (1.9x), inside scan range of the
-    // surface (SCAN_RANGE 22 + size = 3.2x at size 12). A fixed 18 sat inside the
-    // lock radius once planets grew; at 2x the smaller 12-unit Ruangrapi (sub-project
-    // B, 2026-10-17) let the well pull the ship into a re-lock during the 2.6 s hold,
-    // freezing the canvas and the scanner with it.
+    // 2.5x size (PLANET_STANDOFF): clear of the solid surface, inside scan range
+    // of it (SCAN_RANGE 22 + size = 3.2x at size 12). Planets are scan-only now:
+    // scanning is the one thing a planet still answers to.
     await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * PLANET_STANDOFF);
     await settle(page, 1200);
     s = await readStore(page);
@@ -211,34 +207,37 @@ export default async function run() {
     checks.check("holding E emits a scan report", (afterScan?.id ?? 0) > beforeScan,
       `broadcast=${afterScan?.text?.slice(0, 60)}`);
 
-    // ---- chatter fires on zone change ----
-    // NOTE: the brief's original version of this check compared
-    // `store.broadcast` before/after — but RadioChatter's zone-entry
-    // subscription (RadioChatter.tsx:47-51) calls `typeLine` directly and
-    // never calls `sendBroadcast`, so that comparison would always read
-    // "unchanged" regardless of whether chatter actually fired. Read the
-    // typed HUD line instead, and require it to actually be one of this
-    // zone's lines (src/data/chatterLines.ts) so an unrelated ambient/impact
-    // line typed around the same time can't accidentally satisfy the check.
+    // ---- chatter fires when a probe comes in range ----
+    // A project's zone lines now play when its probe comes in range (store
+    // `probeNear`, written each frame by ProjectProbes from the real
+    // positions, so it is driven by teleporting rather than set by hand).
+    // RadioChatter types zone lines straight into the HUD line and never
+    // calls `sendBroadcast`, so read the typed line, and require it to be
+    // one of this probe's lines (src/data/chatterLines.ts) so an unrelated
+    // ambient/impact line typed around the same time can't satisfy the check.
+    const zoneProbe = "ruangrapi";
     const zoneLines = await page.evaluate(async (name) => {
       const mod = await import("/src/data/chatterLines.ts");
       return mod.chatterPools.zones[name] ?? [];
-    }, orbit.name);
+    }, zoneProbe);
 
     // The scan report above is a content broadcast: it holds the radio line for
     // 8 s (src/utils/radioHold.ts) and zone chatter is skipped meanwhile, so
-    // let the hold lapse before testing that a zone entry types its line.
-    await settle(page, 8500);
-    await page.evaluate(() => window.__fitz.store.getState().setActiveZone(null));
-    await settle(page, 300);
+    // let the hold lapse (out of every probe's range) before the probe comes in.
+    await toDeepSpace(page);
+    await settle(page, 7000);
+    const outOfRange = (await readStore(page)).probeNear;
+    checks.check("no probe is in range before the approach (precondition)", outOfRange === null, `probeNear=${outOfRange}`);
     const beforeChatter = ((await chatterText(page)) ?? "").replace(/^>\s?/, "");
-    await page.evaluate((n) => window.__fitz.store.getState().setActiveZone(n), orbit.name);
+    // 30 u above probe 1: inside PROBE_IN_RANGE (45 u).
+    await page.evaluate((id) => { const p = window.__fitz.probes[id]; window.__fitz.teleport(p.x, p.y + 30, p.z); }, zoneProbe);
     await settle(page, 2500); // enough time for the 22ms/char typewriter to render a zone line
+    const nearNow = (await readStore(page)).probeNear;
     const afterChatter = ((await chatterText(page)) ?? "").replace(/^>\s?/, "");
     const matchesZoneLine = zoneLines.some((line) => line.startsWith(afterChatter) || afterChatter.startsWith(line));
-    checks.check("entering a zone interrupts chatter with a new zone-specific line",
-      afterChatter.length > 0 && afterChatter !== beforeChatter && matchesZoneLine,
-      `zone=${orbit.name} before="${beforeChatter.slice(0, 40)}" after="${afterChatter.slice(0, 60)}"`);
+    checks.check("a probe coming in range interrupts chatter with a new line from its project's pool",
+      nearNow === zoneProbe && afterChatter.length > 0 && afterChatter !== beforeChatter && matchesZoneLine,
+      `probeNear=${nearNow} before="${beforeChatter.slice(0, 40)}" after="${afterChatter.slice(0, 60)}"`);
 
     // ---- comet proximity announcement ----
     const cometSeen = await page.evaluate(async () => {

@@ -1,17 +1,17 @@
-import {
-  PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, planets, projectById, type PlanetData,
-} from "../constants";
+import { PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT_R, projectById } from "../constants";
 import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
+import { PROBE_IDS } from "./probes";
 import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
 
 /**
- * Places you can jump to and dock at that are not project planets
+ * Places you can jump to and dock at: the only bodies that dock (planets
+ * are solid and scan-only, project probes spec §4.4)
  * (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §2). Every
  * consumer that used to special-case "contact" reads this table instead:
  * zone detection and lock (SpacePlanets), lock geometry and jumps
  * (Spaceship), jump validation and the dock badge (spaceStore), the radar,
  * the waypoint, the HUD sector list, the jump keys and scannables. A new
- * landmark is one row. Table order is key order, after the planets.
+ * landmark is one row. Table order is key order, after the probes.
  */
 export type DestinationId = "contact" | "career" | "shipyard";
 
@@ -36,7 +36,7 @@ export interface Destination {
   /** A jump parks the ship this far out: inside lockR so it docks on arrival, outside the model. */
   jumpR: number;
   /**
-   * Whether the guided waypoint may point here (afterPlanets). The shipyard is
+   * Whether the guided waypoint may point here (afterProbes). The shipyard is
    * a place to visit, not a step of the recruiter path, and has no logbook
    * entry, so without this it would capture the waypoint forever.
    */
@@ -63,29 +63,15 @@ export const DESTINATIONS: readonly Destination[] = [
 ];
 
 /**
- * Zone ids the engine reserves. A project may not claim one: `activeZone` is
- * the project id for planets, so a project named "contact" would make flying
- * to the portal open a project dossier instead (tests/projects.test.ts).
+ * Zone ids the engine reserves. A project may not claim one: a project id
+ * keys its probe's jump target and radio pool beside these, so a project
+ * named "contact" would collide with the portal (tests/projects.test.ts).
  */
 export const RESERVED_ZONE_IDS: readonly DestinationId[] = DESTINATIONS.map((d) => d.id);
 
-/**
- * The bodies the zone/lock loop (SpacePlanets) checks before the
- * destinations: the project planets only. A world there would soft-lock the
- * loop, with no dossier to open (spec, "Separate table").
- */
-export const ZONE_PLANETS: readonly PlanetData[] = planets;
-
-/**
- * The bodies the guided waypoint (WaypointDriver) walks before the
- * destinations: the project planets' names only, never `Object.keys(bodies)`,
- * which also holds the worlds (spec, "Separate table").
- */
-export const WAYPOINT_PLANET_NAMES: readonly string[] = planets.map((p) => p.name);
-
 const byId = new Map<string, Destination>(DESTINATIONS.map((d) => [d.id, d]));
 
-/** The destination with this zone id; undefined for planets, null and unknowns. */
+/** The destination with this zone id; undefined for probes, planets, null and unknowns. */
 export function destinationById(id: string | null | undefined): Destination | undefined {
   return id ? byId.get(id) : undefined;
 }
@@ -100,9 +86,12 @@ export function escapeR(d: Destination): number {
 
 export interface JumpTarget { id: string; label: string; color: string }
 
-/** Number keys, the spawn card and the d-pad, in order: each planet's project, then every destination. */
+/** Number keys, the spawn card and the d-pad, in order: each project's probe, then every destination. */
 export const JUMP_TARGETS: readonly JumpTarget[] = [
-  ...planets.map((p) => ({ id: p.name, label: projectById(p.name)?.title ?? p.name, color: p.color })),
+  ...PROBE_IDS.map((id) => {
+    const proj = projectById(id);
+    return { id, label: proj?.title ?? id, color: proj?.color ?? "#00ff87" };
+  }),
   ...DESTINATIONS.map((d) => ({ id: d.id, label: d.jumpLabel, color: d.color })),
 ];
 
@@ -114,12 +103,12 @@ export function jumpKey(id: string): number {
 const WAYPOINT_ROWS = DESTINATIONS.filter((d) => d.waypoint);
 
 /**
- * Where the waypoint points once every planet dossier is read: the first
+ * Where the waypoint points once every probe dossier is read: the first
  * waypoint destination (table order) whose logbook badge is not recorded
  * yet, and the last one (the contact portal) once all are. Rows with
  * `waypoint: false` (the shipyard) are never returned.
  */
-export function afterPlanets(badges: readonly { id: string }[]): DestinationId {
+export function afterProbes(badges: readonly { id: string }[]): DestinationId {
   const open = WAYPOINT_ROWS.find((d) => !badges.some((b) => b.id === d.id));
   return (open ?? WAYPOINT_ROWS[WAYPOINT_ROWS.length - 1]).id;
 }

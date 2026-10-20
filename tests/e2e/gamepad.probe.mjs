@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, jumpToProbe } from "./harness.mjs";
 
 // Headless Chrome has no controller, so this installs a fake standard-layout
 // pad behind navigator.getGamepads() and fires the connect event the browser
@@ -83,19 +83,26 @@ export default async function run() {
     checks.check("right stick up pitches up (ascend)", input.ascend === true);
     await setAxis(page, 3, 0); await frames(page);
 
-    // D-pad jumps mirror keys 1–4; Menu = the contact portal, View = the shipyard.
-    await press(page, 12);
+    // D-pad jumps mirror keys 1–4 (up, right, down: the probes; left: the
+    // career station); Menu = the contact portal, View = the shipyard.
+    // D-pad up parks the ship by probe 1, LB is the beam that grabs it, and
+    // B closes its dossier like Esc.
+    const landed = await jumpToProbe(page, "ruangrapi", { jump: () => press(page, 12) });
     s = await readStore(page);
-    const firstId = s.jumpRequest?.id;
-    checks.check("d-pad up requests a jump to the first target", !!firstId && firstId !== "contact",
-      `jump=${firstId}`);
-    const locked = await pollUntil(async () => (await readStore(page)).isOrbitLocked,
-      { timeoutMs: 15_000, intervalMs: 300 });
-    checks.check("the jump lands in orbit", locked.ok);
-    if (locked.ok) {
+    checks.check("d-pad up jumps to probe 1", s.jumpRequest?.id === "ruangrapi" && landed.ok,
+      `jump=${s.jumpRequest?.id} landed=${landed.ok}`);
+    checks.check("the jump opens nothing", s.openDossier === null);
+    const tip = await page.evaluate(() => document.querySelector('[data-testid="hud-probe-tip"]')?.textContent ?? null);
+    checks.check("with a pad, the HUD tip says to hold LB", tip === "PROBE IN RANGE // HOLD LB TO GRAB", `tip=${tip}`);
+    await setButton(page, 4, true);
+    const grabbed = await pollUntil(async () => (await readStore(page)).openDossier === "ruangrapi",
+      { timeoutMs: 8_000, intervalMs: 100 });
+    await setButton(page, 4, false); await frames(page, 3);
+    checks.check("holding LB grabs probe 1 and opens its dossier", grabbed.ok);
+    if (grabbed.ok) {
       await press(page, 1);
       s = await readStore(page);
-      checks.check("B closes the dossier like Esc", s.isOrbitLocked === false);
+      checks.check("B closes the dossier like Esc", s.openDossier === null);
     }
     await press(page, 14);
     s = await readStore(page);

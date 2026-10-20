@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, ZONE_PLANETS, WAYPOINT_PLANET_NAMES, destinationById, escapeR, afterPlanets, jumpKey,
+  DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterProbes, jumpKey,
 } from "../src/data/destinations";
 import { WORLDS, WORLD_IDS, isWorld } from "../src/data/worlds";
 import { bodies } from "../src/store/spaceStore";
@@ -8,6 +8,8 @@ import { STATION_POS } from "../src/data/careerTrail";
 import { SHIPYARD_POS } from "../src/data/shipyard";
 import { nextWaypoint } from "../src/utils/navigation";
 import { PORTAL_POS, PORTAL_LOCK_R, projects, planets } from "../src/constants";
+import { PROBE_IDS } from "../src/data/probes";
+import { probePos } from "../src/store/probeState";
 
 describe("destination table", () => {
   it("keeps the contact portal exactly as it was before the table", () => {
@@ -41,31 +43,35 @@ describe("destination table", () => {
 });
 
 describe("jump order", () => {
-  it("is every planet in orbit order, then every destination in table order", () => {
-    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...planets.map((p) => p.name), ...DESTINATIONS.map((d) => d.id)]);
+  it("is every probe in project order, then every destination in table order", () => {
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id)]);
+    PROBE_IDS.forEach((id, i) => {
+      const proj = projects.find((p) => p.id === id)!;
+      expect(JUMP_TARGETS[i]).toMatchObject({ id, label: proj.title, color: proj.color });
+    });
     for (const d of DESTINATIONS) {
       expect(JUMP_TARGETS.find((t) => t.id === d.id)).toMatchObject({ label: d.jumpLabel, color: d.color });
     }
   });
 });
 
-describe("afterPlanets", () => {
+describe("afterProbes", () => {
   const WAYPOINT = DESTINATIONS.filter((d) => d.waypoint).map((d) => d.id);
 
   it("walks the waypoint rows only: career, then contact", () => {
     expect(WAYPOINT).toEqual(["career", "contact"]);
-    expect(afterPlanets([])).toBe("career");
-    expect(afterPlanets([{ id: "slingshot" }])).toBe("career");
-    expect(afterPlanets([{ id: "career" }])).toBe("contact");
-    expect(afterPlanets([{ id: "contact" }])).toBe("career");
-    expect(afterPlanets([{ id: "career" }, { id: "contact" }])).toBe("contact");
+    expect(afterProbes([])).toBe("career");
+    expect(afterProbes([{ id: "slingshot" }])).toBe("career");
+    expect(afterProbes([{ id: "career" }])).toBe("contact");
+    expect(afterProbes([{ id: "contact" }])).toBe("career");
+    expect(afterProbes([{ id: "career" }, { id: "contact" }])).toBe("contact");
   });
 
   it("never points at the shipyard, whatever has been earned", () => {
     const ids = ["career", "contact", "shipyard", "slingshot", "comet", "ring", "ore", "convoy"];
     for (let mask = 0; mask < 1 << ids.length; mask++) {
       const badges = ids.filter((_, i) => mask & (1 << i)).map((id) => ({ id }));
-      expect(afterPlanets(badges)).not.toBe("shipyard");
+      expect(afterProbes(badges)).not.toBe("shipyard");
     }
   });
 });
@@ -88,12 +94,12 @@ describe("shipyard row", () => {
 });
 
 describe("jump keys", () => {
-  it("are planets 1-3, career 4, shipyard 5, contact 6", () => {
-    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...planets.map((p) => p.name), "career", "shipyard", "contact"]);
+  it("are probes 1-3, career 4, shipyard 5, contact 6", () => {
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, "career", "shipyard", "contact"]);
     expect(jumpKey("career")).toBe(4);
     expect(jumpKey("shipyard")).toBe(5);
     expect(jumpKey("contact")).toBe(6);
-    expect(jumpKey(planets[0].name)).toBe(1);
+    expect(jumpKey(PROBE_IDS[0])).toBe(1);
     expect(jumpKey("dormant_gate")).toBe(0);
   });
 });
@@ -108,15 +114,15 @@ describe("career station row", () => {
     expect(c.pos).toBe(STATION_POS);
   });
 
-  it("orders the waypoint: unread planets, then the career station, then the contact portal", () => {
-    const names = planets.map((p) => p.name);
-    const bodies = Object.fromEntries(planets.map((p, i) => [p.name, { x: 10 * (i + 1), y: 0, z: 0 }]));
+  it("orders the waypoint: unread probes, then the career station, then the contact portal", () => {
+    const names = [...PROBE_IDS];
+    const bodies = Object.fromEntries(names.map((n, i) => [n, { x: 10 * (i + 1), y: 0, z: 0 }]));
     const ship = { x: 0, y: 0, z: 0 };
-    expect(nextWaypoint(ship, names, bodies, [], afterPlanets([]))).toBe(names[0]);
-    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([]))).toBe("career");
-    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "contact" }]))).toBe("career");
-    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }]))).toBe("contact");
-    expect(nextWaypoint(ship, names, bodies, names, afterPlanets([{ id: "career" }, { id: "contact" }]))).toBe("contact");
+    expect(nextWaypoint(ship, names, bodies, [], afterProbes([]))).toBe(names[0]);
+    expect(nextWaypoint(ship, names, bodies, names, afterProbes([]))).toBe("career");
+    expect(nextWaypoint(ship, names, bodies, names, afterProbes([{ id: "contact" }]))).toBe("career");
+    expect(nextWaypoint(ship, names, bodies, names, afterProbes([{ id: "career" }]))).toBe("contact");
+    expect(nextWaypoint(ship, names, bodies, names, afterProbes([{ id: "career" }, { id: "contact" }]))).toBe("contact");
   });
 });
 
@@ -131,26 +137,24 @@ describe("the worlds stay off the recruiter path", () => {
     for (const id of WORLD_IDS) expect(jumpKey(id)).toBe(0);
   });
 
-  it("the waypoint's planet list (WaypointDriver's) is the planets only, no world", () => {
-    expect(WAYPOINT_PLANET_NAMES).toEqual(planets.map((p) => p.name));
-    for (const n of WAYPOINT_PLANET_NAMES) expect(isWorld(n), n).toBe(false);
-    expect(Object.keys(bodies).filter(isWorld).length).toBe(WORLDS.length); // why the list must not be bodies' keys
-  });
-
-  it("nextWaypoint over that list never returns a world, even with the ship at one", () => {
-    const names = WAYPOINT_PLANET_NAMES;
+  it("the waypoint walks the probes only, no world, whatever the ship is next to", () => {
+    const names = PROBE_IDS;
+    for (const n of names) expect(isWorld(n), n).toBe(false);
+    expect(Object.keys(bodies).filter(isWorld).length).toBe(WORLDS.length);
     for (const w of WORLDS) {
       const ship = { ...bodies[w.id] };
       for (const visited of [[], names]) {
-        for (const fallback of [afterPlanets([]), afterPlanets([{ id: "career" }])]) {
-          expect(isWorld(nextWaypoint(ship, names, bodies, visited, fallback))).toBe(false);
+        for (const fallback of [afterProbes([]), afterProbes([{ id: "career" }])]) {
+          expect(isWorld(nextWaypoint(ship, names, probePos, visited, fallback))).toBe(false);
         }
       }
     }
   });
 
-  it("the zone/lock loop checks the planets only", () => {
-    expect(ZONE_PLANETS.map((p) => p.name)).toEqual(planets.map((p) => p.name));
-    for (const p of ZONE_PLANETS) expect(isWorld(p.name), p.name).toBe(false);
+  // Was "the zone/lock loop checks the planets only": the planets left it
+  // with the project probes (spec §4.4); only destinations dock.
+  it("no planet or world is a dock", () => {
+    for (const p of planets) expect(destinationById(p.name), p.name).toBeUndefined();
+    for (const w of WORLDS) expect(destinationById(w.id), w.id).toBeUndefined();
   });
 });

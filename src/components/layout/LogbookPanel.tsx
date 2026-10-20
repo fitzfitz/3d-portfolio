@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Lock, Check, X } from "lucide-react";
-import { useSpaceStore } from "../../store/spaceStore";
-import { LOGBOOK, entryDone, logbookCount, type LogbookProgress } from "../../utils/logbook";
+import { useSpaceStore, selectModalOpen } from "../../store/spaceStore";
+import { LOGBOOK, entryDone, isDossierEntry, logbookCount, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
 import { ORRERY_NOTE } from "../../utils/realUnits";
 import { WORLDS, WORLD_COUNT } from "../../data/worlds";
 import { isCartographer } from "../../utils/charting";
+import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
 
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
@@ -25,7 +26,7 @@ export default function LogbookPanel() {
   const visitedDossiers = useSpaceStore((s) => s.visitedDossiers);
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const plumeColor = useSpaceStore((s) => s.plumeColor);
-  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const photoMode = useSpaceStore((s) => s.photoMode);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const liveSky = useSpaceStore((s) => s.liveSky);
@@ -37,8 +38,8 @@ export default function LogbookPanel() {
   const opener = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (open && (isOrbitLocked || photoMode || showClassicCV)) useSpaceStore.getState().setLogbookOpen(false);
-  }, [open, isOrbitLocked, photoMode, showClassicCV]);
+    if (open && (modalOpen || photoMode || showClassicCV)) useSpaceStore.getState().setLogbookOpen(false);
+  }, [open, modalOpen, photoMode, showClassicCV]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +53,7 @@ export default function LogbookPanel() {
       // itself because a dossier opened (or photo mode / the résumé), focus
       // belongs to that, and pulling it back would strand a screen reader.
       const s = useSpaceStore.getState();
-      if (!s.isOrbitLocked && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
+      if (!selectModalOpen(s) && !s.photoMode && !s.showClassicCV) opener.current?.focus?.();
     };
   }, [open]);
 
@@ -69,7 +70,15 @@ export default function LogbookPanel() {
           {isDone ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
         </span>
         <span className="flex-1">
-          <span className={isDone ? "text-white" : "text-white/60"}>{e.title}</span>
+          {isDone && isDossierEntry(e.id) ? (
+            <button type="button" data-testid={`logbook-reopen-${e.id}`}
+              onClick={() => reopenDossier(e.id)}
+              className="text-white underline decoration-white/30 underline-offset-2 hover:decoration-primary focus-visible:ring-1 focus-visible:ring-primary outline-none cursor-pointer text-left">
+              {e.title}<span className="sr-only">, re-open</span>
+            </button>
+          ) : (
+            <span className={isDone ? "text-white" : "text-white/60"}>{e.title}</span>
+          )}
           <span className="sr-only">{isDone ? ", done." : ", not yet."}</span>
           <span className="block text-[9px] text-white/40">{isDone ? (at ? `EARNED ${at}` : "DONE") : e.hint}</span>
         </span>

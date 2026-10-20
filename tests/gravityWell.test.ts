@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
-  stepGravity, wellAccel, gravityMode, EscapeGrace, SlingshotGate, SlingshotWatch, type Well,
+  stepGravity, wellAccel, gravityMode, SlingshotGate, SlingshotWatch, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
   WELL_REF_SIZE, planetWell,
 } from "../src/utils/gravityWell";
-import { canCapture } from "../src/utils/capture";
+import { resolveWorldContact, SHIP_HALF_LENGTH } from "../src/utils/worldCollide";
 import { cruiseCap } from "../src/utils/speedCap";
 import { planets } from "../src/constants";
 import { WORLDS, PLANETS_AND_WORLDS } from "../src/data/worlds";
@@ -18,20 +18,25 @@ const sun = (): Well => ({ x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER
 const v3 = (x = 0, y = 0, z = 0) => ({ x, y, z });
 
 interface Flight {
-  minR: number; peak: number; exitSpeed: number | null; captured: { r: number } | null;
+  /** Closest the ship's centre came to the first well's centre, after the surface collider. */
+  minR: number; peak: number; exitSpeed: number | null;
+  /** Whether the ship touched the planet's solid surface (resolveWorldContact). */
+  touched: boolean;
   start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number };
 }
 
 /**
- * Spaceship's integrator plus stepGravity. Nose fixed at +x; W held unless
- * `thrust` is false. `size` is the first well's planet size (capture radius).
+ * Spaceship's integrator plus stepGravity and the planet's solid surface
+ * (resolveWorldContact; a hit zeroes gravity momentum, as Spaceship's impact
+ * does). Nose fixed at +x; W held unless `thrust` is false. `size` is the
+ * first well's planet size.
  */
 function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; seconds?: number; thrust?: boolean; dt?: number; size?: number }): Flight {
   const { b, x0 = -90, v0 = MAX, wells = [planet()], seconds = 16, thrust = true, dt = 1 / 60, size = WELL_REF_SIZE } = opts;
   const p = v3(x0, b, 0), v = v3(v0, 0, 0), G = v3();
   const start = { ...p };
   let idleFor = 0, minR = Infinity, peak = 0, wasIn = false;
-  let exitSpeed: number | null = null, captured: { r: number } | null = null;
+  let exitSpeed: number | null = null, touched = false;
   for (let i = 0; i < seconds / dt; i++) {
     if (thrust) {
       v.x += ACCEL * dt;
@@ -44,15 +49,15 @@ function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; second
     idleFor = thrust ? 0 : idleFor + dt;
     stepGravity(G, p, v, wells, wells.length, gravityMode(true, false, idleFor), dt);
     p.x += (v.x + G.x) * dt; p.y += (v.y + G.y) * dt; p.z += (v.z + G.z) * dt;
+    if (resolveWorldContact(p, v, wells[0], size)) { touched = true; G.x = 0; G.y = 0; G.z = 0; }
     const r = Math.hypot(p.x - wells[0].x, p.y - wells[0].y, p.z - wells[0].z);
     const s = Math.hypot(v.x + G.x, v.y + G.y, v.z + G.z);
-    if (!captured && canCapture(r, size, s)) captured = { r };
     minR = Math.min(minR, r);
     peak = Math.max(peak, s);
     if (wasIn && r >= wells[0].radius && exitSpeed === null) exitSpeed = s;
     wasIn = wasIn || r < wells[0].radius;
   }
-  return { minR, peak, exitSpeed, captured, start, end: { ...p } };
+  return { minR, peak, exitSpeed, touched, start, end: { ...p } };
 }
 
 describe("wellAccel", () => {
@@ -147,56 +152,63 @@ describe("planetWell", () => {
 
 /**
  * Spec §5.6 targets, tuned on the gas giant (size 16) and flown here around
- * every planet with the impact parameters, radii and capture bounds scaled
- * by size / 16. The pull at the same multiple of a planet's size is the same
- * for every size (g goes as size², distance as size), but a smaller well is
- * crossed sooner, so it bends and boosts less: the spec's pull and boost
- * numbers are the gas giant's, and smaller planets only have to pull and
- * boost at all. The capture rules (skim fast, dock slow) hold for all.
+ * every planet with the impact parameters and radii scaled by size / 16. The
+ * pull at the same multiple of a planet's size is the same for every size (g
+ * goes as size², distance as size), but a smaller well is crossed sooner, so
+ * it bends and boosts less: the spec's pull and boost numbers are the gas
+ * giant's, and smaller planets only have to pull and boost at all. Planets no
+ * longer dock (project probes, spec §4.4): a skim leaves, a straight run meets
+ * the solid surface, and nothing passes through.
  */
 describe.each(planets.map((p) => [p.name, p.size] as const))("tuning targets (spec §5.6) around %s (size %d)", (_name, size) => {
   const k = size / WELL_REF_SIZE;
   const ref = size === WELL_REF_SIZE;
+  const reach = size + SHIP_HALF_LENGTH;
   const wells = [planetWell({ size })];
   const at = (b: number, extra: Partial<Parameters<typeof fly>[0]> = {}) => fly({ b: b * k, wells, size, ...extra });
-  it("b=40: a visible pull and a boost, no capture", () => {
+  it("b=40: a visible pull and a boost, clear of the surface", () => {
     const f = at(-40);
-    expect(f.captured).toBeNull();
+    expect(f.touched).toBe(false);
     expect(f.minR).toBeLessThanOrEqual((ref ? 36 : 39) * k);
     expect(f.peak).toBeGreaterThanOrEqual(ref ? 14 : MAX + 1);
   });
-  it("b=34: pulled in, leaves the well faster than cruise, no capture", () => {
+  it("b=34: pulled in, leaves the well faster than cruise, clear of the surface", () => {
     const f = at(-34);
-    expect(f.captured).toBeNull();
+    expect(f.touched).toBe(false);
     expect(f.minR).toBeLessThanOrEqual((ref ? 28 : 31) * k);
     expect(f.exitSpeed).not.toBeNull();
     expect(f.exitSpeed!).toBeGreaterThanOrEqual(ref ? 13.5 : MAX + 1);
   });
-  it("b=30: a fast skim inside 1.3 sizes does not open the dossier", () => {
+  // Was "a fast skim inside 1.3 sizes does not open the dossier".
+  it("b=30: a fast skim neither sticks nor passes through", () => {
     const f = at(-30);
-    expect(f.captured).toBeNull();
-    expect(f.minR).toBeGreaterThan(18 * k);
+    expect(f.touched, "a skim never meets the surface").toBe(false);
+    expect(f.minR).toBeGreaterThanOrEqual(reach);
+    expect(f.exitSpeed, "left the well").not.toBeNull();
+    expect(f.end.x, "flew on past the planet").toBeGreaterThan(wells[0].radius);
   });
-  it("b=22 and straight in: docks, never inside 1.06 sizes first", () => {
+  // Was "docks, never inside 1.06 sizes first".
+  it("b=22 and straight in: meet the solid surface and never end a step inside it", () => {
     for (const b of [-22, 0.01]) {
       const f = at(b);
-      expect(f.captured, `b=${b}`).not.toBeNull();
-      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17 * k);
+      expect(f.touched, `b=${b}`).toBe(true);
+      expect(f.minR, `b=${b}`).toBeGreaterThanOrEqual(reach);
     }
   });
   // The ship's dt is clamped to 0.05s, so a slow device runs at 20 fps steps.
   it("b=30 still skims at 30 and 20 fps", () => {
     for (const dt of [1 / 30, 1 / 20]) {
       const f = at(-30, { dt });
-      expect(f.captured, `dt=${dt}`).toBeNull();
-      expect(f.minR, `dt=${dt}`).toBeGreaterThan(18 * k);
+      expect(f.touched, `dt=${dt}`).toBe(false);
+      expect(f.minR, `dt=${dt}`).toBeGreaterThanOrEqual(reach);
+      expect(f.end.x, `dt=${dt}`).toBeGreaterThan(wells[0].radius);
     }
   });
-  it("b=22 and straight in still dock at 20 fps", () => {
+  it("b=22 and straight in still stop at the surface at 20 fps", () => {
     for (const b of [-22, 0.01]) {
       const f = at(b, { dt: 1 / 20 });
-      expect(f.captured, `b=${b}`).not.toBeNull();
-      expect(f.captured!.r, `b=${b}`).toBeGreaterThan(17 * k);
+      expect(f.touched, `b=${b}`).toBe(true);
+      expect(f.minR, `b=${b}`).toBeGreaterThanOrEqual(reach);
     }
   });
   it("an idle ship 30u (scaled) out barely drifts (station-keeping)", () => {
@@ -216,40 +228,6 @@ describe("the sun's well (G = 1000, softened inside its collider)", () => {
       const f = fly({ b: -b, x0: -120, wells: [sun()], seconds: 25 });
       expect(f.minR, `b=${b}`).toBeGreaterThan(SUN_COLLIDER.r);
     }
-  });
-});
-
-describe("EscapeGrace", () => {
-  it("skips the planet just left until the ship is outside its well", () => {
-    const e = new EscapeGrace();
-    e.arm("fuxx");
-    expect(e.skip).toBe("fuxx");
-    e.update(40, 56);
-    expect(e.skip).toBe("fuxx");
-    e.update(56, 56);
-    expect(e.skip).toBeNull();
-  });
-});
-
-describe("escape grace in a frame loop", () => {
-  it("a ship pushed out of orbit at the escape radius is not pulled back into lock", () => {
-    // Spaceship's break-orbit push: out to size × ZONE_FACTOR × 1.15 ≈ 33u, drifting out at 4 u/s, then idle.
-    const grace = new EscapeGrace();
-    grace.arm("p");
-    const w = planet();
-    const p = v3(-33, 0, 0), v = v3(-4, 0, 0), G = v3();
-    let minR = Infinity, idleFor = 0;
-    for (let i = 0; i < 20 * 60; i++) {
-      const dt = 1 / 60;
-      const k = Math.pow(DRAG, dt * 60);
-      v.x *= k; v.y *= k; v.z *= k;
-      idleFor += dt;
-      grace.update(Math.hypot(p.x, p.y, p.z), 56);
-      stepGravity(G, p, v, [w], grace.skip ? 0 : 1, gravityMode(true, false, idleFor), dt);
-      p.x += (v.x + G.x) * dt; p.y += (v.y + G.y) * dt; p.z += (v.z + G.z) * dt;
-      minR = Math.min(minR, Math.hypot(p.x, p.y, p.z));
-    }
-    expect(minR).toBeGreaterThan(20.8);
   });
 });
 

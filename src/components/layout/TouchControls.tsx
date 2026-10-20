@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 
 const RADIUS = 56; // px travel of the joystick knob
@@ -7,7 +7,7 @@ const RADIUS = 56; // px travel of the joystick knob
 /** Virtual joystick (left half) + boost button. Writes flight.input directly. */
 export default function TouchControls() {
   const isCoarse = useMediaQuery("(pointer: coarse)");
-  const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const scanTarget = useSpaceStore((s) => s.scanTarget);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
@@ -19,9 +19,9 @@ export default function TouchControls() {
   const scanPointerRef = useRef<number | null>(null);
   const beamPointerRef = useRef<number | null>(null);
 
-  // Reset flight.input and clear pointer tracking when orbit lock engages mid-interaction
+  // Reset flight.input and clear pointer tracking when a modal opens mid-interaction
   useEffect(() => {
-    if (isOrbitLocked) {
+    if (modalOpen) {
       flight.input.steer = 0;
       flight.input.thrust = 0;
       flight.input.boost = false;
@@ -36,7 +36,7 @@ export default function TouchControls() {
       scanPointerRef.current = null;
       beamPointerRef.current = null;
     }
-  }, [isOrbitLocked]);
+  }, [modalOpen]);
 
   // Reset scan input/pointer when the target leaves range mid-hold (button unmounts underneath the finger)
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function TouchControls() {
     beamPointerRef.current = null;
   }, []);
 
-  if (!isCoarse || isOrbitLocked) return null;
+  if (!isCoarse || modalOpen) return null;
 
   const moveKnob = (dx: number, dy: number) => {
     if (knobRef.current) knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;

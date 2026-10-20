@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { jumpPoint, nextWaypoint } from "../src/utils/navigation";
 import { noseDirection } from "../src/utils/pitchFlight";
-import { planets, LOCK_ENGAGE_FACTOR, ORBIT_RADIUS_FACTOR } from "../src/constants";
+import { PROBE_RADIUS, PROBE_JUMP_STANDOFF } from "../src/data/probes";
+import { BEAM_RANGE } from "../src/utils/tractorBeam";
+import { SHIP_HALF_LENGTH } from "../src/utils/worldCollide";
 
 describe("jumpPoint", () => {
   const target = { x: 100, y: -20, z: 40 };
@@ -27,13 +29,11 @@ describe("jumpPoint", () => {
     expect(Math.hypot(p.x - target.x, p.z - target.z)).toBeCloseTo(5);
   });
 
-  it("the planet standoff lands inside the lock radius, outside the planet", () => {
-    for (const pl of planets) {
-      const standoff = pl.size * 1.2;
-      expect(standoff).toBeGreaterThan(pl.size);
-      expect(standoff).toBeLessThan(pl.size * LOCK_ENGAGE_FACTOR);
-      expect(standoff).toBeLessThan(pl.size * ORBIT_RADIUS_FACTOR);
-    }
+  it("a probe jump parks inside BEAM_RANGE and outside PROBE_RADIUS + ship half-length", () => {
+    expect(PROBE_JUMP_STANDOFF).toBeLessThan(BEAM_RANGE);
+    expect(PROBE_JUMP_STANDOFF).toBeGreaterThan(PROBE_RADIUS + SHIP_HALF_LENGTH);
+    const p = jumpPoint({ x: 0, y: 0, z: 0 }, target, PROBE_JUMP_STANDOFF);
+    expect(Math.hypot(p.x - target.x, p.z - target.z)).toBeCloseTo(PROBE_JUMP_STANDOFF);
   });
 });
 
@@ -45,7 +45,7 @@ describe("nextWaypoint", () => {
   };
   const names = ["saas", "video", "agent"];
 
-  it("points at the nearest unvisited planet", () => {
+  it("points at the nearest unvisited body", () => {
     expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, [], "contact")).toBe("saas");
     expect(nextWaypoint({ x: 0, y: 0, z: 0 }, names, bodies, ["saas"], "contact")).toBe("video");
   });

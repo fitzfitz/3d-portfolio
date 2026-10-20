@@ -25,6 +25,14 @@ export interface MoonSpec {
   captured: boolean;
 }
 
+/**
+ * How far moon.glb's variants reach, centred, in moon sizes: unit spheres
+ * with relief up to 1.5% (tests/assetContracts.test.ts). The collider takes
+ * the size as the radius, the camera keeps outside this × the size
+ * (utils/worldCollide.ts SOLID_BODIES).
+ */
+export const MOON_MESH_RADIUS = 1.02;
+
 export const MOONS: readonly MoonSpec[] = [
   { id: "ruangrapiRock", planet: 0, distance: 1.7, size: 0.104, inclination: 0.45, phase: 0, variant: "Rock", captured: false },
   { id: "portfolioIce", planet: 1, distance: 1.9, size: 0.0875, inclination: -0.3, phase: 2, variant: "Ice", captured: true },

@@ -81,30 +81,59 @@ async function gravity(page, checks) {
     window.__fitz.teleport(b.x - 90, b.y + 34, b.z);
     window.__fitz.setAttitude(Math.PI / 2, 0);
   }, name);
-  let peak = 0, locked = false;
+  // The skim must not stick: no lock, no zone, no dossier (planets no longer
+  // dock; their dossiers moved onto probes).
+  let peak = 0, stuck = false;
   await page.keyboard.down("KeyW");
   const through = await pollUntil(async () => {
-    const r = await page.evaluate(() => ({ s: window.__fitz.flight.speed, l: window.__fitz.store.getState().isOrbitLocked }));
-    peak = Math.max(peak, r.s); locked = locked || r.l;
+    const r = await page.evaluate(() => {
+      const st = window.__fitz.store.getState();
+      return { s: window.__fitz.flight.speed, stuck: st.isOrbitLocked || st.activeZone !== null || st.openDossier !== null };
+    });
+    peak = Math.max(peak, r.s); stuck = stuck || r.stuck;
     return (await relX()) > 60;
   }, { timeoutMs: 90_000, intervalMs: 150 });
   await page.keyboard.up("KeyW");
   checks.check("the 34u pass flew through the planet's well", through.ok);
   checks.check("a pass 34u off a planet speeds the ship past cruise", peak > 13, `peak=${peak.toFixed(1)}`);
-  checks.check("that pass does not open the dossier", !locked);
+  checks.check("that skim does not stick (no lock, no zone, no dossier)", !stuck);
 
-  // Straight in: docks.
+  // Straight in: the planet is solid. The ship flies into the surface (its
+  // size plus the ship's half length, src/utils/worldCollide.ts), bounces,
+  // and never ends a frame inside it; nothing locks or opens. An in-page
+  // recorder reads every frame, so the closest approach is not left to poll
+  // timing.
+  const reach = await page.evaluate(async (n) => {
+    const { planets } = await import("/src/constants.ts");
+    const { SHIP_HALF_LENGTH } = await import("/src/utils/worldCollide.ts");
+    return planets.find((p) => p.name === n).size + SHIP_HALF_LENGTH;
+  }, name);
   await page.evaluate((n) => {
     const b = window.__fitz.bodies[n];
     window.__fitz.teleport(b.x - 60, b.y, b.z);
     window.__fitz.setAttitude(Math.PI / 2, 0);
+    const rec = { min: Infinity, stuck: false, stop: false, impacts0: window.__fitz.store.getState().impactCount };
+    window.__solidRec = rec;
+    const step = () => {
+      const f = window.__fitz.flight, c = window.__fitz.bodies[n], st = window.__fitz.store.getState();
+      rec.min = Math.min(rec.min, Math.hypot(f.x - c.x, f.y - c.y, f.z - c.z));
+      rec.stuck = rec.stuck || st.isOrbitLocked || st.openDossier !== null;
+      rec.impacts = st.impactCount - rec.impacts0;
+      if (!rec.stop) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }, name);
   await page.keyboard.down("KeyW");
-  const docked = await pollUntil(async () => (await readStore(page)).isOrbitLocked, { timeoutMs: 60_000, intervalMs: 200 });
+  const hit = await pollUntil(() => page.evaluate(() => window.__solidRec.impacts > 0), { timeoutMs: 60_000, intervalMs: 200 });
+  // Keep pushing a moment: holding thrust into the surface must not get through it.
+  for (let i = 0; i < 10; i++) { await settle(page, 100); await page.evaluate(() => window.__fitz.flight.x); }
   await page.keyboard.up("KeyW");
-  checks.check("a straight-in approach docks and opens the dossier", docked.ok);
-  await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-  await settle(page, 2500);
+  const solid = await page.evaluate(() => { window.__solidRec.stop = true; return { ...window.__solidRec }; });
+  checks.check("a straight-in approach hits the planet's surface", hit.ok, `impacts=${solid.impacts}`);
+  checks.check("the planet is solid: the ship never gets inside it", solid.min >= reach - 0.05,
+    `closest ${solid.min.toFixed(2)}, surface at ${reach.toFixed(2)}`);
+  checks.check("hitting a planet docks nothing and opens no dossier", !solid.stuck);
+  await settle(page, 1500);
 
   // Idle 30u from a planet: station-keeping.
   await page.evaluate((n) => { const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - 30, b.y + 5, b.z); }, name);

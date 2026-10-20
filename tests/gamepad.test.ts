@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   deadzone, readPadFlight, padFlightChanges, padActions, PAD_JUMPS, PAD_NEUTRAL, type PadLike,
 } from "../src/utils/gamepad";
-import { planets } from "../src/constants";
+import { PROBE_IDS } from "../src/data/probes";
 import { JUMP_TARGETS } from "../src/data/destinations";
 import { isWorld } from "../src/data/worlds";
 
@@ -95,10 +95,10 @@ describe("padActions", () => {
   it("maps B to close", () => {
     expect(padActions(press(), press(1))).toEqual([{ kind: "close" }]);
   });
-  it("maps the d-pad clockwise from up to the three planets, then the career station, by id", () => {
-    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", id: planets[0].name }]);
-    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", id: planets[1].name }]);
-    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", id: planets[2].name }]);
+  it("maps the d-pad clockwise from up to the three probes, then the career station, by id", () => {
+    expect(padActions(press(), press(12))).toEqual([{ kind: "jump", id: PROBE_IDS[0] }]);
+    expect(padActions(press(), press(15))).toEqual([{ kind: "jump", id: PROBE_IDS[1] }]);
+    expect(padActions(press(), press(13))).toEqual([{ kind: "jump", id: PROBE_IDS[2] }]);
     expect(padActions(press(), press(14))).toEqual([{ kind: "jump", id: "career" }]);
   });
   it("maps Menu to the contact portal and View to the shipyard", () => {

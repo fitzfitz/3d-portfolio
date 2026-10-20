@@ -11,7 +11,7 @@ import { GATE_RADIUS, GATE_OPENING_R } from "../src/data/dormantGate";
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
- * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -271,6 +271,37 @@ describe("moons (moon.glb)", () => {
     expect(materialNames(doc)).toEqual(["MoonIce", "MoonRock", "MoonVolcanic"]);
     for (const m of ["MoonIce", "MoonRock", "MoonVolcanic"]) expect(triangles(doc, m)).toBe(4480);
   });
+
+  // OrbitingMoon centres each variant and scales it by the moon's size; the
+  // collider takes that size as the radius, the camera keep-out MOON_MESH_RADIUS × it.
+  it("draws every variant as a unit sphere with relief no higher than MOON_MESH_RADIUS", async () => {
+    const { MOON_MESH_RADIUS } = await import("../src/data/moons");
+    const doc = await load("moon");
+    for (const mat of ["MoonIce", "MoonRock", "MoonVolcanic"]) {
+      const { min, max } = materialBounds(doc, mat);
+      const c = [0, 1, 2].map((r) => (min[r] + max[r]) / 2);
+      for (let r = 0; r < 3; r++) expect((max[r] - min[r]) / 2, `${mat} half-extent ${r}`).toBeCloseTo(1, 1);
+      let rMax = 0, rMin = Infinity;
+      const el: number[] = [];
+      for (const node of doc.getRoot().listNodes()) {
+        const mesh = node.getMesh();
+        if (!mesh) continue;
+        const m = node.getWorldMatrix();
+        for (const p of mesh.listPrimitives()) {
+          if (p.getMaterial()?.getName() !== mat) continue;
+          const pos = p.getAttribute("POSITION")!;
+          for (let i = 0; i < pos.getCount(); i++) {
+            pos.getElement(i, el);
+            const w = [0, 1, 2].map((r) => m[r] * el[0] + m[4 + r] * el[1] + m[8 + r] * el[2] + m[12 + r] - c[r]);
+            const d = Math.hypot(w[0], w[1], w[2]);
+            rMax = Math.max(rMax, d); rMin = Math.min(rMin, d);
+          }
+        }
+      }
+      expect(rMax, mat).toBeLessThanOrEqual(MOON_MESH_RADIUS);
+      expect(rMin, mat).toBeGreaterThan(0.95);
+    }
+  });
 });
 
 describe("career station (career_station.glb)", () => {
@@ -487,6 +518,66 @@ describe("dormant gate (dormant_gate.glb)", () => {
     expect(t).toBeGreaterThanOrEqual(600);
     expect(t).toBeLessThanOrEqual(3000);
     expect(kb("dormant_gate")).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("project probe (probe.glb)", () => {
+  // ProjectProbes.tsx draws it as one InstancedMesh of 3 with one shared
+  // MeshStandardMaterial; an onBeforeCompile patch tints COLOR_0's R zone
+  // with the project colour and blinks the G zone (the beacon lamp).
+  it("probe.glb: one mesh, one primitive, one material", async () => {
+    const root = (await load("probe")).getRoot();
+    expect(root.listMeshes()).toHaveLength(1);
+    expect(root.listMeshes()[0].listPrimitives()).toHaveLength(1);
+    expect(root.listMaterials()).toHaveLength(1);
+    // no KHR_materials_* extension, so three builds a MeshStandardMaterial
+    expect(root.listMaterials()[0].listExtensions()).toEqual([]);
+  });
+
+  it("probe.glb: COLOR_0 present; R and G masks each cover > 0 and < 25% of vertices", async () => {
+    const prim = (await load("probe")).getRoot().listMeshes()[0].listPrimitives()[0];
+    const col = prim.getAttribute("COLOR_0");
+    expect(col).not.toBeNull();
+    const n = col!.getCount();
+    const el: number[] = [];
+    let r = 0, g = 0;
+    for (let i = 0; i < n; i++) {
+      col!.getElement(i, el);
+      if (el[0] > 0.5) r++;
+      if (el[1] > 0.5) g++;
+    }
+    for (const [zone, count] of [["R", r], ["G", g]] as const) {
+      expect(count, zone).toBeGreaterThan(0);
+      expect(count / n, zone).toBeLessThan(0.25);
+    }
+  });
+
+  it("probe.glb: the trim is paint, not light (no emissive), and the maps are all there", async () => {
+    // The R zone is a painted stripe the game tints by multiplying the base
+    // colour; only the G zone (the beacon) is ever lit, by ProjectProbes.
+    const mat = (await load("probe")).getRoot().listMaterials()[0];
+    expect(mat.getEmissiveFactor()).toEqual([0, 0, 0]);
+    expect(mat.getEmissiveTexture()).toBeNull();
+    expect(mat.getBaseColorTexture()).not.toBeNull();
+    expect(mat.getMetallicRoughnessTexture()).not.toBeNull();
+    expect(mat.getNormalTexture()).not.toBeNull();
+  });
+
+  it("probe.glb: triangles <= 6000", async () => {
+    expect(triangles(await load("probe"))).toBeLessThanOrEqual(6000);
+  });
+
+  it("probe.glb: longest extent 2.7–3.3", async () => {
+    // Measured as ProjectProbes sees it: bakeNodeTransform applies the node
+    // transform (the quantization scale), which getBounds also applies.
+    const b = bounds(await load("probe"));
+    const longest = Math.max(...[0, 1, 2].map((i) => b.max[i] - b.min[i]));
+    expect(longest).toBeGreaterThanOrEqual(2.7);
+    expect(longest).toBeLessThanOrEqual(3.3);
+  });
+
+  it("probe.glb: stays inside its download budget", () => {
+    expect(kb("probe")).toBeLessThanOrEqual(600);
   });
 });
 

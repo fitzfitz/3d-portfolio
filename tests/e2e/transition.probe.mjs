@@ -1,11 +1,11 @@
-import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS, jumpToProbe, holdBeamUntilOpen, grabProbe } from "./harness.mjs";
 
 // ---- renderer counter budgets (docs/PERF-BUDGETS.md) ----
 // Measured on headless Chrome / SwiftShader (software rendering) -- see that
 // file for the full baseline table, the six states these were captured in
 // (deep space facing away from the sun, deep space facing it, near the
-// ringed giant with its rings in frame, close approach, modal open, 40
-// anomalies facing away; faceFromSun and nearRingedGiant pin the heading, so
+// ringed giant with its rings in frame, close approach, an open probe
+// dossier ("modal open"), 40 anomalies facing away; faceFromSun and nearRingedGiant pin the heading, so
 // what is in frame is set, not left to chance), and the derivation rule
 // repeated here in short: calls/triangles are baseline + 15%, rounded up to
 // the nearest ten; programs and lights are baseline + 1, since neither should
@@ -18,7 +18,8 @@ import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS } from
 // Worlds C1) and detail by distance (sphereLod.ts); each baseline is the
 // highest of the 11. Programs is the exception to the rule above: its
 // ceilings stay at the deliberate 79 (the deep-space family) and 84 (the
-// planet states), well above the 57-58 measured, because a headless run can
+// close-approach and modal states), well above the 58-59 measured (57-58
+// before the probes' material, PR 39), because a headless run can
 // decline to low-perf before warm-up and then compile both variants (see
 // docs/PERF-BUDGETS.md). The real program guard is programs.probe.mjs's tour,
 // which must add 0.
@@ -31,8 +32,12 @@ const APPROACH_TRIS_CEILING = 429540; // baseline 373512
 const APPROACH_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
-const MODAL_CALLS_CEILING = 150; // baseline 128
-const MODAL_TRIS_CEILING = 534170; // baseline 464488
+// Re-derived 2026-10-20 (project probes, PR 39): "modal open" is now an open
+// probe dossier, entered by a jump to probe 1 and a beam grab, so the frozen
+// view is probe 1 at the nose, seen from its jump point, not a planet filling
+// the frame from an orbit lock. Highest of 12 serial runs (docs/PERF-BUDGETS.md).
+const MODAL_CALLS_CEILING = 60; // baseline 50
+const MODAL_TRIS_CEILING = 317530; // baseline 276112
 const MODAL_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
@@ -54,6 +59,13 @@ const RINGED_CALLS_CEILING = 50; // baseline 39
 const RINGED_TRIS_CEILING = 289620; // baseline 251836
 const RINGED_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const RINGED_LIGHTS_CEILING = 5;
+
+/**
+ * How long to hold F for a probe's dossier to open. The pull is ~0.5 s of
+ * simulated time, but this probe runs on SwiftShader, where frames are slow
+ * and each is clamped to 0.05 s (see harness.mjs settle()).
+ */
+const GRAB_TIMEOUT_MS = 30_000;
 
 /** Canvas renders since page load. Deltas across an action are what matter. */
 const canvasRenders = (page) => page.evaluate(() => window.__fitz.canvasRenderCount);
@@ -248,16 +260,15 @@ const bodiesUseLods = (page) => page.evaluate(async () => {
 });
 
 /**
- * Teleports into a planet's gravity well but short of the orbit lock.
+ * Teleports close to a planet: 1.45x its size out along its outward radial.
  *
- * Geometry (src/constants.ts): ZONE_FACTOR 1.8 and LOCK_ENGAGE_FACTOR 1.3 of
- * the planet's size, so activeZone sets inside 1.8x and the lock engages inside
- * 1.3x. The ship is placed 1.45x out along the planet's outward radial —
- * inside the well, outside the lock, outside the planet's own surface (see the
- * comment in the body for why radial). Size is read from the live module, so
- * the probe follows the planet table instead of pinning a size. A measured
- * baseline run using (12, 0, 12) sat at 16.97 units and never entered the well
- * at all, so activeZone stayed null and the check silently proved nothing.
+ * That is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
+ * planets used to set activeZone and outside the 1.3x where they used to
+ * lock; planets do neither now (their dossiers moved onto probes), so the
+ * spot is kept for the close-approach budget's continuity. It is well clear
+ * of the solid surface (1x size plus the ship's half length). Size is read
+ * from the live module, so the probe follows the planet table instead of
+ * pinning a size.
  */
 async function approachPlanet(page) {
   return page.evaluate(async () => {
@@ -266,13 +277,9 @@ async function approachPlanet(page) {
     const name = Object.keys(b)[0];
     const p = b[name];
     // On the planet's outward radial (away from the sun at the origin), at
-    // 1.45x the planet size: inside the 1.8x zone, outside the 1.3x lock.
-    // Orbits are centred on the origin, so planet motion is perpendicular to
-    // this line and the gap can only grow while the probe waits — it can
-    // never close into a lock, and ~17u of drift (about ten seconds, even at
-    // SwiftShader frame rates) passes before it leaves the zone. The old
-    // fixed (+5, 0, +5) offset could be closed by orbital motion, locking the
-    // dossier: a legitimate canvas re-render that failed the check below.
+    // 1.45x the planet size. Orbits are centred on the origin, so planet
+    // motion is perpendicular to this line and the gap can only grow while
+    // the probe waits: the planet never sweeps into the ship.
     const r = Math.hypot(p.x, p.y, p.z) || 1;
     const d = planets.find((pl) => pl.name === name).size * 1.45;
     window.__fitz.teleport(p.x + (p.x / r) * d, p.y + (p.y / r) * d, p.z + (p.z / r) * d);
@@ -349,20 +356,30 @@ export default async function run() {
     await settle(page, 1000);
     await faceFromSun(page, true);
 
-    // ---- approach: activeZone flips, canvas must not re-render ----
+    // ---- close approach to a planet: no zone, no lock, no re-render ----
     const beforeApproach = await canvasRenders(page);
     const planet = await approachPlanet(page);
     await settle(page, 1500);
     const afterApproach = await canvasRenders(page);
-    const zone = await page.evaluate(() => window.__fitz.store.getState().activeZone);
-
-    checks.check("approach actually entered a gravity well", zone !== null,
-      `planet=${planet} activeZone=${zone}`);
-    checks.check("zero canvas re-renders when activeZone flips",
+    // Counted first, straight after the settle, as before planets lost their
+    // zone: the chase camera is still easing in, so a slower read in between
+    // (the module import below) changes what is in frame.
+    const approach = await readPerfCounters(page);
+    const close = await page.evaluate(async (name) => {
+      const { planets } = await import("/src/constants.ts");
+      const size = planets.find((p) => p.name === name).size;
+      const b = window.__fitz.bodies[name], f = window.__fitz.flight;
+      const st = window.__fitz.store.getState();
+      return { k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked };
+    }, planet);
+    checks.check("the approach parked inside 1.8 planet sizes, where the old zone was (precondition)",
+      close.k > 1 && close.k < 1.8, `planet=${planet} distance=${close.k.toFixed(2)} sizes`);
+    checks.check("a close approach to a planet sets no zone and no lock (planets are scan-only)",
+      close.zone === null && !close.locked, `activeZone=${close.zone} locked=${close.locked}`);
+    checks.check("zero canvas re-renders on a close planet approach",
       afterApproach - beforeApproach === 0, `delta=${afterApproach - beforeApproach}`);
 
     // ---- renderer counter budgets: close approach (docs/PERF-BUDGETS.md) ----
-    const approach = await readPerfCounters(page);
     checks.check("close-approach draw calls within budget", approach.calls <= APPROACH_CALLS_CEILING,
       `calls=${approach.calls} ceiling=${APPROACH_CALLS_CEILING}`);
     checks.check("close-approach triangles within budget", approach.triangles <= APPROACH_TRIS_CEILING,
@@ -372,69 +389,67 @@ export default async function run() {
     checks.check("close-approach light count within budget", approach.lights <= APPROACH_LIGHTS_CEILING,
       `lights=${approach.lights} ceiling=${APPROACH_LIGHTS_CEILING}`);
 
-    // ---- orbit lock: modal opens, canvas freezes (Task 6) ----
-    // Before Task 6, GlobalCanvas didn't subscribe to isOrbitLocked at all, so
-    // this transition was free the same way activeZone is above. Task 6
-    // deliberately adds a fourth subscription (selectSceneFrozen) so the
-    // canvas CAN react to the lock — that IS the feature: it flips
-    // `frameloop` to stop rendering behind the dossier. So the invariant
-    // changes here, specifically for this transition: opening the modal
-    // SHOULD re-render the canvas (to apply the freeze) — exactly once
-    // React's own commit is concerned (dev-mode StrictMode double-invoke
-    // aside), not once per frame while the modal sits open.
-    //
-    // Engage a REAL lock (teleport into range, same technique
-    // gameplay.probe.mjs uses) rather than calling setOrbitLocked(true)
-    // directly: SpacePlanets' own useFrame calls setOrbitLocked(lockActive)
-    // unconditionally every frame based on actual proximity
-    // (SpacePlanets.tsx ~385), so a manual override made while the ship is
-    // far from any planet gets stomped back to false on the very next frame
-    // — and whether this harness's evaluate() round-trip is observed before
-    // or after that stomp is a pure timing race (measured flaking between
-    // "delta=0" and "delta=4" run to run). A real, in-range lock is held by
-    // SpacePlanets' own hysteresis (LOCK_RETAIN_FACTOR) instead of fighting
-    // it, the same way the actual dossier modal opens during real flight.
-    //
-    // Break any lock first, before moving: the approach above (7.07 units
-    // out) sits only 0.83 units outside LOCK_ENGAGE_FACTOR's 6.24 radius, and
-    // the planet keeps orbiting the whole time this probe runs — its own
-    // motion can close that gap on its own and engage a REAL lock while this
-    // section is still forming its plan. Once that happens the canvas is
-    // already frozen, and — same failure mode as gameplay.probe.mjs's scan
-    // step — a frozen canvas can't run the frame that would copy
-    // toDeepSpace()'s teleport into `flight`, so the "escape" silently never
-    // happens and everything downstream reads stale. breakOrbit() is a plain
-    // store write, unaffected by frameloop, so it reliably clears this
-    // regardless of whether the canvas is currently frozen.
-    await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-    await settle(page, 300);
-    await toDeepSpace(page);
-    const lockPlanet = await page.evaluate(async () => {
-      const { planets } = await import("/src/constants.ts");
-      const p = planets[0];
-      const b = window.__fitz.bodies[p.name];
-      return { name: p.name, size: p.size, x: b.x, y: b.y, z: b.z };
+    // ---- a probe comes in range: probeNear flips, canvas must not re-render ----
+    // probeNear is the store field that flips as the ship flies about (it
+    // carries the zone chatter now that planets have no zone; destinations'
+    // activeZone flips the same way). GlobalCanvas must not subscribe to it.
+    // Teleported, not jumped: a jump also fires the teleport flash. After the
+    // close-approach budget, so that state is still entered straight from
+    // the facing-sun pose (the chase camera is still easing in when it is
+    // read, so where the ship came from changes what is in frame).
+    const farFromProbes = await page.evaluate(() => window.__fitz.store.getState().probeNear);
+    checks.check("no probe is in range at the planet (precondition)", farFromProbes === null, `probeNear=${farFromProbes}`);
+    const beforeNear = await canvasRenders(page);
+    const nearProbe = await page.evaluate(() => {
+      // 30 u from probe 1, on the side away from the spawn pad (inside the
+      // 45 u PROBE_IN_RANGE, outside beam reach of anything else).
+      const p = window.__fitz.probes.ruangrapi;
+      const s = [-50, 62, 69]; // src/data/spawn.ts SPAWN
+      const d = Math.hypot(p.x - s[0], p.y - s[1], p.z - s[2]);
+      window.__fitz.teleport(p.x + ((p.x - s[0]) / d) * 30, p.y + ((p.y - s[1]) / d) * 30, p.z + ((p.z - s[2]) / d) * 30);
+      return "ruangrapi";
     });
-    const beforeLock = await canvasRenders(page);
-    await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z + p.size * 1.2), lockPlanet);
-    await settle(page, 2500);
-    const afterEngage = await canvasRenders(page);
-    const lockedNow = await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked);
+    const near = await pollUntil(() => page.evaluate(() => window.__fitz.store.getState().probeNear), { timeoutMs: 5000, intervalMs: 100 });
+    await settle(page, 1000);
+    const afterNear = await canvasRenders(page);
+    checks.check("a probe actually came in range (probeNear flipped)", near.value === nearProbe,
+      `probeNear=${near.value}`);
+    checks.check("zero canvas re-renders when probeNear flips",
+      afterNear - beforeNear === 0, `delta=${afterNear - beforeNear}`);
+
+    // ---- a probe dossier opens: the canvas freezes ----
+    // GlobalCanvas subscribes to selectSceneFrozen (an open dossier, or a
+    // destination's orbit lock, outside photo mode) so it CAN react: it flips
+    // `frameloop` to stop rendering behind the dossier. So opening one SHOULD
+    // re-render the canvas (to apply the freeze), and only once as far as
+    // React's own commit is concerned (dev-mode StrictMode double-invoke
+    // aside), not once per frame while the dossier sits open.
+    //
+    // Opened the real way: jump to probe 1 (key 1's path, which opens
+    // nothing) and hold F until the beam has pulled it in. The baseline is
+    // taken after the jump lands, so the delta is the grab and the dossier.
+    const landedAtProbe = await jumpToProbe(page, "ruangrapi");
+    checks.check("the jump lands beside probe 1 (precondition)", landedAtProbe.ok,
+      `dist=${landedAtProbe.value?.toFixed?.(2)}`);
+    await settle(page, 500);
+    const beforeOpen = await canvasRenders(page);
+    const grabbed = await holdBeamUntilOpen(page, "ruangrapi", { timeoutMs: GRAB_TIMEOUT_MS });
+    const afterOpen = await canvasRenders(page);
     await settle(page, 1200);
     const afterSettle = await canvasRenders(page);
 
-    checks.check("approaching close enough engages a real orbit lock", lockedNow,
-      `locked=${lockedNow}`);
-    checks.check("the dossier modal opening re-renders the canvas (to apply the freeze)",
-      afterEngage - beforeLock > 0, `delta=${afterEngage - beforeLock}`);
-    checks.check("the canvas does not keep re-rendering while the modal stays open",
-      afterSettle - afterEngage === 0, `delta=${afterSettle - afterEngage}`);
+    checks.check("holding F on probe 1 opens its dossier", grabbed.ok,
+      `openDossier=${await page.evaluate(() => window.__fitz.store.getState().openDossier)}`);
+    checks.check("the dossier opening re-renders the canvas (to apply the freeze)",
+      afterOpen - beforeOpen > 0, `delta=${afterOpen - beforeOpen}`);
+    checks.check("the canvas does not keep re-rendering while the dossier stays open",
+      afterSettle - afterOpen === 0, `delta=${afterSettle - afterOpen}`);
 
     // ---- renderer counter budgets: dossier modal open (docs/PERF-BUDGETS.md) ----
     // frameloop is "never" here (the freeze this section exists to test), so
     // perfStats.calls/triangles read whatever PerfSampler last captured just
     // before the freeze took effect -- exactly what's frozen on screen behind
-    // the modal, which is the number that matters.
+    // the dossier: probe 1 pulled up to the nose, seen from the jump point.
     const modal = await readPerfCounters(page);
     checks.check("modal-open draw calls within budget", modal.calls <= MODAL_CALLS_CEILING,
       `calls=${modal.calls} ceiling=${MODAL_CALLS_CEILING}`);
@@ -445,19 +460,18 @@ export default async function run() {
     checks.check("modal-open light count within budget", modal.lights <= MODAL_LIGHTS_CEILING,
       `lights=${modal.lights} ceiling=${MODAL_LIGHTS_CEILING}`);
 
-    // ---- regression: classic-CV round trip while orbit-locked must not
-    // leave the canvas painting zero frames forever ----
-    // showClassicCV is the only thing that unmounts GlobalCanvas (App.tsx:79),
-    // and until setShowClassicCV started calling breakOrbit(), isOrbitLocked
-    // survived that unmount untouched: a visitor who opened this exact
-    // dossier, then clicked into the classic resume and back, got a
-    // freshly-mounted Canvas whose very first render already had
-    // sceneFrozen=true -- frameloop="never" from frame one, with no
-    // frozen->unfrozen edge for the invalidate() effect (GlobalCanvas.tsx) to
-    // ever fire on. R3F provides no initial paint for frameloop="never" (both
-    // invalidate() and the internal invalidateInstance no-op while frozen),
-    // so that's a genuinely blank canvas, not a stale frame, until the
-    // visitor closes the dossier by hand.
+    // ---- regression: classic-CV round trip while a dossier is open must
+    // not leave the canvas painting zero frames forever ----
+    // showClassicCV is the only thing that unmounts GlobalCanvas (App.tsx),
+    // and setShowClassicCV(true) closes the dossier (and breaks any orbit
+    // lock) on the way in. Without that, a visitor who opened a dossier,
+    // then clicked into the classic resume and back, got a freshly-mounted
+    // Canvas whose very first render already had sceneFrozen=true --
+    // frameloop="never" from frame one, with no frozen->unfrozen edge for the
+    // invalidate() effect (GlobalCanvas.tsx) to ever fire on. R3F provides no
+    // initial paint for frameloop="never" (both invalidate() and the internal
+    // invalidateInstance no-op while frozen), so that's a genuinely blank
+    // canvas, not a stale frame, until the visitor closes the dossier by hand.
     //
     // gl.info.render.frame (a fresh WebGLRenderer's own draw-call counter,
     // re-published by DebugBridge on every GlobalCanvas mount) is the only
@@ -465,17 +479,17 @@ export default async function run() {
     // frozen" from "everything is fine," because the HUD, radar, chatter
     // ticker and perf overlay all animate on their own independent rAF loops
     // regardless of whether the WebGL canvas itself is painting.
-    const stillLocked = (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked));
-    checks.check("orbit lock is still held going into the round trip (precondition)", stillLocked,
-      `locked=${stillLocked}`);
+    const stillOpen = await page.evaluate(() => window.__fitz.store.getState().openDossier);
+    checks.check("the dossier is still open going into the round trip (precondition)", stillOpen === "ruangrapi",
+      `openDossier=${stillOpen}`);
     // Baseline from the OLD (about-to-be-unmounted) renderer, used below only
     // to detect when window.__fitz.gl has actually swapped to the new one.
     const frameBeforeRoundTrip = await page.evaluate(() => window.__fitz.gl.info.render.frame);
 
     await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
     await settle(page, 500);
-    checks.check("opening classic CV while locked clears the lock",
-      (await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked)) === false);
+    checks.check("opening classic CV while a dossier is open closes it",
+      (await page.evaluate(() => window.__fitz.store.getState().openDossier)) === null);
 
     await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(false));
 
@@ -508,11 +522,10 @@ export default async function run() {
         const f = await page.evaluate(() => window.__fitz.gl.info.render.frame);
         return f > frame1 ? f : null;
       }, { timeoutMs: SCENE_READY_TIMEOUT_MS, intervalMs: 250 });
-      checks.check("canvas resumes rendering after a classic-CV round trip while orbit-locked",
+      checks.check("canvas resumes rendering after a classic-CV round trip with a dossier open",
         next.ok, `frame ${frame1} -> ${next.value ?? frame1} after ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     }
 
-    await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
     await settle(page, 800);
 
     // ---- warp: isWarping flips on every boost ----
@@ -611,7 +624,7 @@ export default async function run() {
     // ---- regression: a dossier open+close must not break warp (Critical 1) ----
     // R3F's setFrameloop (used by the dossier freeze above) zeroes
     // THREE.Clock.elapsedTime on EVERY frameloop transition -- twice per
-    // open+close (once locking, once breaking). Spaceship.tsx used to gate
+    // open+close (once opening, once closing). Spaceship.tsx used to gate
     // warp on a raw `state.clock.getElapsedTime()` read compared against an
     // absolute deadline (`warpSuppressUntil.current`, set on the ship's last
     // asteroid impact) stored from BEFORE the reset. Post-reset, the live
@@ -627,11 +640,11 @@ export default async function run() {
     //
     // This reproduces the real user path end to end: collide with an
     // asteroid (sets warpSuppressUntil/lastImpactAt to absolute, pre-reset
-    // clock values), orbit-lock a planet (frameloop "always" -> "never",
-    // reset #1), close the dossier via breakOrbit() (frameloop "never" ->
-    // "always", reset #2 -- the same store call the harness elsewhere in
-    // this file treats as "closing the dossier"), then hold Shift and
-    // confirm warp actually engages and fuel actually drains. By this point
+    // clock values), grab a probe so its dossier opens (frameloop "always"
+    // -> "never", reset #1), close the dossier with closeDossier(), the
+    // store call Esc, the X and pad B make (frameloop "never" -> "always",
+    // reset #2), then hold Shift and confirm warp actually engages and fuel
+    // actually drains. By this point
     // in the suite the page has been open long enough that the pre-reset
     // clock reading is comfortably non-trivial (the reported repro is ~60s
     // of flight), so this needs no long wait of its own.
@@ -675,28 +688,26 @@ export default async function run() {
       checks.check("collided with an asteroid for the regression setup (precondition)",
         impactAfter > impactBefore, `${impactBefore} -> ${impactAfter}`);
 
+      // Open a probe dossier (frameloop reset #1): probe 2, untouched so far
+      // (probe 1 relocated when the round trip above closed its dossier).
+      const regressionGrab = await grabProbe(page, "portfolio", { timeoutMs: GRAB_TIMEOUT_MS });
+      checks.check("a probe dossier is open for the clock-reset regression (precondition)",
+        regressionGrab.ok, `landed=${regressionGrab.landed} openDossier=${await page.evaluate(() => window.__fitz.store.getState().openDossier)}`);
+
+      // Close the dossier (frameloop reset #2).
+      await page.evaluate(() => window.__fitz.store.getState().closeDossier());
+      await settle(page, 300);
+      // Then out to deep space, nose away from the sun, so the warp below
+      // runs clear of anything it could hit (an impact suppresses warp, which
+      // is not the bug under test). The stale-deadline bug outlives this wait
+      // by a whole session's worth of clock, so the wait cannot hide it.
+      await toDeepSpace(page);
+      await faceFromSun(page, false);
+
+      // Read last: the tank refills whenever warp is off.
       const fuelBefore = await page.evaluate(() => window.__fitz.flight.fuel);
       checks.check("fuel is available for the warp regression test (precondition)",
         fuelBefore > 0, `fuel=${fuelBefore}`);
-
-      // Orbit-lock (frameloop reset #1).
-      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-      await settle(page, 300);
-      const lockTarget = await page.evaluate(async () => {
-        const { planets } = await import("/src/constants.ts");
-        const p = planets[0];
-        const b = window.__fitz.bodies[p.name];
-        return { x: b.x, y: b.y, z: b.z, size: p.size };
-      });
-      await page.evaluate((p) => window.__fitz.teleport(p.x, p.y, p.z + p.size * 1.2), lockTarget);
-      await settle(page, 2500);
-      const lockedForRegression = await page.evaluate(() => window.__fitz.store.getState().isOrbitLocked);
-      checks.check("orbit-locked for the clock-reset regression (precondition)",
-        lockedForRegression, `locked=${lockedForRegression}`);
-
-      // Close the dossier (frameloop reset #2).
-      await page.evaluate(() => window.__fitz.store.getState().breakOrbit());
-      await settle(page, 300);
 
       await page.keyboard.down("ShiftLeft");
       await settle(page, 900);

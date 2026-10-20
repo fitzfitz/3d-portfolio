@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { soundManager } from "../audio/soundManager";
-import { useSpaceStore } from "../store/spaceStore";
+import { useSpaceStore, selectModalOpen } from "../store/spaceStore";
 
 /** Mount once in App: gesture-gated init, store-event one-shots, engine-hum loop. */
 export function useSound() {
@@ -23,8 +23,8 @@ export function useSound() {
 
     const unsubs = [
       useSpaceStore.subscribe(
-        (s) => s.isOrbitLocked,
-        (locked) => (locked ? soundManager.chime() : soundManager.thunk())
+        selectModalOpen,
+        (open) => (open ? soundManager.chime() : soundManager.thunk())
       ),
       useSpaceStore.subscribe(
         (s) => s.isTeleporting,

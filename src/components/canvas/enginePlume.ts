@@ -107,7 +107,11 @@ export function makePlumeGeometry(nozzleRadius: number): THREE.BufferGeometry {
  * chase camera, so the beam keeps its own point-to-wide shape (uSpread = 0).
  */
 export function makeBeamGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(0.02, 1, 1, 20, 12, true);
+  // A true point (radius 0), not a small ring: the chase camera looks down
+  // the beam from behind the apex, and an open ring there (0.02 x the cone's
+  // ~11 u radius) let it see through to the dim far walls, a dark disc at the
+  // nose ringed by the bright near walls (final review, PR 39).
+  const g = new THREE.CylinderGeometry(0, 1, 1, 20, 12, true);
   g.translate(0, -0.5, 0);
   return g;
 }

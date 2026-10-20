@@ -15,6 +15,7 @@ import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
 import LogbookPanel from "./components/layout/LogbookPanel";
 import CareerDossier from "./components/layout/CareerDossier";
+import ProjectDossier from "./components/layout/ProjectDossier";
 import HangarPanel from "./components/layout/HangarPanel";
 import ChangelogPanel from "./components/layout/ChangelogPanel";
 // The 3D engine (three, R3F, drei, postprocessing) is ~85% of the JS. Loading
@@ -28,8 +29,8 @@ const GlobalCanvas = lazy(() => {
 });
 import SafeErrorBoundary from "./components/canvas/SafeErrorBoundary";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
-import { Terminal, FileText, X, ExternalLink, Calendar, Briefcase } from "lucide-react";
-import { useSpaceStore, WEBGL_AVAILABLE } from "./store/spaceStore";
+import { Terminal, FileText, X } from "lucide-react";
+import { useSpaceStore, WEBGL_AVAILABLE, selectModalOpen } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
 import { useGamepadInput } from "./hooks/useGamepadInput";
@@ -75,6 +76,10 @@ export default function App() {
   }, []);
   const activeZone = useSpaceStore((s) => s.activeZone);
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
+  const openDossier = useSpaceStore((s) => s.openDossier);
+  const dossierVia = useSpaceStore((s) => s.dossierVia);
+  const closeDossier = useSpaceStore((s) => s.closeDossier);
+  const modalOpen = useSpaceStore(selectModalOpen);
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);
   const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
@@ -96,14 +101,16 @@ export default function App() {
   // close buttons' autoFocus: AnimatePresence mode="wait" mounts a dialog only
   // after the previous card's exit, so a ref read here would still be empty.
   useEffect(() => {
-    if (!isOrbitLocked) return;
+    if (!isOrbitLocked && openDossier === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || isEditableTarget(e.target as HTMLElement | null)) return;
-      breakOrbit();
+      // The project dossier sits over the flight view, not an orbit lock.
+      if (useSpaceStore.getState().openDossier !== null) closeDossier();
+      else breakOrbit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isOrbitLocked, activeZone, breakOrbit]);
+  }, [isOrbitLocked, openDossier, activeZone, breakOrbit, closeDossier]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -113,19 +120,19 @@ export default function App() {
       if (s.showClassicCV) return;
       if (s.beaconPickerOpen) return; // its own keys: 1-9 pick, Esc cancels
       if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
-      if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !s.isOrbitLocked) {
+      if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !selectModalOpen(s)) {
         openBeaconPicker();
         return;
       }
-      if (e.code === "KeyL" && !s.photoMode && !s.isOrbitLocked) {
+      if (e.code === "KeyL" && !s.photoMode && !selectModalOpen(s)) {
         s.setLogbookOpen(!s.logbookOpen);
         return;
       }
-      if (e.code === "KeyN" && !s.photoMode && !s.isOrbitLocked) {
+      if (e.code === "KeyN" && !s.photoMode && !selectModalOpen(s)) {
         s.setChangelogOpen(!s.changelogOpen);
         return;
       }
-      // Number keys jump to JUMP_TARGETS in order: planets, then destinations.
+      // Number keys jump to JUMP_TARGETS in order: probes, then destinations.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
         const target = JUMP_TARGETS[Number(digit[1]) - 1];
@@ -143,9 +150,7 @@ export default function App() {
     if (sceneReady) useSpaceStore.getState().tellAurumOnce();
   }, [sceneReady]);
 
-  // `activeZone` IS the project id, so this is a lookup rather than a mapping.
-  // Returns undefined for destinations, which have no project dossier.
-  const planetProject = projectById(activeZone);
+  const dossierProject = projectById(openDossier);
   // Each destination opens its own modal (the contact form, the career dossier, the hangar).
   const zoneDestination = destinationById(activeZone)?.id;
 
@@ -175,7 +180,7 @@ export default function App() {
           {(["top-0", "bottom-0"] as const).map((pos) => (
             <div key={pos}
               className={`absolute inset-x-0 ${pos} h-[8vh] bg-black/85 ${reducedMotion ? "" : "transition-transform duration-700 ease-out"} ${
-                isOrbitLocked ? "translate-y-0" : pos === "top-0" ? "-translate-y-full" : "translate-y-full"}`} />
+                modalOpen ? "translate-y-0" : pos === "top-0" ? "-translate-y-full" : "translate-y-full"}`} />
           ))}
         </div>
       )}
@@ -244,7 +249,7 @@ export default function App() {
                 sat on top of the loading readout. Never centred: the ship sits
                 mid-screen and the planet it is aimed at sits on the horizon
                 just above it, so on desktop the card goes to the right. */}
-            {sceneReady && isNearSpawn && !activeZone && (
+            {sceneReady && isNearSpawn && !activeZone && openDossier === null && (
               <motion.div
                 key="spawn-banner"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -263,13 +268,16 @@ export default function App() {
                 <h2 className="font-display font-bold text-2xl text-white">{identity.name}</h2>
                 <p className="font-mono text-[11px] text-primary/90 mb-3">{identity.role}</p>
                 <p className="text-white/70 text-xs leading-relaxed mb-3">
-                  Three planets, three projects. Fly into one to open its dossier.
+                  Three probes carry three projects. Grab one with the tractor beam to open it.
                 </p>
                 <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
                   &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP · F BEAM"}
                 </div>
                 {/* Fast path: straight into a dossier, no piloting required. */}
-                <div className="text-[10px] font-mono text-white/50 mb-2">OR JUMP STRAIGHT TO</div>
+                <div className="text-[10px] font-mono text-white/50 mb-2">
+                  OR JUMP STRAIGHT TO
+                  <div className="text-white/40">THEN HOLD {padConnected ? "LB" : isCoarse ? "BEAM" : "F"}</div>
+                </div>
                 <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
                   {JUMP_TARGETS.map((t, i) => (
                     <button
@@ -292,95 +300,16 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* Planet gravity Orbit Lock details modal */}
-            {isOrbitLocked && planetProject && (
+            {/* Project dossier: opened by grabbing a probe (or from the logbook) */}
+            {dossierProject && dossierVia && (
               <motion.div
-                key={`dossier-${planetProject.id}`}
+                key={`dossier-${dossierProject.id}`}
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.92 }}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="dossier-title"
-                className="w-full max-w-2xl pointer-events-auto glass-card rounded-3xl p-8 relative border max-h-[85vh] overflow-y-auto pr-4 select-none bg-black/90"
-                style={{ borderColor: `${planetProject.color}33`, boxShadow: `0 0 40px ${planetProject.color}11` }}
+                className="w-full max-w-2xl pointer-events-auto"
               >
-                {/* Close modal / Break Orbit Button */}
-                <button
-                  autoFocus
-                  onClick={breakOrbit}
-                  aria-label="Close dossier (Esc)"
-                  className="absolute top-6 right-6 p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
-                  title="Close dossier (Esc)"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                {/* Subheader Info */}
-                <div className="flex flex-wrap items-center gap-6 mb-6">
-                  <span className="flex items-center gap-2 font-mono text-xs text-muted">
-                    <Briefcase className="w-4.5 h-4.5 text-white/40" />
-                    {planetProject.role}
-                  </span>
-                  <span className="flex items-center gap-2 font-mono text-xs text-muted">
-                    <Calendar className="w-4.5 h-4.5 text-white/40" />
-                    {planetProject.duration}
-                  </span>
-                  <span
-                    className="px-2 py-0.5 rounded font-mono text-[9px] uppercase border"
-                    style={{ color: planetProject.color, borderColor: `${planetProject.color}55` }}
-                  >
-                    ORBIT_LOCKED
-                  </span>
-                </div>
-
-                {/* Planet name heading */}
-                <h3 id="dossier-title" className="font-display font-black text-3xl sm:text-4xl mb-4 text-white">
-                  {planetProject.title}
-                </h3>
-
-                {/* short descriptor */}
-                <p className="font-mono text-sm mb-6" style={{ color: planetProject.color }}>
-                  &gt; {planetProject.short}
-                </p>
-
-                {/* description */}
-                <p className="text-muted text-sm sm:text-base font-light leading-relaxed mb-8">
-                  {planetProject.description}
-                </p>
-
-                {/* tech tags */}
-                <div className="flex flex-wrap gap-2.5 mb-8">
-                  {planetProject.tech.map((tech) => (
-                    <span
-                      key={tech}
-                      className="px-3 py-1.5 rounded-lg text-xs font-mono bg-white/5 border border-white/5 text-white/80"
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-
-                {/* controls */}
-                <div className="flex items-center justify-between border-t border-white/5 pt-6">
-                  <button
-                    onClick={breakOrbit}
-                    className="px-5 py-3 rounded-xl font-mono text-xs font-bold text-black cursor-pointer hover:shadow-lg transition-all"
-                    style={{ backgroundColor: planetProject.color }}
-                  >
-                    THRUSTERS_BREAK_ORBIT
-                  </button>
-
-                  <a
-                    href={planetProject.repo ?? identity.github}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-xs font-mono text-muted hover:text-white transition-colors"
-                  >
-                    {planetProject.repo ? "VIEW_SOURCE" : "GITHUB_PROFILE"}
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
+                <ProjectDossier project={dossierProject} via={dossierVia} onClose={closeDossier} />
               </motion.div>
             )}
 

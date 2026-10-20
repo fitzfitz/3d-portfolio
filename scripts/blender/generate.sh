@@ -23,6 +23,8 @@ mkdir -p assets-src
 # Shipyard and dormant gate (2026-10-16).
 "$BLENDER" --background --python scripts/blender/gen_shipyard.py
 "$BLENDER" --background --python scripts/blender/gen_dormant_gate.py
+# Project probes (2026-10-20): the Voyager-style probe that carries the dossiers.
+"$BLENDER" --background --python scripts/blender/gen_probe.py
 # The new worlds (2026-10-17): the airless rock's and the dwarf's albedo + normal (numpy in Blender).
 "$BLENDER" --background --python scripts/blender/gen_world_rock.py
 "$BLENDER" --background --python scripts/blender/gen_world_dwarf.py

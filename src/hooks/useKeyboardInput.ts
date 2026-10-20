@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { flight, useSpaceStore, type FlightInput } from "../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen, type FlightInput } from "../store/spaceStore";
+import { beamState } from "../store/beamState";
 
 type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend" | "scan" | "beam";
 
@@ -36,6 +37,23 @@ export function resetFlightInput(input: FlightInput): void {
   input.steer = 0; input.thrust = 0;
 }
 
+/**
+ * An opening dossier freezes the scene, so anything held at that moment (F for
+ * the beam, W, a pad stick) would sit stuck under the modal and fire on close.
+ * Releases every channel, and the beam, on the null -> open edge only.
+ */
+export function watchDossierRelease(): () => void {
+  return useSpaceStore.subscribe(
+    (s) => s.openDossier,
+    (id) => {
+      if (id === null) return;
+      resetFlightInput(flight.input);
+      beamState.active = false;
+      beamState.reel.active = false;
+    },
+  );
+}
+
 /** Writes key state straight into flight.input — zero React re-renders. */
 export function useKeyboardInput() {
   useEffect(() => {
@@ -57,7 +75,7 @@ export function useKeyboardInput() {
       // In flight, Space would otherwise also "click" whichever button kept
       // focus after a mouse click (e.g. VIEW_CLASSIC_RESUME). With a dossier
       // open the scene is frozen, so leave keys to the dialog's buttons.
-      if (!s.isOrbitLocked) e.preventDefault();
+      if (!selectModalOpen(s)) e.preventDefault();
       set(e.code, true);
     };
     const up = (e: KeyboardEvent) => {
@@ -70,11 +88,13 @@ export function useKeyboardInput() {
     // window, so without this the ship keeps thrusting (and burning fuel).
     const release = () => resetFlightInput(flight.input);
     const onVisibility = () => { if (document.hidden) release(); };
+    const unwatch = watchDossierRelease();
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", release);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      unwatch();
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", release);

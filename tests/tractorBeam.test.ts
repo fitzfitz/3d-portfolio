@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  inCone, consider, createSelection, clearSelection, pullStep, reelStep,
+  inCone, consider, createSelection, clearSelection, pullStep, reelStep, reserveFirst,
   BEAM_RANGE, BEAM_MAX_TARGETS, REEL_ACCEL, nearestShardInCone,
 } from "../src/utils/tractorBeam";
 
@@ -25,6 +25,48 @@ describe("consider", () => {
     expect(sel.index.slice(0, 3)).toEqual([1, 3, 2]);
     clearSelection(sel);
     expect(sel.count).toBe(0);
+  });
+  it("takes a probe like any target: nearest first, inside the shared budget", () => {
+    const sel = createSelection();
+    // TractorBeam considers the probe first, then crystals.
+    consider(sel, BEAM_MAX_TARGETS, "probe", 2, -1, 12, 0, 0, 12);
+    consider(sel, BEAM_MAX_TARGETS, "crystal", 0, -1, 20, 0, 0, 20);
+    consider(sel, BEAM_MAX_TARGETS, "crystal", 1, -1, 6, 0, 0, 6);
+    consider(sel, BEAM_MAX_TARGETS, "crystal", 3, -1, 25, 0, 0, 25);
+    expect(sel.count).toBe(3);
+    expect(sel.kind.slice(0, 3)).toEqual(["crystal", "probe", "crystal"]);
+    expect(sel.index.slice(0, 3)).toEqual([1, 2, 0]);
+    // Two tethered pebbles leave one slot: the nearer probe keeps it.
+    clearSelection(sel);
+    consider(sel, 1, "probe", 0, -1, 10, 0, 0, 10);
+    consider(sel, 1, "crystal", 4, -1, 15, 0, 0, 15);
+    expect(sel.count).toBe(1);
+    expect(sel.kind[0]).toBe("probe");
+    expect(sel.index[0]).toBe(0);
+    // A tie keeps the target considered first: the probe.
+    clearSelection(sel);
+    consider(sel, 1, "probe", 1, -1, 10, 0, 0, 10);
+    consider(sel, 1, "crystal", 5, -1, 10, 0, 0, 10);
+    expect(sel.kind[0]).toBe("probe");
+  });
+  it("reserveFirst gives a probe sel[0] even when three crystals are nearer", () => {
+    const sel = createSelection();
+    // TractorBeam: crystals share budget - 1, then the probe takes the reserved slot.
+    for (const [i, d] of [[0, 3], [1, 5], [2, 4]] as const) consider(sel, BEAM_MAX_TARGETS - 1, "crystal", i, -1, d, 0, 0, d);
+    reserveFirst(sel, BEAM_MAX_TARGETS, "probe", 1, -1, 20, 0, 0, 20);
+    expect(sel.count).toBe(3);
+    expect(sel.kind.slice(0, 3)).toEqual(["probe", "crystal", "crystal"]);
+    expect(sel.index.slice(0, 3)).toEqual([1, 0, 2]);
+    expect(sel.dist.slice(0, 3)).toEqual([20, 3, 4]);
+  });
+  it("reserveFirst into an empty selection, and never past the cap", () => {
+    const sel = createSelection();
+    reserveFirst(sel, 1, "probe", 0, -1, 9, 0, 0, 9);
+    expect(sel.count).toBe(1);
+    expect(sel.kind[0]).toBe("probe");
+    reserveFirst(sel, 0, "probe", 2, -1, 9, 0, 0, 9); // no budget: no slot
+    expect(sel.count).toBe(1);
+    expect(sel.index[0]).toBe(0);
   });
   it("respects a smaller budget", () => {
     const sel = createSelection();

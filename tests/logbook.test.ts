@@ -150,3 +150,19 @@ describe("returning visitors (progress saved before the career essential existed
     expect(milestoneFor(old, docked(old))).toBe("all");
   });
 });
+
+describe("probe hints", () => {
+  it("point at the probes", () => {
+    expect(byId("ruangrapi").hint).toBe("GRAB THE RUANGRAPI PROBE (HOLD F)");
+    expect(byId("portfolio").hint).toBe("GRAB THE FLIGHT-SIM CV PROBE (HOLD F)");
+    expect(byId("fuxx").hint).toBe("GRAB THE FUXX PROBE (HOLD F)");
+    expect(byId("ruangrapi").hintShort).toBe("RUANGRAPI PROBE");
+    expect(byId("portfolio").hintShort).toBe("CV PROBE");
+    expect(byId("fuxx").hintShort).toBe("FUXX PROBE");
+  });
+  it("keeps the titles", () => {
+    expect(byId("ruangrapi").title).toBe("Read the RuangRapi dossier");
+    expect(byId("portfolio").title).toBe("Read the Flight-Sim CV dossier");
+    expect(byId("fuxx").title).toBe("Read the fuxx dossier");
+  });
+});

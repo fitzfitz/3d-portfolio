@@ -49,9 +49,10 @@ export default async function run() {
     };
 
     // An active crystal at least 100 units clear of every planet and destination
-    // (offset by dz on z). A ship parked beside a planet gets orbit-
+    // (offset by dz on z). A ship parked beside a destination gets orbit-
     // captured, which freezes the scene: pickups and crystal respawns stop and
-    // the checks that follow run against a frozen world.
+    // the checks that follow run against a frozen world. Planets no longer
+    // capture, but stay excluded: they are solid and pull.
     const pickCrystal = (dz) => page.evaluate(async (dzv) => {
       const { DESTINATIONS } = await import("/src/data/destinations.ts");
       const anchors = [...Object.values(window.__fitz.bodies), ...DESTINATIONS.map((d) => ({ x: d.pos[0], y: d.pos[1], z: d.pos[2] }))];
@@ -137,13 +138,14 @@ export default async function run() {
       document.querySelector('[data-testid="hud-fuel-label"]')?.textContent);
     checks.check("HUD reads DRY", /DRY/.test(hudLabel ?? ""), `label="${hudLabel}"`);
 
-    // The warp drain leaves the ship coasting through ruangrapi's zone, so an
-    // orbit capture can land in the same frames as this teleport. The debug
-    // teleport zeroes velocity (Spaceship.tsx), so the ~40-unit offsets seen
-    // here were not momentum: a lock engaging around the teleport leaves the ship
-    // short of the target (or the teleport lost while the scene is frozen), and
-    // teleportTo's retry (break the lock, teleport again, now far from any zone)
-    // is what lands it exactly. The attempt log in the check detail shows it.
+    // When planets still docked, the warp drain left the ship coasting through
+    // ruangrapi's zone and an orbit capture could land in the same frames as
+    // this teleport, leaving the ship short of it (~40-unit offsets; the debug
+    // teleport zeroes velocity, so not momentum). Planets no longer lock (their
+    // dossiers moved onto probes) and the drain runs clear of every
+    // destination, so this lands first time; teleportTo's retry (break any
+    // lock, teleport again) stays as the guard, and its attempt log is in the
+    // check detail.
     await teleportTo(-230, -210, -230, "dry-tank spot");
     await settle(page, 1200);
     await hold(page, ["KeyW", "ShiftLeft"], 1500);

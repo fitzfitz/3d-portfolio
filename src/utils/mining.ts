@@ -106,7 +106,8 @@ export class FirstOreLine {
 
 /**
  * One frame: drops tethers when the beam is off or they fall behind, grabs the
- * nearest in-cone pebble when a slot is free and the grab gate allows, pulls
+ * nearest in-cone pebble when a slot is free (a held probe keeps one) and the
+ * grab gate allows, pulls
  * every tether toward the ship and absorbs those that arrive. Returns how many
  * were absorbed this frame. `now` is game time (s).
  */
@@ -114,7 +115,12 @@ export function stepMining(now: number, dt: number, ship: Vec3): number {
   if (!beamState.active) { tetherN = 0; return 0; }
   const { ox, oy, oz, dx, dy, dz } = beamState;
 
-  if (tetherN < BEAM_MAX_TARGETS && now - lastGrabAt >= PEBBLE_GRAB_INTERVAL) {
+  // A project probe the beam holds (TractorBeam's sel, this frame or last)
+  // keeps its slot: pebbles may not fill it and evict the probe mid-pull.
+  let cap = BEAM_MAX_TARGETS;
+  const sel = beamState.sel;
+  for (let k = 0; k < sel.count; k++) if (sel.kind[k] === "probe") { cap--; break; }
+  if (tetherN < cap && now - lastGrabAt >= PEBBLE_GRAB_INTERVAL) {
     let bestR = -1, bestI = -1, bestD = Infinity;
     for (let r = 0; r < rings.length; r++) {
       const ring = rings[r];

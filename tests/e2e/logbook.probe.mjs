@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, grabProbe } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const tracker = (page) => page.evaluate(() => document.querySelector('[data-testid="logbook-tracker"]')?.textContent ?? "");
@@ -11,10 +11,13 @@ async function desktop(page, checks) {
   await ready(page);
   checks.check("fresh tracker shows 0/11 and the first essential", /LOGBOOK 0\/11.*RUANGRAPI/.test(await tracker(page)), await tracker(page));
 
-  // Jump to planet 1 (ruangrapi): its dossier opens.
-  await page.keyboard.press("Digit1");
-  const docked = await pollUntil(async () => (await readStore(page)).isOrbitLocked, { timeoutMs: 15_000, intervalMs: 200 });
-  checks.check("jump docks at the first planet", docked.ok);
+  // Key 1 jumps to probe 1 (ruangrapi); holding F grabs it and its dossier opens.
+  await page.evaluate(() => document.activeElement?.blur?.());
+  const grabbed = await grabProbe(page, "ruangrapi", { jump: () => page.keyboard.press("Digit1") });
+  checks.check("key 1 then holding F opens probe 1's dossier", grabbed.ok, grabbed.landed ? "" : "the jump never landed");
+  await settle(page, 600);
+  const firstFocus = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName);
+  checks.check("focus moves into the dossier dialog", /dossier/i.test(firstFocus ?? ""), `focus=${firstFocus}`);
   await page.keyboard.press("KeyL");
   await settle(page, 300);
   checks.check("L does nothing while a dossier is open", !(await readStore(page)).logbookOpen);
@@ -22,10 +25,17 @@ async function desktop(page, checks) {
   await settle(page, 2500);
   checks.check("the dossier essential is ticked and the tracker advances",
     /LOGBOOK 1\/11.*FLIGHT-SIM CV/.test(await tracker(page)), await tracker(page));
+  // The closed probe burns away and its PROBE RELOCATING line goes out when
+  // the burn ends; let it land first, so it cannot overwrite the badge
+  // announcement below. A logbook line yields to a fresh broadcast
+  // (BADGE_LINE_HOLD_MS, 4.5 s), so the announcement is polled for, not read
+  // once.
+  await pollUntil(async () => ((await readStore(page)).broadcast?.text ?? "").startsWith("PROBE RELOCATING"),
+    { timeoutMs: 10_000, intervalMs: 200 });
 
   // Record two badges through the store, as the hooks do.
   await page.evaluate(() => window.__fitz.store.getState().recordBadge("slingshot"));
-  await settle(page, 400);
+  await pollUntil(async () => /SLINGSHOT EARNED/.test(await liveText(page)), { timeoutMs: 8000, intervalMs: 200 });
   checks.check("a recorded badge is announced to screen readers", /SLINGSHOT EARNED/.test(await liveText(page)), await liveText(page));
   await page.evaluate(() => window.__fitz.store.getState().recordBadge("comet"));
   await settle(page, 400);
@@ -62,16 +72,45 @@ async function desktop(page, checks) {
   await page.keyboard.press("KeyL");
   await settle(page, 300);
   checks.check("L still closes the panel", !(await readStore(page)).logbookOpen);
-  // A sheet that closes itself on docking leaves focus in the dossier (review #5).
+  // A sheet that closes itself when a dossier opens leaves focus in the
+  // dossier (review #5): grab probe 2 with the logbook open.
   await page.click('[data-testid="logbook-button"]');
   await settle(page, 300);
-  await page.keyboard.press("Digit2");
-  await pollUntil(async () => (await readStore(page)).isOrbitLocked, { timeoutMs: 15_000, intervalMs: 200 });
+  const second = await grabProbe(page, "portfolio", { jump: () => page.keyboard.press("Digit2") });
   await settle(page, 800);
   const dossierFocus = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName);
-  checks.check("docking with a sheet open leaves focus in the dossier", /dossier/i.test(dossierFocus ?? ""), `focus=${dossierFocus}`);
+  checks.check("grabbing a probe with the sheet open closes the sheet", second.ok && !(await readStore(page)).logbookOpen,
+    `opened=${second.ok}`);
+  checks.check("grabbing a probe with a sheet open leaves focus in the dossier", /dossier/i.test(dossierFocus ?? ""), `focus=${dossierFocus}`);
   await page.keyboard.press("Escape");
   await settle(page, 2500);
+
+  // A read dossier re-opens from the logbook, and that moves no probe.
+  await page.evaluate(() => window.__fitz.store.getState().setLogbookOpen(true));
+  await settle(page, 400);
+  const reopen = await page.evaluate(() => {
+    const b = document.querySelector('[data-testid="logbook-reopen-ruangrapi"]');
+    return b ? { tag: b.tagName, name: b.textContent ?? "" } : null;
+  });
+  checks.check("a read dossier is a re-open button in the logbook",
+    reopen?.tag === "BUTTON" && /^Read the RuangRapi dossier, re-open/.test(reopen.name), JSON.stringify(reopen));
+  const spotsBefore = (await readStore(page)).probeSpots;
+  const posBefore = await page.evaluate(() => ({ ...window.__fitz.probes.ruangrapi }));
+  if (reopen) await page.click('[data-testid="logbook-reopen-ruangrapi"]');
+  await settle(page, 800);
+  let rs = await readStore(page);
+  const reopenFocus = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
+  checks.check("the logbook's re-open button opens that dossier", rs.openDossier === "ruangrapi" && rs.dossierVia === "logbook",
+    `openDossier=${rs.openDossier} via=${rs.dossierVia}`);
+  checks.check("re-opening closes the sheet and focuses the dossier", !rs.logbookOpen && /dossier/i.test(reopenFocus), `focus=${reopenFocus}`);
+  await page.keyboard.press("Escape");
+  await settle(page, 2500);
+  rs = await readStore(page);
+  const posAfter = await page.evaluate(() => ({ ...window.__fitz.probes.ruangrapi }));
+  checks.check("closing a dossier opened from the logbook moves no probe",
+    rs.openDossier === null && JSON.stringify(rs.probeSpots) === JSON.stringify(spotsBefore)
+      && Math.hypot(posAfter.x - posBefore.x, posAfter.y - posBefore.y, posAfter.z - posBefore.z) < 1e-3,
+    `spots ${JSON.stringify(spotsBefore)} -> ${JSON.stringify(rs.probeSpots)}`);
 
   // Persistence, the tamper guard, and no announcements for old progress.
   await page.evaluate(() => localStorage.setItem("fitz-plume", JSON.stringify("ring")));

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ChatterScheduler } from "../../utils/chatterScheduler";
+import { ChatterScheduler, chatterZone } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { useSpaceStore } from "../../store/spaceStore";
 import { soundManager } from "../../audio/soundManager";
@@ -45,10 +45,11 @@ export default function RadioChatter() {
           return;
         }
         const s = useSpaceStore.getState();
+        const zone = chatterZone(s.activeZone, s.probeNear);
         typeLine(
           s.isWarping
             ? scheduler.pick("warp")
-            : scheduler.pick(s.activeZone ? "zone" : "ambient", s.activeZone)
+            : scheduler.pick(zone ? "zone" : "ambient", zone)
         );
       }, scheduler.nextDelayMs());
     };
@@ -59,11 +60,17 @@ export default function RadioChatter() {
       if (flavourAllowed(performance.now(), heldUntil)) typeLine(pick());
     };
 
-    // Zone entry interrupts the ambient cadence immediately
+    // Zone entry interrupts the ambient cadence immediately: a destination's
+    // zone (activeZone: contact, career, shipyard) or a project probe coming
+    // in range (probeNear: its project's pool). Planets have no zone.
     const unsubs = [
       useSpaceStore.subscribe(
         (s) => s.activeZone,
         (zone) => { if (zone) flavour(() => scheduler.pick("zone", zone)); }
+      ),
+      useSpaceStore.subscribe(
+        (s) => s.probeNear,
+        (id) => { if (id) flavour(() => scheduler.pick("zone", id)); }
       ),
       useSpaceStore.subscribe(
         (s) => s.cometNear,
