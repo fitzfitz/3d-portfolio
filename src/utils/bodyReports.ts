@@ -68,7 +68,7 @@ export function bodyReport(b: SolarBody, gameSeconds: number): string {
     `${b.name} · ${b.ordinal}`,
     `DIAMETER ${n(b.diameterKm)} KM · DRAWN ${n(enlargement(b.diameterKm))}× TRUE SIZE`,
     `NOW ${now.rAU.toFixed(2)} AU FROM THE SUN · ${now.speedKmS.toFixed(1)} KM/S`,
-    `ORBIT ${o.a.toFixed(2)} AU (${(o.a * (1 - o.e)).toFixed(2)}–${(o.a * (1 + o.e)).toFixed(2)}) · e ${o.e.toFixed(3)} · i ${((o.i * 180) / Math.PI).toFixed(2)}° · YEAR ${(b.facts.yearDays / 365.25).toFixed(2)} EARTH-YR`,
+    `ORBIT ${o.a.toFixed(2)} AU (${(o.a * (1 - o.e)).toFixed(2)}–${(o.a * (1 + o.e)).toFixed(2)}) · e ${o.e.toFixed(3)} · i ${Math.abs((o.i * 180) / Math.PI).toFixed(2)}° · YEAR ${(b.facts.yearDays / 365.25).toFixed(2)} EARTH-YR`,
     `DAY ${b.facts.dayHours.toFixed(1)} H · TILT ${b.obliquityDeg.toFixed(1)}° · MOONS ${b.facts.moons}`,
     BODY_FACTS[b.id].join(" · "),
     `ORRERY DATE ${formatOrreryDate(jd)} · SPINS AND MOONS ILLUSTRATIVE`,

@@ -22,7 +22,7 @@ describe("bodyReport: the real scan, line by line", () => {
       expect(lines[0]).toBe(`${b.name} · ${b.ordinal}`);
       expect(lines[1]).toBe(`DIAMETER ${Math.round(b.diameterKm).toLocaleString("en-US")} KM · DRAWN ${Math.round(enlargement(b.diameterKm)).toLocaleString("en-US")}× TRUE SIZE`);
       expect(lines[2]).toBe(`NOW ${h.rAU.toFixed(2)} AU FROM THE SUN · ${h.speedKmS.toFixed(1)} KM/S`);
-      expect(lines[3]).toBe(`ORBIT ${o.a.toFixed(2)} AU (${(o.a * (1 - o.e)).toFixed(2)}–${(o.a * (1 + o.e)).toFixed(2)}) · e ${o.e.toFixed(3)} · i ${((o.i * 180) / Math.PI).toFixed(2)}° · YEAR ${(b.facts.yearDays / 365.25).toFixed(2)} EARTH-YR`);
+      expect(lines[3]).toBe(`ORBIT ${o.a.toFixed(2)} AU (${(o.a * (1 - o.e)).toFixed(2)}–${(o.a * (1 + o.e)).toFixed(2)}) · e ${o.e.toFixed(3)} · i ${Math.abs((o.i * 180) / Math.PI).toFixed(2)}° · YEAR ${(b.facts.yearDays / 365.25).toFixed(2)} EARTH-YR`);
       expect(lines[4]).toBe(`DAY ${b.facts.dayHours.toFixed(1)} H · TILT ${b.obliquityDeg.toFixed(1)}° · MOONS ${b.facts.moons}`);
       expect(BODY_FACTS[b.id].length).toBeGreaterThanOrEqual(2);
       expect(lines[5]).toBe(BODY_FACTS[b.id].join(" · "));
