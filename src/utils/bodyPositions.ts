@@ -40,6 +40,10 @@ export function heliocentric(b: SolarBody, gameSeconds: number): { rAU: number; 
 /** Fixed per body, computed once: the frame loop allocates nothing. */
 const SLOTS = SOLAR_BODIES.map((b) => bodySlot(b.id));
 
+let lastGameSeconds = 0;
+/** The game time `bodies` was last written for: the HUD and the chart date themselves from it, so date and positions agree. */
+export const bodiesGameSeconds = (): number => lastGameSeconds;
+
 /**
  * The frame drive, the one writer of `bodies`: each body's position into
  * `out[b.id]` (in place; no other key is touched), its scannable (measured
@@ -48,6 +52,7 @@ const SLOTS = SOLAR_BODIES.map((b) => bodySlot(b.id));
  * (sunShadow.ts); the CPU lists read it from `bodies`.
  */
 export function updateBodies(gameSeconds: number, out: Record<BodyId, Vec3>): void {
+  lastGameSeconds = gameSeconds;
   const jd = orreryJd(gameSeconds);
   for (let i = 0; i < SOLAR_BODIES.length; i++) {
     const b = SOLAR_BODIES[i];

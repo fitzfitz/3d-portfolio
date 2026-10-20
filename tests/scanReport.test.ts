@@ -36,14 +36,15 @@ describe("generateScanReport", () => {
 
 it("body scans are titled by the body's real name and report the body", async () => {
   const { SOLAR_BODIES } = await import("../src/data/solarSystem");
-  const { worldReport } = await import("../src/utils/worldReports");
+  const { bodyReport } = await import("../src/utils/bodyReports");
   for (const b of SOLAR_BODIES) {
     expect(generateScanReport(b.id, 12).startsWith(`SCAN[${b.name}] // `), b.id).toBe(true);
-    expect(generateScanReport(b.id, 12)).toBe(worldReport(b, 12));
+    expect(generateScanReport(b.id, 12)).toBe(bodyReport(b, 12));
     expect(generateScanReport(b.id, 12)).not.toMatch(/MASS CLASS/);
   }
 });
 
-it("body scans end with the orbit in real units", () => {
-  expect(generateScanReport("mars")).toMatch(/ \/\/ ORBIT 1\.52 AU · YEAR 1\.88 EARTH-YR$/);
+it("body scans carry the orbit in real units and end with the orrery date", () => {
+  expect(generateScanReport("mars")).toMatch(/ \/\/ ORBIT 1\.52 AU \(1\.38–1\.67\) · e 0\.093 · i 1\.85° · YEAR 1\.88 EARTH-YR \/\//);
+  expect(generateScanReport("mars")).toMatch(/ \/\/ ORRERY DATE \d{4}-\d{2}-\d{2} · SPINS AND MOONS ILLUSTRATIVE$/);
 });

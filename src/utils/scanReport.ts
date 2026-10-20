@@ -3,7 +3,7 @@ import { ghostRegistry, ghostReport } from "./liveSky";
 import { BUOYS } from "../data/careerTrail";
 import { isBodyId } from "../data/bodyIds";
 import { bodyById } from "../data/solarSystem";
-import { worldReport } from "./worldReports";
+import { bodyReport } from "./bodyReports";
 
 /** One report per career buoy: the posting it marks, from src/data/career.ts. */
 const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
@@ -42,14 +42,14 @@ export function generateScanReport(id: string, gameSeconds = 0): string {
   if (beacon) return beaconReport(beacon, Date.now());
   const buoy = BUOY_REPORTS.get(id);
   if (buoy) return buoy;
-  if (isBodyId(id)) return worldReport(bodyById(id), gameSeconds);
+  if (isBodyId(id)) return bodyReport(bodyById(id), gameSeconds);
   const fixed = FIXED_REPORTS[id];
   if (fixed) return fixed;
   const h = hash(id);
   const e1 = ELEMENTS[h % ELEMENTS.length];
-  const e2 = ELEMENTS[(h >> 3) % ELEMENTS.length];
+  const e2 = ELEMENTS[(h >>> 3) % ELEMENTS.length];
   const p1 = 20 + (h % 45);
-  const p2 = 5 + ((h >> 5) % 30);
-  const quip = QUIPS[(h >> 8) % QUIPS.length];
+  const p2 = 5 + ((h >>> 5) % 30);
+  const quip = QUIPS[(h >>> 8) % QUIPS.length];
   return `SCAN[${id.toUpperCase()}] // ${e1} ${p1}% · ${e2} ${p2}% · UNKNOWN ${100 - p1 - p2}% // ${quip}`;
 }

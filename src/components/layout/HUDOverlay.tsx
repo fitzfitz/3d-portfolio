@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { speedKmS, distanceAU } from "../../utils/realUnits";
+import { bodiesGameSeconds } from "../../utils/bodyPositions";
+import { formatOrreryDate, orreryJd } from "../../utils/orreryClock";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
 import { PROBES } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
@@ -96,6 +98,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const velRef = useRef<HTMLDivElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
   const sunDistRef = useRef<HTMLSpanElement>(null);
+  const orreryDateRef = useRef<HTMLSpanElement>(null);
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
   const oreRef = useRef<HTMLDivElement>(null);
@@ -111,6 +114,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S · ${((kmS / LIGHT_KM_S) * 100).toFixed(3)}% C`;
       if (sunDistRef.current)
         sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
+      if (orreryDateRef.current) orreryDateRef.current.textContent = ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`;
       // Accent while a gravity assist carries the ship past cruise speed.
       if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
@@ -216,6 +220,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div ref={velRef} data-testid="hud-velocity">
           <span ref={speedRef}>VELOCITY: 0 KM/S</span>
           <span ref={sunDistRef} data-testid="hud-sun-distance" className="hidden sm:inline"> · SUN 0.00 AU</span>
+          <span ref={orreryDateRef} data-testid="hud-orrery-date" className="hidden sm:inline"> · ORRERY {formatOrreryDate(orreryJd(0))}</span>
         </div>
         <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">

@@ -137,7 +137,7 @@ async function desktop(page, checks) {
   await page.evaluate(() => { window.__fitz.flight.input.scan = false; });
   const scanned = await readStore(page);
   checks.check("scanning a body charts it", charted.ok && scanned.charted[0]?.id === "ceres", JSON.stringify(scanned.charted));
-  checks.check("the body's scan report is on the radio", /^SCAN\[CERES\] \/\/ DWARF PLANET/.test(scanned.broadcast?.text ?? ""), scanned.broadcast?.text);
+  checks.check("the body's scan report is on the radio", /^SCAN\[CERES\] \/\/ CERES · DWARF PLANET \/\/ DIAMETER 939 KM/.test(scanned.broadcast?.text ?? ""), scanned.broadcast?.text);
   const line = await pollUntil(async () => ((await readStore(page)).broadcast?.text ?? "").startsWith("WORLD CHARTED") ? true : null,
     { timeoutMs: 15_000, intervalMs: 300 });
   checks.check("the charting line follows the report", line.ok && /^WORLD CHARTED 1\/9 — CERES: /.test((await readStore(page)).broadcast?.text ?? ""),

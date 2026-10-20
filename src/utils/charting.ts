@@ -1,7 +1,7 @@
 import { isBodyId, LEGACY_WORLD_TO_BODY, type BodyId } from "../data/bodyIds";
 import { BODY_COUNT, bodyById } from "../data/solarSystem";
 import { CHART_TOTAL } from "./liveSkyProtocol";
-import { BODY_FACTS } from "./worldReports";
+import { BODY_FACTS } from "./bodyReports";
 
 /**
  * Charting the bodies (spec "Charting, logbook and title"; real-solar-system

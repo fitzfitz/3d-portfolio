@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/constants";
 import { SIZE_LAW_JUPITER_R, JUPITER_DIAMETER_KM, enlargement } from "../src/utils/sizeLaw";
 import { visVivaKmS } from "../src/utils/ephemeris";
-import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND, speedKmS, distanceAU, earthYears, formatOrbit, SIZE_ENLARGEMENT, ORRERY_NOTE } from "../src/utils/realUnits";
+import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND, speedKmS, distanceAU, earthYears, ORRERY_NOTE } from "../src/utils/realUnits";
 
 // These are the numbers in docs/UNIVERSE-RULES.md "Units". Change both together.
 describe("real units", () => {
@@ -27,16 +27,11 @@ describe("real units", () => {
   it("orbits read in AU and Earth years", () => {
     expect(distanceAU(115)).toBe(1);
     expect(earthYears(420)).toBeCloseTo(1, 9);
-    expect(formatOrbit(1.00000261, 365.256)).toBe("ORBIT 1.00 AU · YEAR 1.00 EARTH-YR");
-    expect(formatOrbit(1.52371034, 686.98)).toBe("ORBIT 1.52 AU · YEAR 1.88 EARTH-YR");
-    expect(formatOrbit(30.06992276, 60189)).toBe("ORBIT 30.07 AU · YEAR 164.79 EARTH-YR");
   });
-  it("the orrery note states the real enlargement, the clock and the dark-surface display curve", () => {
-    // Jupiter at the size law's 22 u (Task 11 replaces the note).
-    expect(SIZE_ENLARGEMENT).toBe(400);
-    expect(SIZE_ENLARGEMENT).toBe(Math.round(enlargement(JUPITER_DIAMETER_KM) / 10) * 10);
-    expect(SIZE_LAW_JUPITER_R).toBe(22); // realUnits restates it (import cycle)
-    expect(ORRERY_NOTE).toBe("THREE ORRERY CONVENTIONS: PLANETS DRAWN ~400× JUPITER'S SIZE · 1 S ≈ 21 H, MOON SYSTEMS ON THEIR OWN SLOWER CLOCK · DARK SURFACES DRAWN BRIGHTER THAN TRUE");
+  it("the orrery note is the conventions copy, verbatim", () => {
+    expect(SIZE_LAW_JUPITER_R).toBe(22);
+    expect(Math.round(enlargement(JUPITER_DIAMETER_KM))).toBe(400);
+    expect(ORRERY_NOTE).toBe("ORRERY CONVENTIONS: POSITIONS ARE REAL FOR THE ORRERY DATE · 1 S ≈ 21 H, A YEAR EVERY 7 MIN · BODIES DRAWN ENLARGED, BIGGER ONES LESS (RADIUS ∝ DIAMETER^0.4); THE SUN IS NOT TO THAT SCALE · MOONS AND SPINS RUN ON A CLOSE-UP CLOCK (1 S ≈ 1.2 H) AND ARE ILLUSTRATIVE; MAJOR MOONS ONLY · DARK SURFACES DRAWN BRIGHTER THAN TRUE");
   });
 });
 
