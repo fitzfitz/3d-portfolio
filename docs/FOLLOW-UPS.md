@@ -51,13 +51,13 @@ Delete an entry when it is fixed.
   program and draw-call budgets (one Points per magnitude band).
 - **The sun slingshot is a knife-edge.** With the Sun's well cut to 34 u
   (inside Mercury's perihelion, PR #40) and G 3,500, a sun skim leaves above
-  SLINGSHOT_SPEED only for impact parameters b ≈ 29.5–30.5 u; the test flies
-  a single b (30). It is earnable but hard to find by hand. Revisit with F2
-  (Newtonian ship gravity), which replaces the well law; do not retune G
-  alone, since 4,000 already brings a surface touch. Note (2026-10-21): only
-  the nine roster bodies' wells are watched for a slingshot (Spaceship's
-  `wellNow` loop over BODY_REACH), so a fast exit from the Sun's well earns
-  no whoosh, line or badge today; the physics test alone shows it is fast.
+  SLINGSHOT_SPEED only for impact parameters b ≈ 29.5–30.5 u; the tests fly
+  a single b (30). Since 2026-10-21 the Sun's well is watched like a
+  planet's (`wellAt` over every active well), so that skim earns the whoosh,
+  the radio line and the badge (tests/gravityWell.test.ts), but the window is
+  still hard to find by hand. Revisit with F2 (Newtonian ship gravity), which
+  replaces the well law; do not retune G alone, since 4,000 already brings a
+  surface touch.
 - **SwiftShader start-up rose with the real Solar System.** The start-up
   probe's best of three read 13.0 s and 15.4 s in two full runs on PR #40's
   branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not

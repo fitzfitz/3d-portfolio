@@ -21,13 +21,14 @@ describe("LOGBOOK", () => {
   it("gives every badge a plume and no essential one", () => {
     for (const e of LOGBOOK) expect(e.plume).toBe(e.section === "badge");
   });
-  it("hints the slingshot by what earns it: a fast exit from a planet's well, in both hints", () => {
-    // Only the roster bodies have slingshot wells (Spaceship's BODY_WELLS:
-    // the eight planets and dwarf Ceres); the moons have none, and leaving
-    // the Sun's well does not count.
+  it("hints the slingshot by what earns it: a fast exit from a planet's or the Sun's well", () => {
+    // The slingshot watch covers the roster bodies' wells (Spaceship's
+    // BODY_WELLS: the eight planets and dwarf Ceres) and the Sun's; the moons
+    // have none. The short hint names no body, so it stays true for all ten.
     for (const b of BODY_REACH) expect(bodyById(b.key).ordinal).toMatch(/PLANET$/);
-    expect(byId("slingshot").hint).toBe("SKIM A PLANET AND LEAVE FAST");
-    expect(byId("slingshot").hintShort).toBe("SLINGSHOT A PLANET");
+    expect(byId("slingshot").hint).toBe("SKIM A PLANET OR THE SUN, LEAVE FAST");
+    expect(byId("slingshot").hintShort).toBe("GRAVITY SLINGSHOT");
+    expect(byId("slingshot").hintShort.length).toBeLessThanOrEqual(18);
   });
 });
 

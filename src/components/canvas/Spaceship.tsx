@@ -28,7 +28,7 @@ import { cruiseCap } from "../../utils/speedCap";
 import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
 import { CRYSTAL_LANDMARKS } from "../../utils/crystalField";
 import {
-  stepGravity, gravityMode, SlingshotWatch, type Well,
+  stepGravity, gravityMode, SlingshotWatch, wellAt, SUN_WELL_ID, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
 } from "../../utils/gravityWell";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
@@ -115,6 +115,8 @@ const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }
 const BODY_WELLS: Well[] = BODY_REACH.map(planetWell);
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
 const ACTIVE_WELLS: Well[] = Array.from({ length: BODY_REACH.length + 1 }, () => ({ ...SUN_WELL }));
+/** Names ACTIVE_WELLS for the slingshot watch, in the same order: the bodies, then the Sun. */
+const WELL_IDS = [...BODY_REACH.map((b) => b.key), SUN_WELL_ID];
 const slingshotLines = new ChatterScheduler(chatterPools);
 /**
  * The engine material's original emissive colour, captured the first time the
@@ -699,12 +701,8 @@ export default function Spaceship() {
     const totalSpeed = _total.length();
     beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
-    // Which body's well the ship is in now; leaving one fast is a slingshot.
-    let wellNow: string | null = null;
-    for (let i = 0; i < BODY_REACH.length; i++) {
-      const b = bodies[BODY_REACH[i].key];
-      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = BODY_REACH[i].key; break; }
-    }
+    // Which well the ship is in now, the Sun's included; leaving one fast is a slingshot.
+    const wellNow = wellAt(pos.current, ACTIVE_WELLS, WELL_IDS, wellCount);
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
       Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,

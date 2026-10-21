@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
-  stepGravity, wellAccel, gravityMode, SlingshotGate, SlingshotWatch, type Well,
+  stepGravity, wellAccel, gravityMode, SlingshotGate, SlingshotWatch, wellAt, SUN_WELL_ID, type Well,
   PLANET_WELL_G, PLANET_WELL_RADIUS_FACTOR, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX, SPEED_CEILING, STATION_KEEP_AFTER, CLIMB_OUT,
   WELL_REF_SIZE, planetWell, wellStrength, SLINGSHOT_SPEED,
 } from "../src/utils/gravityWell";
@@ -30,8 +31,12 @@ interface Flight {
  * does). Nose fixed at +x; W held unless `thrust` is false. `size` is the
  * first well's planet size.
  */
-function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; seconds?: number; thrust?: boolean; dt?: number; size?: number }): Flight {
-  const { b, x0 = -90, v0 = MAX, wells = [planet()], seconds = 16, thrust = true, dt = 1 / 60, size = WELL_REF_SIZE } = opts;
+function fly(opts: {
+  b: number; x0?: number; v0?: number; wells?: Well[]; seconds?: number; thrust?: boolean; dt?: number; size?: number;
+  /** Called after every step with the time, the ship and its total speed, as Spaceship reads them. */
+  onFrame?: (t: number, p: { x: number; y: number; z: number }, speed: number, gMag: number) => void;
+}): Flight {
+  const { b, x0 = -90, v0 = MAX, wells = [planet()], seconds = 16, thrust = true, dt = 1 / 60, size = WELL_REF_SIZE, onFrame } = opts;
   const p = v3(x0, b, 0), v = v3(v0, 0, 0), G = v3();
   const start = { ...p };
   let idleFor = 0, minR = Infinity, peak = 0, wasIn = false;
@@ -55,6 +60,7 @@ function fly(opts: { b: number; x0?: number; v0?: number; wells?: Well[]; second
     peak = Math.max(peak, s);
     if (wasIn && r >= wells[0].radius && exitSpeed === null) exitSpeed = s;
     wasIn = wasIn || r < wells[0].radius;
+    onFrame?.(i * dt, p, s, Math.hypot(G.x, G.y, G.z));
   }
   return { minR, peak, exitSpeed, touched, start, end: { ...p } };
 }
@@ -325,5 +331,45 @@ describe("SlingshotWatch (review #4, #5)", () => {
   });
   it("keeps quiet on the radio during a race", () => {
     expect(exitAt(20, { race: true })).toEqual({ whoosh: true, line: false });
+  });
+});
+
+describe("the Sun's well counts for the slingshot, by the planets' rules", () => {
+  /** Flies past the sun alone, feeding SlingshotWatch as Spaceship does; returns the exit speed and whether it whooshed. */
+  function pass(b: number, seconds = 16) {
+    const w = new SlingshotWatch(), out = { whoosh: false, line: false };
+    const wells = [sun()], ids = [SUN_WELL_ID];
+    let whoosh = false, line = false;
+    const f = fly({ b: -b, x0: -60, wells, seconds, size: SUN_COLLIDER.r, onFrame: (t, p, speed, gMag) => {
+      w.update(t, 0, wellAt(p, wells, ids, wells.length), speed, gMag, false, false, out);
+      whoosh ||= out.whoosh; line ||= out.line;
+    } });
+    return { ...f, whoosh, line };
+  }
+  it("names the well the ship is in, the first of the active ones, or none", () => {
+    const wells = [planet(300, 0, 0), sun(), planet(5000, 0, 0)], ids = ["p", SUN_WELL_ID, "far"];
+    expect(wellAt(v3(-20, 0, 0), wells, ids, 3)).toBe(SUN_WELL_ID);
+    expect(wellAt(v3(330, 0, 0), wells, ids, 3)).toBe("p");
+    expect(wellAt(v3(0, SUN_WELL_RADIUS + 0.01, 0), wells, ids, 3)).toBeNull();
+    expect(wellAt(v3(5000, 0, 0), wells, ids, 2)).toBeNull(); // only the first `count`
+  });
+  it("a lawful skim at b = 30 u leaves above SLINGSHOT_SPEED and earns it: whoosh and radio line", () => {
+    const f = pass(30);
+    expect(f.touched).toBe(false);
+    expect(f.exitSpeed!).toBeGreaterThan(SLINGSHOT_SPEED);
+    expect(f.whoosh).toBe(true);
+    expect(f.line).toBe(true);
+  });
+  it("a slower pass through the same well earns nothing", () => {
+    const f = pass(33);
+    expect(f.minR).toBeLessThan(SUN_WELL_RADIUS); // it was in the well
+    expect(f.exitSpeed!).toBeLessThan(SLINGSHOT_SPEED);
+    expect(f.whoosh).toBe(false);
+    expect(f.line).toBe(false);
+  });
+  it("Spaceship watches every active well, the Sun's last, so a planet's well still wins where they overlap", () => {
+    const ship = readFileSync("src/components/canvas/Spaceship.tsx", "utf8");
+    expect(ship).toMatch(/const WELL_IDS = \[\.\.\.BODY_REACH\.map\(\(b\) => b\.key\), SUN_WELL_ID\]/);
+    expect(ship).toMatch(/const wellNow = wellAt\(pos\.current, ACTIVE_WELLS, WELL_IDS, wellCount\);/);
   });
 });
