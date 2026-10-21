@@ -55,15 +55,6 @@ Delete an entry when it is fixed.
     WaypointDriver's real list); the codec-fidelity guard skips in CI (no
     `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
     never type-checked.
-- **E2E timing gambles the GPU does not remove:** `transition.probe.mjs`'s two
-  orbit-lock setups miss at 25–46% of orbital phases (1–2.5 s of drift), and
-  the 1800 ms `breakOrbit` cooldown can block the second lock (:676/:684).
-  Pinning orbital phase with a debug hook would make its counters
-  pose-determined. `logbook.probe.mjs:28` reads the badge line 400 ms after
-  `recordBadge`; if any broadcast (silent chatter too) went out in the 3 s
-  before (`BADGE_LINE_HOLD_MS`), `announceLogbook` defers the line by 4.5 s
-  (`BADGE_LINE_DELAY_MS`) and the read misses it. Poll the aria-live text for
-  SLINGSHOT EARNED (about 6 s) instead of a fixed settle.
 - **The real star catalogue.** The background is still the painted Milky Way
   and three random star shells (L24). An astronomy fan who flies to Earth
   expects the real sky: the constellations from a catalogue (e.g. Hipparcos
