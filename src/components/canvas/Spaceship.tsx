@@ -40,7 +40,7 @@ import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
 import { allOccluders, patchSunShadow } from "./sunShadow";
 import { sunVisibility } from "../../utils/sunOcclusion";
 import { BODY_REACH } from "../../data/solarSystem";
-import { resolveWorldContact, keepCameraOutsideBodies, SOLID_BODIES } from "../../utils/worldCollide";
+import { resolveWorldContact, keepCameraOutsideBodies, shakeCamera, SOLID_BODIES } from "../../utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
 // Per-second physics constants (converted from the old per-frame@60fps values)
@@ -806,10 +806,10 @@ export default function Spaceship() {
     // Shake intentionally freezes while orbit-locked (early return above skips
     // this block entirely) and resumes decaying from wherever it left off
     // once orbit breaks.
+    // Kept outside every body afterwards too: right after a push-out the
+    // camera rests at a body's camera radius (worldCollide.ts).
     if (shake.current > 0.001 && !useSpaceStore.getState().reducedMotion) {
-      state.camera.position.x += (Math.random() - 0.5) * shake.current;
-      state.camera.position.y += (Math.random() - 0.5) * shake.current;
-      state.camera.position.z += (Math.random() - 0.5) * shake.current;
+      shakeCamera(state.camera.position, shake.current, Math.random, SOLID_CENTERS);
     }
     if (shake.current > 0.001) {
       shake.current *= Math.pow(0.03, dt);

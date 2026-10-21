@@ -122,3 +122,18 @@ export function keepCameraOutsideBodies(cam: Vec3, centers: Readonly<Record<stri
     if (c) keepOutside(cam, c, b.cameraR);
   }
 }
+
+/**
+ * The impact shake: jolts the camera by (random − 0.5) × `amount` on each
+ * axis, then keeps it outside every body again. The chase camera has just
+ * been kept out (keepCameraOutsideBodies), and right after a push-out it
+ * rests at a body's camera radius, so an inward jolt (up to 0.43 at the
+ * impact's 0.5) left the near plane's corners inside the surface. In place,
+ * allocation-free.
+ */
+export function shakeCamera(cam: Vec3, amount: number, random: () => number, centers: Readonly<Record<string, Vec3>>): void {
+  cam.x += (random() - 0.5) * amount;
+  cam.y += (random() - 0.5) * amount;
+  cam.z += (random() - 0.5) * amount;
+  keepCameraOutsideBodies(cam, centers);
+}
