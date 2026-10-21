@@ -29,8 +29,13 @@ Delete an entry when it is fixed.
   the toe) and re-baselines every body, so it is the same owner call as the
   one above. Screenshots: the real-solar-system run's Task 15 look check.
   Both were seen with the studio IBL still on the bodies; PR #42 took it
-  off (`noIbl.ts`, L29), and its orange and cyan panels had tinted lit sides
-  too (Mars's lit-half red fell ~7% at one pose), so re-shoot before ruling.
+  off (`noIbl.ts`, L29), and its orange and cyan panels tinted lit sides
+  too. Same pose and exposure, 2.5× size at 22° phase, inner 60% of the
+  disc, IBL on → off: median luma Venus 39.9 → 39.3, Earth 23.5 → 21.8,
+  Mars 36.6 → 35.6, Jupiter 48.7 → 47.4, Saturn 52.3 → 50.7, Uranus
+  45.5 → 43.7; mean sRGB blue Saturn 22.3 → 18.3, Uranus 45.0 → 42.0,
+  Earth 26.3 → 22.3 (the cyan panel had been adding blue). Re-shoot
+  before ruling.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
