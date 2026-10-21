@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AU, SYSTEM_RADIUS } from "../src/constants";
-import { AMBIENT_BASE, applyFill, fillLight, fillScale, irradianceVsAU, targetExposure } from "../src/utils/sunLight";
+import { AMBIENT_BASE, EXPOSURE_LIFT, applyFill, fillLight, fillScale, irradianceVsAU, targetExposure } from "../src/utils/sunLight";
 
 describe("the fill falls off with the sunlight (L19)", () => {
   it("is full at 1 AU and a quarter at 2 AU", () => {
@@ -12,7 +12,7 @@ describe("the fill falls off with the sunlight (L19)", () => {
   });
   it("fill × exposure is constant from 1 AU to the edge: the night-to-day ratio no longer changes with distance", () => {
     for (const d of [AU, 150, 185, 242, 300, 402, SYSTEM_RADIUS]) {
-      expect(fillScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(1, 12);
+      expect(fillScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT, 12);
     }
   });
   it("is clamped to 1 inside 1 AU", () => {

@@ -1,4 +1,4 @@
-import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText } from "./harness.mjs";
+import { withPage, settle, nextFrames, lockFullFidelity, readStore, pollUntil, chatterText } from "./harness.mjs";
 
 /**
  * Shipyard and dormant gate (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md):
@@ -50,7 +50,8 @@ export default async function run() {
     checks.check("focus moves into the Hangar", /close hangar/i.test(hangar?.focus ?? ""), hangar?.focus ?? "");
 
     // Plume: gold (earned above) changes uColor and adds no program; ring stays locked.
-    const before = await page.evaluate(() => window.__fitz.gl.info.programs.length);
+    const glState = () => page.evaluate(() => ({ programs: window.__fitz.gl.info.programs.length, frame: window.__fitz.gl.info.render.frame }));
+    const before = await glState();
     await page.click('[data-testid="plume-slingshot"]');
     await settle(page, 600);
     const after = await page.evaluate(() => {
@@ -59,16 +60,22 @@ export default async function run() {
         const u = o.material?.uniforms;
         if (!hex && u?.uColor && u?.uPower && o.name !== "TractorBeamCone") hex = u.uColor.value.getHexString();
       });
-      return { hex, programs: window.__fitz.gl.info.programs.length, plume: window.__fitz.store.getState().plumeColor };
+      return { hex, plume: window.__fitz.store.getState().plumeColor };
     });
     checks.check("picking gold in the Hangar sets the plume colour", after.plume === "slingshot" && after.hex === "ffc23d", JSON.stringify(after));
-    checks.check("a plume colour adds no shader program", after.programs === before, `before=${before} after=${after.programs}`);
     checks.check("a locked plume cannot be picked",
       await page.evaluate(() => document.querySelector('[data-testid="plume-ring"]')?.disabled === true));
     // A swatch click must not trap the keyboard: Esc still closes the Hangar.
     await page.keyboard.press("Escape");
     await settle(page, 2500);
     checks.check("Esc closes the Hangar after a plume click", !(await readStore(page)).isOrbitLocked);
+    // Docked, the scene is frozen (no frame draws, so nothing could compile):
+    // count the programs only once the undocked scene has drawn the gold plume.
+    await nextFrames(page, 10);
+    const drawn = await glState();
+    checks.check("a plume colour adds no shader program (counted after frames drew it)",
+      drawn.frame > before.frame && drawn.programs === before.programs,
+      `before=${before.programs} after=${drawn.programs}, frames ${before.frame} -> ${drawn.frame}`);
 
     // The crane trolley slides (reduced motion is off in this probe).
     const trolleyX = () => page.evaluate(() => {

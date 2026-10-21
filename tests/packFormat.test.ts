@@ -11,7 +11,7 @@ describe("asset pack format", () => {
       { path: "models/c.bin", bytes: bytes(9, 8, 7, 6) },
     ];
     const pack = encodePack(files);
-    const buf = pack.buffer.slice(pack.byteOffset, pack.byteOffset + pack.byteLength);
+    const buf = new Uint8Array(pack).buffer; // a copy of exactly the pack's bytes
     const { entries, dataStart } = decodePackIndex(buf);
 
     expect(entries.map((e) => [e.path, e.type])).toEqual([
@@ -28,7 +28,7 @@ describe("asset pack format", () => {
   it("rejects anything that is not a whole pack", () => {
     expect(() => decodePackIndex(new ArrayBuffer(4))).toThrow(/magic/);
     const pack = encodePack([{ path: "models/a.glb", bytes: bytes(1, 2, 3, 4) }]);
-    expect(() => decodePackIndex(pack.buffer.slice(0, pack.length - 1))).toThrow(/past the end/);
+    expect(() => decodePackIndex(new Uint8Array(pack.subarray(0, pack.length - 1)).buffer)).toThrow(/past the end/);
   });
 
   it("packTier sorts files into tiers by the _4k naming", () => {

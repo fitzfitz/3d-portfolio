@@ -196,6 +196,83 @@ async function sunDisc(page, shot, coronaDelta = false) {
 const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(a, b);
 
 /**
+ * L29: parks the ship beside `id`, square to the sunlight, with its night
+ * half on screen, hides the HUD and the hull, and returns the mean sRGB of
+ * that night half (inner 80% of the disc, more than 0.2 radii past the
+ * terminator). Lit by the ambient fill alone it is neutral, tinted only by
+ * the body's own map; the studio IBL (GlobalCanvas.tsx) used to add its
+ * orange panel there (noIbl.ts).
+ */
+async function nightHalf(page, id) {
+  const geom = await page.evaluate(async (id, back, up) => {
+    const { bodyById } = await import("/src/data/solarSystem.ts");
+    const d = window.__fitz;
+    const b = d.bodies[id], R = bodyById(id).size;
+    const len = Math.hypot(b.x, b.y, b.z);
+    const out = [b.x / len, b.y / len, b.z / len];
+    const hl = Math.hypot(out[0], out[2]);
+    const n = [-out[2] / hl, 0, out[0] / hl]; // square to the sunlight, level
+    const s = [b.x + n[0] * R * 3.2, b.y, b.z + n[2] * R * 3.2];
+    d.teleport(...s);
+    d.setAttitude(Math.atan2(-n[0], -n[2]), 0);
+    d.camera.position.set(s[0] + n[0] * back, s[1] + up, s[2] + n[2] * back);
+    const hull = new Set(d.shipShadow?.materials ?? []);
+    d.scene.traverse((o) => { if (hull.has(o.material)) { o.userData.probeHidden = true; o.visible = false; } });
+    return { R };
+  }, id, CAM_BACK, CAM_UP);
+  await page.evaluate(() => {
+    const st = document.createElement("style");
+    st.dataset.probe = "hide-hud";
+    st.textContent = "body * { visibility: hidden !important; } canvas { visibility: visible !important; }";
+    document.head.appendChild(st);
+  });
+  await settle(page, 1500);
+  await nextFrames(page, 2);
+  // Where the disc and its sunward direction are, from the same camera as the shot.
+  const at = await page.evaluate((id, R) => {
+    const d = window.__fitz, cam = d.camera, b = d.bodies[id];
+    const c = new cam.position.constructor(b.x, b.y, b.z);
+    const toSun = c.clone().multiplyScalar(1 - R / c.length());
+    const W = window.innerWidth, H = window.innerHeight;
+    const px = (v) => { v.project(cam); return [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * H]; };
+    const dist = cam.position.distanceTo(c);
+    const rpx = (R / Math.sqrt(dist * dist - R * R)) / Math.tan((cam.fov * Math.PI) / 360) * (H / 2);
+    return { c: px(c.clone()), s: px(toSun), rpx };
+  }, id, geom.R);
+  const b64 = await page.screenshot({ encoding: "base64" });
+  await page.evaluate(() => {
+    document.querySelector('style[data-probe="hide-hud"]')?.remove();
+    window.__fitz.scene.traverse((o) => { if (o.userData.probeHidden) { o.visible = true; delete o.userData.probeHidden; } });
+  });
+  return page.evaluate(async (b64, at) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const k = img.width / window.innerWidth;
+    const [cx, cy] = [at.c[0] * k, at.c[1] * k], R = at.rpx * k;
+    let ux = at.s[0] - at.c[0], uy = at.s[1] - at.c[1];
+    const ul = Math.hypot(ux, uy); ux /= ul; uy /= ul;
+    const data = ctx.getImageData(0, 0, c.width, c.height).data;
+    const sum = [0, 0, 0];
+    let n = 0;
+    for (let y = Math.max(0, Math.floor(cy - R)); y < Math.min(c.height, cy + R); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R)); x < Math.min(c.width, cx + R); x++) {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        if (dx * dx + dy * dy > (0.8 * R) ** 2 || (dx * ux + dy * uy) / R > -0.2) continue;
+        const i = (y * c.width + x) * 4;
+        sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2]; n++;
+      }
+    }
+    return { rgb: sum.map((v) => (n ? v / n : 0)), n, rpx: at.rpx };
+  }, b64, at);
+}
+
+
+/**
  * F3 exposure checks for the tier currently rendering. Reduced motion is on,
  * so the exposure snaps to its target every frame.
  */
@@ -208,7 +285,9 @@ async function exposureChecks(page, checks, tier) {
 
   const at115 = await parkFacingSun(page, u, 115);
   const disc115 = await sunDisc(page, `sky-exposure-${tier}-115`, !lowPerf);
-  checks.check(`[${tier}] exposure is 1 at Ruangrapi's distance`, Math.abs(at115.exposure - 1) <= 0.02,
+  // 1 AU: the law's 1 times the constant lift (1.5, owner's pick 2026-10-21).
+  const lift = await page.evaluate(async () => (await import("/src/utils/sunLight.ts")).EXPOSURE_LIFT);
+  checks.check(`[${tier}] exposure is the lift (${lift}) at Ruangrapi's distance`, Math.abs(at115.exposure - lift) <= 0.02 * lift,
     `camera ${at115.camDist.toFixed(2)} from the sun, exposure=${at115.exposure.toFixed(4)}`);
   // The compensation follows the tier: the post pass exposes the sun and the
   // guides (1 / exposure); in low-perf nothing exposes them (1).
@@ -269,12 +348,18 @@ async function exposureChecks(page, checks, tier) {
   // d=48, 4.0 at d=230), same method: d=48 0.650 vs 0.250, d=230 0.466 vs
   // 1.555 (power 1.5 had 0.620 and 0.520 compensated). The geometric
   // midpoints are 0.403 and 0.851, so the bounds still separate every pair.
+  // Re-checked 2026-10-21 under the hue-keeping toe (hueToe.ts) and the 1.5
+  // lift (exposure 0.261 at d=48, 6.0 at d=230): d=48 0.648-0.730 vs 0.310,
+  // d=230 0.339-0.401 vs 1.252. The toe alone (lift 1) read d=230 0.377: it
+  // compresses the corona's increment over the brighter far-out backdrop. So
+  // the d=230 band is [0.25, 0.65], under its new geometric midpoint 0.68;
+  // d=48 keeps [0.4, 1.0] (midpoint 0.47).
   if (!lowPerf) {
     const cfmt = (d) => `${d.corona.toFixed(1)} over ${d.coronaBg?.toFixed(1)} (${d.coronaN}px)`;
     const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
     checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
       discsOk && [disc115, discNear, disc230].every((d) => d.coronaN > 200)
-        && kNear >= 0.4 && kNear <= 1.0 && k230 >= 0.4 && k230 <= 0.8,
+        && kNear >= 0.4 && kNear <= 1.0 && k230 >= 0.25 && k230 <= 0.65,
       `corona's own light, band 0.70-0.78 of its half-size, mean luma: d115 ${cfmt(disc115)}; dNear ${cfmt(discNear)} (x${kNear.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
   }
 
@@ -469,6 +554,22 @@ export default async function run() {
     const meteorResult = await pollUntil(meteorVisibleNow, { timeoutMs: 30_000, intervalMs: 500 });
     checks.check("a shooting star appears within 30s", meteorResult.ok,
       meteorResult.error ? `evaluate failed repeatedly: ${meteorResult.error.message}` : "");
+
+    // L29: one light source. Earth's night half, beside it and square to the
+    // sunlight, is lit by the ambient fill alone, so it reads neutral (its
+    // dark oceans lean blue). Measured 2026-10-21: [0.2, 1.0, 2.7] sRGB; with
+    // the studio IBL on the bodies (before noIbl.ts) it read [13.4, 0.4, 2.8],
+    // the orange panel's red. Under the hue-keeping toe and the 1.5 lift
+    // (later that day) it reads greyer and brighter: [5.0, 4.8, 5.2],
+    // [5.1, 4.6, 4.4] and [2.7, 3.0, 4.1] in three runs, against
+    // [14.8, 8.4, 9.7] with the IBL put back, so the 3-level bar still
+    // separates them.
+    {
+      const nh = await nightHalf(page, "earth");
+      const [r, g, b] = nh.rgb;
+      checks.check("a night side takes no studio light (L29)", nh.n > 2000 && r - b <= 3 && r - g <= 3,
+        `Earth's night half mean sRGB [${nh.rgb.map((v) => v.toFixed(1)).join(", ")}] over ${nh.n}px (disc r=${nh.rpx.toFixed(0)}px)`);
+    }
 
     // Sun glare: capture-only. Proving "the glare dims when a planet crosses the sun"
     // needs a contrived pose and luminance thresholds that would be flaky;

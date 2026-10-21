@@ -64,7 +64,7 @@ export const G_MAX = 14;
 export const SPEED_CEILING = 24;
 /** No thrust for this long and the ship keeps station: no pull. */
 export const STATION_KEEP_AFTER = 0.6;
-/** Leaving a planet well faster than this is a slingshot (sound and radio). */
+/** Leaving a well (a planet's or the Sun's) faster than this is a slingshot (sound, radio, badge). */
 export const SLINGSHOT_SPEED = 14;
 export const SLINGSHOT_COOLDOWN_S = 30;
 /** Pull fades from full at this share of the radius to zero at the edge. */
@@ -169,12 +169,28 @@ export class SlingshotGate {
   }
 }
 
+/** The Sun's well's id for the slingshot watch (wellAt), beside the bodies' ids. */
+export const SUN_WELL_ID = "sun";
+
+/**
+ * The id of the first of `wells[0..count)` that `p` is inside (`ids[i]` names
+ * `wells[i]`), or null. First wins where wells overlap, so the caller lists
+ * the planets before the Sun. Allocation-free; called every frame.
+ */
+export function wellAt(p: Vec3, wells: readonly Well[], ids: readonly string[], count: number): string | null {
+  for (let i = 0; i < count; i++) {
+    const w = wells[i];
+    if (Math.hypot(p.x - w.x, p.y - w.y, p.z - w.z) < w.radius) return ids[i];
+  }
+  return null;
+}
+
 /** Gravity momentum at a well exit below this was not a slingshot (e.g. warp, a cruise past the rim). */
 export const ASSIST_MIN_G = 2;
 
 /**
- * Decides, every free-flight frame, whether leaving a planet's well was a
- * slingshot: the whoosh plays on a fast exit that gravity helped (not warp),
+ * Decides, every free-flight frame, whether leaving a well (a planet's or,
+ * since 2026-10-21, the Sun's, by the same rules) was a slingshot: the whoosh plays on a fast exit that gravity helped (not warp),
  * and the radio line goes through SlingshotGate. The radio's last-change time
  * is tracked every frame; sampling it only at exits stamped stale broadcasts
  * as fresh and dropped most callouts.

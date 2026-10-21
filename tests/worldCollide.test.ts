@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveWorldContact, SHIP_HALF_LENGTH, keepCameraOutsideBodies, keepOutside, bodyCameraRadius, CAMERA_CLEARANCE,
-  SOLID_BODIES,
+  SOLID_BODIES, shakeCamera,
 } from "../src/utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../src/utils/chaseCam";
 import { bodies } from "../src/store/spaceStore";
@@ -82,7 +82,7 @@ describe("resolveWorldContact", () => {
 });
 
 /** Every centre SOLID_BODIES needs, as Spaceship reads them: `bodies` plus `moonPositions`. */
-const allCenters = () => ({ ...bodies, ...moonPositions });
+const allCenters = (): Record<string, { x: number; y: number; z: number }> => ({ ...bodies, ...moonPositions });
 /** A body's fastest orbital speed (u/s): vis-viva at perihelion, on the orrery clock. */
 const fastest = (id: (typeof SOLAR_BODIES)[number]["id"]) => {
   const s = orbitShape(bodyById(id).orbit.el, JD_J2000);
@@ -272,5 +272,34 @@ describe("keepCameraOutsideBodies (the spec's reason for solid surfaces: the cam
     const cam = { x: 0, y: 500, z: 0 };
     keepCameraOutsideBodies(cam, bodies);
     expect(cam).toEqual({ x: 0, y: 500, z: 0 });
+  });
+});
+
+describe("shakeCamera (the impact jolt, after the camera was kept out)", () => {
+  // Spaceship sets the shake to 0.5 on an impact; each axis jolts by up to ±0.25.
+  const SHAKE = 0.5;
+  it("jolts a camera clear of every body by (random - 0.5) × amount on each axis", () => {
+    const cam = { x: 0, y: 500, z: 0 };
+    const r = [0.1, 0.9, 0.5];
+    let i = 0;
+    shakeCamera(cam, SHAKE, () => r[i++], bodies);
+    expect(cam.x).toBeCloseTo(-0.2, 12);
+    expect(cam.y).toBeCloseTo(500.2, 12);
+    expect(cam.z).toBeCloseTo(0, 12);
+  });
+  describe.each(SOLID_BODIES.map((b) => [b.id, b] as const))("%s", (id, w) => {
+    it("never jolts a camera resting at the camera radius (just pushed out) back inside it", () => {
+      const c = { x: 140, y: -12, z: -75 };
+      const centers = { ...allCenters(), [id]: c };
+      // Every octant's worst inward jolt: random 0 or ~1 on each axis.
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+        const n = { x: sx / Math.sqrt(3), y: sy / Math.sqrt(3), z: sz / Math.sqrt(3) };
+        const cam = { x: c.x + n.x * w.cameraR, y: c.y + n.y * w.cameraR, z: c.z + n.z * w.cameraR };
+        const inward = [n.x, n.y, n.z].map((v) => (v > 0 ? 0 : 0.999999));
+        let i = 0;
+        shakeCamera(cam, SHAKE, () => inward[i++], centers);
+        expect(dist(cam, c), `octant ${sx},${sy},${sz}`).toBeGreaterThanOrEqual(w.cameraR - 1e-9);
+      }
+    });
   });
 });

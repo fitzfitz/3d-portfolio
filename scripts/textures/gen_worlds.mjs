@@ -13,9 +13,8 @@
  *   w-tilted.jpg        1024  Uranus-type: pale cyan, almost featureless, faint polar brightening
  *   w-blue.jpg          2048  Neptune: deep blue bands, one dark storm, white methane-ice streaks
  *   w-ringed_ring.png   2048x4 RGBA ring strip: RGB = particle colour, A = tau / RING_TAU_MAX
- * (w-rock, the Mercury-type, is scripts/blender/gen_world_rock.py and w-dwarf,
- * the Ceres-type, scripts/blender/gen_world_dwarf.py: both need the shared
- * crater stamper and a normal map.)
+ * (The fictional w-rock and w-dwarf maps were retired with their Blender
+ * generators: the real Mercury and Ceres wear NASA mosaics.)
  *
  * --width overrides every equirect map's width (the ring strip stays 2048).
  * Noise, sphere sampling and the JPEG writer are gen_planets.mjs's, so the
@@ -162,9 +161,10 @@ function genTilted(W) {
   // 0.674; the image 0.66) and bluer (B/G 1.15; the image 1.04), since the
   // tone mapping's toe subtracts the same offset from every channel of a dim
   // pixel, which saturates it, so a G ≈ B cyan would read teal-green in the
-  // game (tests/worldMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
-  // little off the shipped means: 8-bit quantization of the calibrated, dim
-  // map. Hue by chroma only: the median stays the honest albedo target.
+  // game (tests/bodyMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
+  // little off the shipped means: the JPEG's lossy chroma coding (quality 92)
+  // moves a dim map's channel ratios, by about the ~0.03 margin the test's
+  // hue band leaves. Hue by chroma only: the median stays the honest albedo target.
   const pal = ramp([[0, "#9bbcc6"], [0.45, "#abceda"], [0.75, "#b8deea"], [1, "#c4ecf9"]]);
   const rgb = new Float32Array(W * (W / 2) * 3);
   const c = [0, 0, 0];

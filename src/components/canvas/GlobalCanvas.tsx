@@ -1,3 +1,5 @@
+// First: the hue-keeping toe must be in the tone-mapping chunk before any program compiles.
+import "./hueToe";
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense, use, useRef, useMemo, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
@@ -553,7 +555,8 @@ function GlobalCanvas() {
             {import.meta.env.DEV && <DebugBridge />}
             {import.meta.env.DEV && <PerfSampler />}
 
-            {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once. */}
+            {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once.
+                For the ship and the props: the bodies opt out (noIbl.ts, L29). */}
             <Environment resolution={64} frames={1}>
               <color attach="background" args={["#050310"]} />
               <Lightformer form="rect" intensity={1.1} color="#3a4a8f" position={[0, 8, -10]} scale={[14, 7, 1]} />

@@ -531,3 +531,13 @@ Start-up, best of three in `startup.probe.mjs`, read
 ceiling; it was not bisected (the NASA maps and the nine moons are the new upload and
 compile work at load). Ceiling unchanged: 20,000 ms.
 
+
+**Hue-keeping toe and exposure lift (PR 42, 2026-10-21).** The tone curve's toe is patched
+in three's `tonemapping_pars_fragment` chunk (`hueToe.ts`), and the exposure law gained a
+constant 1.5 (`EXPOSURE_LIFT`). Neither is a pass or a material: the chunk is resolved at
+compile time and materials keep their `#include`, so cache keys do not change. Transition
+probe, same session, before → after: deep space 37 → 37 calls, facing the sun 126 → 126,
+ringed giant 46 → 46, close approach 55 → 70 (the state that varies run to run; PR 40's
+pinned runs read 65–76; ceiling 90), modal 49 → 48, 40 anomalies 37 → 37; programs 55 (56 with the
+anomalies) in every state before and after. `programs.probe.mjs` adds 0 in both tiers
+(55 full fidelity, 42 low-perf, before and after). Ceilings changed: none.

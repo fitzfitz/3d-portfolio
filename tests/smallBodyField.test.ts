@@ -126,7 +126,7 @@ describe("the sun's well sits inside Mercury's perihelion", () => {
 });
 
 describe("the slingshot stays earnable at Earth and Jupiter under the unchanged size^2 rule", () => {
-  for (const id of ["earth", "jupiter"]) {
+  for (const id of ["earth", "jupiter"] as const) {
     it(id, () => {
       const size = bodyById(id).size;
       const w = planetWell({ size });

@@ -23,9 +23,8 @@ export function jumpPoint(ship: Vec3, target: Vec3, standoff: number): JumpPoint
 }
 
 /**
- * The destination the HUD waypoint should point at: the nearest planet whose
- * dossier hasn't been opened, then `fallback` once all have. The caller passes
- * the next destination from the table (`afterProbes`, src/data/destinations.ts).
+ * The nearest of `names` (at `bodies`) not yet in `visited`, then `fallback`
+ * once all are. recruiterWaypoint.ts is the HUD's use of it.
  */
 export function nextWaypoint(
   ship: Vec3,

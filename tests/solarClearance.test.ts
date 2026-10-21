@@ -45,6 +45,13 @@ describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () =
     expect(deepSpaceGap(DEEP_SPACE_POINT as unknown as Vec3)).toBeGreaterThanOrEqual(DEEP_SPACE_MIN);
   });
 
+  it("keeps the deep-space point 60 u past every fixed landmark's own radius", () => {
+    for (const l of LANDMARKS.filter((m) => m.name !== "deep-space point")) {
+      const d = Math.hypot(DEEP_SPACE_POINT[0] - l.pos[0], DEEP_SPACE_POINT[1] - l.pos[1], DEEP_SPACE_POINT[2] - l.pos[2]);
+      expect(d - l.radius, l.name).toBeGreaterThanOrEqual(DEEP_SPACE_MIN);
+    }
+  });
+
   it("reports a margin per landmark", () => {
     const r = clearanceReport();
     expect(r.length).toBe(LANDMARKS.length);

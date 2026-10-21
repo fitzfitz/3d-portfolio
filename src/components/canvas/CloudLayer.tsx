@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
 import { patchSunShadow } from "./sunShadow";
+import { noIbl } from "./noIbl";
 import { makeSphereLOD, shellCullDistance } from "../../utils/sphereLod";
 
 /** The cloud shell's radius, in planet radii. */
@@ -45,6 +46,7 @@ export default function CloudLayer({ radius, alphaMap, linear, speed = 0.17, sun
     return m;
   }, [alphaMap, linear, sunShadow]);
   useEffect(() => () => material.dispose(), [material]);
+  const materials = useMemo(() => [material], [material]);
   // Detail by distance with its planet (sphereLod.ts); the clouds cover the
   // whole disc, so they are culled only once the disc is under a pixel.
   const lod = useMemo(() => makeSphereLOD(material, radius, {
@@ -56,6 +58,8 @@ export default function CloudLayer({ radius, alphaMap, linear, speed = 0.17, sun
   useFrame((state) => {
     const y = ambientTime(state.clock.getElapsedTime()) * speed;
     for (let i = 0; i < levels.length; i++) levels[i].rotation.y = y;
+    // Sunlit and ambient only, like the surface under it (noIbl.ts, L29).
+    noIbl(materials, state.scene.environment);
   });
   return <primitive object={lod} dispose={null} />;
 }

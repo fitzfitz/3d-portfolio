@@ -3,6 +3,9 @@ import { existsSync, readdirSync } from "node:fs";
 import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
 import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
 
+/** The pinned sources, looked up by a recipe's source id. */
+const SOURCE_BY_ID: Record<string, (typeof SOURCES)[keyof typeof SOURCES] | undefined> = SOURCES;
+
 /**
  * Every shipped asset must have a script in this repo that makes it. Until
  * 2026-10-10 five shipped files (ship base mesh, portal, fuel crystal, Earth
@@ -39,7 +42,7 @@ const MODEL_GENERATORS: Record<string, string> = {
 const MAP_GENERATORS: Record<string, string> = Object.fromEntries(
   Object.entries(BODY_MAPS).flatMap(([name, r]) => {
     const maker = "sources" in r ? "scripts/textures/process_body_maps.mjs" : r.generator;
-    return r.hiRes ? [[`${name}.webp`, maker], [`${name}_4k.webp`, maker]] : [[`${name}.webp`, maker]];
+    return "hiRes" in r && r.hiRes ? [[`${name}.webp`, maker], [`${name}_4k.webp`, maker]] : [[`${name}.webp`, maker]];
   }),
 );
 const GENERATORS: Record<string, string> = { ...MODEL_GENERATORS, ...MAP_GENERATORS };
@@ -59,7 +62,7 @@ describe("asset provenance", () => {
 
   it("every sourced map's sources are pinned", () => {
     for (const r of Object.values(BODY_MAPS)) {
-      if ("sources" in r) for (const id of r.sources) expect(SOURCES[id]?.sha256, id).toMatch(/^[0-9a-f]{64}$/);
+      if ("sources" in r) for (const id of r.sources) expect(SOURCE_BY_ID[id]?.sha256, id).toMatch(/^[0-9a-f]{64}$/);
     }
   });
 

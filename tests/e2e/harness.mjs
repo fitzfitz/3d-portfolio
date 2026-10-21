@@ -539,7 +539,7 @@ export function sceneQuery(page, name) {
 export async function toDeepSpace(page) {
   const ok = await page.evaluate(([x, y, z]) => {
     if (typeof window.__fitz.teleport !== "function") return false;
-    window.__fitz.teleport(x, y, z); // deepSpacePoint.mjs: clear of every orbit, comet and landmark, inside the haze
+    window.__fitz.teleport(x, y, z); // deepSpacePoint.mjs: 60 u clear of every swept orbit and fixed landmark, inside the haze (tests/solarClearance.test.ts)
     return true;
   }, DEEP_SPACE_POINT);
   if (!ok) throw new Error("__fitz.teleport unavailable — Spaceship did not register it");

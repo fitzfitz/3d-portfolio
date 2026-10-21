@@ -1,11 +1,10 @@
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { projectById } from "../../constants";
-import { DESTINATIONS, afterProbes, destinationById } from "../../data/destinations";
-import { PROBE_IDS } from "../../data/probes";
+import { DESTINATIONS, destinationById } from "../../data/destinations";
 import { probePos } from "../../store/probeState";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
-import { nextWaypoint } from "../../utils/navigation";
+import { recruiterWaypoint } from "../../utils/recruiterWaypoint";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
 
@@ -30,7 +29,7 @@ export default function WaypointDriver() {
     const s = useSpaceStore.getState();
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
-    const id = race ? "" : nextWaypoint(flight, PROBE_IDS, probePos, s.visitedDossiers, afterProbes(s.badges));
+    const id = race ? "" : recruiterWaypoint(flight, s.visitedDossiers, s.badges);
     // Nothing to point at while docked at a destination or inside its zone
     // (only destinations have one; a probe never sets activeZone).
     if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
