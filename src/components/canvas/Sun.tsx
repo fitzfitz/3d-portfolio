@@ -1,12 +1,12 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
+import { useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
 import { flareLevel } from "../../utils/worldEvents";
-import { planets, SUN_RADIUS } from "../../constants";
-import { WORLDS } from "../../data/worlds";
+import { SUN_RADIUS } from "../../constants";
 import { ambientTime } from "../../utils/ambientTime";
-import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
+import { sunVisibility } from "../../utils/sunOcclusion";
+import { allOccluders } from "./sunShadow";
 import { glareLevels } from "../../utils/sunGlare";
 import { makeSunSurfaceMaterial, makeSunCoronaMaterial, CORONA_SIZE, SUN_BLOOM_GAIN } from "./sunMaterials";
 import { sunApparentRadius, lensScale, coronaLimbFit } from "../../utils/sunLens";
@@ -49,8 +49,8 @@ export default function Sun() {
       fitGroup.scale.setScalar(CORONA_FIT.scale);
       fitGroup.lookAt(cam);
     }
-    // The swell (1 + 0.6 * flare) briefly pushes the halo to ~r 58, past the belt's
-    // inner edge (r 40): an accepted transient; the resting halo stays under 40.
+    // The swell (1 + 0.6 * flare) briefly pushes the halo to ~r 58, still far inside the
+    // belt's inner edge (2.1 AU, about 241 u).
     if (coronaRef.current) coronaRef.current.scale.setScalar(1 + 0.6 * flare);
   });
 
@@ -131,13 +131,6 @@ function flareTexture(kind: "soft" | "hex" | "ring" | "spikes"): THREE.CanvasTex
 
 const _sun = new THREE.Vector3();
 const _ndc = new THREE.Vector3();
-/**
- * Reused every frame: the planets' and the worlds' occluders (equatorial
- * radii), positions refreshed from `bodies`, which keys planets by name and
- * worlds by id.
- */
-const OCCLUDER_KEYS = [...planets.map((p) => p.name), ...WORLDS.map((w) => w.id)];
-const OCCLUDERS: Occluder[] = [...planets, ...WORLDS].map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
 const FLARE_DEPTH = 4; // world units in front of the camera
 /** The spikes are faint (spec F5): glareLevels peaks at 1.5 with a flare, so scale that to ~0.55. */
 const SPIKE_OPACITY_SCALE = 0.55 / 1.5;
@@ -170,12 +163,9 @@ function SunFlare() {
     _ndc.copy(_sun).project(cam);
     const inFront = _ndc.z < 1;
     const onScreen = inFront && Math.abs(_ndc.x) < 1.1 && Math.abs(_ndc.y) < 1.1;
-    // Occlusion by planets and worlds: fraction of the sun left uncovered (0..1).
-    for (let i = 0; i < OCCLUDERS.length; i++) {
-      const b = bodies[OCCLUDER_KEYS[i]];
-      OCCLUDERS[i].x = b.x; OCCLUDERS[i].y = b.y; OCCLUDERS[i].z = b.z;
-    }
-    const visibility = inFront ? sunVisibility(cam.position, OCCLUDERS, SUN_RADIUS) : 0;
+    // Occlusion by the bodies and the moons (sunShadow.ts allOccluders, as
+    // the ship's shadow reads them): fraction of the sun left uncovered (0..1).
+    const visibility = inFront ? sunVisibility(cam.position, allOccluders, SUN_RADIUS) : 0;
     const flare = flareLevel(worldEventElapsed("flare"));
     const glare = glareLevels(_ndc.x, _ndc.y, inFront, visibility, flare, GLARE_OUT);
     const target = onScreen ? visibility * (1 - Math.min(1, Math.hypot(_ndc.x, _ndc.y) / 1.4) * 0.6) : 0;

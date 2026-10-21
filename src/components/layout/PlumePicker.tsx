@@ -1,6 +1,7 @@
 import { LOGBOOK, plumeAllowed, type LogbookProgress } from "../../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../../data/plumeColors";
 import type { ChartRecord } from "../../utils/charting";
+import { BODY_COUNT } from "../../data/solarSystem";
 
 /**
  * The engine-plume picker (moved from the logbook to the shipyard's Hangar,
@@ -9,18 +10,18 @@ import type { ChartRecord } from "../../utils/charting";
  * Buttons, not radio inputs: a focused <input> counts as a text field to the
  * flight keys, so W/A/S/D and Esc would stop working after a click.
  */
-export default function PlumePicker({ progress, charted = [], plumeColor, onPick }: {
-  progress: LogbookProgress; charted?: readonly ChartRecord[]; plumeColor: string; onPick: (id: string) => void;
+export default function PlumePicker({ progress, charted = [], legacyCartographer = false, plumeColor, onPick }: {
+  progress: LogbookProgress; charted?: readonly ChartRecord[]; legacyCartographer?: boolean; plumeColor: string; onPick: (id: string) => void;
 }) {
   return (
     <>
       <div className="text-white/40 mb-1" id="plume-label">ENGINE PLUME</div>
       <div role="radiogroup" aria-labelledby="plume-label" className="flex flex-wrap gap-2">
         {Object.entries(PLUME_COLORS).map(([id, c]) => {
-          const allowed = plumeAllowed(id, progress, hasPlumeColour, charted);
+          const allowed = plumeAllowed(id, progress, hasPlumeColour, charted, legacyCartographer);
           const badge = LOGBOOK.find((e) => e.id === id);
           // AURUM is the survey's reward, not a badge's.
-          const unlock = id === "cartographer" ? "chart all 5 worlds" : `earn ${badge?.title ?? id}`;
+          const unlock = id === "cartographer" ? `chart all ${BODY_COUNT} worlds` : `earn ${badge?.title ?? id}`;
           return (
             <button key={id} type="button" role="radio" aria-checked={plumeColor === id} disabled={!allowed}
               data-testid={`plume-${id}`}

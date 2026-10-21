@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSpaceStore } from "../../store/spaceStore";
 import { logbookCount, nextGoal, milestoneFor, ALL_LINE, type LogbookProgress } from "../../utils/logbook";
 import { isCartographer } from "../../utils/charting";
-import { WORLD_COUNT } from "../../data/worlds";
+import { BODY_COUNT } from "../../data/solarSystem";
 import { soundManager } from "../../audio/soundManager";
 
 const TOUR_LINE = "TOUR COMPLETE // THE PILOT'S RÉSUMÉ AND CONTACT ARE ONE CLICK AWAY";
@@ -20,6 +20,7 @@ export default function LogbookTracker() {
   const shardsCollected = useSpaceStore((s) => s.shardsCollected);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const charted = useSpaceStore((s) => s.charted);
+  const legacy = useSpaceStore((s) => s.legacyCartographer);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
   const { done, total } = logbookCount(progress);
@@ -49,12 +50,12 @@ export default function LogbookTracker() {
   }, [progress, reducedMotion]);
 
   const complete = goal === null;
-  const cartographer = isCartographer(charted);
-  const worlds = `WORLDS ${charted.length}/${WORLD_COUNT}`;
+  const cartographer = isCartographer(charted, legacy);
+  const worlds = `WORLDS ${charted.length}/${BODY_COUNT}`;
   return (
     <button type="button" data-testid="logbook-tracker"
       onClick={() => useSpaceStore.getState().setLogbookOpen(true)}
-      aria-label={`${complete ? `Logbook complete, ${done} of ${total}.` : `Logbook ${done} of ${total}. Next: ${goal.title}.`} Worlds charted ${charted.length} of ${WORLD_COUNT}${cartographer ? ", cartographer" : ""}. Open logbook`}
+      aria-label={`${complete ? `Logbook complete, ${done} of ${total}.` : `Logbook ${done} of ${total}. Next: ${goal.title}.`} Worlds charted ${charted.length} of ${BODY_COUNT}${cartographer ? ", cartographer" : ""}. Open logbook`}
       className={`pointer-events-auto text-left cursor-pointer hover:text-white transition-colors ${complete ? "text-accent" : "text-white/70"} ${pulse ? "animate-pulse text-primary" : ""}`}>
       <span className="hidden sm:inline">LOGBOOK {done}/{total}</span>
       <span className="sm:hidden">LOG {done}/{total}</span>

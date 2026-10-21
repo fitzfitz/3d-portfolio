@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planets, PORTAL_POS, PORTAL_ZONE_R } from "../src/constants";
+import { PORTAL_POS, PORTAL_ZONE_R } from "../src/constants";
 import { SHARDS } from "../src/data/shards";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../src/data/asteroids";
 import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
@@ -10,7 +10,8 @@ import {
 } from "../src/data/dormantGate";
 import { HAZE_START } from "../src/utils/edgeHaze";
 import { SPAWN } from "../src/data/spawn";
-import { d3, closestApproach, beltClearance, MOON_REACH_FACTOR, MARGIN } from "./helpers/clearance";
+import { d3, MARGIN } from "./helpers/clearance";
+import { landmarkMargin, worstRule } from "./helpers/solarClearance";
 
 const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
@@ -19,10 +20,9 @@ const PLACES: { name: string; pos: Vec3; keepOut: number }[] = [
 ];
 
 describe("B2 landmark clearance", () => {
-  it("never shares space with a planet's swept orbit, its zone or its moons", () => {
-    for (const planet of planets) for (const p of PLACES) {
-      expect(closestApproach(planet, p.pos), `${planet.name} vs ${p.name}`)
-        .toBeGreaterThan(planet.size * MOON_REACH_FACTOR + p.keepOut + MARGIN);
+  it("never shares space with a body's swept orbit, its well, its moons, or a belt, Trojan or comet orbit", () => {
+    for (const p of PLACES) {
+      expect(landmarkMargin(p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
     }
   });
   it("keeps clear of the sun, the portal, the career landmarks and the scenery asteroids", () => {
@@ -43,21 +43,16 @@ describe("B2 landmark clearance", () => {
       SHARDS.forEach((s, i) => expect(d3(p.pos, s.pos), `shard ${i} vs ${p.name}`).toBeGreaterThan(p.keepOut + MARGIN));
     }
   });
-  it("is not buried in the asteroid belt or the polar halo", () => {
-    for (const p of PLACES) {
-      expect(beltClearance(p.pos, 0.436, 40, 70, 2.5), `belt vs ${p.name}`).toBeGreaterThan(p.keepOut);
-      expect(beltClearance(p.pos, 1.31, 80, 95, 4.5), `halo vs ${p.name}`).toBeGreaterThan(p.keepOut);
-    }
-  });
   it("keeps the two new landmarks far apart", () => {
     expect(d3(SHIPYARD_POS, GATE_POS)).toBeGreaterThan(GATE_SENSE_R + SHIPYARD_RADII.zoneR);
   });
 });
 
 describe("shipyard placement", () => {
-  it("sits above the plane, inside the innermost orbit, a short trip from spawn", () => {
+  // The old "inside the innermost orbit" bound went with the fictional system: Mercury's real orbit is 35-54 u out,
+  // and every real orbit's clearance is held above and in tests/solarClearance.test.ts.
+  it("sits above the plane, a short trip from spawn", () => {
     expect(SHIPYARD_POS[1]).toBeGreaterThan(0);
-    expect(Math.hypot(...SHIPYARD_POS)).toBeLessThan(Math.min(...planets.map((p) => p.orbit.radius)) - 20);
     expect(d3(SHIPYARD_POS, SPAWN_V)).toBeLessThan(100);
   });
   it("docks like the career station (same model radius budget) and is steel blue", () => {
@@ -74,8 +69,9 @@ describe("dormant gate placement", () => {
     }
     expect(Math.hypot(...GATE_POS) + GATE_RADIUS).toBeLessThan(HAZE_START);
   });
-  it("lies beyond the outermost planet orbit", () => {
-    expect(Math.hypot(...GATE_POS)).toBeGreaterThan(Math.max(...planets.map((p) => p.orbit.radius)));
+  // "Beyond the outermost planet orbit" went with the fictional system (Neptune's real orbit is 3,450 u out, past the edge).
+  it("lies farther from the sun than the spawn", () => {
+    expect(Math.hypot(...GATE_POS)).toBeGreaterThan(Math.hypot(SPAWN.x, SPAWN.y, SPAWN.z));
   });
   it("faces the sun through an opening narrower than the frame", () => {
     expect(Math.hypot(...GATE_NORMAL)).toBeCloseTo(1, 10);

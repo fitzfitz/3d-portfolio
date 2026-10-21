@@ -1,6 +1,9 @@
 # Fitzgeral — 3D Flight-Sim CV
 
-An interactive CV you fly through. Three probes are three projects; fly close
+An interactive CV you fly through, set in the real Solar System: the eight
+planets, Ceres and the nine major moons, each where NASA/JPL puts it on the
+date the HUD shows (`docs/UNIVERSE-RULES.md` lists every law it keeps and
+every convention it discloses). Three probes are three projects; fly close
 and hold `F` to reel one in with the tractor beam and open its dossier. There is a classic
 resume view too, for people who would rather read than fly.
 
@@ -33,8 +36,8 @@ sector list (bottom right) jumps on click, and a waypoint marks the next unread
 probe. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
-**Time trial.** The amber ring in the inner belt, near the sun, starts a lap of nine rings
-out through the asteroid belt and back. Fly them in order and finish through
+**Time trial.** The amber ring in the inner system, near the sun, starts a lap of nine rings
+out past the orbits of Mercury and Venus and back. Fly them in order and finish through
 the start ring. Par is 0:35, and one tank of warp won't quite cover the loop.
 Your best time is saved in this browser, and later laps race a ghost of that
 best lap. A jump or an orbit lock aborts the lap.
@@ -53,7 +56,9 @@ Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`) render only when the b
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
 some configurations, devtools device emulation.
 
-Warp costs fuel; floating crystals refuel it. **An empty tank never strands
+Warp costs fuel; floating crystals refuel it. In open space warp keeps
+building (long-range cruise, up to 12×), so Earth to Neptune takes seconds,
+and it eases off as you near anything. **An empty tank never strands
 you** — it disables warp only, and normal thrust stays fuel-blind in every
 mode, including touch.
 
@@ -95,6 +100,9 @@ npm run test:e2e fuel
 ```
 
 The runner starts one Vite server and runs each probe in its own process.
+It stops the server's whole process group when it ends, Ctrl-C included, so
+no `vite` is left holding port 5199; `node tests/e2e/run-one.mjs <probe>` runs
+a single probe with its own server and stops it the same way.
 `startup` (the eager-compile ceiling, best of up to three loads) and
 `transition` (the draw-call and triangle budgets) run first, alone, on
 SwiftShader, where `docs/PERF-BUDGETS.md` was measured. Every other probe then
@@ -125,8 +133,10 @@ with console snippets that set each scenario up in seconds.
 
 ## Assets
 
-`public/models/` is ~3.5MB, and **all of it is original and reproducible**:
-every model and planet texture comes from a deterministic script in this repo.
+`public/models/` is ~9 MB, and **every file has a recorded source and is
+reproducible**: the models and the generated maps come from deterministic
+scripts in this repo, and the real bodies' surfaces are NASA/USGS/JPL
+public-domain mosaics, fetched by a script that pins each URL and SHA-256.
 
 ```bash
 npm run assets:generate   # regenerate everything (Blender headless + scripts/textures/)
@@ -141,9 +151,11 @@ the common pack every device downloads.
 | Asset | Generator |
 | --- | --- |
 | Hero ship, contact portal, fuel crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
-| Asteroids, cargo ship, moon, comet head, jellyfish | `scripts/blender/gen_*.py` |
+| Asteroids, cargo ship, comet head, jellyfish, project probe | `scripts/blender/gen_*.py` |
 | Career station, buoy, shipyard, dormant gate | `scripts/blender/gen_career_station.py`, `gen_buoy.py`, `gen_shipyard.py`, `gen_dormant_gate.py` |
-| Planet colour + glow maps (one world per project) | `scripts/textures/gen_planets.mjs` |
+| Phobos and Deimos (built to P. C. Thomas's PDS shape models) | `scripts/blender/gen_mars_moons.py` |
+| Planet and moon maps from NASA/USGS/JPL mosaics (Mercury, Earth with clouds and night lights, the Moon, Mars, Ceres, Jupiter, the Galileans, Triton) | `scripts/textures/fetch_nasa_maps.mjs`, then `process_body_maps.mjs` |
+| Maps where no true-colour global map exists (Venus, Titan; Saturn, Uranus, Neptune) | `scripts/textures/gen_body_maps.mjs`, `gen_worlds.mjs` |
 
 The optimize pass is deliberately **visually lossless**: weld, dedup, prune,
 WebP textures, then quantize and meshopt-compress. Geometry is never
@@ -174,7 +186,7 @@ per-frame `set()`, that probe is what will catch it.
 are each a single `InstancedMesh` with per-instance matrices updated in one
 loop. Inactive slots scale to zero rather than resizing an array.
 
-Pure logic — orbital mechanics, toroidal wrapping, fuel, collision, radar
+Pure logic — the ephemeris and orbital mechanics, fuel, collision, radar
 transforms — lives in `src/utils/` with unit tests, so tuning is verifiable
 without standing up a scene.
 
@@ -208,12 +220,19 @@ spawn keep-out) from the client source, so the two must agree. When those bounds
 change, deploy the Worker first, then merge the client.
 
 For the bigger-universe change (system grew from a 250-unit torus to a 400-unit
-sphere; `VALIDATION_RADIUS` is now a fixed 520): deploy `beacon-api`, verify it
+sphere; `VALIDATION_RADIUS` became a fixed 520): deploy `beacon-api`, verify it
 accepts a position near 500, then merge. Otherwise beacons and live-sky positions
 beyond the old bounds are rejected.
 
 The New Worlds change moved the edge again, to a 480-unit sphere (the haze from
-440). That sits inside the fixed 520, so it needed no Worker deploy.
+440), inside the fixed 520, so it needed no Worker deploy.
+
+The real Solar System (PR #40) moved it to a 3,600-unit sphere (31.3 AU, past
+Neptune; the haze from 3,560) and `VALIDATION_RADIUS` to 3,800. That change
+needs the Worker first: deploy `beacon-api`
+(`npx wrangler deploy --config beacon-api/wrangler.toml`), check that it accepts
+a position near 3,700 and the AURUM plume at both 5 (old cached clients) and 9
+charted worlds, then merge the site.
 
 ## Docs
 

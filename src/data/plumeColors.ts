@@ -12,7 +12,7 @@ export const PLUME_COLORS: Readonly<Record<string, { name: string; hex: string }
   ore: { name: "AMBER", hex: "#ff8a1f" },
   convoy: { name: "LIME", hex: "#a6ff3d" },
   shards: { name: "VIOLET", hex: "#a77bff" },
-  // Not a badge: the survey's reward for charting all five worlds (utils/charting.ts).
+  // Not a badge: the survey's reward for charting every body (utils/charting.ts).
   cartographer: { name: "AURUM", hex: "#ffe9a3" },
 };
 

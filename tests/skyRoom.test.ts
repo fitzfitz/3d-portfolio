@@ -169,7 +169,7 @@ describe("charted shout-out", () => {
   const meCh = (ch: number) => JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch });
   const claim = '{"t":"charted"}';
   /** Pilot `id` joins with its own visitor key and reports `ch` worlds charted. */
-  function charted(room: Room, id: string, now: number, ch = 5, visitor: string | null = `v-${id}`, cc: string | null = "ID") {
+  function charted(room: Room, id: string, now: number, ch = 9, visitor: string | null = `v-${id}`, cc: string | null = "ID") {
     const r = join(room, id, now, cc, visitor);
     onMessage(room, r.pilot, meCh(ch), now);
     return r.pilot;
@@ -183,12 +183,30 @@ describe("charted shout-out", () => {
     expect(r.out).toEqual([{ to: "b", msg: { t: "charted", cc: "ID" } }]);
     expect(r.close).toBe(false);
   });
-  it("needs a me with ch 5", () => {
+  it("accepts the claim from a legacy client (ch 5) as well as a new one (ch 9)", () => {
+    for (const ch of [9, 5]) {
+      const room = newRoom();
+      const a = charted(room, "a", 0, ch);
+      join(room, "b", 0);
+      expect(onMessage(room, a, claim, 1000).out).toEqual([{ to: "b", msg: { t: "charted", cc: "ID" } }]);
+    }
+  });
+  it("keeps AURUM in snapshots for ch 9 and ch 5, and coerces it to stock for ch 4 and 8", () => {
+    for (const [ch, plume] of [[9, "cartographer"], [5, "cartographer"], [4, "stock"], [8, "stock"]] as const) {
+      const room = newRoom();
+      const r = join(room, "a", 0);
+      onMessage(room, r.pilot, JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "cartographer", ch }), 0);
+      expect(r.pilot.last?.plume, `ch ${ch}`).toBe(plume);
+    }
+  });
+  it("needs a me with ch 9 (or the legacy 5)", () => {
     const room = newRoom();
     const silent = join(room, "a", 0, "ID", "v-a").pilot;
     join(room, "b", 0);
     expect(onMessage(room, silent, claim, 1000).out).toEqual([]);
     const four = charted(room, "c", 0, 4);
+    const eight = charted(room, "d", 0, 8);
+    expect(onMessage(room, eight, claim, 2000).out).toEqual([]);
     expect(onMessage(room, four, claim, 2000).out).toEqual([]);
   });
   it("once per connection", () => {
@@ -200,13 +218,13 @@ describe("charted shout-out", () => {
   });
   it("once per visitor per 24 h", () => {
     const room = newRoom();
-    const a = charted(room, "a", 0, 5, "same");
+    const a = charted(room, "a", 0, 9, "same");
     join(room, "b", 0);
     expect(onMessage(room, a, claim, 1000).out).toHaveLength(1);
     onLeave(room, "a", 2000);
-    const again = charted(room, "a2", 3000, 5, "same");
+    const again = charted(room, "a2", 3000, 9, "same");
     expect(onMessage(room, again, claim, 1000 + SHOUT_GAP_MS + 1).out).toEqual([]);
-    const later = charted(room, "a3", 4000, 5, "same");
+    const later = charted(room, "a3", 4000, 9, "same");
     expect(onMessage(room, later, claim, 1000 + SHOUT_VISITOR_MS + 1).out.length).toBeGreaterThan(0);
   });
   it("a 60 s room-wide gap", () => {

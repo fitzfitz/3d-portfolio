@@ -1,16 +1,22 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, MAX_MESSAGE_BYTES,
+  parseMe, normQuat, publicCountry, roundState, chartCount, isChartedClaim, parseClient, CHART_TOTAL, isCartographerCount, MAX_MESSAGE_BYTES,
 } from "../src/utils/liveSkyProtocol";
-import { WORLD_COUNT } from "../src/data/worlds";
+import { BODY_IDS, LEGACY_CHART_TOTAL } from "../src/data/bodyIds";
 
 const me = (o: Record<string, unknown> = {}) =>
   JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ...o });
 
 describe("the charted count (C2)", () => {
-  it("is 5 worlds at most", () => expect(CHART_TOTAL).toBe(5));
-  it("is every world there is: a sixth world must raise it, or 5/6 would fly AURUM", () => {
-    expect(CHART_TOTAL).toBe(WORLD_COUNT);
+  it("is the nine bodies at most", () => {
+    expect(CHART_TOTAL).toBe(9);
+    expect(CHART_TOTAL).toBe(BODY_IDS.length);
+  });
+  // Old cached clients (before PR #40) send ch 5 + AURUM for their five worlds.
+  it("counts a cartographer at nine, or at the legacy five", () => {
+    expect(LEGACY_CHART_TOTAL).toBe(5);
+    for (const n of [5, 9]) expect(isCartographerCount(n)).toBe(true);
+    for (const n of [0, 4, 6, 8, 10]) expect(isCartographerCount(n)).toBe(false);
   });
   it("defaults to 0, so a client that never sends it stays visible", () => {
     expect(parseMe(me())?.ch).toBe(0);
@@ -24,20 +30,22 @@ describe("the charted count (C2)", () => {
       expect(s?.ch).toBe(0);
     },
   );
-  it("chartCount accepts only whole numbers 0-5", () => {
-    expect([0, 1, 5].map(chartCount)).toEqual([0, 1, 5]);
-    expect([6, -1, 2.5, "3", undefined, NaN].map(chartCount)).toEqual([0, 0, 0, 0, 0, 0]);
+  it("chartCount accepts only whole numbers 0-9", () => {
+    expect([0, 1, 5, 9].map(chartCount)).toEqual([0, 1, 5, 9]);
+    expect([10, -1, 2.5, "3", undefined, NaN].map(chartCount)).toEqual([0, 0, 0, 0, 0, 0]);
   });
-  it("lets the AURUM plume through only with all five charted", () => {
+  it("lets the AURUM plume through at ch 9 and at the legacy ch 5, and coerces 4 and 8", () => {
+    expect(parseMe(me({ plume: "cartographer", ch: 9 }))?.plume).toBe("cartographer");
     expect(parseMe(me({ plume: "cartographer", ch: 5 }))?.plume).toBe("cartographer");
     expect(parseMe(me({ plume: "cartographer", ch: 4 }))?.plume).toBe("stock");
+    expect(parseMe(me({ plume: "cartographer", ch: 8 }))?.plume).toBe("stock");
     expect(parseMe(me({ plume: "cartographer" }))?.plume).toBe("stock");
   });
   it("fits the worst case in the byte cap", () => {
-    // Longest numbers still inside the 520 validation sphere (r ≈ 519.6).
-    const raw = JSON.stringify({ t: "me", p: [-299.99, -299.99, -299.99], q: [-0.4999, -0.4999, -0.4999, -0.5001], plume: "cartographer", ch: 5 });
+    // Longest numbers still inside the 3800 validation sphere.
+    const raw = JSON.stringify({ t: "me", p: [-299.99, -299.99, -299.99], q: [-0.4999, -0.4999, -0.4999, -0.5001], plume: "cartographer", ch: 9 });
     expect(new TextEncoder().encode(raw).length).toBeLessThanOrEqual(MAX_MESSAGE_BYTES);
-    expect(parseMe(raw)?.ch).toBe(5);
+    expect(parseMe(raw)?.ch).toBe(9);
   });
   it("roundState carries the count", () => {
     expect(roundState({ p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 4 }).ch).toBe(4);
@@ -87,8 +95,8 @@ describe("parseMe", () => {
     ["a prototype key as plume", me({ plume: "toString" })],
     ["a short position", me({ p: [1, 2] })],
     ["a non-finite position", me({ p: [1, null, 3] })],
-    ["a position outside the world", me({ p: [525, 0, 0] })],
-    ["a corner outside the validation sphere", me({ p: [310, 310, 310] })],
+    ["a position outside the world", me({ p: [3810, 0, 0] })], // VALIDATION_RADIUS 3800
+    ["a corner outside the validation sphere", me({ p: [2200, 2200, 2200] })], // r 3811
     ["a zero quaternion", me({ q: [0, 0, 0, 0] })],
     ["a stretched quaternion", me({ q: [0, 0, 0, 2] })],
     ["a JSON array", "[1,2,3]"],

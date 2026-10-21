@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   DESTINATIONS, RESERVED_ZONE_IDS, JUMP_TARGETS, destinationById, escapeR, afterProbes, jumpKey,
 } from "../src/data/destinations";
-import { WORLDS, WORLD_IDS, isWorld } from "../src/data/worlds";
+import { BODY_IDS, isBodyId } from "../src/data/bodyIds";
+import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { bodies } from "../src/store/spaceStore";
 import { STATION_POS } from "../src/data/careerTrail";
 import { SHIPYARD_POS } from "../src/data/shipyard";
 import { nextWaypoint } from "../src/utils/navigation";
-import { PORTAL_POS, PORTAL_LOCK_R, projects, planets } from "../src/constants";
+import { PORTAL_POS, PORTAL_LOCK_R, projects } from "../src/constants";
 import { PROBE_IDS } from "../src/data/probes";
 import { probePos } from "../src/store/probeState";
 
@@ -37,7 +38,7 @@ describe("destination table", () => {
   it("looks destinations up by id, and nothing else", () => {
     expect(destinationById(null)).toBeUndefined();
     expect(destinationById(undefined)).toBeUndefined();
-    expect(destinationById(planets[0].name)).toBeUndefined();
+    expect(destinationById("earth")).toBeUndefined();
     for (const d of DESTINATIONS) expect(destinationById(d.id)).toBe(d);
   });
 });
@@ -127,25 +128,25 @@ describe("career station row", () => {
 });
 
 /**
- * The recruiter path (planets, then the career station, then the contact
- * portal) is unchanged by the worlds: no jump key, no waypoint, no zone.
+ * The recruiter path (the probes, then the career station, then the contact
+ * portal) is unchanged by the bodies: no jump key, no waypoint, no zone.
  */
-describe("the worlds stay off the recruiter path", () => {
-  it("JUMP_TARGETS names no world, and keys 1-6 map exactly as before", () => {
-    for (const t of JUMP_TARGETS) expect(isWorld(t.id), t.id).toBe(false);
+describe("the bodies stay off the recruiter path", () => {
+  it("JUMP_TARGETS names no body, and keys 1-6 map exactly as before", () => {
+    for (const t of JUMP_TARGETS) expect(isBodyId(t.id), t.id).toBe(false);
     expect(JUMP_TARGETS.map((t) => t.id)).toEqual(["ruangrapi", "portfolio", "fuxx", "career", "shipyard", "contact"]);
-    for (const id of WORLD_IDS) expect(jumpKey(id)).toBe(0);
+    for (const id of BODY_IDS) expect(jumpKey(id)).toBe(0);
   });
 
-  it("the waypoint walks the probes only, no world, whatever the ship is next to", () => {
+  it("the waypoint walks the probes only, no body, whatever the ship is next to", () => {
     const names = PROBE_IDS;
-    for (const n of names) expect(isWorld(n), n).toBe(false);
-    expect(Object.keys(bodies).filter(isWorld).length).toBe(WORLDS.length);
-    for (const w of WORLDS) {
-      const ship = { ...bodies[w.id] };
+    for (const n of names) expect(isBodyId(n), n).toBe(false);
+    expect(Object.keys(bodies).filter(isBodyId).length).toBe(SOLAR_BODIES.length);
+    for (const b of SOLAR_BODIES) {
+      const ship = { ...bodies[b.id] };
       for (const visited of [[], names]) {
         for (const fallback of [afterProbes([]), afterProbes([{ id: "career" }])]) {
-          expect(isWorld(nextWaypoint(ship, names, probePos, visited, fallback))).toBe(false);
+          expect(isBodyId(nextWaypoint(ship, names, probePos, visited, fallback))).toBe(false);
         }
       }
     }
@@ -153,8 +154,7 @@ describe("the worlds stay off the recruiter path", () => {
 
   // Was "the zone/lock loop checks the planets only": the planets left it
   // with the project probes (spec §4.4); only destinations dock.
-  it("no planet or world is a dock", () => {
-    for (const p of planets) expect(destinationById(p.name), p.name).toBeUndefined();
-    for (const w of WORLDS) expect(destinationById(w.id), w.id).toBeUndefined();
+  it("no body is a dock", () => {
+    for (const id of BODY_IDS) expect(destinationById(id), id).toBeUndefined();
   });
 });

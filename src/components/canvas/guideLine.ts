@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { RING_MU_MIN, RING_TAU_MAX } from "../../utils/ringOptics";
 import { exposureCompensation, litExposure, SUN_IRRADIANCE_AT_AU } from "../../utils/sunLight";
 import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
  * Material for flat navigation guides drawn on a RingGeometry (orbit paths,
@@ -13,6 +14,18 @@ import { SUN_SHADOW_CORE_GLSL, sunShadowUniforms } from "./sunShadow";
  * a 115-185u orbit while visiting a planet — it showed up as wide neon bands
  * slicing across every close-up. Fading near the camera keeps the guide for
  * orientation and removes it exactly where it used to dominate the frame.
+ *
+ * Readable at any range (the orbit ribbons, real-solar-system spec §6.2):
+ * with `minHalfPx` the vertex shader widens the line with distance so its
+ * half-width never drops under that many CSS px, and with `tickHalfPx` a
+ * tick (orbitRibbon.ts) keeps at least that half-length; ticks are solid,
+ * not dashed. Both read the geometry's `aSide` / `aAlong` offsets from the
+ * line's centre (orbitRibbonGeometry), in the mesh's local units (the orbit
+ * meshes are unscaled, their plane local XY). The width and a tick's bar are
+ * turned about the line to face the camera, so an orbit seen edge-on from in
+ * the ecliptic keeps them. At 0 (the default) the geometry draws as built;
+ * a RingGeometry guide shares the same program, given zero offsets
+ * (withGuideOffsets) so the attributes are never active but unbound.
  */
 export interface GuideLineOptions {
   color: THREE.ColorRepresentation;
@@ -23,17 +36,85 @@ export interface GuideLineOptions {
   fadeIn: [number, number];
   /** Fade OUT between these camera distances (hidden beyond [1]). Omit for none. */
   fadeOut?: [number, number];
+  /** Least half-width on screen (CSS px); needs the aSide attribute. 0 = as built. */
+  minHalfPx?: number;
+  /** Least tick half-length on screen (CSS px); needs aAlong. 0 = as built. */
+  tickHalfPx?: number;
 }
 
+/**
+ * Gives a guide geometry built without them (a RingGeometry) zero `aSide` /
+ * `aAlong` offsets, so the guide-line program's attributes are always bound.
+ * Returns the geometry.
+ */
+export function withGuideOffsets(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const n = g.getAttribute("position").count;
+  for (const name of ["aSide", "aAlong"]) {
+    if (!g.getAttribute(name)) g.setAttribute(name, new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+  }
+  return g;
+}
+
+/**
+ * The view's height in CSS px, for the screen-constant width: shared by every
+ * guide line, written each frame by SolarBodies (which draws the orbits).
+ */
+export const guideViewportHeight = { value: 800 };
+
 const VERT = /* glsl */ `
+  uniform float uMinHalfPx;
+  uniform float uTickHalfPx;
+  uniform float uViewportH;
+  attribute vec3 aSide;
+  attribute vec3 aAlong;
   varying vec3 vWorld;
   varying float vAngle;
+  varying float vTick;
+  ${LOG_DEPTH_VERT_PARS}
+  // Grows an offset to at least minLen, keeping its direction (none stays none).
+  vec3 atLeast(vec3 off, float minLen) {
+    float l = length(off);
+    return l > 0.0 ? off * (max(l, minLen) / l) : off;
+  }
+  // An in-plane offset o (world), turned about the line's own direction
+  // t = n × o to face the camera, grown to minLen: along t × toCam, so the
+  // width survives an edge-on view. orbitRibbon.ts facingOffset mirrors it.
+  vec3 facing(vec3 o, vec3 n, vec3 toCam, float minLen) {
+    float l = length(o);
+    if (l == 0.0) return o;
+    vec3 t = cross(n, o);
+    vec3 f = cross(t, toCam);
+    float fl = length(f);
+    vec3 dir = fl > 1e-6 * length(t) * length(toCam) ? f / fl : o / l;
+    return dir * max(l, minLen);
+  }
   void main() {
     // RingGeometry lies in its local XY plane; the angle drives the dashes.
     vAngle = atan(position.y, position.x);
-    vec4 w = modelMatrix * vec4(position, 1.0);
-    vWorld = w.xyz;
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vec3 p = (modelMatrix * vec4(position, 1.0)).xyz;
+    vTick = 0.0;
+    // Off (0) for guides built without the offsets (zero there anyway).
+    if (uMinHalfPx > 0.0) {
+      // The line lies in its local XY plane (the orbit's perifocal frame).
+      mat3 m = mat3(modelMatrix);
+      vec3 centre = (modelMatrix * vec4(position - aSide - aAlong, 1.0)).xyz;
+      vec3 n = normalize(m * vec3(0.0, 0.0, 1.0));
+      vec3 toCam = cameraPosition - centre;
+      // One CSS px in units at the centre's depth: 2 z tan(fov / 2) / H.
+      float depth = max(-(viewMatrix * vec4(centre, 1.0)).z, 0.0);
+      float px = 2.0 * depth / (projectionMatrix[1][1] * uViewportH);
+      if (dot(aAlong, aAlong) > 0.0) {
+        // A tick: its bar across the orbit faces the camera; its thickness
+        // runs along the orbit, in the plane.
+        vTick = 1.0;
+        p = centre + atLeast(m * aSide, uMinHalfPx * px) + facing(m * aAlong, n, toCam, uTickHalfPx * px);
+      } else {
+        p = centre + facing(m * aSide, n, toCam, uMinHalfPx * px);
+      }
+    }
+    vWorld = p;
+    gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -46,11 +127,15 @@ const FRAG = /* glsl */ `
   uniform float uExposureComp; // 1 / exposure where the post pass exposes (sunLight.ts)
   varying vec3 vWorld;
   varying float vAngle;
+  varying float vTick;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float d = distance(cameraPosition, vWorld);
     float fade = smoothstep(uFadeIn.x, uFadeIn.y, d) * (1.0 - smoothstep(uFadeOut.x, uFadeOut.y, d));
     float dash = 1.0;
-    if (uDashes > 0.0) {
+    // A tick lies along one angle, so the dashes would blank it whole.
+    if (uDashes > 0.0 && vTick < 0.5) {
       float t = fract(vAngle / 6.2831853 * uDashes);
       dash = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.55, 0.63, t));
     }
@@ -75,6 +160,10 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
       uDashes: { value: o.dashes },
       uFadeIn: { value: new THREE.Vector2(...o.fadeIn) },
       uFadeOut: { value: new THREE.Vector2(...(o.fadeOut ?? [1e6, 2e6])) },
+      uMinHalfPx: { value: o.minHalfPx ?? 0 },
+      uTickHalfPx: { value: o.tickHalfPx ?? 0 },
+      // The shared object, so SolarBodies' one write reaches every guide.
+      uViewportH: guideViewportHeight,
       // The shared object (not a copy), so ExposureDriver's one write reaches it.
       uExposureComp: exposureCompensation,
     },
@@ -91,10 +180,11 @@ export function makeGuideLineMaterial(o: GuideLineOptions): THREE.ShaderMaterial
  * against that one occluder slot (the uniform `uRingSlot`), from 1 in full sun
  * down to RING_NIGHT_FLOOR in the umbra.
  *
- * Every ring is scaled by `uIrradiance`, the sunlight at its orbit as a
- * fraction of 1 AU's (irradianceVsAU, L19): Ruangrapi's sits at 1 AU, so ×1.
+ * Every ring is scaled by `uIrradiance`, the sunlight at its planet as a
+ * fraction of 1 AU's (ringOptics.ts ringIrradiance, L19), written each frame
+ * from the planet's live distance (bodyRings.ts, SolarBodies).
  *
- * With a ring map (`RING_MAP`, the ringed giant's rings, L14) the procedural
+ * With a ring map (`RING_MAP`, Saturn's rings, L14) the procedural
  * bands give way to a measured radial profile: a strip whose RGB is the
  * particle colour and whose alpha is the normal optical depth τ / uTauMax
  * (ringOptics.ts), u = 0 at the inner edge and 1 at the outer. Then:
@@ -120,6 +210,7 @@ const RING_VERT = /* glsl */ `
   #ifdef RING_MAP
   varying vec3 vRingNormal;
   #endif
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vR = length(position.xy);
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
@@ -128,6 +219,7 @@ const RING_VERT = /* glsl */ `
     vRingNormal = normalize(mat3(modelMatrix) * vec3(0.0, 0.0, 1.0));
     #endif
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -177,7 +269,9 @@ const RING_FRAG = /* glsl */ `
     float grain = hash(floor(t * 420.0));
     return clamp(b * (0.75 + 0.5 * grain), 0.0, 1.0);
   }
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float t = clamp((vR - uInner) / (uOuter - uInner), 0.0, 1.0);
     #ifdef RING_MAP
     vec4 strip = texture2D(uRingMap, vec2(t, 0.5));
@@ -217,14 +311,14 @@ const RING_FRAG = /* glsl */ `
  * tier, whose buffer is linear, and 0.267 in the low-perf tier, which draws
  * tone-mapped sRGB straight to the screen. The ring's shader writes its colour
  * raw in both, so it needs the floor of the space it lands in;
- * SpacePlanets switches it with the tier.
+ * SolarBodies switches it with the tier.
  */
 export const RING_NIGHT_FLOOR = { linear: 0.09, display: 0.27 } as const;
 
 export interface PlanetRingOptions {
   /** The radial strip (RGB colour, A = τ / RING_TAU_MAX); turns on RING_MAP. */
   ringMap?: THREE.Texture;
-  /** Sunlight at the ring's orbit as a fraction of 1 AU's (irradianceVsAU). Default 1. */
+  /** Sunlight at the ring as a fraction of 1 AU's (ringOptics.ts ringIrradiance). Default 1. */
   irradiance?: number;
 }
 
@@ -255,7 +349,7 @@ export function makePlanetRingMaterial(
       uInner: { value: inner },
       uOuter: { value: outer },
       uOpacity: { value: 0.55 },
-      // The shared objects, so SpacePlanets' one write per frame reaches the ring.
+      // The shared objects, so SolarBodies' one write per frame reaches the ring.
       uOccluders: sunShadowUniforms.uOccluders,
       uOccluderCount: sunShadowUniforms.uOccluderCount,
       uNightFloor: { value: RING_NIGHT_FLOOR.linear },

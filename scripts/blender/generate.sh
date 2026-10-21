@@ -7,7 +7,9 @@ cd "$(dirname "$0")/../.."
 mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_cargo_ship.py
 [ -f scripts/blender/gen_creature.py ] && "$BLENDER" --background --python scripts/blender/gen_creature.py
-[ -f scripts/blender/gen_moon.py ] && "$BLENDER" --background --python scripts/blender/gen_moon.py
+# Phobos and Deimos (2026-10-20, real-solar-system Task 14): PDS shape models
+# (pinned URL + SHA-256) plus seeded detail. Replaces gen_moon.py's fictional moons.
+"$BLENDER" --background --python scripts/blender/gen_mars_moons.py
 [ -f scripts/blender/gen_comet_head.py ] && "$BLENDER" --background --python scripts/blender/gen_comet_head.py
 [ -f scripts/blender/gen_asteroids.py ] && "$BLENDER" --background --python scripts/blender/gen_asteroids.py
 # Hero ship, contact portal and fuel crystal (original replacements, 2026-10-10,
@@ -25,10 +27,13 @@ mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_dormant_gate.py
 # Project probes (2026-10-20): the Voyager-style probe that carries the dossiers.
 "$BLENDER" --background --python scripts/blender/gen_probe.py
-# The new worlds (2026-10-17): the airless rock's and the dwarf's albedo + normal (numpy in Blender).
-"$BLENDER" --background --python scripts/blender/gen_world_rock.py
-"$BLENDER" --background --python scripts/blender/gen_world_dwarf.py
-# Planet colour + glow maps and the other worlds' maps (pure Node + sharp, no Blender).
-node scripts/textures/gen_planets.mjs
+# The real bodies' maps (2026-10-20, real-solar-system spec §5.5): NASA/USGS
+# public-domain mosaics (pinned URL + SHA-256), the seeded Venus, Titan and
+# Triton fill, and Saturn's, Uranus's and Neptune's seeded maps (pure Node +
+# sharp, no Blender). The retired fictional maps' generators (gen_planets.mjs's
+# own outputs, gen_world_rock.py, gen_world_dwarf.py) no longer run.
+node scripts/textures/fetch_nasa_maps.mjs
+node scripts/textures/gen_body_maps.mjs
 node scripts/textures/gen_worlds.mjs
+node scripts/textures/process_body_maps.mjs
 npm run assets:optimize

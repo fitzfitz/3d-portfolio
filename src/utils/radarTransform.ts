@@ -26,21 +26,8 @@ export function altitudeCue(dy: number): { dir: -1 | 0 | 1; alpha: number } {
 export const RADAR_RANGE = 220;
 
 /**
- * How the radar shows a world, `dist` its 3D distance from the ship
- * (discovery, not signposts). Uncharted, "free": a blip at its true scaled
- * spot inside RADAR_RANGE, never rim-clamped or dimmed (it is only shown
- * within range, so it is always inside the rim), and nothing beyond, so it
- * is found by flying. Charted, "planet": drawn exactly like a planet, pinned
- * to the rim by its horizontal distance, with the altitude chevron.
- */
-export function radarShowsWorld(charted: boolean, dist: number): "planet" | "free" | "hidden" {
-  if (charted) return "planet";
-  return dist <= RADAR_RANGE ? "free" : "hidden";
-}
-
-/**
  * Where a blip lands, from its radar coords (`sx`, `up`, world units):
- * scaled, and when `clamp` is set (planets, charted worlds, destinations)
+ * scaled, and when `clamp` is set (planets, the nine bodies, destinations)
  * pinned to just inside the rim once its horizontal distance passes it.
  * `onRim` blips are drawn dimmed. Written into `out` (a frame loop passes
  * its own scratch, so it allocates nothing).

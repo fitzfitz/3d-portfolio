@@ -1,17 +1,20 @@
 import * as THREE from "three";
 import { irradianceVsAU, litExposure } from "../../utils/sunLight";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /** Shared by the atmosphere shell and the gas-giant limb darkening (Atmosphere.tsx). */
 export const ATMOSPHERE_VERT = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   varying vec3 vWorldNormal;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
     vNormal = normalize(normalMatrix * normal);
     vWorldNormal = normalize(mat3(modelMatrix) * normal);
     vViewDir = normalize(-mvPos.xyz);
     gl_Position = projectionMatrix * mvPos;
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -25,7 +28,9 @@ const ATMOSPHERE_FRAG = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
   varying vec3 vWorldNormal;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     // The shell is drawn from its back faces, so what is visible is the ring
     // between the planet's limb and the shell's silhouette. "facing" is
     // uLimbFacing at the planet's limb and 0 at the outer edge. The old

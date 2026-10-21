@@ -4,7 +4,7 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * Inverse-square sunlight and the camera's exposure (F3; law L19).
  *
  * The sun is a point light with decay 2, so a surface at distance d gets
- * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at Ruangrapi's orbit (1 AU).
+ * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at 1 AU.
  * The camera adapts fully, like a spacecraft camera exposing for its target
  * (lawful, L22): exposure = clamp((d / AU)^2, EXPOSURE_MIN, EXPOSURE_MAX), d
  * being the camera's distance from the sun. It is exactly 1 at 1 AU and
@@ -17,7 +17,7 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * adaptation, clamp((d / AU)^1.5, 0.15, 2.5).)
  */
 
-/** Irradiance at 1 AU: the old decay-0 intensity, so Ruangrapi looks as it did. */
+/** Irradiance at 1 AU: the old decay-0 intensity, so 1 AU looks as it did. */
 export const SUN_IRRADIANCE_AT_AU = 2.1;
 /** The point light's intensity under decay 2 (three: I / d²). */
 export const SUN_LIGHT_INTENSITY = SUN_IRRADIANCE_AT_AU * AU * AU;
@@ -26,7 +26,7 @@ export const SUN_FLARE_SWELL = 1.1 / 2.1;
 
 export const EXPOSURE_POWER = 2;
 export const EXPOSURE_MIN = 0.15;
-/** The exposure at the system's edge, ≈ 17.4: no clamp inside the system. */
+/** The exposure at the system's edge, (3,600 / 115)² ≈ 980: no clamp inside the system. */
 export const EXPOSURE_MAX = (SYSTEM_RADIUS / AU) ** EXPOSURE_POWER;
 export const EXPOSURE_HALF_LIFE_S = 1.5;
 
@@ -53,7 +53,7 @@ export function stepExposure(current: number, target: number, dt: number, snap: 
 }
 
 /**
- * Sunlight at `d` as a fraction of what Ruangrapi gets at 1 AU: (AU / d)².
+ * Sunlight at `d` as a fraction of what 1 AU gets: (AU / d)².
  * Scales lit effects drawn by custom shaders that the point light never
  * reaches, such as the atmosphere rims (Rayleigh scattering, L27).
  */
@@ -84,16 +84,28 @@ export function fillScale(cameraDistance: number): number {
 export const BACKDROP_EXPOSURE_POWER = 1.5;
 
 /**
+ * The most the backdrop's net brightness (backdropScale × exposure) may gain:
+ * the old 480 u edge's value, (480 / AU)^1.5 ≈ 8.5. The system is now 3,600 u
+ * across, and the Milky Way band glared (Task 13) beyond that gain.
+ */
+export const BACKDROP_NET_MAX = 8.5;
+
+/**
  * The one disclosed factor that tones the backdrop down (L19): the exposure's
  * growth beyond the power-1.5 curve, undone, (AU / d)^(EXPOSURE_POWER −
  * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
- * dims (1 at 1 AU and inward, ≈ 0.49 at the edge). The backdrop then follows
- * (d / AU)^1.5 from 1 AU to the edge and the exposure's (d / AU)^2 inside
+ * dims (1 at 1 AU and inward), and capped so the net gain never passes
+ * BACKDROP_NET_MAX (≈ 0.179 at the 3,600 u edge). The backdrop then follows
+ * (d / AU)^1.5 from 1 AU to ≈ 480 u, flat beyond and the exposure's (d / AU)^2 inside
  * 1 AU. The stars are not toned: they may brighten.
  */
 export function backdropScale(cameraDistance: number): number {
   const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));
-  return (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
+  const toned = (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
+  // Past the old 480 u edge the power-1.5 curve would keep climbing; the net
+  // gain holds at BACKDROP_NET_MAX instead, so scale × exposure never exceeds
+  // it and never falls (the exposure is (d / AU)^2 there, the scale its inverse).
+  return Math.min(toned, BACKDROP_NET_MAX / targetExposure(d));
 }
 
 /**
@@ -139,7 +151,7 @@ export function applyFill(scene: { environmentIntensity: number }, cameraDistanc
  * Shared uniform for the sun's self-luminous parts and the instrument
  * overlays: the sun's core and corona, and the orbit rings, zone circles and
  * guide lines (guideLine.ts). They multiply their output by it, so they look
- * the same at every exposure. Lit matter, such as Ruangrapi's planetary ring,
+ * the same at every exposure. Lit matter, such as Saturn's rings,
  * is NOT compensated: it follows exposure like its planet. The sun's glare
  * sprites and the ring-course gates are compensated too, but through their
  * colour each frame (Sun.tsx, RingCourse.tsx), since they are built-in

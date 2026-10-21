@@ -32,10 +32,10 @@ describe("asset pack format", () => {
   });
 
   it("packTier sorts files into tiers by the _4k naming", () => {
-    const names = ["a.glb", "fuxx.webp", "fuxx_4k.webp", "portfolio.webp"];
+    const names = ["a.glb", "earth.webp", "earth_4k.webp", "jupiter.webp"];
     expect(packTier("a.glb", names)).toBe("common");
-    expect(packTier("fuxx.webp", names)).toBe("sd");
-    expect(packTier("fuxx_4k.webp", names)).toBe("hd");
-    expect(packTier("portfolio.webp", names)).toBe("common");
+    expect(packTier("earth.webp", names)).toBe("sd");
+    expect(packTier("earth_4k.webp", names)).toBe("hd");
+    expect(packTier("jupiter.webp", names)).toBe("common");
   });
 });

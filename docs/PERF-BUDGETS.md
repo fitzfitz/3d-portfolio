@@ -65,24 +65,31 @@ close approach and modal-open were bit-for-bit identical on every run. The
 used as the baseline, so the derived ceiling already covers the observed
 variance.
 
-**Re-derived 2026-10-19 (New Worlds C1: the five worlds, detail by distance).**
-Every calls, triangles and lights ceiling in `transition.probe.mjs` now
-comes from this table by the rule above. The programs ceilings do not: they
-stay at the deliberate 79 (deep-space family) and 84 (planet states), for the
-low-perf-before-warm-up path described below. Each figure is the highest of 11 serial runs of
-`npm run test:e2e transition` (except the modal-open row, re-derived 2026-10-20 from 12 runs; see
-"Probes measured 2026-10-20" below), with the worlds in the scene and the LOD in
-place; see the dated note at the end of this section for what was added and
-what is in frame in each state.
+**Re-derived 2026-10-20 (the real Solar System, PR 40).** Every calls,
+triangles and lights ceiling in `transition.probe.mjs` comes from this table by
+the rule above. The programs ceilings do not: they stay at the deliberate 79
+(deep-space family) and 84 (planet states), for the low-perf-before-warm-up
+path described below. Each figure is the highest of 6 serial runs of
+`node tests/e2e/run-one.mjs transition`, alone on the machine (Apple M5,
+SwiftShader as the probe pins); the close-approach and modal rows come from 6
+further runs after the close approach was pinned to Earth's live position
+(`pinnedApproach`). The before/after for each row and its reason are in
+"Real Solar System re-baseline" at the end of this section.
 
 | State | calls | triangles | programs | lights | ceilings (calls / triangles / programs / lights) |
 |---|---|---|---|---|---|
-| Deep space, facing away from the sun | 35 | 241916 | 57 | 4 | 50 / 278210 / 79 / `LIGHT_BUDGET` (4) |
-| Deep space, facing the sun | 118 | 401672 | 57 | 4 | 140 / 461930 / 79 / 5 |
-| Near the ringed giant, rings in frame | 39 | 251836 | 57 | 4 | 50 / 289620 / 79 / 5 |
-| Close approach | 116 | 373512 | 57 | 4 | 140 / 429540 / 84 / 5 |
-| Modal open (an open probe dossier, re-derived 2026-10-20, see below) | 50 | 276112 | 58 | 4 | 60 / 317530 / 84 / 5 |
-| 40 anomalies, facing away | 35 | 241916 | 58 | 4 | 50 / 278210 / 79 / 5 |
+| Deep space, facing away from the sun | 42 | 263904 | 56 | 4 | 50 / 303490 / 79 / `LIGHT_BUDGET` (4) |
+| Deep space, facing the sun | 136 | 374148 | 56 | 4 | 160 / 430280 / 79 / 5 |
+| Near Saturn, rings in frame | 49 | 281490 | 56 | 4 | 60 / 323720 / 79 / 5 |
+| Close approach (Earth, pose pinned at the read) | 76 | 339962 | 56 | 4 | 90 / 390960 / 84 / 5 |
+| Modal open (an open probe dossier) | 57 | 333636 | 56 | 4 | 70 / 383690 / 84 / 5 |
+| 40 anomalies, facing away | 42 | 263904 | 57 | 4 | 50 / 303490 / 79 / 5 |
+
+The New Worlds C1 table this replaced (2026-10-19, 11 runs; modal 2026-10-20, 12
+runs): deep space 35 / 241916 / 57, facing the sun 118 / 401672 / 57, ringed
+giant 39 / 251836 / 57, close approach 116 / 373512 / 57, modal open 50 /
+276112 / 58, 40 anomalies 35 / 241916 / 58; ceilings 50 / 278210, 140 /
+461930, 50 / 289620, 140 / 429540, 60 / 317530, 50 / 278210.
 
 Programs is the page's cumulative count. Its ceilings are the deliberate
 79 / 84, not baseline + 1 (see "The ceilings above were deliberately not
@@ -323,9 +330,9 @@ ringed giant, 40 anomalies) and 84 (close approach, modal), not the rule's
 as soon as the store exists and no run read anything but 57 / 58; they were
 restored on 2026-10-19 because a headless run can still decline to low-perf
 before warm-up, and then reads near the old counts. The guard against a new
-program in play is the tour below adding 0, not these ceilings. `programs.probe.mjs` now tours all five worlds (asserted)
-and runs twice, full fidelity (57 programs at start-up) and with low-perf
-pinned on before load (44): both add 0.
+program in play is the tour below adding 0, not these ceilings. `programs.probe.mjs` tours all nine bodies
+(asserted; the five worlds before PR 40) and runs twice, full fidelity (56
+programs at start-up) and with low-perf pinned on before load (43): both add 0.
 
 ## Changing these
 
@@ -480,3 +487,47 @@ so they add no draw call to any measured state and up to 4 (3 plumes + 1 flare) 
 `probes.probe.mjs` now asserts the burn compiles no program (58 -> 58). Full run after the
 change: deep space 36 / 258,764 / 58, modal open 49, 40 anomalies 59 programs, beam on 37
 calls, and the `programs.probe.mjs` tour still adds 0 in both tiers. Ceilings changed: none.
+
+**Rings, rims and glow (real Solar System Task 15, 2026-10-20).** Uranus's epsilon ring
+draws Saturn's ring program (the strip, slot and colour are uniforms) inside a LOD that
+empties once its 0.02 R width is under a pixel, so it costs a draw call only near Uranus.
+Titan's haze rim is the bodies' `Atmosphere` program (+1 draw call and +1,104 triangles
+where Titan is in frame); Io's glow shares Earth's night-lights program (one compile hook).
+Transition probe on the M5, base 9e7a1ca -> change, same machine and session: deep space
+42 -> 42 calls, facing the sun 136 -> 136, ringed giant 48 -> 49 (ceiling 50: Titan's rim;
+triangles 280,386 -> 281,490), close approach 90 -> 87 and 97 in two runs (the chase camera
+is still easing in when it is read, so this state varies run to run), modal 56 -> 55 and 51;
+programs 56 in every
+state, the `programs.probe.mjs` tour adds 0 in both tiers. Ceilings changed: none. The
+ringed-giant state now has one draw call of headroom.
+
+**Real Solar System re-baseline (PR 40, 2026-10-20).** The fictional system gave way to
+the real one over Tasks 1–16 of its plan; the transition probe was read after each one that touched
+the scene (`.superpowers/sdd/2026-10-20-real-solar-system/progress.md`), stayed inside every
+ceiling throughout, and is re-derived here on purpose because what each state holds has
+changed. The states keep their poses and their order. Before = the table above it replaced
+(C1, plus the PR 39 readings where they moved); after = the highest of 6 serial runs on
+2026-10-20 (calls / triangles):
+
+| State | before | after (range over 6 runs) | ceiling before → after | why |
+|---|---|---|---|---|
+| Deep space | 35 / 241,916 (36 / 258,764 with PR 39's probes) | 42 / 263,904 (all six identical) | 50 / 278,210 → 50 / 303,490 | Task 5 moved the deep-space point to (260, −181, 140), clear of the real orbits, so a different slice of the scene is in frame; Task 6's one roster draws nine always-visible orbit ribbons (T6 read 41 / 263,884); Task 9 added the far-body dots (one `Points`, +1 call, +1 program) and the perihelion/aphelion ticks. |
+| Facing the sun | 118 / 401,672 (116–124 PR 39) | 133–136 / 373,716–374,148 | 140 / 461,930 → 160 / 430,280 | The inner planets now in frame are Mercury, Venus and Earth with their ribbons and the Moon, each body through its LOD; the ribbons, the dots and the moons' draws add calls, and the real bodies' smaller drawn sizes (Earth 8.4, not 12) take triangles off. The old 140 had 4 to spare. |
+| Near Saturn | 39 / 251,836 (40 / 268,684 PR 39) | 49 / 281,490 (all six identical) | 50 / 289,620 → 60 / 323,720 | Saturn now has Titan (Task 14) and Titan's haze rim (Task 15), its own ribbon and the other ribbons behind it; one draw call of headroom was left before. |
+| Close approach | 116 / 373,512 (113–114 / 382,648 PR 39) | parked once: 84–100 / 324,514–365,168; **pinned: 65–76 / 306,652–339,962** | 140 / 429,540 → 90 / 390,960 | Earth replaces Ruangrapi and is drawn 8.4 instead of 12, so the planet fills less of the frame; the Moon, Earth's cloud shell and the ribbons add calls back. Parked once and read after a settle, the pose drifted with Earth (0.21 sizes a second: 1.45 → 1.88 sizes in 1 run of 8) and the chase camera was still easing in, so the count followed the timing. The probe now holds the ship 1.45 sizes out on Earth's live outward radial every frame for ≥ 1.5 s and ≥ 30 frames, reads the counters and the distance on one frame, and asserts 1.45 ± 0.05 sizes (read 1.451–1.458). Baseline and ceiling come from those 6 pinned runs. |
+| Modal open | 50 / 276,112 | before the pin 51–56 / 273,188–281,256; after it 48–57 / 273,052–333,636 | 60 / 317,530 → 70 / 383,690 | Probe 1's dossier view has the real inner system behind it (ribbons, dots, the Moon), and what is behind depends on when it is entered: it follows the close approach, so the pin moved its timing. One pinned run read 333,636 (more of the inner system in frame), over the first re-derived ceiling (323,450); the ceiling comes from the 6 pinned runs. |
+| 40 anomalies | 35 / 241,916 (36 / 258,764 PR 39) | 42 / 263,904, programs 57 (all six identical) | 50 / 278,210 → 50 / 303,490 | As deep space, plus the anomalies' one program. |
+
+Programs read 56 in every state but the anomalies' 57 (58 / 59 after PR 39). The far-body
+dots added one (Task 9: 57 → 58); the count fell 58 → 56 between Tasks 9 and 14, when the
+fictional maps and moon materials were retired (not isolated further); the Phobos/Deimos
+meshes share the hull's program. The
+programs ceilings stay 79 / 84. Lights 4 in every state. `programs.probe.mjs` adds 0 in both
+tiers (56 full fidelity, 43 low-perf), and stops at every body, every probe, the landmarks,
+deep space and now the real edge (r ≈ 3,496).
+
+Start-up, best of three in `startup.probe.mjs`, read
+13.0 s and 15.4 s in the two full runs (10.1-12.1 s before, New Worlds), inside the 20 s
+ceiling; it was not bisected (the NASA maps and the nine moons are the new upload and
+compile work at load). Ceiling unchanged: 20,000 ms.
+

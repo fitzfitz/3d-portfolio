@@ -1,4 +1,5 @@
 import type { ChatterPools } from "../utils/chatterScheduler";
+import type { BodyId } from "./bodyIds";
 
 /** All radio-chatter copy lives here — edit freely, one line per entry. */
 export const chatterPools: ChatterPools = {
@@ -12,7 +13,7 @@ export const chatterPools: ChatterPools = {
     "DEEP SPACE IS QUIET. TOO QUIET. SPAWN A PLASMA ANOMALY?",
     "TELEMETRY ARCHIVED. SHORT ON TIME? THE NUMBER KEYS JUMP TO EACH PROBE",
     "ASTEROID BELT: POLITE. IT MOVES FOR YOU",
-    "TIME TRIAL GATE LIT IN THE INNER BELT, NEAR THE SUN. THE PILOT'S RECORD IS... NOT PUBLISHED",
+    "TIME TRIAL GATE LIT IN THE INNER SOLAR SYSTEM, CLOSE TO THE SUN. THE PILOT'S RECORD IS... NOT PUBLISHED",
   ],
   // Keyed by zone: a project's pool fires when its probe comes in range
   // (store `probeNear`), a destination's when the ship enters its zone
@@ -87,8 +88,8 @@ export const chatterPools: ChatterPools = {
   ],
 };
 
-/** World-event announcements (WorldEventDirector). Convoy lines are keyed by planet id. */
-export const eventLines: { comet: string[]; flare: string[]; convoy: Record<string, string[]>; convoyAny: string[] } = {
+/** World-event announcements (WorldEventDirector). Convoy lines are keyed by body id. */
+export const eventLines: { comet: string[]; flare: string[]; convoy: Partial<Record<BodyId, string[]>>; convoyAny: string[] } = {
   comet: [
     "INTERSTELLAR VISITOR INBOUND // CLOSEST PASS 35U. WAVE",
     "UNSCHEDULED COMET ON APPROACH. IT DID NOT BOOK A MEETING",
@@ -100,20 +101,26 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Record<stri
     "FLARE IN PROGRESS. PLEASE DO NOT STARE DIRECTLY AT THE PORTFOLIO",
   ],
   convoy: {
-    ruangrapi: [
-      "CONVOY 7 INBOUND TO RUANGRAPI // CARGO: NEW TENANTS",
-      "RUANGRAPI DELIVERY RUN // 40 LEASES, SIGNED AND SEALED",
+    mercury: ["CONVOY 1 INBOUND TO MERCURY // CARGO: SUNSCREEN, INDUSTRIAL GRADE"],
+    venus: ["CONVOY 2 INBOUND TO VENUS // HOLDING ORBIT. NOBODY IS LANDING IN THAT"],
+    earth: [
+      "CONVOY 7 INBOUND TO EARTH // CARGO: SOUVENIRS FROM THE BELT",
+      "EARTH DELIVERY RUN // MIND THE SATELLITES",
     ],
-    portfolio: [
-      "CONVOY 3 INBOUND TO THIS FLIGHT-SIM CV // CARGO: FRESH SHADERS",
-      "PORTFOLIO RESUPPLY // MORE POLYGONS, AS REQUESTED",
+    mars: [
+      "CONVOY 9 INBOUND TO MARS // CARGO: ROVER SPARE PARTS",
+      "MARS SUPPLY DROP // DUST FILTERS, MANY",
     ],
-    fuxx: [
-      "CONVOY 9 INBOUND TO FUXX // CARGO: IDLE AI AGENTS",
-      "FUXX SUPPLY DROP // TERMINAL SESSIONS, STILL WARM",
+    ceres: ["CONVOY 4 INBOUND TO CERES // CARGO: ICE PICKS FOR THE BRIGHT SPOTS"],
+    jupiter: [
+      "CONVOY 3 INBOUND TO JUPITER // HOLDING WELL CLEAR OF THE RADIATION BELTS",
+      "JUPITER RESUPPLY // MORE POLYGONS FOR THE GREAT RED SPOT",
     ],
+    saturn: ["CONVOY 6 INBOUND TO SATURN // KEEP OUT OF THE RINGS, PILOT"],
+    uranus: ["CONVOY 8 INBOUND TO URANUS // APPROACH FROM THE SIDE. IT DOES"],
+    neptune: ["CONVOY 5 INBOUND TO NEPTUNE // LONGEST RUN ON THE BOOKS"],
   },
-  /** Any planet without its own convoy lines (a project added later). */
+  /** Any body without its own convoy lines. */
   convoyAny: [
     "CONVOY INBOUND // CARGO MANIFEST: CLASSIFIED. PROBABLY SNACKS",
     "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",

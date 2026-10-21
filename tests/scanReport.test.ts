@@ -20,45 +20,49 @@ describe("generateScanReport", () => {
   it("differs across ids", () => {
     expect(generateScanReport("asteroid_3")).not.toBe(generateScanReport("asteroid_7"));
   });
-  it("returns project-flavored reports for planets", () => {
-    expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
-    expect(generateScanReport("fuxx")).toContain("RUST");
+  it("reports the contact portal", () => {
     expect(generateScanReport("contact")).toContain("COMM");
+  });
+  it("no longer reports a project id as a planet: the project jokes went (spec §5.1)", () => {
+    for (const id of ["ruangrapi", "portfolio", "fuxx"]) {
+      expect(generateScanReport(id)).toMatch(new RegExp(`^SCAN\\[${id.toUpperCase()}\\] // `));
+      expect(generateScanReport(id)).not.toMatch(/AU FROM THE SUN|SUPABASE|RUST/);
+    }
+  });
+  it("scans the real comets by name with orbit numbers derived from their elements", async () => {
+    const { COMET_ELEMENTS, COMET_SCAN_IDS, COMET_LABELS } = await import("../src/data/smallBodyField");
+    expect(COMET_LABELS).toEqual(["2P/ENCKE", "67P/CHURYUMOV–GERASIMENKO"]);
+    COMET_SCAN_IDS.forEach((id, i) => {
+      const el = COMET_ELEMENTS[i];
+      const r = generateScanReport(id);
+      expect(r).toMatch(new RegExp(`^SCAN\\[${COMET_LABELS[i]}\\] // `));
+      expect(r).toContain(`A ${el.a.toFixed(2)} AU`);
+      expect(r).toContain(`E ${el.e.toFixed(2)}`);
+      expect(r).toContain(`PERIOD ${(360 / el.nDegPerDay / 365.25).toFixed(1)} YR`);
+      expect(r).not.toMatch(/MASS CLASS|UNKNOWN \d+%/);
+    });
+    expect(generateScanReport("comet_2p")).toContain("PERIOD 3.3 YR");
+    expect(generateScanReport("comet_67p")).toContain("PERIOD 6.4 YR");
+  });
+  it("describes the time-trial course without the old belt", () => {
+    expect(generateScanReport("time_trial")).not.toMatch(/BELT/);
   });
   it("always uppercases and prefixes SCAN[", () => {
     expect(generateScanReport("asteroid_1")).toMatch(/^SCAN\[/);
   });
 });
 
-it("planet scans are titled by the planet's label, not its project", async () => {
-  const { planets } = await import("../src/constants");
-  for (const p of planets) {
-    expect(generateScanReport(p.name).startsWith(`SCAN[${p.label}] // `), p.name).toBe(true);
-    expect(generateScanReport(p.name)).not.toMatch(/PLANET_/);
+it("body scans are titled by the body's real name and report the body", async () => {
+  const { SOLAR_BODIES } = await import("../src/data/solarSystem");
+  const { bodyReport } = await import("../src/utils/bodyReports");
+  for (const b of SOLAR_BODIES) {
+    expect(generateScanReport(b.id, 12).startsWith(`SCAN[${b.name}] // `), b.id).toBe(true);
+    expect(generateScanReport(b.id, 12)).toBe(bodyReport(b, 12));
+    expect(generateScanReport(b.id, 12)).not.toMatch(/MASS CLASS/);
   }
-  expect(generateScanReport("ruangrapi")).toMatch(/^SCAN\[OCEAN WORLD\] \/\/ CORE: SUPABASE/);
 });
 
-it("the banded giant's scan names what really orbits it (two moons, one captured), not the ship", async () => {
-  const { MOONS } = await import("../src/data/moons");
-  const { planets } = await import("../src/constants");
-  const mine = MOONS.filter((m) => planets[m.planet].name === "portfolio");
-  expect(mine.length).toBe(2);
-  expect(mine.filter((m) => m.captured).map((m) => m.variant)).toEqual(["Ice"]);
-  expect(generateScanReport("portfolio")).toContain("ORBITING IT: TWO MOONS, THE ICY ONE CAPTURED AND RETROGRADE");
-  expect(generateScanReport("portfolio")).not.toContain("ORBITING IT: YOU");
-});
-
-it("planet scans end with the orbit in real units", () => {
-  expect(generateScanReport("portfolio")).toMatch(/ \/\/ ORBIT 1\.30 AU · YEAR 1\.49 EARTH-YR$/);
-  expect(generateScanReport("ruangrapi")).toContain("SUPABASE");
-});
-
-it("world scans report the world, not the hash fallback", async () => {
-  const { WORLDS } = await import("../src/data/worlds");
-  const { worldReport } = await import("../src/utils/worldReports");
-  for (const w of WORLDS) {
-    expect(generateScanReport(w.id)).toBe(worldReport(w));
-    expect(generateScanReport(w.id)).not.toMatch(/MASS CLASS/);
-  }
+it("body scans carry the orbit in real units and end with the orrery date", () => {
+  expect(generateScanReport("mars")).toMatch(/ \/\/ ORBIT 1\.52 AU \(1\.38–1\.67\) · e 0\.093 · i 1\.85° · YEAR 1\.88 EARTH-YR \/\//);
+  expect(generateScanReport("mars")).toMatch(/ \/\/ ORRERY DATE \d{4}-\d{2}-\d{2} · SPINS AND MOONS ILLUSTRATIVE$/);
 });

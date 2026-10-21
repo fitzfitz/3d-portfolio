@@ -10,8 +10,8 @@ import {
   liveSkyUrl, nearestGhosts, shipQuat, ghostRegistry, hudShowsRadio, writeRadarBlips,
   LIVE_SKY_NOTICE, MAX_GHOSTS, FADE_IN_MS, GHOST_LABEL, type GhostPose,
 } from "../../utils/liveSky";
-import { CHART_TOTAL, type ShipState } from "../../utils/liveSkyProtocol";
-import { createShoutGate, shoutDue, shoutLine } from "../../utils/charting";
+import { type ShipState } from "../../utils/liveSkyProtocol";
+import { createShoutGate, shoutDue, shoutLine, makeWireChartCache } from "../../utils/charting";
 
 /** Plays another pilot's shout-out at most once per SHOUT_HEAR_GAP_MS. */
 const hearShout = createShoutGate();
@@ -88,6 +88,7 @@ export default function Ghosts() {
     onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
   }), []);
   const noticeQueued = useRef(false);
+  const wireCharts = useRef(makeWireChartCache());
   const wanted = useRef(false);
 
   useEffect(() => () => {
@@ -133,7 +134,7 @@ export default function Ghosts() {
       me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
       shipQuat(flight.heading, flight.pitch, me.q);
       me.plume = s.plumeColor;
-      me.ch = Math.min(s.charted.length, CHART_TOTAL);
+      me.ch = wireCharts.current(s.charted, s.legacyCartographer);
       if (conn.tick(me, shoutDue(s.chartShoutAt, Date.now()))) s.clearChartShout();
     }
 

@@ -59,7 +59,7 @@ export default async function run() {
       const clear = (c) => anchors.every((a) => Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z) > 100);
       const cr = (window.__fitz.crystals ?? []).find((s) => s.active && clear(s) && Math.hypot(s.x, s.y, s.z) <= 370);
       if (!cr) return null;
-      // Keep the teleport target well inside the system (SYSTEM_RADIUS 480),
+      // Keep the teleport target well inside the crystal field (480, the old edge),
       // so it can never land in the edge burn: offset toward the centre if needed.
       let z = cr.z + dzv;
       const r = Math.hypot(cr.x, cr.y, z);
@@ -216,18 +216,20 @@ export default async function run() {
     const n1 = await activeCrystals();
     checks.check("active count never exceeds the cap", n1 <= 40, `active=${n1}`);
 
-    // No crystal buried in the asteroid bands. 3D distance from the origin,
-    // not XZ radius: both belt rings are tilted (AsteroidBelt.tsx tilt=0.436
-    // and tilt=1.31), and rotating a ring preserves distance from the origin
-    // while destroying XZ radius. An XZ check here would flag legal crystals
-    // as buried and miss genuinely buried ones.
-    const buried = await page.evaluate(() =>
-      (window.__fitz.crystals ?? []).filter((s) => {
+    // Every crystal spawns in the inner-system field (CRYSTAL_FIELD_RADIUS,
+    // r ≤ 480) and never inside the Sun. There is no belt band to keep out of
+    // any more: the real belt is mostly empty and its rocks move through every
+    // point (ruling R22), so the old 40–70 / 80–95 band check is gone.
+    const strays = await page.evaluate(async () => {
+      const { CRYSTAL_FIELD_RADIUS } = await import("/src/utils/crystalField.ts");
+      const { SUN_RADIUS } = await import("/src/constants.ts");
+      return (window.__fitz.crystals ?? []).filter((s) => {
         if (!s.active) return false;
         const r = Math.hypot(s.x, s.y, s.z);
-        return (r >= 40 && r <= 70) || (r >= 80 && r <= 95);
-      }).length);
-    checks.check("no crystal spawned inside the belt or halo", buried === 0, `buried=${buried}`);
+        return r > CRYSTAL_FIELD_RADIUS || r < SUN_RADIUS;
+      }).length;
+    });
+    checks.check("every crystal spawns in the inner-system field, outside the Sun", strays === 0, `strays=${strays}`);
 
     // Crystals appear on the radar only when within range (spec §8; the final
     // review's Finding 1 was that the radar's old gate was horizontal-only, so
@@ -279,10 +281,10 @@ export default async function run() {
     //
     // ---- KEEP THIS BLOCK LAST IN THE PROBE ----
     // It mutates live crystal positions to build its test geometry. A
-    // relocated crystal has a ~2% chance of landing inside an asteroid band,
-    // which would break the "no crystal spawned inside the belt or halo" check
-    // above if that check ever ran after this point. The probe is correct today
-    // purely by ordering; nothing enforces it but this comment.
+    // relocated crystal can land outside the field's spawn rules, which would
+    // break the "every crystal spawns in the inner-system field" check above if
+    // that check ever ran after this point. The probe is correct today purely
+    // by ordering; nothing enforces it but this comment.
     // The slot the refuel emptied respawns on a 4-sim-second boundary (~16 s of
     // wall-clock headless), landing uniformly at random: if that happens after
     // the far-position search below it can land in radar range. Wait for the
@@ -297,7 +299,7 @@ export default async function run() {
       fieldFull.ok, `active=${await activeCrystals()} locked=${await locked()}`);
 
     const farSetup = await page.evaluate(async () => {
-      const SPHERE = 460; // candidates stay inside the 480 system radius, clear of the edge burn
+      const SPHERE = 460; // candidates stay inside the 480 crystal field (CRYSTAL_FIELD_RADIUS)
       const RANGE = 220;
       const crystals = (window.__fitz.crystals ?? []).filter((c) => c.active);
       const candidates = [];

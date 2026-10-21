@@ -1,8 +1,7 @@
 /**
- * Where harness.mjs toDeepSpace() parks the ship (r ~299). Plain data, so
- * tests/worldClearance.test.ts can hold it clear of every swept planet and
- * world orbit by reach + 20, inside HAZE_START. Chosen against the 480-edge
- * orbits: ~107 beyond that bound from the nearest orbit, ~90 from either comet
- * path and the jelly path, ~150 from the nearest landmark or scenery asteroid.
+ * Where harness.mjs toDeepSpace() parks the ship (r ~345). Plain data, so
+ * tests/solarClearance.test.ts can hold it 60 u from every swept orbit of the
+ * real Solar System (planets, belt, Trojans, comets), inside HAZE_START.
+ * Moved from (260, -50, 140) when the real orbits replaced the fictional ones.
  */
-export const DEEP_SPACE_POINT = Object.freeze([260, -50, 140]);
+export const DEEP_SPACE_POINT = Object.freeze([260, -181, 140]);

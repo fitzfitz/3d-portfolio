@@ -261,23 +261,23 @@ describe("LiveSkyConnection: the charted count (C2)", () => {
     h.conn.tick({ ...ME, ch: 3 });
     expect(sent(h)[1].ch).toBe(3);
   });
-  it("claims the title right after a pose with all five charted", () => {
+  it("claims the title right after a pose with all nine charted", () => {
     const h = company();
-    expect(h.conn.tick({ ...ME, ch: 5, plume: "cartographer" }, true)).toBe(true);
+    expect(h.conn.tick({ ...ME, ch: 9, plume: "cartographer" }, true)).toBe(true);
     expect(sent(h)).toEqual([
-      { t: "me", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "cartographer", ch: 5 },
+      { t: "me", p: [1.23, 2, 3], q: [0, 0, 0, 1], plume: "cartographer", ch: 9 },
       { t: "charted" },
     ]);
   });
-  it("makes no claim below five", () => {
+  it("makes no claim below nine (a 5/9 pilot is not a cartographer)", () => {
     const h = company();
-    expect(h.conn.tick({ ...ME, ch: 4 }, true)).toBe(false);
+    expect(h.conn.tick({ ...ME, ch: 5 }, true)).toBe(false);
     expect(sent(h).some((m) => m.t === "charted")).toBe(false);
   });
   it("makes no claim on a tick that sent no pose", () => {
     const h = company();
-    h.conn.tick({ ...ME, ch: 5 });
-    expect(h.conn.tick({ ...ME, ch: 5 }, true)).toBe(false);
+    h.conn.tick({ ...ME, ch: 9 });
+    expect(h.conn.tick({ ...ME, ch: 9 }, true)).toBe(false);
   });
   it("hands a shout-out from the room to onCharted", () => {
     const heard: (string | null)[] = [];

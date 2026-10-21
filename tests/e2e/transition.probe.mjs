@@ -14,49 +14,55 @@ import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS, jumpT
 // matching, deliberate scene change is the regression this file exists to
 // catch.
 //
-// Re-derived 2026-10-19 from 11 runs with the five worlds in the scene (New
-// Worlds C1) and detail by distance (sphereLod.ts); each baseline is the
-// highest of the 11. Programs is the exception to the rule above: its
-// ceilings stay at the deliberate 79 (the deep-space family) and 84 (the
-// close-approach and modal states), well above the 58-59 measured (57-58
-// before the probes' material, PR 39), because a headless run can
-// decline to low-perf before warm-up and then compile both variants (see
-// docs/PERF-BUDGETS.md). The real program guard is programs.probe.mjs's tour,
-// which must add 0.
-const DEEP_CALLS_CEILING = 50; // baseline 35
-const DEEP_TRIS_CEILING = 278210; // baseline 241916
-const DEEP_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
+// Re-derived 2026-10-20 for the real Solar System (PR 40): each baseline is
+// the highest of 6 serial runs of this probe alone (docs/PERF-BUDGETS.md,
+// "Real Solar System re-baseline"). The states keep their poses; what is in
+// them changed: nine always-visible orbit ribbons, far-body dots, the nine
+// moons, Saturn's and Uranus's rings, a smaller Earth for the close approach,
+// and the deep-space point moved clear of the real orbits. Programs is the
+// exception to the rule above: its ceilings stay at the deliberate 79 (the
+// deep-space family) and 84 (the close-approach and modal states), well above
+// the 56-57 measured, because a headless run can decline to low-perf before
+// warm-up and then compile both variants (see docs/PERF-BUDGETS.md). The real
+// program guard is programs.probe.mjs's tour, which must add 0.
+const DEEP_CALLS_CEILING = 50; // baseline 42
+const DEEP_TRIS_CEILING = 303490; // baseline 263904
+const DEEP_PROGRAMS_CEILING = 79; // baseline 56, deliberately high (above)
 
-const APPROACH_CALLS_CEILING = 140; // baseline 116
-const APPROACH_TRIS_CEILING = 429540; // baseline 373512
-const APPROACH_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
+// Earth now, drawn 8.4 (Ruangrapi was 12): a lighter frame than before.
+// Re-derived from 6 runs with the pose pinned to Earth's live position at
+// the read (pinnedApproach): 65-76 calls, 306,652-339,962 triangles.
+const APPROACH_CALLS_CEILING = 90; // baseline 76
+const APPROACH_TRIS_CEILING = 390960; // baseline 339962
+const APPROACH_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
-// Re-derived 2026-10-20 (project probes, PR 39): "modal open" is now an open
-// probe dossier, entered by a jump to probe 1 and a beam grab, so the frozen
-// view is probe 1 at the nose, seen from its jump point, not a planet filling
-// the frame from an orbit lock. Highest of 12 serial runs (docs/PERF-BUDGETS.md).
-const MODAL_CALLS_CEILING = 60; // baseline 50
-const MODAL_TRIS_CEILING = 317530; // baseline 276112
-const MODAL_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
+// "Modal open" is an open probe dossier (PR 39), entered by a jump to probe 1
+// and a beam grab, so the frozen view is probe 1 at the nose, seen from its
+// jump point.
+// Read after the pinned approach: 48-57 calls, 273,052-333,636 triangles
+// over the same 6 runs (the high one has more of the inner system behind).
+const MODAL_CALLS_CEILING = 70; // baseline 57
+const MODAL_TRIS_CEILING = 383690; // baseline 333636
+const MODAL_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
-const ANOMALIES_CALLS_CEILING = 50; // baseline 35
-const ANOMALIES_TRIS_CEILING = 278210; // baseline 241916
-const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 58, deliberately high (above)
+const ANOMALIES_CALLS_CEILING = 50; // baseline 42
+const ANOMALIES_TRIS_CEILING = 303490; // baseline 263904
+const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
 const ANOMALIES_LIGHTS_CEILING = 5;
 
 // Deep space again, nose on the sun: the disc, its corona and the six lens
 // sprites in frame, counted on purpose (the deep-space and 40-anomalies states
-// face away from it), with the inner system and three worlds.
-const FACING_SUN_CALLS_CEILING = 140; // baseline 118
-const FACING_SUN_TRIS_CEILING = 461930; // baseline 401672
+// face away from it), with the inner planets, their ribbons and dots.
+const FACING_SUN_CALLS_CEILING = 160; // baseline 136
+const FACING_SUN_TRIS_CEILING = 430280; // baseline 374148
 const FACING_SUN_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const FACING_SUN_LIGHTS_CEILING = 5;
 
-// Near the ringed giant, nose on it, rings in frame (nearRingedGiant).
-const RINGED_CALLS_CEILING = 50; // baseline 39
-const RINGED_TRIS_CEILING = 289620; // baseline 251836
+// Near Saturn, nose on it, rings in frame (nearRingedGiant), Titan's rim too.
+const RINGED_CALLS_CEILING = 60; // baseline 49
+const RINGED_TRIS_CEILING = 323720; // baseline 281490
 const RINGED_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const RINGED_LIGHTS_CEILING = 5;
 
@@ -192,8 +198,8 @@ const RINGED_VIEW_ELEVATION_DEG = 35;
 async function nearRingedGiant(page) {
   await page.evaluate(([dist, elevDeg]) => {
     const d = window.__fitz;
-    const c = d.bodies["w-ringed"];
-    const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+    const c = d.bodies.saturn;
+    const ring = d.scene.getObjectByName("BodyRing_saturn");
     ring.updateWorldMatrix(true, false);
     const n = ring.getWorldDirection(d.camera.position.clone());
     const r = Math.hypot(c.x, c.y, c.z);
@@ -207,7 +213,7 @@ async function nearRingedGiant(page) {
     d.teleport(c.x + u.x * dist, c.y + u.y * dist, c.z + u.z * dist);
   }, [RINGED_VIEW_DISTANCE, RINGED_VIEW_ELEVATION_DEG]);
   await settle(page, 1500);
-  const c = await page.evaluate(() => { const b = window.__fitz.bodies["w-ringed"]; return [b.x, b.y, b.z]; });
+  const c = await page.evaluate(() => { const b = window.__fitz.bodies.saturn; return [b.x, b.y, b.z]; });
   await faceFrom(page, c, true);
 }
 
@@ -221,8 +227,8 @@ const ringsInView = (page) => page.evaluate(() => {
   const d = window.__fitz;
   const cam = d.camera;
   cam.updateMatrixWorld();
-  const b = d.bodies["w-ringed"];
-  const ring = d.scene.getObjectByName("WorldRing_w-ringed");
+  const b = d.bodies.saturn;
+  const ring = d.scene.getObjectByName("BodyRing_saturn");
   ring.updateWorldMatrix(true, false);
   const n = ring.getWorldDirection(cam.position.clone());
   const c = cam.position.clone().set(b.x, b.y, b.z);
@@ -242,13 +248,12 @@ const ringsInView = (page) => page.evaluate(() => {
 });
 
 /**
- * Every planet and world draws through a LOD on the shared unit spheres
+ * Every body draws through a LOD on the shared unit spheres
  * (src/utils/sphereLod.ts), its levels all on that body's one material.
  */
 const bodiesUseLods = (page) => page.evaluate(async () => {
-  const { planets } = await import("/src/constants.ts");
-  const { WORLD_IDS } = await import("/src/data/worlds.ts");
-  const names = [...planets.map((p) => `Planet_${p.name}`), ...WORLD_IDS.map((id) => `World_${id}`)];
+  const { BODY_IDS } = await import("/src/data/bodyIds.ts");
+  const names = BODY_IDS.map((id) => `Body_${id}`);
   return names.map((name) => {
     const mesh = window.__fitz.scene.getObjectByName(name);
     const lod = mesh?.parent;
@@ -259,32 +264,59 @@ const bodiesUseLods = (page) => page.evaluate(async () => {
   });
 });
 
+/** Earth's close-approach pose: this many of its sizes out along its outward radial. */
+const APPROACH_SIZES = 1.45;
+
 /**
- * Teleports close to a planet: 1.45x its size out along its outward radial.
+ * Parks the ship APPROACH_SIZES Earth sizes out on Earth's outward radial and
+ * holds it there against Earth's LIVE position every frame for `ms` (at least
+ * 30 frames), so the chase camera settles on a pose pinned to the planet;
+ * then reads the renderer counters and the distance, in sizes, on the same
+ * frame. Earth moves 1.72 u/s (0.21 of its drawn 8.4 u size a second): parked
+ * once and read after a SwiftShader settle, the gap had grown to 1.88 sizes
+ * in 1 run of 8, so what was in frame drifted with the timing.
  *
- * That is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
+ * 1.45 sizes is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
  * planets used to set activeZone and outside the 1.3x where they used to
  * lock; planets do neither now (their dossiers moved onto probes), so the
  * spot is kept for the close-approach budget's continuity. It is well clear
- * of the solid surface (1x size plus the ship's half length). Size is read
- * from the live module, so the probe follows the planet table instead of
- * pinning a size.
+ * of the solid surface (1x size plus the ship's half length). On the outward
+ * radial the planet's motion is perpendicular to the line, so it never sweeps
+ * into the ship. Size is read from the live module.
  */
-async function approachPlanet(page) {
-  return page.evaluate(async () => {
-    const { planets } = await import("/src/constants.ts");
-    const b = window.__fitz.bodies;
-    const name = Object.keys(b)[0];
-    const p = b[name];
-    // On the planet's outward radial (away from the sun at the origin), at
-    // 1.45x the planet size. Orbits are centred on the origin, so planet
-    // motion is perpendicular to this line and the gap can only grow while
-    // the probe waits: the planet never sweeps into the ship.
-    const r = Math.hypot(p.x, p.y, p.z) || 1;
-    const d = planets.find((pl) => pl.name === name).size * 1.45;
-    window.__fitz.teleport(p.x + (p.x / r) * d, p.y + (p.y / r) * d, p.z + (p.z / r) * d);
-    return name;
-  });
+async function pinnedApproach(page, ms = 1500) {
+  return page.evaluate(async (k, ms) => {
+    const { bodyById } = await import("/src/data/solarSystem.ts");
+    const name = "earth";
+    const size = bodyById(name).size;
+    const d = window.__fitz;
+    const park = () => {
+      const p = d.bodies[name];
+      const r = Math.hypot(p.x, p.y, p.z) || 1;
+      d.teleport(p.x + (p.x / r) * k * size, p.y + (p.y / r) * k * size, p.z + (p.z / r) * k * size);
+    };
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      let n = 0;
+      const step = () => {
+        park();
+        n++;
+        if (performance.now() - t0 < ms || n < 30) { requestAnimationFrame(step); return; }
+        // One more frame renders the last pose; read on the frame after it.
+        requestAnimationFrame(() => {
+          let lights = 0;
+          d.scene.traverse((o) => { if (o.isLight) lights++; });
+          const b = d.bodies[name], f = d.flight, st = d.store.getState();
+          resolve({
+            name, frames: n,
+            counters: { calls: d.perfStats.calls, triangles: d.perfStats.triangles, programs: d.gl.info.programs.length, lights },
+            k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked,
+          });
+        });
+      };
+      step();
+    });
+  }, APPROACH_SIZES, ms);
 }
 
 export default async function run() {
@@ -333,12 +365,12 @@ export default async function run() {
 
     // ---- renderer counter budgets: near the ringed giant, rings in frame (docs/PERF-BUDGETS.md) ----
     const lods = await bodiesUseLods(page);
-    checks.check("every planet and world draws through a 64/24/12 LOD on its one material",
+    checks.check("every body draws through a 64/24/12 LOD on its one material",
       lods.every((l) => l.ok), lods.filter((l) => !l.ok).map((l) => l.name).join(", ") || "all");
     await nearRingedGiant(page);
     const ringed = await readPerfCounters(page);
     const ringedView = await ringsInView(page);
-    checks.check("ringed-giant state has the planet and its rings in frame, opened, sun behind (precondition)",
+    checks.check("Saturn state has the planet and its rings in frame, opened, sun behind (precondition)",
       ringedView.onScreen && ringedView.outside && ringedView.open && ringedView.drawn && ringedView.sunBehind,
       JSON.stringify(ringedView));
     checks.check("ringed-giant draw calls within budget", ringed.calls <= RINGED_CALLS_CEILING,
@@ -358,22 +390,11 @@ export default async function run() {
 
     // ---- close approach to a planet: no zone, no lock, no re-render ----
     const beforeApproach = await canvasRenders(page);
-    const planet = await approachPlanet(page);
-    await settle(page, 1500);
+    const pinned = await pinnedApproach(page);
     const afterApproach = await canvasRenders(page);
-    // Counted first, straight after the settle, as before planets lost their
-    // zone: the chase camera is still easing in, so a slower read in between
-    // (the module import below) changes what is in frame.
-    const approach = await readPerfCounters(page);
-    const close = await page.evaluate(async (name) => {
-      const { planets } = await import("/src/constants.ts");
-      const size = planets.find((p) => p.name === name).size;
-      const b = window.__fitz.bodies[name], f = window.__fitz.flight;
-      const st = window.__fitz.store.getState();
-      return { k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked };
-    }, planet);
-    checks.check("the approach parked inside 1.8 planet sizes, where the old zone was (precondition)",
-      close.k > 1 && close.k < 1.8, `planet=${planet} distance=${close.k.toFixed(2)} sizes`);
+    const planet = pinned.name, approach = pinned.counters, close = pinned;
+    checks.check(`the approach is pinned at ${APPROACH_SIZES} sizes from Earth's live centre at the read (precondition)`,
+      Math.abs(close.k - APPROACH_SIZES) < 0.05, `planet=${planet} distance=${close.k.toFixed(3)} sizes frames=${pinned.frames}`);
     checks.check("a close approach to a planet sets no zone and no lock (planets are scan-only)",
       close.zone === null && !close.locked, `activeZone=${close.zone} locked=${close.locked}`);
     checks.check("zero canvas re-renders on a close planet approach",

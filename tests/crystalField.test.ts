@@ -3,37 +3,17 @@ import {
   CRYSTAL_LANDMARKS, CRYSTAL_MAX, CRYSTAL_RESPAWN_SECONDS, LANDMARK_KEEP_OUT, crystalAvoidPoints, isRejectedSpawn, randomCrystalPos, respawnTick,
 } from "../src/utils/crystalField";
 import { SYSTEM_RADIUS } from "../src/constants";
+import { CRYSTAL_FIELD_RADIUS } from "../src/utils/crystalField";
 import { DESTINATIONS } from "../src/data/destinations";
 import { GATE_POS } from "../src/data/dormantGate";
+import { PORTAL_POS, LOCK_RETAIN_FACTOR as RETAIN } from "../src/constants";
+import { SOLAR_BODIES } from "../src/data/solarSystem";
 
 describe("isRejectedSpawn", () => {
-  it("rejects inside the asteroid belt band", () => {
-    // Belt is radius 40-70, measured as distance from the origin.
-    expect(isRejectedSpawn(55, 0, 0, [])).toBe(true);
-    expect(isRejectedSpawn(0, 0, 45, [])).toBe(true);
-  });
-
-  it("rejects inside the polar halo band", () => {
-    // Halo is radius 80-95.
-    expect(isRejectedSpawn(88, 0, 0, [])).toBe(true);
-  });
-
-  it("measures the bands as 3D radius, so the tilted halo is covered", () => {
-    // Both belt rings are TILTED (BeltMain 0.436 rad, BeltHalo 1.31 rad), and a
-    // tilt preserves distance from the origin while destroying XZ radius. The
-    // 75-degree halo at ring radius 88 therefore reaches y ~= 85 at an XZ radius
-    // of only ~22 — so an XZ-radius test would happily place a crystal in the
-    // thick of the halo. Straight up the pole at 88 units must reject.
-    expect(isRejectedSpawn(0, 88, 0, [])).toBe(true);
-    // And a point whose XZ radius lands in the belt band but whose true distance
-    // is far outside it must be accepted.
-    expect(isRejectedSpawn(55, 240, 0, [])).toBe(false);
-  });
-
-  it("accepts the gaps between and beyond the bands", () => {
-    expect(isRejectedSpawn(20, 0, 0, [])).toBe(false);   // the belt's inner hole
-    expect(isRejectedSpawn(75, 0, 0, [])).toBe(false);   // between belt and halo
-    expect(isRejectedSpawn(200, 0, 0, [])).toBe(false);  // beyond both
+  it("has no static belt exclusion: the old band and halo radii are accepted", () => {
+    for (const p of [[55, 0, 0], [0, 0, 45], [88, 0, 0], [0, 88, 0], [20, 0, 0], [200, 0, 0]]) {
+      expect(isRejectedSpawn(p[0], p[1], p[2], []), p.join(",")).toBe(false);
+    }
   });
 
   it("rejects near an avoid point, and accepts outside its radius", () => {
@@ -46,8 +26,6 @@ describe("isRejectedSpawn", () => {
     // Discriminating on purpose. An XZ-only avoid check would drop the y term and
     // compute distance 0 for a point directly above the avoid centre, rejecting
     // it — so the ACCEPT case below is what actually catches that regression.
-    // Origin radius 25 also sits clear of the belt band (40-70), so only the
-    // avoid logic decides these two verdicts.
     const avoid = [{ x: 0, y: 0, z: 0, r: 20 }];
     // Inside the sphere in 3D: reject.
     expect(isRejectedSpawn(0, 15, 0, avoid)).toBe(true);
@@ -58,12 +36,20 @@ describe("isRejectedSpawn", () => {
 });
 
 describe("randomCrystalPos", () => {
-  it("stays inside the system sphere", () => {
+  it("keeps the inner system: the field is 480, well inside the 3,600 system (spec §6.4)", () => {
+    expect(CRYSTAL_FIELD_RADIUS).toBe(480);
+    expect(CRYSTAL_FIELD_RADIUS).toBeLessThan(SYSTEM_RADIUS);
+    let s = 7;
+    const rand = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 500; i++) expect(Math.hypot(...randomCrystalPos(rand, []))).toBeLessThanOrEqual(480);
+  });
+
+  it("stays inside the field's sphere", () => {
     let n = 0;
     const rand = () => [0.1, 0.9, 0.5, 0.3, 0.7, 0.2][n++ % 6];
     for (let i = 0; i < 50; i++) {
       const [x, y, z] = randomCrystalPos(rand, []);
-      expect(Math.hypot(x, y, z)).toBeLessThanOrEqual(SYSTEM_RADIUS);
+      expect(Math.hypot(x, y, z)).toBeLessThanOrEqual(CRYSTAL_FIELD_RADIUS);
     }
   });
 
@@ -114,7 +100,6 @@ describe("respawnTick", () => {
 describe("crystalAvoidPoints", () => {
   it("keeps every landmark clear, not only the portal", () => {
     const avoid = crystalAvoidPoints([], [[0, 95, -150], [0, -108, 156]], { x: 0, y: 0, z: 0 });
-    // Both points are outside the belt bands and far from the ship.
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT - 1, 156, avoid)).toBe(true);
     expect(isRejectedSpawn(0, 95, -150 + LANDMARK_KEEP_OUT - 1, avoid)).toBe(true);
     expect(isRejectedSpawn(0, -108 + LANDMARK_KEEP_OUT + 1, 156, avoid)).toBe(false);
@@ -133,14 +118,14 @@ describe("CRYSTAL_LANDMARKS", () => {
   });
 });
 
-describe("crystal keep-out around a ringed world", () => {
-  it("covers the ring reach (2.3 × size) when it lies beyond the lock-retain radius", async () => {
-    const { RING_REACH_FACTOR } = await import("../src/utils/ringOptics");
+describe("crystal keep-out around a ringed body", () => {
+  it("covers Saturn's ring reach (the A ring's 2.27 × size) when it lies beyond the lock-retain radius", async () => {
+    const { RING_OUT } = await import("../src/utils/ringOptics");
     const { CRYSTAL_PICKUP_RADIUS } = await import("../src/utils/crystalField");
     const { LOCK_RETAIN_FACTOR } = await import("../src/constants");
-    const { PLANETS_AND_WORLDS } = await import("../src/data/worlds");
-    const ringed = PLANETS_AND_WORLDS.find((b) => b.key === "w-ringed")!;
-    expect(ringed.reach).toBeCloseTo(ringed.size * RING_REACH_FACTOR);
+    const { BODY_REACH } = await import("../src/data/solarSystem");
+    const ringed = BODY_REACH.find((b) => b.key === "saturn")!;
+    expect(ringed.reach).toBeCloseTo(ringed.size * RING_OUT);
     expect(ringed.reach).toBeGreaterThan(ringed.size * LOCK_RETAIN_FACTOR);
     // Far from the bands, the landmarks and the ship.
     const at = { x: 300, y: 0, z: 0 };
@@ -154,9 +139,24 @@ describe("crystal keep-out around a ringed world", () => {
   it("keeps a body without rings at its lock-retain radius", async () => {
     const { CRYSTAL_PICKUP_RADIUS } = await import("../src/utils/crystalField");
     const { LOCK_RETAIN_FACTOR } = await import("../src/constants");
-    const { PLANETS_AND_WORLDS } = await import("../src/data/worlds");
-    for (const b of PLANETS_AND_WORLDS) if (b.key !== "w-ringed") expect(b.reach, b.key).toBe(b.size);
+    const { BODY_REACH } = await import("../src/data/solarSystem");
+    for (const b of BODY_REACH) if (b.key !== "saturn" && b.key !== "uranus") expect(b.reach, b.key).toBe(b.size);
     const avoid = crystalAvoidPoints([{ x: 300, y: 0, z: 0, size: 12, reach: 12 }], [], { x: -300, y: 0, z: 0 });
     expect(avoid[0].r).toBe(12 * LOCK_RETAIN_FACTOR + CRYSTAL_PICKUP_RADIUS);
+  });
+});
+
+describe("crystal spawns near bodies", () => {
+  it("rejects any spot inside a body's lock-retain radius", () => {
+    const at = { x: 100, y: 0, z: 0 };
+    const avoid = crystalAvoidPoints(
+      SOLAR_BODIES.map((p) => ({ ...at, size: p.size })),
+      [PORTAL_POS],
+      { x: 0, y: 200, z: 0 },
+    );
+    for (const p of SOLAR_BODIES) {
+      const r = p.size * RETAIN - 0.5;
+      expect(isRejectedSpawn(at.x + r, at.y, at.z, avoid)).toBe(true);
+    }
   });
 });

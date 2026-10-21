@@ -22,7 +22,7 @@ export const PACK_TYPES: Record<string, string> = {
 };
 
 /**
- * Which pack a public/models file ships in: `x_4k.*` (the planets' 4096
+ * Which pack a public/models file ships in: `x_4k.*` (Mercury's, Earth's and Mars's 4096
  * maps) is hd, an `x.*` with an `x_4k.*` sibling (the 2048 original it
  * replaces) is sd, and everything else is common.
  */

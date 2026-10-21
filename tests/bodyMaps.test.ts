@@ -1,0 +1,329 @@
+import { describe, it, expect } from "vitest";
+import sharp from "sharp";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
+import { SOLAR_MOONS } from "../src/data/solarMoons";
+import { packTier } from "../src/utils/packFormat";
+import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
+import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
+
+/**
+ * The real bodies' and moons' shipped maps (real-solar-system spec §5.5):
+ * provenance (each NASA/USGS map pins its source URL and SHA-256, the rest
+ * name their seeded generator), honest albedo on the scene's scale, shape,
+ * seam, poles, per-file and per-pack byte caps, the ring strip's real
+ * profile and generator determinism. Reads public/models, so it checks
+ * exactly what visitors download.
+ */
+
+const MODELS = "public/models";
+const file = (name: string) => `${MODELS}/${name}.webp`;
+
+/** The scene's albedo scale: a map's linear median is 0.177 × its body's geometric albedo (Jupiter's 0.538 ↔ 0.095). */
+const ALBEDO_SCALE = 0.177;
+
+/** Every albedo-carrying surface: the nine bodies and the moons drawn as spheres (Phobos and Deimos are shape models, Task 14). */
+const SURFACES = [
+  ...SOLAR_BODIES.map((b) => ({ id: b.id, map: b.map, hiRes: !!b.mapHiRes, albedo: b.geometricAlbedo, stat: b.texelMedianLinear })),
+  ...SOLAR_MOONS.filter((m) => !m.shape).map((m) => ({ id: m.id, map: m.map, hiRes: false, albedo: m.geometricAlbedo, stat: m.texelMedianLinear })),
+];
+const EARTH = bodyById("earth");
+const CLOUDS = EARTH.look.clouds!;
+const NIGHT = EARTH.look.nightLights!;
+/** Every equirect map a body or moon draws (albedo maps, Earth's cloud alpha and night lights), without the _4k variants. */
+const EQUIRECT = [...new Set([...SURFACES.map((s) => s.map), CLOUDS.map, NIGHT])];
+/** ... and with them: each `_4k` sibling that ships. */
+const ALL_EQUIRECT = EQUIRECT.flatMap((m) => (existsSync(file(`${m}_4k`)) ? [m, `${m}_4k`] : [m]));
+
+async function raw(name: string) {
+  const { data, info } = await sharp(file(name)).raw().toBuffer({ resolveWithObject: true });
+  return { data, w: info.width, h: info.height, ch: info.channels };
+}
+
+const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const lumAt = (data: Buffer, k: number, ch: number) =>
+  0.2126 * srgbToLinear(data[k * ch] / 255) + 0.7152 * srgbToLinear(data[k * ch + 1] / 255) + 0.0722 * srgbToLinear(data[k * ch + 2] / 255);
+const median = (a: Float32Array) => a.slice().sort()[a.length >> 1];
+
+/** The linear-luminance texel median of a shipped albedo map; Earth's is measured under its cloud layer, as drawn. */
+async function surfaceMedian(name: string, body: string) {
+  const { data, w, h, ch } = await raw(name);
+  const lum = new Float32Array(w * h);
+  for (let k = 0; k < w * h; k++) lum[k] = lumAt(data, k, ch);
+  if (body === "earth") {
+    // The cloud shell: colour CLOUDS.linear (linear), alpha the cloud map (stored linear, NoColorSpace).
+    const { data: a, info } = await sharp(file(CLOUDS.map)).resize(w, h, { fit: "fill" }).greyscale().raw().toBuffer({ resolveWithObject: true });
+    for (let k = 0; k < w * h; k++) {
+      const alpha = a[k * info.channels] / 255;
+      lum[k] = lum[k] * (1 - alpha) + CLOUDS.linear * alpha;
+    }
+  }
+  return median(lum);
+}
+
+describe("provenance: a pinned NASA/USGS source or a seeded generator for every map", () => {
+  it("covers every map a body or moon draws", () => {
+    expect(EQUIRECT.filter((m) => !(m in BODY_MAPS))).toEqual([]);
+  });
+
+  for (const [name, recipe] of Object.entries(BODY_MAPS)) {
+    it(`${name}: ${"sources" in recipe ? "source URL, SHA-256 and a public-domain page" : "an existing generator"}`, () => {
+      if ("sources" in recipe) {
+        expect(recipe.sources.length).toBeGreaterThan(0);
+        for (const id of recipe.sources) {
+          const s = SOURCES[id];
+          expect(s, id).toBeDefined();
+          expect(s.url).toMatch(/^https:\/\//);
+          expect(s.sha256).toMatch(/^[0-9a-f]{64}$/);
+          expect(s.bytes).toBeGreaterThan(0);
+          expect(s.page).toMatch(/^https:\/\//);
+          // The licence evidence is quoted from the product page (or the
+          // policy it links): public domain, or NASA's "not subject to copyright".
+          expect(s.licence).toMatch(/public domain|not subject to copyright/i);
+        }
+      } else {
+        expect(existsSync(recipe.generator), recipe.generator).toBe(true);
+      }
+    });
+  }
+
+  const MANIFEST = "assets-src/MANIFEST.md";
+  // The private assets-src repo is absent in CI.
+  it.skipIf(!existsSync(MANIFEST))("assets-src/MANIFEST.md lists every map with its source URL and hash", () => {
+    const text = readFileSync(MANIFEST, "utf8");
+    expect(text).not.toMatch(/cited only, never shipped/);
+    for (const [name, recipe] of Object.entries(BODY_MAPS)) {
+      expect(text, name).toContain(`\`${name}.jpg\``);
+      if ("sources" in recipe) {
+        for (const id of recipe.sources) {
+          expect(text, `${name} ← ${id}`).toContain(SOURCES[id].url);
+          expect(text, `${name} ← ${id}`).toContain(SOURCES[id].sha256.slice(0, 16));
+        }
+      }
+    }
+  });
+});
+
+describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the display curve", () => {
+  for (const s of SURFACES) {
+    // The brief allows 10%; every map lands within 3% (worst: Titan 2.2%,
+    // Saturn's kept w-ringed 1.9%), so 3% is held.
+    it(`${s.id}: texelMedianLinear ${s.stat} is 0.177 × ${s.albedo} within 3%`, () => {
+      expect(Math.abs(s.stat / (ALBEDO_SCALE * s.albedo) - 1)).toBeLessThan(0.03);
+    });
+    for (const name of s.hiRes ? [s.map, `${s.map}_4k`] : [s.map]) {
+      it(`${s.id}: ${name}.webp median is within 3% of ${s.stat}${s.id === "earth" ? " (under its clouds)" : ""}`, async () => {
+        const m = await surfaceMedian(name, s.id);
+        expect(Math.abs(m / s.stat - 1)).toBeLessThan(0.03);
+      });
+    }
+  }
+
+  it("Earth's cloud tops are lit matter on the same scale (0 < linear ≤ 0.177 × 2)", () => {
+    expect(CLOUDS.linear).toBeGreaterThan(0);
+    expect(CLOUDS.linear).toBeLessThanOrEqual(ALBEDO_SCALE * 2);
+  });
+
+  it("no body is a tint any more: every one draws a map", () => {
+    for (const b of SOLAR_BODIES) {
+      expect(b.map, b.id).not.toBe("");
+      expect("tint" in b, b.id).toBe(false);
+    }
+  });
+
+  it("each body's HUD colour has its map's hue (mean linear R/G and B/G within 12%)", async () => {
+    for (const b of SOLAR_BODIES) {
+      const { data, w, h, ch } = await raw(b.map);
+      const sum = [0, 0, 0];
+      for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
+      const hex = parseInt(b.color.slice(1), 16);
+      const col = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((v) => srgbToLinear(v / 255));
+      expect(Math.abs(col[0] / col[1] / (sum[0] / sum[1]) - 1), `${b.id} R/G`).toBeLessThan(0.12);
+      expect(Math.abs(col[2] / col[1] / (sum[2] / sum[1]) - 1), `${b.id} B/G`).toBeLessThan(0.12);
+    }
+  });
+});
+
+describe("maps: shape, seam and poles", () => {
+  for (const name of ALL_EQUIRECT) {
+    it(`${name} is 2:1 at 1024, 2048 or (a desktop _4k) 4096`, async () => {
+      const meta = await sharp(file(name)).metadata();
+      expect(meta.width! / meta.height!).toBe(2);
+      expect(name.endsWith("_4k") ? [4096] : [1024, 2048]).toContain(meta.width);
+    });
+
+    it(`${name} has no seam at ±180°: the wrap step is no bigger than the map's own step between neighbouring columns`, async () => {
+      const { data, w, h, ch } = await raw(name);
+      // Mean |left pair − right pair| over every row and channel (8-bit
+      // levels), each side the mean of two columns so lossy WebP's own
+      // per-column noise at the image edge does not read as a seam; for scale,
+      // the same step between interior column pairs.
+      const pairStep = (l0: number, l1: number, r0: number, r1: number) => {
+        let sum = 0;
+        for (let y = 0; y < h; y++) for (let c = 0; c < 3; c++) {
+          const v = (x: number) => data[(y * w + x) * ch + c];
+          sum += Math.abs((v(l0) + v(l1)) / 2 - (v(r0) + v(r1)) / 2);
+        }
+        return sum / (h * 3);
+      };
+      const cols = [w >> 3, w >> 2, (3 * w) >> 3, w >> 1, (5 * w) >> 3, (3 * w) >> 2, (7 * w) >> 3];
+      const interior = cols.reduce((s, x) => s + pairStep(x - 1, x, x + 1, x + 2), 0) / cols.length;
+      expect(pairStep(w - 2, w - 1, 0, 1)).toBeLessThan(Math.max(2, 1.5 * interior));
+      // and no systematic step in any channel
+      for (let c = 0; c < 3; c++) {
+        let signed = 0;
+        for (let y = 0; y < h; y++) signed += data[(y * w) * ch + c] - data[(y * w + w - 1) * ch + c];
+        expect(Math.abs(signed / h), `channel ${c} bias`).toBeLessThan(1);
+      }
+    });
+
+    it(`${name} has near-uniform pole rows`, async () => {
+      const { data, w, h, ch } = await raw(name);
+      for (const y of [0, h - 1]) {
+        for (let c = 0; c < 3; c++) {
+          let mean = 0;
+          for (let x = 0; x < w; x++) mean += data[(y * w + x) * ch + c];
+          mean /= w;
+          let v = 0;
+          for (let x = 0; x < w; x++) v += (data[(y * w + x) * ch + c] - mean) ** 2;
+          expect(Math.sqrt(v / w), `row ${y} channel ${c}`).toBeLessThan(3);
+        }
+      }
+    });
+  }
+
+  it("the 4K maps are desktop-only variants: each has its 2048 sibling and ships in the hd pack", () => {
+    const names = readdirSync(MODELS);
+    const hi = names.filter((f) => /_4k\.webp$/.test(f));
+    expect(hi.length).toBeGreaterThan(0);
+    for (const f of hi) {
+      expect(names, f).toContain(f.replace("_4k", ""));
+      expect(packTier(f, names)).toBe("hd");
+      expect(packTier(f.replace("_4k", ""), names)).toBe("sd");
+    }
+    // Exactly the bodies that ask for one.
+    expect(hi.map((f) => f.replace("_4k.webp", "")).sort()).toEqual(SOLAR_BODIES.filter((b) => b.mapHiRes).map((b) => b.map).sort());
+  });
+});
+
+describe("byte caps: per map, and per asset-pack tier", () => {
+  /** Per-file caps by width: a photographic 2048 map at WebP q≈85 is ~200–350 KB. */
+  const FILE_CAP: Record<number, number> = { 4096: 1300 * 1024, 2048: 420 * 1024, 1024: 120 * 1024 };
+  for (const name of ALL_EQUIRECT) {
+    it(`${name} stays under its width's cap`, async () => {
+      const { width } = await sharp(file(name)).metadata();
+      expect(statSync(file(name)).size).toBeLessThanOrEqual(FILE_CAP[width!]);
+    });
+  }
+
+  it("the texture tiers stay within their pack budgets (hd ≤ 3.6 MiB, sd ≤ 1.4 MiB, common maps ≤ 6.5 MiB)", () => {
+    const names = readdirSync(MODELS);
+    const total = (tier: string) => names.filter((f) => f.endsWith(".webp") && packTier(f, names) === tier)
+      .reduce((s, f) => s + statSync(`${MODELS}/${f}`).size, 0);
+    const MiB = 1024 * 1024;
+    expect(total("hd")).toBeLessThanOrEqual(3.6 * MiB);
+    expect(total("sd")).toBeLessThanOrEqual(1.4 * MiB);
+    expect(total("common")).toBeLessThanOrEqual(6.5 * MiB);
+  });
+
+  it("retires the interim maps no body draws", () => {
+    const names = readdirSync(MODELS);
+    for (const gone of ["ruangrapi", "portfolio", "fuxx", "w-rock", "w-dwarf"]) {
+      expect(names.filter((f) => f.startsWith(gone)), gone).toEqual([]);
+    }
+  });
+});
+
+describe("w-tilted (Uranus): Voyager 2's pale blue-cyan, not teal", () => {
+  // The game's tone mapping (Khronos PBR Neutral) subtracts the same toe
+  // offset from every channel of a dim pixel, which saturates it and lets a
+  // cyan with G ≈ B read teal-green. So the map carries a bluer hue than
+  // Voyager's image (B over G; the image is 1.04, Task 2's map 1.11), at
+  // about the image's red (R over G 0.66; Task 2's map 0.60 read teal, Task
+  // 2b's 0.72 grey-slate): bracketed around the reference, not one direction.
+  it("has R/G in 0.64–0.70 and B/G ≥ 1.12 in mean linear colour", async () => {
+    const { data, w, h, ch } = await raw("w-tilted");
+    const sum = [0, 0, 0];
+    for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
+    expect(sum[2] / sum[1]).toBeGreaterThanOrEqual(1.12);
+    expect(sum[0] / sum[1]).toBeGreaterThanOrEqual(0.64);
+    expect(sum[0] / sum[1]).toBeLessThanOrEqual(0.7);
+  });
+});
+
+describe("ring strip (w-ringed_ring)", () => {
+  const RING = { name: "w-ringed_ring", width: 2048, height: 4, cap: 16 * 1024 };
+  /** The ring strip spans the C ring's inner edge to the A ring's outer edge, in equatorial radii. */
+  const RING_IN = 1.24, RING_OUT = 2.27;
+  async function tau() {
+    const { data, w, h, ch } = await raw(RING.name);
+    expect(ch).toBe(4);
+    const t = Array.from({ length: w }, (_, x) => data[x * ch + 3] / 255);
+    return { data, w, h, ch, t };
+  }
+  /** Equatorial radius at texel x's centre. */
+  const radiusAt = (x: number, w: number) => RING_IN + ((x + 0.5) / w) * (RING_OUT - RING_IN);
+  const span = (t: number[], w: number, a: number, b: number) =>
+    t.filter((_, x) => radiusAt(x, w) >= a && radiusAt(x, w) <= b);
+
+  it("is a 2048×4 strip, every row the same, under its byte cap", async () => {
+    const { data, w, h, ch } = await tau();
+    expect([w, h]).toEqual([RING.width, RING.height]);
+    for (let y = 1; y < h; y++) expect(data.subarray(y * w * ch, (y + 1) * w * ch).equals(data.subarray(0, w * ch))).toBe(true);
+    expect(statSync(file(RING.name)).size).toBeLessThanOrEqual(RING.cap);
+  });
+
+  it("has τ = 0 in the first and last texel (inside C, outside A)", async () => {
+    const { t, w } = await tau();
+    expect(t[0]).toBe(0);
+    expect(t[w - 1]).toBe(0);
+  });
+
+  it("keeps the Cassini division under 0.15 of the B ring's peak", async () => {
+    const { t, w } = await tau();
+    const bPeak = Math.max(...span(t, w, 1.53, 1.95));
+    expect(bPeak).toBeGreaterThan(0.5);
+    expect(Math.max(...span(t, w, 1.96, 2.02))).toBeLessThan(0.15 * bPeak);
+  });
+
+  it("opens the Encke gap below the A ring's mean", async () => {
+    const { t, w } = await tau();
+    const a = span(t, w, 2.03, 2.27);
+    const aMean = a.reduce((s, v) => s + v, 0) / a.length;
+    expect(Math.min(...span(t, w, 2.205, 2.225))).toBeLessThan(aMean);
+  });
+
+  it("keeps the C ring faint next to B", async () => {
+    const { t, w } = await tau();
+    const mean = (v: number[]) => v.reduce((s, x) => s + x, 0) / v.length;
+    expect(mean(span(t, w, 1.25, 1.52))).toBeLessThan(0.3 * mean(span(t, w, 1.54, 1.94)));
+  });
+});
+
+describe("generator determinism", () => {
+  const hashes = (script: string, expected: string[]) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "gen-maps-"));
+    try {
+      execFileSync(process.execPath, [script, "--width=64", `--out=${dir}`], { stdio: "pipe" });
+      const files = readdirSync(dir).sort();
+      expect(files).toEqual(expected);
+      return files.map((f) => `${f}:${createHash("sha256").update(readFileSync(path.join(dir, f))).digest("hex")}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("gen_worlds.mjs writes identical files on two runs at --width=64", () => {
+    const expected = ["w-blue.jpg", "w-ringed.jpg", "w-ringed_ring.png", "w-tilted.jpg"];
+    expect(hashes("scripts/textures/gen_worlds.mjs", expected)).toEqual(hashes("scripts/textures/gen_worlds.mjs", expected));
+  }, 60_000);
+
+  it("gen_body_maps.mjs (Venus's cloud deck, Titan's haze, the Triton fill) writes identical files on two runs at --width=64", () => {
+    const expected = ["titan.jpg", "triton_fill.png", "venus.jpg"];
+    expect(hashes("scripts/textures/gen_body_maps.mjs", expected)).toEqual(hashes("scripts/textures/gen_body_maps.mjs", expected));
+  }, 60_000);
+});

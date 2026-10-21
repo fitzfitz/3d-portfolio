@@ -5,7 +5,8 @@ import {
   CONVOY_ORBIT_FACTOR, convoyRadius, CONVOY_APPROACH_S, CONVOY_ORBIT_S, CONVOY_HIDE_DIST, CONVOY_SPACING,
   type CometPass, type ConvoyPlan,
 } from "../src/utils/worldEvents";
-import { LOCK_RETAIN_FACTOR, planets } from "../src/constants";
+import { LOCK_RETAIN_FACTOR } from "../src/constants";
+import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { eventLines } from "../src/data/chatterLines";
 
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
@@ -90,12 +91,12 @@ describe("comet pass", () => {
 });
 
 describe("convoy path", () => {
-  for (const planet of planets) {
-    const size = planet.size;
+  for (const body of SOLAR_BODIES) {
+    const size = body.size;
     const plan = planConvoy(v(130, 0, 0), size, () => true)!;
     const R = convoyRadius(size);
 
-    it(`${planet.name} (size ${size}): every convoy slot stays outside lock-retain, with a 2u margin, for the whole event`, () => {
+    it(`${body.id} (size ${size}): every convoy slot stays outside lock-retain, with a 2u margin, for the whole event`, () => {
       const floor = size * LOCK_RETAIN_FACTOR + 2;
       for (const slot of [0, 1, 2] as const) {
         let min = Infinity;
@@ -105,7 +106,7 @@ describe("convoy path", () => {
         expect(min, `slot ${slot}`).toBeGreaterThan(floor);
       }
     });
-    it(`${planet.name} (size ${size}): orbits at convoyRadius, at least CONVOY_ORBIT_FACTOR x size and outside lock-retain`, () => {
+    it(`${body.id} (size ${size}): orbits at convoyRadius, at least CONVOY_ORBIT_FACTOR x size and outside lock-retain`, () => {
       expect(plan.R).toBeCloseTo(R);
       expect(plan.R).toBeGreaterThanOrEqual(CONVOY_ORBIT_FACTOR * size);
       expect(plan.R).toBeGreaterThan(size * LOCK_RETAIN_FACTOR);
@@ -168,7 +169,7 @@ describe("convoy path", () => {
 });
 
 describe("convoy lines", () => {
-  it("has generic lines for planets without their own", () => {
+  it("has generic lines for bodies without their own", () => {
     expect(eventLines.convoyAny.length).toBeGreaterThan(0);
   });
 });

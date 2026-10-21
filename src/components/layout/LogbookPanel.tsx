@@ -6,7 +6,7 @@ import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
 import { ORRERY_NOTE } from "../../utils/realUnits";
-import { WORLDS, WORLD_COUNT } from "../../data/worlds";
+import { BODY_COUNT, SOLAR_BODIES } from "../../data/solarSystem";
 import { isCartographer } from "../../utils/charting";
 import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
@@ -31,6 +31,7 @@ export default function LogbookPanel() {
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const liveSky = useSpaceStore((s) => s.liveSky);
   const charted = useSpaceStore((s) => s.charted);
+  const legacy = useSpaceStore((s) => s.legacyCartographer);
   const chartedIds = useMemo(() => new Set(charted.map((c) => c.id)), [charted]);
   const progress = useMemo<LogbookProgress>(
     () => ({ badges, visitedDossiers, shardsCollected }), [badges, visitedDossiers, shardsCollected]);
@@ -96,7 +97,7 @@ export default function LogbookPanel() {
           always tappable, on phones too. */}
       <div className="sticky top-0 -mx-4 px-4 pt-4 pb-3 mb-1 bg-[#07051a] flex items-center justify-between gap-3">
         <h2 id="logbook-title" ref={headingRef} tabIndex={-1} className="text-primary text-xs outline-none">
-          PILOT LOGBOOK{isCartographer(charted) && " · CARTOGRAPHER"}
+          PILOT LOGBOOK{isCartographer(charted, legacy) && " · CARTOGRAPHER"}
         </h2>
         <span className="ml-auto text-white/60">{done} / {total}</span>
         <button type="button" data-testid="logbook-close" aria-label="Close logbook"
@@ -111,19 +112,19 @@ export default function LogbookPanel() {
       <ul className="mb-3">{list("badge")}</ul>
       <div className="text-white/40 mb-1">SYSTEM CHART</div>
       <div className="mb-3"><SystemChart charted={chartedIds} /></div>
-      <div className="text-white/40 mb-1">WORLDS CHARTED {charted.length}/{WORLD_COUNT}</div>
+      <div className="text-white/40 mb-1">WORLDS CHARTED {charted.length}/{BODY_COUNT}</div>
       <ul className="mb-3">
-        {WORLDS.map((w) => {
-          const at = charted.find((c) => c.id === w.id)?.at;
+        {SOLAR_BODIES.map((b) => {
+          const at = charted.find((c) => c.id === b.id)?.at;
           return (
-            <li key={w.id} data-testid={`logbook-world-${w.id}`} className="flex items-start gap-2 py-1">
+            <li key={b.id} data-testid={`logbook-world-${b.id}`} className="flex items-start gap-2 py-1">
               <span aria-hidden="true" className={`mt-0.5 ${at ? "text-primary" : "text-white/30"}`}>
                 {at ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
               </span>
               <span className="flex-1">
-                <span className={at ? "text-white" : "text-white/60"}>{w.name}{at && ` · ${w.namesake.toUpperCase()}-TYPE`}</span>
+                <span className={at ? "text-white" : "text-white/60"}>{b.name}{at && ` · ${b.ordinal}`}</span>
                 <span className="sr-only">{at ? ", charted." : ", not yet."}</span>
-                <span className="block text-[9px] text-white/40">{at ? `CHARTED ${at}` : w.hint.toUpperCase()}</span>
+                <span className="block text-[9px] text-white/40">{at ? `CHARTED ${at}` : b.hint.toUpperCase()}</span>
               </span>
             </li>
           );

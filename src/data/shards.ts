@@ -12,9 +12,8 @@ export interface Shard {
 export const SHARDS: Shard[] = [
   // Beside the spawn pad (SPAWN, src/data/spawn.ts), ~11 units out: the easy first find
   { pos: [-42, 64, 77], fact: "WELCOME, PILOT. THIS PORTFOLIO IS ALSO A FLIGHT SIM. NO REFUNDS" },
-  // Just inside the first planet's orbit, clear of the sphere it sweeps
-  // (tests/planetClearance.test.ts)
-  { pos: [53, -18, 50], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
+  // Below the plane, clear of the real orbits' wells (tests/solarClearance.test.ts)
+  { pos: [53, -43, 50], fact: "RUANGRAPI TRACKS EVERY KOS ROOM'S RENT. THE PILOT TRACKS EVERY SHARD. SAME ENERGY" },
   // High above the sun (fact says so)
   { pos: [0, 140, 0], fact: "FROM UP HERE THE WHOLE SOLAR SYSTEM IS ONE REACT TREE. THE PILOT FINDS THIS CALMING" },
   // High cluster, near the second planet's upper orbital reach
@@ -23,8 +22,8 @@ export const SHARDS: Shard[] = [
   { pos: [6, -140, -10], fact: "DOWN HERE IT'S DARK, COLD, AND FULL OF UNIT TESTS" },
   // Deep cluster, far side
   { pos: [-110, -135, -90], fact: "3 AI CODE REVIEWERS APPROVED THIS UNIVERSE. A FOURTH IS STILL THINKING" },
-  // Near the sun: just outside its 24-unit core and 4-unit margin, short of the belt (r 40)
-  { pos: [-22, 6, -28], fact: "FUXX RUNS A FLEET OF AI CODING AGENTS IN ONE TERMINAL. THE PILOT RUNS ONE SPACESHIP. FOR NOW" },
+  // Near the sun: above the plane, outside its 24-unit core and clear of Mercury's real orbit well
+  { pos: [-22, 32, -28], fact: "FUXX RUNS A FLEET OF AI CODING AGENTS IN ONE TERMINAL. THE PILOT RUNS ONE SPACESHIP. FOR NOW" },
   // Beside the portal — reward for the climb
   { pos: [10, 98, -140], fact: "ASTEROIDS DO NOT HAVE STANDUPS. THE PILOT ENVIES THIS" },
   // Far corner, high

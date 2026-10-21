@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FUEL_MAX, FUEL_DRAIN_PER_SEC, FUEL_REGEN_PER_SEC, FUEL_PER_CRYSTAL, FUEL_LOW, drainFuel, regenFuel, stepFuel, refuel, refuelOutcome } from "../src/utils/fuel";
 import { SHIP_WARP_SPEED, SYSTEM_RADIUS } from "../src/constants";
+import { CRYSTAL_FIELD_RADIUS } from "../src/utils/crystalField";
 
 describe("drainFuel", () => {
   it("drains at the configured rate, scaled by dt", () => {
@@ -26,7 +27,11 @@ describe("drainFuel", () => {
     const seconds = FUEL_MAX / FUEL_DRAIN_PER_SEC;
     expect(seconds).toBeCloseTo(5 * 12.5, 9);
     expect(seconds * SHIP_WARP_SPEED).toBeCloseTo(2437.5, 6);
-    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(5 * SYSTEM_RADIUS); // more than two and a half diameters of the system
+    // More than two and a half diameters of the inner system (the crystal
+    // field, the old 480 edge). The 3,600 u system is Task 10's long-range
+    // cruise: warp grows with free space there, the drain does not.
+    expect(seconds * SHIP_WARP_SPEED).toBeGreaterThan(5 * CRYSTAL_FIELD_RADIUS);
+    expect(SYSTEM_RADIUS).toBeGreaterThan(CRYSTAL_FIELD_RADIUS);
   });
 });
 

@@ -2,27 +2,29 @@ import { buildGates } from "../utils/race";
 
 /**
  * The time-trial course: a closed loop of rings, flown in order, starting and
- * finishing through ring 0 in the inner belt, near the sun.
+ * finishing through ring 0 in the inner system, near the sun.
  *
- * Out through the asteroid belt (r 40-70), a climbing turn up to y≈70, then a
- * dive home. Every ring sits inside the innermost planet orbit, so no planet
- * ever drifts through the course, and clear of colliders and shards —
- * tests/race.test.ts checks all of that, so edit positions freely.
+ * Out across the inner system (every ring inside r < 115, around the orbits of
+ * Mercury, Venus and Earth), a climbing turn up to y≈70, then a dive home. The loop weaves through the inner system, so each ring is placed
+ * clear of every real swept orbit (planet wells and moon systems, belt,
+ * Trojans, comets): rings above or below the plane where the orbit tubes fill
+ * it (tests/solarClearance.test.ts). They also clear colliders and shards
+ * (tests/race.test.ts).
  *
- * The loop is ~486 units: ~12.5s at pure warp, ~45s at cruise. Since the
+ * The loop is ~540 units: ~13.9s at pure warp, ~50s at cruise. Since the
  * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
  */
 export const RING_GATES: [number, number, number][] = [
-  [-12, 3, 34],   // 0 start / finish, inner belt near the sun
-  [-45, 0, 40],   // into the belt
-  [-62, -8, -5],
-  [-26, -2, -52], // past the boulder at (-40, -5, -60)
-  [20, 15, -70],
-  [55, 40, -40],  // climbing turn
+  [-12, 23, 34],   // 0 start / finish, inner system near the sun
+  [-45, -33, 40],   // out across the inner system
+  [-62, -38, -5],
+  [-26, -34, -52], // past the boulder at (-40, -5, -60)
+  [20, 50, -70],
+  [55, 45, -40],  // climbing turn
   [40, 70, 10],   // the top
   [0, 55, 50],
-  [35, 20, 55],   // diving
-  [25, 5, 30],    // home stretch
+  [35, 39, 55],   // diving
+  [25, 23, 30],    // home stretch
 ];
 
 /** Ring opening radius. Generous: the chase camera hides the ship's exact line. */

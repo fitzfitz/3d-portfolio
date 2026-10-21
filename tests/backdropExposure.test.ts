@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AU, SYSTEM_RADIUS } from "../src/constants";
 import {
-  applyBackdrop, backdropDim, backdropScale, BACKDROP_EXPOSURE_POWER, EXPOSURE_POWER, targetExposure,
+  applyBackdrop, backdropDim, backdropScale, BACKDROP_EXPOSURE_POWER, BACKDROP_NET_MAX, EXPOSURE_POWER, targetExposure,
 } from "../src/utils/sunLight";
 
 const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
@@ -17,11 +17,22 @@ const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
 describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () => {
   it("is the exposure's growth beyond the power-1.5 curve, undone", () => {
     expect(BACKDROP_EXPOSURE_POWER).toBe(1.5);
-    for (const d of [AU, 150, 185, 242, 300, 425, SYSTEM_RADIUS]) {
+    // Up to where the net gain reaches BACKDROP_NET_MAX (about the old 480 u edge).
+    for (const d of [AU, 150, 185, 242, 300, 425]) {
       expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo((d / AU) ** BACKDROP_EXPOSURE_POWER, 9);
     }
-    expect(backdropScale(SYSTEM_RADIUS)).toBeCloseTo((AU / SYSTEM_RADIUS) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER), 12);
-    expect(backdropScale(SYSTEM_RADIUS)).toBeCloseTo(0.489, 3);
+  });
+  it("caps the net backdrop gain at the old edge's value, non-decreasing out to the 3,600 u edge", () => {
+    expect(BACKDROP_NET_MAX).toBe(8.5);
+    expect((480 / AU) ** BACKDROP_EXPOSURE_POWER).toBeCloseTo(BACKDROP_NET_MAX, 1);
+    let prev = 0;
+    for (let d = AU; d <= SYSTEM_RADIUS; d += 7) {
+      const net = backdropScale(d) * targetExposure(d);
+      expect(net, `d=${d}`).toBeLessThanOrEqual(BACKDROP_NET_MAX + 1e-9);
+      expect(net, `d=${d}`).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = net;
+    }
+    expect(backdropScale(SYSTEM_RADIUS) * targetExposure(SYSTEM_RADIUS)).toBeCloseTo(BACKDROP_NET_MAX, 9);
   });
   it("only tones down: 1 at and inside 1 AU, and held at the edge's value beyond it", () => {
     expect(backdropScale(AU)).toBe(1);

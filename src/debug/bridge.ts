@@ -1,5 +1,6 @@
 import type * as THREE from "three";
 import { useSpaceStore, flight, bodies } from "../store/spaceStore";
+import { moonPositions } from "../store/moonState";
 import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
 import { raceClock } from "../utils/raceClock";
@@ -7,6 +8,7 @@ import type { JellyState } from "../utils/jellyMood";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { LiveSkyConnection } from "../utils/liveSkyConnection";
 import { liveRadar } from "../utils/liveSky";
+import { orreryEpochJd, setOrreryEpochJd } from "../utils/orreryClock";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -18,6 +20,8 @@ export interface FitzDebug {
   store: typeof useSpaceStore;
   flight: typeof flight;
   bodies: typeof bodies;
+  /** The nine moons' live centres by moon id (store/moonState.ts), written by SolarMoons each frame. */
+  moons: typeof moonPositions;
   /** Time-trial clock (seconds), live. */
   raceClock: typeof raceClock;
   sound: typeof soundManager;
@@ -86,9 +90,9 @@ export interface FitzDebug {
   perfStats: typeof perfStats;
   /**
    * The shared eclipse uniforms (sunShadow.ts), live, registered by
-   * SpacePlanets in dev: `uOccluders.value[i]` is slot i (xyz world position,
-   * w radius; planets first, then moons in MOONS order), `uOccluderCount` how
-   * many are read.
+   * SolarBodies in dev: `uOccluders.value[i]` is slot i (xyz world position,
+   * w radius; sunShadow.ts bodySlot / moonSlot: the bodies with a moon or a
+   * ring 0-5, the nine moons 6-14), `uOccluderCount` how many are read (15).
    */
   sunShadow: typeof import("../components/canvas/sunShadow").sunShadowUniforms | null;
   /**
@@ -100,17 +104,20 @@ export interface FitzDebug {
   /**
    * Set `countOverride` to 0 to switch the per-fragment eclipse loop off
    * (frame-cost measurement, docs/PERF-BUDGETS.md); -1 restores it.
-   * Registered by SpacePlanets in dev.
+   * Registered by SolarBodies in dev.
    */
   sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
   /** Set `holdRegen` to pause the fuel auto-refill (e2e fuel probe). Registered by Spaceship in dev. */
   fuelDebug: typeof import("../utils/fuel").fuelDebug | null;
+  /** Orrery epoch (JD at game time 0): read, or set to jump the date. */
+  orrery: { epochJd: () => number; setEpochJd: (jd: number) => void };
 }
 
 export const fitzDebug: FitzDebug = {
   store: useSpaceStore,
   flight,
   bodies,
+  moons: moonPositions,
   raceClock,
   sound: soundManager,
   scene: null,
@@ -136,4 +143,5 @@ export const fitzDebug: FitzDebug = {
   shipShadow: null,
   sunShadowDebug: null,
   fuelDebug: null,
+  orrery: { epochJd: orreryEpochJd, setEpochJd: setOrreryEpochJd },
 };

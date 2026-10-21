@@ -35,7 +35,7 @@ npm run dev
 | --- | --- |
 | `__fitz.store` | The zustand store itself — call `__fitz.store.getState()` to read current state, or `.getState().someAction(...)` to call an action. |
 | `__fitz.flight` | Read-only per-frame telemetry: `x`, `y`, `z`, `speed`, `heading`, `pitch`, `input`. Written every frame by `Spaceship.tsx` — do not assign to it (see the teleport warning below). |
-| `__fitz.bodies` | Live world positions of the orbiting planets, keyed by name (`ruangrapi`, `portfolio`, `fuxx`), updated every frame. |
+| `__fitz.bodies` | Live world positions of the nine bodies, keyed by id (`mercury`, `venus`, `earth`, `mars`, `ceres`, `jupiter`, `saturn`, `uranus`, `neptune`), updated every frame. `__fitz.moons` holds the nine moons the same way. |
 | `__fitz.sound` | The sound manager instance. |
 | `__fitz.scene` | The live `THREE.Scene`, for `.getObjectByName(...)` lookups. |
 | `__fitz.gl` | The `THREE.WebGLRenderer`. |
@@ -89,8 +89,8 @@ setInterval(() => console.log(__fitz.renderCount), 1000)
 __fitz.store.getState().setMuted(false)
 
 // Get a planet's live position (orbits move every frame — there's no fixed
-// coordinate to hardcode). Names are "ruangrapi", "portfolio", "fuxx".
-__fitz.bodies.ruangrapi
+// coordinate to hardcode). Ids are "mercury" … "neptune" and "ceres".
+__fitz.bodies.earth
 ```
 
 ### Controls reference
@@ -175,7 +175,7 @@ alone better)?
 ```js
 // Aim the ship at a planet, then climb toward it. Orbits move every frame,
 // so read the live position rather than hardcoding one.
-const p = __fitz.bodies.ruangrapi; // or .portfolio / .fuxx
+const p = __fitz.bodies.earth; // or .mars / .jupiter / any body id
 __fitz.teleport(p.x, p.y, p.z - 80)
 ```
 
@@ -249,7 +249,7 @@ machine-gun during a sustained grind?
 // sun-to-planet line, so the planet sits roughly between you and the sun.
 // Orbits move — you may need to nudge sideways (A/D) to walk the planet
 // across the line, or just wait a few seconds as its own orbit carries it.
-const p = __fitz.bodies.ruangrapi; // sun is always at (0,0,0)
+const p = __fitz.bodies.earth; // sun is always at (0,0,0)
 const k = 1.6; // ship further out than the planet, same direction from the sun
 __fitz.teleport(p.x * k, p.y * k, p.z * k)
 ```
@@ -318,12 +318,12 @@ layer too loud relative to the rest of the mix?
 
 ```js
 // Hop between the sun's neighbourhood and the outer system.
-const b = __fitz.bodies.fuxx;
+const b = __fitz.bodies.ceres; // then .jupiter, then .neptune
 __fitz.teleport(b.x + 30, b.y, b.z)
 ```
 
-**Do:** Start at the default spawn, then fly to the inner belt near the sun,
-then out to Fuxx. Give each stop two seconds for the exposure to settle.
+**Do:** Start at the default spawn, then hop near Mercury, then out to Ceres,
+Jupiter and Neptune. Give each stop two seconds for the exposure to settle.
 
 **Look for:** Does a lit surface read at the same brightness at every stop
 (the camera adapts fully, L19), without blowing out to white or sinking into
@@ -331,9 +331,11 @@ murk? The stars may read brighter far out; the sky backdrop should not glare. Do
 guide lines, ring-course gates and HUD look the same brightness everywhere?
 Is the very first screen readable rather than dark?
 
-For equal albedo Fuxx reads at Ruangrapi's brightness with the camera at
-Fuxx's distance (exposure is metered at the camera, not the surface). Fuxx's albedo is lifted 3x on its material (a C-type ~4%), so
-its lit side should read as dim violet rock, not black. A faint red glow on
+For equal albedo a body far out reads at Earth's brightness with the camera
+at its distance (exposure is metered at the camera, not the surface). Ceres's
+albedo is lifted 3x by the display curve (P3, geometric albedo 0.09), so its
+lit side should read as dark grey rock, not black. Venus, Saturn and Uranus
+may read olive: a known owner call (docs/FOLLOW-UPS.md, Ruling R29). A faint red glow on
 night sides is the known studio-environment reflection (docs/FOLLOW-UPS.md).
 
 **Pass criterion (yes/no):** Is every stop readable, with the HUD and sun
@@ -344,8 +346,8 @@ unchanged?
 **Setup:** park near a planet that has a moon, with the sun behind the moon.
 
 **Do:** Watch a moon's shadow cross its planet, then fly into a planet's
-shadow behind it. Look at Ruangrapi's ring and clouds when the planet sits
-between them and the sun. Repeat with the low-performance tier on.
+shadow behind it. Look at Saturn's rings when Saturn's shadow falls
+across them, and at Earth's clouds in the Moon's shadow. Repeat with the low-performance tier on.
 
 **Look for:** A soft shadow on the planet surface, the ship going dark in the
 umbra and recovering outside it, and no striping or flicker (shadow acne) on

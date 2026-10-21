@@ -19,8 +19,11 @@
  * phi = u * 2PI and lat = PI/2 - v * PI,
  *   x = -cos(phi) cos(lat),  y = sin(lat),  z = sin(phi) cos(lat).
  *
- * The utilities (noise, sphere sampling, writer) are exported for
- * gen_worlds.mjs; main() runs only when this file is the script.
+ * Its own three maps were retired on 2026-10-20 (the real Solar System wears
+ * NASA/USGS maps: process_body_maps.mjs); they no longer ship and
+ * generate.sh no longer runs this as a script. The utilities (noise, sphere
+ * sampling, writer) are exported for gen_worlds.mjs and gen_body_maps.mjs;
+ * main() runs only when this file is the script.
  */
 import sharp from "sharp";
 import { mkdirSync } from "node:fs";

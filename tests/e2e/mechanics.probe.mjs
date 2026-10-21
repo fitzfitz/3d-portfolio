@@ -1,5 +1,8 @@
 import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
 
+/** src/constants.ts SYSTEM_RADIUS (3,600 since the real Solar System, Task 6). */
+const EDGE = 3600;
+
 const hazeOpacity = (page) => page.evaluate(() => Number(document.querySelector('[data-testid="edge-haze"]')?.style.opacity ?? "0"));
 /** Faces the ship at a world point (yaw only) and ends the spawn auto-aim. */
 const face = (page, x, z) => page.evaluate((tx, tz) => {
@@ -20,8 +23,8 @@ async function edge(page, checks) {
   });
   await page.keyboard.press("KeyW"); // first input
   // Installed before the teleport: the haze line fires on arrival at depth 0.5.
-  await installEdgeRecorder(page, 480);
-  await page.evaluate(() => { window.__fitz.teleport(460, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); });
+  await installEdgeRecorder(page, EDGE);
+  await page.evaluate((r) => { window.__fitz.teleport(r - 20, 0, 0); window.__fitz.setAttitude(Math.PI / 2, 0); }, EDGE);
   await settle(page, 7000); // let the radio go quiet (RADIO_BUSY_S = 6)
   const op = await hazeOpacity(page);
   checks.check("haze thickens near the edge", op > 0.3, `opacity=${op} at r=${(await radius()).toFixed(1)}`);
@@ -43,13 +46,13 @@ async function edge(page, checks) {
   const rec = await readEdgeRecorder(page);
   const backS = rec.tBack !== null && rec.tCross !== null ? (rec.tBack - rec.tCross) / 1000 : Infinity;
   checks.check("holding thrust outward, the ship reaches the edge", rec.tCross !== null, `max r=${rec.maxR.toFixed(1)}`);
-  checks.check("the haze is full at 480 (HAZE_MAX_OPACITY 0.92)", rec.maxR > 480 && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
+  checks.check(`the haze is full at ${EDGE} (HAZE_MAX_OPACITY 0.92)`, rec.maxR > EDGE && rec.opAtMax > 0.9 && rec.opAtMax <= 0.92,
     `opacity=${rec.opAtMax} read in the frame of max r=${rec.maxR.toFixed(1)}`);
   checks.check("holding thrust outward at the edge, the ship is still brought back", done.ok && rec.tBack !== null,
     `max r=${rec.maxR.toFixed(1)}, back after ${backS.toFixed(1)}s wall`);
   checks.check("the return takes at most 6 simulated seconds", rec.tBack !== null && rec.simBack <= 6,
     `${rec.simBack.toFixed(2)}s simulated, ${backS.toFixed(1)}s wall`);
-  checks.check("the ship stays well inside the validation bounds", rec.maxR < 500, `max r=${rec.maxR.toFixed(1)}`);
+  checks.check("the ship stays well inside the validation bounds", rec.maxR < EDGE + 20, `max r=${rec.maxR.toFixed(1)}`);
   checks.check("the edge fires no teleport flash", !flashed);
   // The haze line (depth 0.3) plays first on the way out, the burn line a moment
   // later; the recorder catches the burn line whatever replaces it afterwards.
@@ -63,24 +66,31 @@ async function edge(page, checks) {
 }
 
 /**
- * Gravity runs under reduced motion: the planets freeze there (wells still
+ * Gravity runs under reduced motion: the bodies freeze there (wells still
  * pull, spec §5.2), which makes the geometry deterministic. In headless
  * SwiftShader the ship's simulated time runs ~3x slower than wall time (low
- * fps, 0.05s frame clamp) while planets orbit on wall time, so a moving
- * planet drifts out of a fixed-wall-clock pass. Every wait polls progress.
+ * fps, 0.05s frame clamp) while bodies orbit on wall time, so a moving
+ * body drifts out of a fixed-wall-clock pass. Every wait polls progress.
+ *
+ * Flown at Earth, with the gas giant's (size 16) distances scaled by
+ * size / 16, as tests/gravityWell.test.ts flies its tuning targets.
  */
 async function gravity(page, checks) {
   await page.keyboard.press("KeyW");
-  const name = "portfolio";
+  const name = "earth";
+  const k = await page.evaluate(async (n) => {
+    const { bodyById } = await import("/src/data/solarSystem.ts");
+    return bodyById(n).size / 16;
+  }, name);
   const relX = () => page.evaluate((n) => window.__fitz.flight.x - window.__fitz.bodies[n].x, name);
 
-  // A W-held pass 34u above the planet's centre, flying +x, until the ship is
-  // out the far side of the 56u well.
-  await page.evaluate((n) => {
+  // A W-held pass 34u (scaled) above the body's centre, flying +x, until the
+  // ship is out the far side of its well.
+  await page.evaluate((n, kk) => {
     const b = window.__fitz.bodies[n];
-    window.__fitz.teleport(b.x - 90, b.y + 34, b.z);
+    window.__fitz.teleport(b.x - 90 * kk, b.y + 34 * kk, b.z);
     window.__fitz.setAttitude(Math.PI / 2, 0);
-  }, name);
+  }, name, k);
   // The skim must not stick: no lock, no zone, no dossier (planets no longer
   // dock; their dossiers moved onto probes).
   let peak = 0, stuck = false;
@@ -91,11 +101,12 @@ async function gravity(page, checks) {
       return { s: window.__fitz.flight.speed, stuck: st.isOrbitLocked || st.activeZone !== null || st.openDossier !== null };
     });
     peak = Math.max(peak, r.s); stuck = stuck || r.stuck;
-    return (await relX()) > 60;
+    return (await relX()) > 60 * k;
   }, { timeoutMs: 90_000, intervalMs: 150 });
   await page.keyboard.up("KeyW");
-  checks.check("the 34u pass flew through the planet's well", through.ok);
-  checks.check("a pass 34u off a planet speeds the ship past cruise", peak > 13, `peak=${peak.toFixed(1)}`);
+  // Past cruise (10.8) by at least 1, the non-reference bodies' target in tests/gravityWell.test.ts.
+  checks.check("the 34u (scaled) pass flew through Earth's well", through.ok);
+  checks.check("a pass 34u (scaled) off Earth speeds the ship past cruise", peak > 11.8, `peak=${peak.toFixed(1)}`);
   checks.check("that skim does not stick (no lock, no zone, no dossier)", !stuck);
 
   // Straight in: the planet is solid. The ship flies into the surface (its
@@ -104,9 +115,9 @@ async function gravity(page, checks) {
   // recorder reads every frame, so the closest approach is not left to poll
   // timing.
   const reach = await page.evaluate(async (n) => {
-    const { planets } = await import("/src/constants.ts");
+    const { bodyById } = await import("/src/data/solarSystem.ts");
     const { SHIP_HALF_LENGTH } = await import("/src/utils/worldCollide.ts");
-    return planets.find((p) => p.name === n).size + SHIP_HALF_LENGTH;
+    return bodyById(n).size + SHIP_HALF_LENGTH;
   }, name);
   await page.evaluate((n) => {
     const b = window.__fitz.bodies[n];
@@ -135,8 +146,8 @@ async function gravity(page, checks) {
   checks.check("hitting a planet docks nothing and opens no dossier", !solid.stuck);
   await settle(page, 1500);
 
-  // Idle 30u from a planet: station-keeping.
-  await page.evaluate((n) => { const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - 30, b.y + 5, b.z); }, name);
+  // Idle 30u (scaled) from the body: station-keeping.
+  await page.evaluate((n, kk) => { const b = window.__fitz.bodies[n]; window.__fitz.teleport(b.x - 30 * kk, b.y + 5 * kk, b.z); }, name, k);
   const a = await page.evaluate(() => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
   await settle(page, 10_000);
   const b = await page.evaluate(() => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z }));
@@ -178,9 +189,14 @@ async function beam(page, checks) {
   await page.keyboard.up("KeyF");
   checks.check("mining a belt pebble shows the ORE readout", ore.ok);
 
-  // Shard reel: shard 1 sits at (53, -18, 50); park 22u short of it, facing it.
+  // Shard reel: shard 1 (src/data/shards.ts; moved clear of the real orbits
+  // in Task 5); park 22u short of it, facing it.
   const already = (await readStore(page)).shardsCollected.includes(1);
-  await page.evaluate(() => { window.__fitz.teleport(53, -18, 28); window.__fitz.setAttitude(0, 0); });
+  await page.evaluate(async () => {
+    const { SHARDS } = await import("/src/data/shards.ts");
+    const [x, y, z] = SHARDS[1].pos;
+    window.__fitz.teleport(x, y, z - 22); window.__fitz.setAttitude(0, 0);
+  });
   await page.keyboard.down("KeyF");
   const reeled = await pollUntil(async () => (await readStore(page)).shardsCollected.includes(1), { timeoutMs: 12_000, intervalMs: 200 });
   await page.keyboard.up("KeyF");
@@ -201,7 +217,7 @@ async function photoMode(page, checks) {
 
 async function reducedMotion(page, checks) {
   await page.keyboard.press("KeyW");
-  await page.evaluate(() => window.__fitz.teleport(470, 0, 0)); // haze depth ~0.84 (u 0.75 of 440..480)
+  await page.evaluate((r) => window.__fitz.teleport(r - 10, 0, 0), EDGE); // haze depth ~0.84 (u 0.75 of the last 40)
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);
@@ -213,10 +229,10 @@ async function reducedMotion(page, checks) {
 }
 
 /**
- * Eclipses (docs/UNIVERSE-RULES.md L20, F4), with the planets and moons frozen
- * by reduced motion. Ruangrapi (radius 12) is smaller than the sun (24), so its
- * umbra closes, but only ~115 out (12 x 115 / (24 - 12)); the test point 2.5
- * sizes (30u) out on the far side is deep inside it: full night.
+ * Eclipses (docs/UNIVERSE-RULES.md L20, F4), with the bodies frozen by
+ * reduced motion. Earth (radius 8.4) is smaller than the sun (24), so its
+ * umbra closes, but only ~62 out (8.4 x 115 / (24 - 8.4)); the test point 2.5
+ * sizes (21u) out on the far side is deep inside it: full night.
  */
 async function eclipses(page, checks) {
   await page.keyboard.press("KeyW");
@@ -224,34 +240,35 @@ async function eclipses(page, checks) {
   checks.check("the ship's sunVis and the occluder slots are on the debug bridge", wired);
   if (!wired) return;
 
-  // Occluder slots 3-7 are the moons, in MOONS order, at their meshes.
-  const moons = await page.evaluate(async () => {
-    const { MOONS } = await import("/src/data/moons.ts");
-    const { planets } = await import("/src/constants.ts");
-    const v = window.__fitz.camera.position.clone();
+  // Occluder slots (sunShadow.ts): the bodies with a moon or a ring 0-5 at
+  // their centres (updateBodies), the nine moons 6-14 at theirs (updateMoons).
+  const slots = await page.evaluate(async () => {
+    const { SOLAR_BODIES } = await import("/src/data/solarSystem.ts");
+    const { SOLAR_MOONS } = await import("/src/data/solarMoons.ts");
+    const { bodySlot, moonSlot } = await import("/src/components/canvas/sunShadow.ts");
     const u = window.__fitz.sunShadow;
+    const track = (slot, c, r, id) => {
+      const s = u.uOccluders.value[slot];
+      return { id, err: Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z), dr: Math.abs(s.w - r) };
+    };
     return {
       count: u.uOccluderCount.value,
-      moons: MOONS.map((m, i) => {
-        const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
-        if (!mesh) return { id: m.id, err: Infinity, dr: Infinity };
-        mesh.getWorldPosition(v);
-        const s = u.uOccluders.value[3 + i];
-        return { id: m.id, err: Math.hypot(s.x - v.x, s.y - v.y, s.z - v.z), dr: Math.abs(s.w - m.size * planets[m.planet].size) };
-      }),
+      bodies: SOLAR_BODIES.filter((b) => bodySlot(b.id) >= 0).map((b) => track(bodySlot(b.id), window.__fitz.bodies[b.id], b.size, b.id)),
+      moons: SOLAR_MOONS.map((m) => track(moonSlot(m.id), window.__fitz.moons[m.id], m.size, m.id)),
     };
   });
-  checks.check("all twelve GPU occluder slots are in use (planets, moons, the four inner worlds)", moons.count === 12, `count=${moons.count}`);
-  checks.check("occluder slots track the moons", moons.moons.every((m) => m.err < 0.01 && m.dr < 1e-6),
-    moons.moons.map((m) => `${m.id} ${m.err.toFixed(4)}`).join(", "));
+  checks.check("the fifteen GPU occluder slots are in use (six bodies with a moon or a ring, nine moons)", slots.count === 15, `count=${slots.count}`);
+  checks.check("occluder slots track the bodies", slots.bodies.length === 6 && slots.bodies.every((b) => b.err < 0.01 && b.dr < 1e-6),
+    slots.bodies.map((b) => `${b.id} ${b.err.toFixed(4)}`).join(", "));
+  checks.check("occluder slots track the moons", slots.moons.length === 9 && slots.moons.every((b) => b.err < 0.01 && b.dr < 1e-6),
+    slots.moons.map((b) => `${b.id} ${b.err.toFixed(4)}`).join(", "));
 
-  // Each planet skips its own body by distance, in one program per material
+  // Each body skips its own sphere by distance, in one program per material
   // kind: its compiled program says so. Reading the program in use (not the
   // material's key function) also proves the patch survived React and is
   // what three actually compiled.
   const programs = await page.evaluate(async () => {
-    const { planets } = await import("/src/constants.ts");
-    const { MOONS } = await import("/src/data/moons.ts");
+    const { SOLAR_BODIES } = await import("/src/data/solarSystem.ts");
     const gl = window.__fitz.gl, ctx = gl.getContext();
     const SKIP = "if ( length( uOccluders[ k ].xyz - p ) < SUN_SHADOW_SELF_SKIP * uOccluders[ k ].w ) continue;";
     const used = (mat) => {
@@ -259,41 +276,51 @@ async function eclipses(page, checks) {
       return prog ? { key: prog.cacheKey, src: ctx.getShaderSource(prog.fragmentShader) ?? "" } : { key: "", src: "" };
     };
     return {
-      planets: planets.map((p) => {
-        const mesh = window.__fitz.scene.getObjectByName(`Planet_${p.name}`);
+      bodies: SOLAR_BODIES.map((b) => {
+        const mesh = window.__fitz.scene.getObjectByName(`Body_${b.id}`);
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return { name: p.name, key: key.endsWith("|sunShadow:fragment"), self: src.includes(SKIP),
-          gate: src.includes("sunShadowCoverage( sunShadowWorld( geometryPosition ) )"), cityLights: src.includes("uniform vec3 uSunView;") };
+        // Saturn's program also lets sunlight through its rings (sunShadowRingGate), its own variant.
+        return { name: b.id, key: key.includes("|sunShadow:fragment"), self: src.includes(SKIP),
+          gate: src.includes("sunShadowCoverage( sunShadowWorld( geometryPosition ) )") || src.includes("sunShadowRingGate( sunShadowWorld( geometryPosition ) )"),
+          cityLights: src.includes("uniform vec3 uSunView;") };
       }),
       clouds: (() => {
         const mesh = window.__fitz.scene.getObjectByName("CloudLayer");
         const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
         return key.endsWith("|sunShadow:fragment") && src.includes(SKIP);
       })(),
-      moons: MOONS.map((m) => {
-        const mesh = window.__fitz.scene.getObjectByName(`Moon_${m.id}`);
-        const { key, src } = mesh ? used(mesh.material) : { key: "", src: "" };
-        return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
-      }),
+      moons: (() => {
+        const out = [];
+        window.__fitz.scene.traverse((o) => {
+          if (!o.isMesh || !o.name.startsWith("Moon_") || out.some((m) => m.name === o.name)) return;
+          const { key, src } = used(o.material);
+          const shaped = o.name === "Moon_phobos" || o.name === "Moon_deimos";
+          out.push({ name: o.name, ok: shaped
+            ? key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;")
+            : key.endsWith("|sunShadow:fragment") && src.includes(SKIP) });
+        });
+        return out;
+      })(),
       ship: window.__fitz.shipShadow.materials.map((mat) => {
         const { key, src } = used(mat);
         return key.endsWith("|sunShadow:object") && src.includes("directLight.color *= uSunVis;");
       }),
     };
   });
-  checks.check("a planet does not shadow itself (its own body is skipped by distance)",
-    programs.planets.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.planets));
-  checks.check("Ruangrapi keeps its night-side city lights alongside the shadow", programs.planets[0]?.cityLights === true);
-  checks.check("Ruangrapi's clouds darken in the same shadows (their planet skipped)", programs.clouds === true);
-  checks.check("every moon draws with its object-mode shadow program", programs.moons.every(Boolean), JSON.stringify(programs.moons));
+  checks.check("a body does not shadow itself (its own sphere is skipped by distance)",
+    programs.bodies.length === 9 && programs.bodies.every((p) => p.key && p.self && p.gate), JSON.stringify(programs.bodies));
+  checks.check("Earth keeps its night-side city lights alongside the shadow", programs.bodies.find((b) => b.name === "earth")?.cityLights === true);
+  checks.check("Earth's clouds darken in the same shadows (their planet skipped)", programs.clouds === true);
+  checks.check("the nine moons draw shadowed: round ones per fragment (own sphere skipped), Phobos and Deimos per object",
+    programs.moons.length === 9 && programs.moons.every((m) => m.ok), JSON.stringify(programs.moons));
   checks.check("every ship hull material draws with its shadow program",
     programs.ship.length > 0 && programs.ship.every(Boolean), `materials=${programs.ship.length} ${JSON.stringify(programs.ship)}`);
 
-  // The ship in Ruangrapi's umbra, then beside it.
+  // The ship in Earth's umbra, then beside it.
   const place = (side) => page.evaluate(async (s) => {
-    const { planets } = await import("/src/constants.ts");
-    const size = planets.find((p) => p.name === "ruangrapi").size;
-    const b = window.__fitz.bodies.ruangrapi;
+    const { bodyById } = await import("/src/data/solarSystem.ts");
+    const size = bodyById("earth").size;
+    const b = window.__fitz.bodies.earth;
     const r = Math.hypot(b.x, b.y, b.z);
     const ux = b.x / r, uy = b.y / r, uz = b.z / r;
     const h = Math.hypot(ux, uz), sx = -uz / h, sz = ux / h;
@@ -303,20 +330,41 @@ async function eclipses(page, checks) {
   await place(0);
   const dark = await pollUntil(async () => (await sunVis()) < 0.05, { timeoutMs: 10_000, intervalMs: 250 });
   const darkV = await sunVis();
-  checks.check("the ship goes dark in a planet's umbra", dark.ok, `sunVis=${darkV}`);
+  checks.check("the ship goes dark in Earth's umbra", dark.ok, `sunVis=${darkV}`);
   await place(1);
-  const lit = await pollUntil(async () => (await sunVis()) > 0.95, { timeoutMs: 10_000, intervalMs: 250 });
-  const litV = await sunVis();
-  checks.check("...and is fully lit beside it", lit.ok, `sunVis=${litV}`);
+  // Beside Earth, only the other bodies and the moons can cover the sun. On
+  // the pinned date (2026-10-20) Venus is four days from inferior conjunction
+  // and covers part of the drawn (enlarged) Sun from Earth's neighbourhood, so
+  // the expectation is the CPU sunVisibility against every body but Earth and
+  // every moon (the ship reads them all, sunShadow.ts allOccluders), not a bare 1.
+  const besideRead = () => page.evaluate(async () => {
+    const { SOLAR_BODIES } = await import("/src/data/solarSystem.ts");
+    const { SOLAR_MOONS } = await import("/src/data/solarMoons.ts");
+    const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
+    const { SUN_RADIUS } = await import("/src/constants.ts");
+    const occ = [
+      ...SOLAR_BODIES.filter((b) => b.id !== "earth").map((b) => ({ ...window.__fitz.bodies[b.id], r: b.size })),
+      ...SOLAR_MOONS.map((m) => ({ ...window.__fitz.moons[m.id], r: m.size })),
+    ];
+    return { got: window.__fitz.shipShadow.sunVis.value, want: sunVisibility(window.__fitz.flight, occ, SUN_RADIUS) };
+  });
+  let beside = await besideRead();
+  const lit = await pollUntil(async () => { beside = await besideRead(); return Math.abs(beside.got - beside.want) < 0.02; },
+    { timeoutMs: 10_000, intervalMs: 250 });
+  const litV = beside.got, besideWant = beside.want;
+  checks.check("...and is lit beside it, Earth no longer in the way", lit.ok && besideWant > 0.9,
+    `sunVis=${litV}, other bodies leave ${besideWant.toFixed(3)}`);
 
-  // Ruangrapi's ring darkens where it passes through the planet's umbra.
+  // Saturn's rings darken where they pass through Saturn's umbra (L20).
   // Measured on the GPU: right after the ring draws, the same 7x7 pixels are
   // read with the ring's shadow on and then forced off (uNightFloor = 1), from
-  // straight above a ring point seen against empty space, with the ship hidden.
+  // above a ring point seen against empty space, with the ship hidden.
   // Comparing one pixel block with itself cancels the ring's banding and the
   // background, which a sunlit-vs-umbra comparison of two places would not.
+  // On the pinned date the Sun is a few degrees above the rings, so the umbra
+  // lies across them behind the planet.
   const umbra = await ringShade(page, true);
-  checks.check("Ruangrapi's ring goes dark in the planet's umbra",
+  checks.check("Saturn's ring goes dark in Saturn's umbra",
     umbra.ok && umbra.ratio < 0.5, JSON.stringify(umbra));
   const sunlit = await ringShade(page, false);
   checks.check("...and keeps full brightness in sunlight",
@@ -324,32 +372,40 @@ async function eclipses(page, checks) {
 }
 
 /**
- * Parks the camera 30u above a point of Ruangrapi's ring that is in the
- * planet's umbra (`dark`) or in full sun, then reads the ring's own pixels
- * with its shadow on and forced off. Returns { ok, ratio = on / off, ... }.
+ * Parks the camera 30u above a point of Saturn's ring (the B ring's core) that
+ * is in the planet's umbra (`dark`) or in full sun, on the ring's sunward
+ * face, then reads the ring's own pixels with its shadow on and forced off.
+ * Returns { ok, ratio = on / off, ... }. The PostFX buffer holds light
+ * before the exposure, so its readings are scaled by it.
  */
 async function ringShade(page, dark) {
   const setup = await page.evaluate(async (wantDark) => {
     const f = window.__fitz;
     const { sunVisibility } = await import("/src/utils/sunOcclusion.ts");
     const { SUN_RADIUS } = await import("/src/constants.ts");
-    const ring = f.scene.getObjectByName("PlanetRing_ruangrapi");
+    const { bodySlot } = await import("/src/components/canvas/sunShadow.ts");
+    const ring = f.scene.getObjectByName("BodyRing_saturn");
     if (!ring) return { ok: false, why: "no ring" };
     const V3 = f.camera.position.constructor;
     const occ = f.sunShadow.uOccluders.value;
-    const planet = { x: occ[0].x, y: occ[0].y, z: occ[0].z, r: occ[0].w };
+    const s = occ[bodySlot("saturn")];
+    const planet = { x: s.x, y: s.y, z: s.z, r: s.w };
     ring.updateWorldMatrix(true, false);
     const { innerRadius: ri, outerRadius: ro } = ring.geometry.parameters;
-    const R = ri + 0.35 * (ro - ri);
+    // Mid-strip, 1.755 R: the B ring's opaque core (τ 2.5-5), so almost none
+    // of the bright sky behind it (Saturn's exposure) shows through.
+    const R = ri + 0.5 * (ro - ri);
     const n = new V3(0, 0, 1).transformDirection(ring.matrixWorld);
-    if (n.y < 0) n.negate();
+    const centre = new V3(planet.x, planet.y, planet.z);
+    if (n.dot(centre.clone().negate()) < 0) n.negate(); // the sunward face
     const clear = (a, b) => {
       const ab = b.clone().sub(a);
-      for (const o of occ) {
+      for (let i = 0; i < f.sunShadow.uOccluderCount.value; i++) {
+        const o = occ[i];
         if (o.w <= 0) continue;
         const c = new V3(o.x, o.y, o.z);
         const t = Math.max(0, Math.min(1, c.clone().sub(a).dot(ab) / ab.lengthSq()));
-        if (a.clone().addScaledVector(ab, t).distanceTo(c) < o.w + 1) return false;
+        if (a.clone().addScaledVector(ab, t).distanceTo(c) < o.w * 1.1 + 1) return false;
       }
       return true;
     };
@@ -361,7 +417,7 @@ async function ringShade(page, dark) {
       const cam = pt.clone().addScaledVector(n, 30);
       if (!clear(cam, pt) || !clear(pt, pt.clone().addScaledVector(n, -400))) continue;
       // Ship 4.6 ahead of the camera along the view direction (the chase cam
-      // sits 4.6 behind and 1.8 above it), nose straight down at the point.
+      // sits 4.6 behind and 1.8 above it), nose at the point.
       const nose = pt.clone().sub(cam).normalize();
       const ship = cam.clone().addScaledVector(nose, 4.6);
       ship.y -= 1.8;
@@ -369,7 +425,7 @@ async function ringShade(page, dark) {
       f.setAttitude(Math.atan2(nose.x, nose.z), Math.asin(nose.y));
       window.__ringPt = pt;
       window.__ringCam = cam;
-      return { ok: true, deg, vis };
+      return { ok: true, deg, vis, sunElevDeg: +(Math.asin(Math.abs(n.dot(centre.clone().negate().normalize()))) * 180 / Math.PI).toFixed(2) };
     }
     return { ok: false, why: "no clear ring point" };
   }, dark);
@@ -380,7 +436,7 @@ async function ringShade(page, dark) {
   if (!parked.ok) return { ok: false, why: "camera never parked", ...setup };
   const read = (floor) => page.evaluate((fl) => new Promise((resolve) => {
     const f = window.__fitz;
-    const ring = f.scene.getObjectByName("PlanetRing_ruangrapi");
+    const ring = f.scene.getObjectByName("BodyRing_saturn");
     const hull = [];
     f.scene.traverse((o) => { if (o.isMesh && f.shipShadow.materials.includes(o.material) && o.visible) hull.push(o); });
     for (const o of hull) o.visible = false;
@@ -403,23 +459,24 @@ async function ringShade(page, dark) {
       ctx.readPixels(cx - 3, cy - 3, S, S, ctx.RGBA, float ? ctx.FLOAT : ctx.UNSIGNED_BYTE, buf);
       let sum = 0;
       for (let i = 0; i < S * S; i++) sum += buf[i * 4] + buf[i * 4 + 1] + buf[i * 4 + 2];
-      resolve({ lum: sum / (S * S) / (float ? 1 : 255), onScreen: Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 && v.z < 1 });
+      const scale = float ? renderer.toneMappingExposure : 1 / 255;
+      resolve({ lum: (sum / (S * S)) * scale, onScreen: Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.9 && v.z < 1 });
     };
   }), floor);
   const on = await read(null);
   const off = await read(1);
   const ratio = off.lum > 0 ? on.lum / off.lum : NaN;
-  return { ok: on.onScreen && off.lum > 0.02, ratio: Number(ratio.toFixed(3)), on: Number(on.lum.toFixed(4)), off: Number(off.lum.toFixed(4)), ...setup };
+  return { ok: on.onScreen && off.lum > 0.005, ratio: Number(ratio.toFixed(3)), on: Number(on.lum.toFixed(4)), off: Number(off.lum.toFixed(4)), ...setup };
 }
 
 export default async function run() {
   const checks = await withPage({ label: "mechanics: edge" }, edge);
   for (const [label, fn, opts] of [
-    ["mechanics: gravity (planets frozen)", gravity, { emulateReducedMotion: true }],
+    ["mechanics: gravity (bodies frozen)", gravity, { emulateReducedMotion: true }],
     ["mechanics: beam", beam, {}],
     ["mechanics: photo mode", photoMode, {}],
     ["mechanics: reduced motion", reducedMotion, { emulateReducedMotion: true }],
-    ["mechanics: eclipses (planets frozen)", eclipses, { emulateReducedMotion: true }],
+    ["mechanics: eclipses (bodies frozen)", eclipses, { emulateReducedMotion: true }],
   ]) {
     const c = await withPage({ label, ...opts }, fn);
     checks.results.push(...c.results);

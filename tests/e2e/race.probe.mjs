@@ -1,11 +1,9 @@
 import { withPage, settle, readStore, sceneQuery, pollUntil } from "./harness.mjs";
 
-// Mirrors src/data/ringCourse.ts. Kept literal (the probe runs in Node,
-// outside Vite); tests/race.test.ts guards the source of truth.
-const RINGS = [
-  [-12, 3, 34], [-45, 0, 40], [-62, -8, -5], [-26, -2, -52], [20, 15, -70],
-  [55, 40, -40], [40, 70, 10], [0, 55, 50], [35, 20, 55], [25, 5, 30],
-];
+// src/data/ringCourse.ts's RING_GATES, read from the page at the start of
+// run() (a literal mirror here went stale when the gates moved clear of the
+// real planets' orbits).
+let RINGS = [];
 const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
 const sub = (a, b) => a.map((c, i) => c - b[i]);
 /** Ring facing: bisector of incoming and outgoing legs (same rule as buildGates). */
@@ -31,6 +29,7 @@ const race = async (page) => (await readStore(page)).race;
 
 export default async function run() {
   return withPage({ label: "race" }, async (page, checks) => {
+    RINGS = await page.evaluate(async () => (await import("/src/data/ringCourse.ts")).RING_GATES);
     const rings = await sceneQuery(page, "RaceRings");
     checks.check("the course renders as one instanced mesh of all rings",
       rings.found && rings.matches === 1 && rings.count === RINGS.length, JSON.stringify(rings));

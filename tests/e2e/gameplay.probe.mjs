@@ -154,11 +154,11 @@ export default async function run() {
     // size plus the ship's half length (src/utils/worldCollide.ts); the ship
     // must stop there, never get inside it, and never lock or open anything.
     const orbit = await page.evaluate(async () => {
-      const { planets } = await import("/src/constants.ts");
+      const { bodyById } = await import("/src/data/solarSystem.ts");
       const { SHIP_HALF_LENGTH } = await import("/src/utils/worldCollide.ts");
-      const p = planets[0];
-      const b = window.__fitz.bodies[p.name]; // live position — planets orbit continuously
-      return { name: p.name, size: p.size, reach: p.size + SHIP_HALF_LENGTH, bx: b.x, by: b.y, bz: b.z };
+      const p = bodyById("earth");
+      const b = window.__fitz.bodies[p.id]; // live position — bodies orbit continuously
+      return { name: p.id, size: p.size, reach: p.size + SHIP_HALF_LENGTH, bx: b.x, by: b.y, bz: b.z };
     });
     await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * 1.6);
     await settle(page, 300);
@@ -194,9 +194,12 @@ export default async function run() {
 
     // ---- scan loop ----
     // 2.5x size (PLANET_STANDOFF): clear of the solid surface, inside scan range
-    // of it (SCAN_RANGE 22 + size = 3.2x at size 12). Planets are scan-only now:
+    // of it (SCAN_RANGE 22 from the surface: 3.6x at Earth's 8.4). Planets are scan-only now:
     // scanning is the one thing a planet still answers to.
-    await warpTo(page, orbit.bx, orbit.by, orbit.bz + orbit.size * PLANET_STANDOFF);
+    // Earth's live position: it has moved ~8 u since the approach began, and
+    // at its drawn 8.4 u the standoff sits only ~9 u inside scan range.
+    const earthNow = await page.evaluate((n) => { const b = window.__fitz.bodies[n]; return [b.x, b.y, b.z]; }, orbit.name);
+    await warpTo(page, earthNow[0], earthNow[1], earthNow[2] + orbit.size * PLANET_STANDOFF);
     await settle(page, 1200);
     s = await readStore(page);
     checks.check("a scannable target is acquired in range", s.scanTarget !== null,
@@ -206,6 +209,14 @@ export default async function run() {
     const afterScan = (await readStore(page)).broadcast;
     checks.check("holding E emits a scan report", (afterScan?.id ?? 0) > beforeScan,
       `broadcast=${afterScan?.text?.slice(0, 60)}`);
+    // Earth is one of the nine worlds, so its first scan also charts it: the
+    // logbook's WORLD CHARTED line follows the report (deferred while the
+    // report holds the radio). Wait for it, so its own 8 s hold has started
+    // before the chatter check below lets the radio go quiet.
+    const chartLine = await pollUntil(async () => /^WORLD CHARTED 1\/9/.test((await readStore(page)).broadcast?.text ?? ""),
+      { timeoutMs: 10_000, intervalMs: 200 });
+    checks.check("the first scan of a planet charts it (WORLD CHARTED 1/9)", chartLine.ok,
+      `broadcast=${(await readStore(page)).broadcast?.text?.slice(0, 60)}`);
 
     // ---- chatter fires when a probe comes in range ----
     // A project's zone lines now play when its probe comes in range (store

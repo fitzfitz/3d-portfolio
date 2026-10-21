@@ -3,12 +3,15 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { gameTime } from "../../utils/ambientTime";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 const tunnelVertex = /* glsl */ `
   varying vec2 vUv;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -21,7 +24,9 @@ const tunnelFragment = /* glsl */ `
   uniform float uIntensity;
   varying vec2 vUv;
   float hash(float n) { return fract(sin(n) * 43758.5453123); }
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float lanes = 140.0;
     float lane = floor(vUv.x * lanes);
     float laneRand = hash(lane);

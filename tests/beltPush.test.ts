@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { beltRockPosition } from "../src/utils/beltRocks";
+import { makeBelt, makeTrojans, BELT_COUNT, TROJAN_COUNT } from "../src/data/smallBodyField";
+import { ORRERY_TEST_JD } from "../src/utils/orreryClock";
 import {
-  toRingLocal, nearRing, stepRock, holdAt,
+  nearRing, stepRock, holdAt,
   BELT_PUSH_RADIUS, BELT_PUSH_HALFLIFE, BELT_RETURN_HALFLIFE,
 } from "../src/utils/beltPush";
 import { decay } from "../src/utils/reactions";
@@ -10,25 +13,6 @@ const DT = 1 / 60;
 const kP = decay(BELT_PUSH_HALFLIFE, DT);
 const kR = decay(BELT_RETURN_HALFLIFE, DT);
 const dispLen = (d: Float32Array, i = 0) => Math.hypot(d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
-
-describe("toRingLocal", () => {
-  it("is the identity for an untilted ring", () => {
-    expect(toRingLocal(v(), v(1, 2, 3), 0)).toEqual(v(1, 2, 3));
-  });
-  // Both shipped rings: BeltMain (0.436) and the near-vertical BeltHalo (1.31).
-  for (const tilt of [0.436, 1.31]) {
-    it(`inverts the ring's X tilt of ${tilt}`, () => {
-      // A ring-local point (0,0,10), rotated into the world by Rx(tilt)...
-      const c = Math.cos(tilt), s = Math.sin(tilt);
-      const world = v(0, -s * 10, c * 10);
-      // ...comes back to (0,0,10).
-      const back = toRingLocal(v(), world, tilt);
-      expect(back.x).toBeCloseTo(0, 9);
-      expect(back.y).toBeCloseTo(0, 9);
-      expect(back.z).toBeCloseTo(10, 9);
-    });
-  }
-});
 
 describe("nearRing", () => {
   it("is true inside the ring's band, padded by the push radius", () => {
@@ -87,5 +71,45 @@ describe("stepRock", () => {
     stepRock(d, 0, 0, 0, 0, v(), decay(BELT_PUSH_HALFLIFE, 5), decay(BELT_RETURN_HALFLIFE, 5));
     expect([d[0], d[1], d[2]].every(Number.isFinite)).toBe(true);
     expect(dispLen(d)).toBeCloseTo(BELT_PUSH_RADIUS, 6);
+  });
+});
+
+describe("beltRockPosition: rocks fly their Kepler ellipses (design §4.7)", () => {
+  const AU_U = 115;
+  const out = v();
+  it("every main-belt rock at the test epoch lies within the belt's perihelion..aphelion span", () => {
+    for (const rock of makeBelt(BELT_COUNT, 42)) {
+      beltRockPosition(rock, ORRERY_TEST_JD, out);
+      const r = Math.hypot(out.x, out.y, out.z);
+      expect(r).toBeGreaterThanOrEqual(2.1 * (1 - 0.3) * AU_U - 1e-6);
+      expect(r).toBeLessThanOrEqual(3.3 * (1 + 0.3) * AU_U + 1e-6);
+    }
+  });
+  it("Trojans stay around Jupiter's distance (a = 5.2 AU, e < 0.15)", () => {
+    for (const rock of makeTrojans(TROJAN_COUNT, 1337)) {
+      beltRockPosition(rock, ORRERY_TEST_JD, out);
+      const r = Math.hypot(out.x, out.y, out.z) / AU_U;
+      expect(r).toBeGreaterThan(5.2 * 0.85 - 0.01);
+      expect(r).toBeLessThan(5.2 * 1.15 + 0.01);
+    }
+  });
+  it("writes in place and returns the same object", () => {
+    const rock = makeBelt(1, 42)[0];
+    expect(beltRockPosition(rock, ORRERY_TEST_JD, out)).toBe(out);
+  });
+  it("every rock turns prograde: world angular momentum points along +Y", () => {
+    const p = v(), q = v();
+    for (const rock of [...makeBelt(BELT_COUNT, 42), ...makeTrojans(TROJAN_COUNT, 1337)]) {
+      beltRockPosition(rock, ORRERY_TEST_JD, p);
+      beltRockPosition(rock, ORRERY_TEST_JD + 0.5, q);
+      const hy = p.z * (q.x - p.x) - p.x * (q.z - p.z); // y of r x dr
+      expect(hy).toBeGreaterThan(0);
+    }
+  });
+  it("moves with the date", () => {
+    const rock = makeBelt(1, 42)[0];
+    const a = { ...beltRockPosition(rock, ORRERY_TEST_JD, v()) };
+    const b = beltRockPosition(rock, ORRERY_TEST_JD + 100, v());
+    expect(Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)).toBeGreaterThan(1);
   });
 });

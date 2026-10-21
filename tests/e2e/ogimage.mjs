@@ -25,7 +25,7 @@ async function pump(page, n) {
 
 await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
   async (page, checks) => {
-    // Park just past the first (ruangrapi) planet along the ship's fixed spawn heading
+    // Park just past Earth along the ship's fixed spawn heading
     // (nose points world +z when angle==0, and no steer input is ever sent,
     // so it stays +z the whole time — see Spaceship.tsx's noseDirection).
     // The offset is deliberately small: dx/dy only nudge the planet off the
@@ -36,8 +36,7 @@ await withPage({ label: "ogimage", viewport: { width: 1200, height: 630 } },
     // task-16-report.md for what earlier offsets got wrong (planet behind
     // the camera, planet off in a corner, etc).
     await page.evaluate(async () => {
-      const { planets } = await import("/src/constants.ts");
-      const b = window.__fitz.bodies[planets[0].name];
+      const b = window.__fitz.bodies.earth;
       // Must use __fitz.teleport (Task 6b) — assigning flight.{x,y,z} is a no-op.
       window.__fitz.teleport(b.x, b.y + 2, b.z - 10);
       // The ship now spawns aimed at a planet, so the +z heading this

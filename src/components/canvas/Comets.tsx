@@ -5,21 +5,23 @@ import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt, type CometPass } from "../../utils/worldEvents";
-import { keplerPosition } from "../../utils/kepler";
-import { COMETS } from "../../data/comets";
+import { COMET_ELEMENTS, COMET_LABELS, COMET_SCAN_IDS } from "../../data/smallBodyField";
+import { orbitWorldPosition } from "../../utils/beltRocks";
+import { orreryJd } from "../../utils/orreryClock";
 import { dustEmitBack } from "../../utils/cometDust";
 import { ambientTime } from "../../utils/ambientTime";
 import { softSprite } from "./softSprite";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 // Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
 // tail, curved white dust tail, all activity scaled by heliocentric distance.
 
-/** Slot COMETS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
-const VISITOR = COMETS.length;
-const SLOTS = COMETS.length + 1;
+/** Slot COMET_ELEMENTS.length is the world-event visitor (spec: comet close pass); hidden while idle. */
+const VISITOR = COMET_ELEMENTS.length;
+const SLOTS = COMET_ELEMENTS.length + 1;
 const ION_POINTS = 72;
 const DUST_POINTS = 70;
 const DUST_MAX_AGE = 10; // seconds of emission history sampled along the orbit
@@ -41,11 +43,13 @@ const activityAt = (distSun: number) => Math.min(1.2, (60 / Math.max(distSun, 1)
 const comaVertex = /* glsl */ `
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vNormal = normalize(normalMatrix * normal);
     vViewDir = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
+    ${LOG_DEPTH_VERT}
   }
 `;
 const comaFragment = /* glsl */ `
@@ -53,7 +57,9 @@ const comaFragment = /* glsl */ `
   uniform float uAct;
   varying vec3 vNormal;
   varying vec3 vViewDir;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float facing = clamp(abs(dot(normalize(vNormal), normalize(vViewDir))), 0.0, 1.0);
     // Two-part coma: a tight, hot inner glow around the nucleus and a faint
     // wide halo. The old single pow(facing, 1.6) term was a flat, dense green
@@ -70,7 +76,7 @@ const comaFragment = /* glsl */ `
 
 /** Slot `i`'s position at its own time `t` (orbit time, or seconds into the visitor's pass). */
 function cometPos(i: number, t: number, pass: CometPass | undefined, out: THREE.Vector3): THREE.Vector3 {
-  if (i < VISITOR) { keplerPosition(t, COMETS[i], out); return out; }
+  if (i < VISITOR) { orbitWorldPosition(COMET_ELEMENTS[i], orreryJd(t), out); return out; }
   if (pass) cometPassAt(out, pass, t);
   return out;
 }
@@ -177,7 +183,7 @@ export default function Comets() {
       const t = isVisitor ? visitorElapsed! : time;
       cometPos(i, t, pass, head);
       if (isVisitor) setScannable("comet_visitor", head.x, head.y, head.z, "COMET_VISITOR");
-      else setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
+      else setScannable(COMET_SCAN_IDS[i], head.x, head.y, head.z, COMET_LABELS[i]);
 
       const distSun = head.length();
       const act = isVisitor ? 1 : activityAt(distSun); // the visitor stays bright far from the sun

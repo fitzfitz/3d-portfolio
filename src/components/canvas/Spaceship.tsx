@@ -2,14 +2,15 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
-import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS } from "../../constants";
+import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
-import { moonCenters } from "../../store/moonState";
+import { moonPositions } from "../../store/moonState";
+import { moonReach, SOLAR_MOONS } from "../../data/solarMoons";
 import { fitzDebug } from "../../debug/bridge";
 import { pitchStep, noseDirection, headingToward, PITCH_MAX } from "../../utils/pitchFlight";
 import { escapePosition } from "../../utils/orbitEscape";
-import { PROBES, PROBE_JUMP_STANDOFF } from "../../data/probes";
+import { PROBES, PROBE_JUMP_STANDOFF, PROBE_RADIUS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
 import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
@@ -24,6 +25,8 @@ import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
+import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
+import { CRYSTAL_LANDMARKS } from "../../utils/crystalField";
 import {
   stepGravity, gravityMode, SlingshotWatch, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
@@ -34,9 +37,9 @@ import { softSprite } from "./softSprite";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_X, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { assetUrl } from "../../utils/assetUrl";
 import { SPAWN, SPAWN_PAD_R } from "../../data/spawn";
-import { occluders, patchSunShadow, worldSlot } from "./sunShadow";
-import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
-import { WORLDS, PLANETS_AND_WORLDS } from "../../data/worlds";
+import { allOccluders, patchSunShadow } from "./sunShadow";
+import { sunVisibility } from "../../utils/sunOcclusion";
+import { BODY_REACH } from "../../data/solarSystem";
 import { resolveWorldContact, keepCameraOutsideBodies, SOLID_BODIES } from "../../utils/worldCollide";
 import { CHASE_CAM, chaseCamTarget } from "../../utils/chaseCam";
 
@@ -46,6 +49,23 @@ const MAX_SPEED = SHIP_MAX_SPEED; // was 0.18/frame
 const WARP_SPEED = SHIP_WARP_SPEED; // was 0.65/frame
 const TURN_SPEED = 2.4;     // rad/s, was 0.04/frame
 const SPACE_DRAG = 0.982;   // per-frame decay basis
+/**
+ * Clear radius of a fixed landmark for cruise's free-space measure. The largest
+ * extent is the dormant gate's GATE_RADIUS = 15 (data/dormantGate.ts); the career
+ * station and shipyard models are <= 5.3 (retainR 13 in data/careerTrail.ts).
+ */
+const LANDMARK_CRUISE_R = 15;
+/** Each moon's reach (its collider radius), fixed. */
+const MOON_REACH = SOLAR_MOONS.map(moonReach);
+/**
+ * Every sphere warp must leave room for, reused each frame (utils/cruise.ts
+ * freeDistance; spec §6.3's d_free): bodies, the Sun, the moons, fixed
+ * landmarks, probes.
+ */
+const CRUISE_SPHERES: { x: number; y: number; z: number; r: number }[] = Array.from(
+  { length: BODY_REACH.length + 1 + SOLAR_MOONS.length + CRYSTAL_LANDMARKS.length + PROBES.length },
+  () => ({ x: 0, y: 0, z: 0, r: 0 }),
+);
 const BRAKE = 0.92;         // per-frame decay basis
 /**
  * Idle bob amplitude, calibrated by eye at animScale 4 and baked. Started at
@@ -80,21 +100,21 @@ const FIRST_PROBE_HOME = PROBES[0].home;
 // Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 /**
- * Every solid body's live centre, by SOLID_BODIES id: the planets' and
- * worlds' `bodies` entries and the moons' `moonCenters` entries. Merged once:
+ * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
+ * entries and the moons' `moonPositions` entries. Merged once:
  * it holds the same objects their writers update in place, so it stays live
  * and the frame loop reads it without allocating.
  */
-const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonCenters };
+const SOLID_CENTERS: Readonly<Record<string, { x: number; y: number; z: number }>> = { ...bodies, ...moonPositions };
 
 /**
- * Gravity wells, one per planet and world plus the sun, reused every frame:
+ * Gravity wells, one per body plus the sun, reused every frame:
  * body entries are refreshed from `bodies`, and the active ones are copied to
  * the front of ACTIVE_WELLS so stepGravity takes a count instead of a fresh array.
  */
-const BODY_WELLS: Well[] = PLANETS_AND_WORLDS.map(planetWell);
+const BODY_WELLS: Well[] = BODY_REACH.map(planetWell);
 const SUN_WELL: Well = { x: SUN_COLLIDER.x, y: SUN_COLLIDER.y, z: SUN_COLLIDER.z, g: SUN_WELL_G, radius: SUN_WELL_RADIUS, rMin: SUN_COLLIDER.r };
-const ACTIVE_WELLS: Well[] = Array.from({ length: PLANETS_AND_WORLDS.length + 1 }, () => ({ ...SUN_WELL }));
+const ACTIVE_WELLS: Well[] = Array.from({ length: BODY_REACH.length + 1 }, () => ({ ...SUN_WELL }));
 const slingshotLines = new ChatterScheduler(chatterPools);
 /**
  * The engine material's original emissive colour, captured the first time the
@@ -117,14 +137,6 @@ const _total = new THREE.Vector3();
  * trip): a patch is applied once and keeps the uniform it was given.
  */
 const SHIP_SUN_VIS = { value: 1 };
-/**
- * What shadows the ship: every GPU occluder slot, plus the worlds that have
- * none (the outermost, w-blue: it shadows nothing the GPU draws, but the ship
- * can fly behind it). Those are CPU-only, refreshed from `bodies` each frame.
- */
-const CPU_ONLY_WORLDS = WORLDS.filter((w) => worldSlot(w.id) < 0);
-const CPU_ONLY_OCCLUDERS: Occluder[] = CPU_ONLY_WORLDS.map((w) => ({ x: 0, y: 0, z: 0, r: w.size }));
-const SHIP_OCCLUDERS: readonly Occluder[] = [...occluders, ...CPU_ONLY_OCCLUDERS];
 
 export default function Spaceship() {
   const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
@@ -231,6 +243,7 @@ export default function Spaceship() {
     }
   };
   const edgeCut = useRef(false);
+  const warpSpeed = useRef(WARP_SPEED);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on the first probe, so the first W press flies toward a project.
   const hasFlown = useRef(false);
@@ -603,8 +616,30 @@ export default function Spaceship() {
 
     // Caps sit before the drag below; cruiseCap keeps the post-drag speed the
     // same at every frame rate (the tuning targets are measured at 60 fps).
+    // Each warp starts at the base speed and builds (utils/cruise.ts).
+    if (!warpActive) warpSpeed.current = WARP_SPEED;
     if (warpActive) {
-      const warp = cruiseCap(WARP_SPEED, SPACE_DRAG, dt);
+      let n = 0;
+      for (let i = 0; i < BODY_REACH.length; i++) {
+        const b = bodies[BODY_REACH[i].key], c = CRUISE_SPHERES[n++];
+        c.x = b.x; c.y = b.y; c.z = b.z; c.r = BODY_REACH[i].reach;
+      }
+      const sun = CRUISE_SPHERES[n++];
+      sun.x = SUN_WELL.x; sun.y = SUN_WELL.y; sun.z = SUN_WELL.z; sun.r = SUN_RADIUS;
+      for (let i = 0; i < SOLAR_MOONS.length; i++) {
+        const q = moonPositions[SOLAR_MOONS[i].id], c = CRUISE_SPHERES[n++];
+        c.x = q.x; c.y = q.y; c.z = q.z; c.r = MOON_REACH[i];
+      }
+      for (let i = 0; i < CRYSTAL_LANDMARKS.length; i++) {
+        const l = CRYSTAL_LANDMARKS[i], c = CRUISE_SPHERES[n++];
+        c.x = l[0]; c.y = l[1]; c.z = l[2]; c.r = LANDMARK_CRUISE_R;
+      }
+      for (let i = 0; i < PROBES.length; i++) {
+        const q = probePos[PROBES[i].id], c = CRUISE_SPHERES[n++];
+        c.x = q.x; c.y = q.y; c.z = q.z; c.r = PROBE_RADIUS;
+      }
+      warpSpeed.current = stepCruise(warpSpeed.current, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
+      const warp = cruiseCap(warpSpeed.current, SPACE_DRAG, dt);
       vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {
       vel.current.x += nose.x * ACCEL * thrustInput * dt;
@@ -623,8 +658,8 @@ export default function Spaceship() {
     // Gravity wells (spec §5): momentum G on top of the unchanged pilot velocity.
     idleFor.current = thrustInput > 0 || reeling ? 0 : idleFor.current + dt;
     let wellCount = 0;
-    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
-      const b = bodies[PLANETS_AND_WORLDS[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
+    for (let i = 0; i < BODY_REACH.length; i++) {
+      const b = bodies[BODY_REACH[i].key], src = BODY_WELLS[i], dst = ACTIVE_WELLS[wellCount++];
       dst.x = b.x; dst.y = b.y; dst.z = b.z; dst.g = src.g; dst.radius = src.radius; dst.rMin = src.rMin;
     }
     const sunDst = ACTIVE_WELLS[wellCount++];
@@ -653,7 +688,7 @@ export default function Spaceship() {
         break;
       }
     }
-    // The planets', worlds' and moons' solid surfaces (worldCollide.ts):
+    // The bodies' and the moons' solid surfaces (worldCollide.ts):
     // they move, so each is read live from SOLID_CENTERS, at its equatorial
     // size. The rings are fly-through.
     for (let i = 0; i < SOLID_BODIES.length; i++) {
@@ -664,11 +699,11 @@ export default function Spaceship() {
     const totalSpeed = _total.length();
     beamState.vel.x = _total.x; beamState.vel.y = _total.y; beamState.vel.z = _total.z;
 
-    // Which planet or world well the ship is in now; leaving one fast is a slingshot.
+    // Which body's well the ship is in now; leaving one fast is a slingshot.
     let wellNow: string | null = null;
-    for (let i = 0; i < PLANETS_AND_WORLDS.length; i++) {
-      const b = bodies[PLANETS_AND_WORLDS[i].key];
-      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = PLANETS_AND_WORLDS[i].key; break; }
+    for (let i = 0; i < BODY_REACH.length; i++) {
+      const b = bodies[BODY_REACH[i].key];
+      if (Math.hypot(pos.current.x - b.x, pos.current.z - b.z, pos.current.y - b.y) < BODY_WELLS[i].radius) { wellNow = BODY_REACH[i].key; break; }
     }
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
@@ -790,16 +825,14 @@ export default function Spaceship() {
     store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
   });
 
-  // The ship in a planet's, moon's or world's shadow. Runs after the flight
-  // loop above, so it sees this frame's position. The occluder slots and
-  // `bodies` are SpacePlanets' and SpaceWorlds', which run after this
-  // component: a frame old, a few hundredths of a unit.
+  // The ship in a body's shadow. Runs after the flight loop above, so it
+  // sees this frame's position. What shadows it is sunShadow.ts
+  // allOccluders: every GPU slot (the bodies with a moon or a ring, and the
+  // nine moons) plus Mercury, Venus and Ceres, which shadow nothing the GPU
+  // draws but which the ship can fly behind. SolarBodies and SolarMoons write
+  // them after this component runs: a frame old, a few hundredths of a unit.
   useFrame(() => {
-    for (let i = 0; i < CPU_ONLY_WORLDS.length; i++) {
-      const b = bodies[CPU_ONLY_WORLDS[i].id], o = CPU_ONLY_OCCLUDERS[i];
-      o.x = b.x; o.y = b.y; o.z = b.z;
-    }
-    SHIP_SUN_VIS.value = sunVisibility(pos.current, SHIP_OCCLUDERS, SUN_RADIUS);
+    SHIP_SUN_VIS.value = sunVisibility(pos.current, allOccluders, SUN_RADIUS);
   });
 
   return (

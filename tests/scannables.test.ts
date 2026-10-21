@@ -36,20 +36,18 @@ describe("nearestScannable", () => {
 describe("planet scan window", () => {
   beforeEach(() => clearScannables());
 
-  // Was "before orbit lock engages": planets no longer lock, but they are
-  // solid, so a scan must reach from well before the ship meets the surface.
-  it("leaves room to scan a planet before the ship reaches its surface", async () => {
-    const { planets, LOCK_ENGAGE_FACTOR } = await import("../src/constants");
+  // Was "before orbit lock engages": bodies never lock, but they are solid,
+  // so a scan must reach from well before the ship meets the surface.
+  it("leaves room to scan a body before the ship reaches its surface", async () => {
+    const { SOLAR_BODIES } = await import("../src/data/solarSystem");
     const { SCAN_RANGE } = await import("../src/utils/scannables");
     const { SHIP_HALF_LENGTH } = await import("../src/utils/worldCollide");
-    for (const p of planets) {
-      setScannable(p.name, 0, 0, 0, p.label, p.size);
-      // Outside the old lock radius, with a real margin to fly in, and far
-      // outside the contact radius.
-      const d = p.size * LOCK_ENGAGE_FACTOR + 8;
-      expect(d).toBeGreaterThan(p.size + SHIP_HALF_LENGTH + 8);
-      expect(nearestScannable(d, 0, 0, SCAN_RANGE)?.id, p.name).toBe(p.name);
-      expect(nearestScannable(d, 0, 0, SCAN_RANGE)?.label, p.name).toBe(p.label);
+    for (const b of SOLAR_BODIES) {
+      setScannable(b.id, 0, 0, 0, b.name, b.size);
+      // 8 u outside the contact sphere (Ceres's is the smallest), with room to fly in.
+      const d = b.size + SHIP_HALF_LENGTH + 8;
+      expect(nearestScannable(d, 0, 0, SCAN_RANGE)?.id, b.id).toBe(b.id);
+      expect(nearestScannable(d, 0, 0, SCAN_RANGE)?.label, b.id).toBe(b.name);
       clearScannables();
     }
   });

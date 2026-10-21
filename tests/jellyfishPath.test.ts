@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { JELLY_PATH, JELLY_NEAR_T } from "../src/data/jellyfishPath";
 
 describe("jellyfish path", () => {
-  it("NEAR_T is a genuine near pass (within 80 units of the play-area center, 3D)", () => {
+  it("NEAR_T is a genuine near pass (within 90 units of the play-area center, 3D; the real-orbit reroute passes above the plane)", () => {
     const p = JELLY_PATH.getPointAt(JELLY_NEAR_T);
-    expect(p.length()).toBeLessThan(80);
+    expect(p.length()).toBeLessThan(90);
   });
   it("NEAR_T is the true closest approach (no sampled point is meaningfully closer)", () => {
     const near = JELLY_PATH.getPointAt(JELLY_NEAR_T).length();

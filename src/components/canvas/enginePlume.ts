@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
  * Engine plume: an open tube per nozzle that fans out and fades along its
@@ -19,6 +20,7 @@ const VERT = /* glsl */ `
   varying float vWiden;
   varying vec3 vNormal;
   varying vec3 vView;
+  ${LOG_DEPTH_VERT_PARS}
   void main() {
     // CylinderGeometry uv.y: 1 at the top (nozzle end), 0 at the tip.
     vAlong = 1.0 - uv.y;
@@ -30,6 +32,7 @@ const VERT = /* glsl */ `
     vNormal = normalize(normalMatrix * normal);
     vView = normalize(-mv.xyz);
     gl_Position = projectionMatrix * mv;
+    ${LOG_DEPTH_VERT}
   }
 `;
 
@@ -42,7 +45,9 @@ const FRAG = /* glsl */ `
   varying float vWiden;
   varying vec3 vNormal;
   varying vec3 vView;
+  ${LOG_DEPTH_FRAG_PARS}
   void main() {
+    ${LOG_DEPTH_FRAG}
     float t = vAlong;
     // Brightest along the plume's axis as seen by the camera.
     float facing = abs(dot(normalize(vNormal), normalize(vView)));

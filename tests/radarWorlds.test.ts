@@ -1,18 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { radarShowsWorld, radarBlip, RADAR_RANGE } from "../src/utils/radarTransform";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { radarBlip, RADAR_RANGE } from "../src/utils/radarTransform";
 
-describe("radarShowsWorld: discovery, not signposts", () => {
-  it("draws an uncharted world only inside the radar's range, never rim-clamped", () => {
-    expect(RADAR_RANGE).toBe(220);
-    expect(radarShowsWorld(false, 300)).toBe("hidden");
-    expect(radarShowsWorld(false, 150)).toBe("free");
-    expect(radarShowsWorld(false, RADAR_RANGE)).toBe("free");
-    expect(radarShowsWorld(false, RADAR_RANGE + 0.01)).toBe("hidden");
+describe("the radar shows all nine bodies always (R18)", () => {
+  const src = (f: string) => readFileSync(join("src", f), "utf8");
+  it("RadarMap draws every body rim-clamped: no charted gate, no range gate, no free blips", () => {
+    const radar = src("components/layout/RadarMap.tsx");
+    expect(radar).not.toMatch(/radarShowsWorld|worldVisibility|free/);
+    expect(radar).toMatch(/for \(const sb of SOLAR_BODIES\)/);
+    expect(src("utils/radarTransform.ts")).not.toMatch(/radarShowsWorld/);
   });
-
-  it("draws a charted world exactly like a planet, whatever its 3D distance", () => {
-    expect(radarShowsWorld(true, 300)).toBe("planet");
-    expect(radarShowsWorld(true, 150)).toBe("planet");
+  it("a body at Neptune's distance sits on the rim, dimmed", () => {
+    const rimR = 68, scale = rimR / RADAR_RANGE;
+    const b = radarBlip(0, 3300, scale, rimR, true);
+    expect(b.onRim).toBe(true);
+    expect(Math.hypot(b.px, b.py)).toBeCloseTo(rimR - 3);
   });
 });
 
@@ -29,7 +32,7 @@ describe("radarBlip: where a blip lands on the radar", () => {
     expect(near).toEqual({ px: 30 * scale, py: -40 * scale, onRim: false });
   });
 
-  it("an uncharted world's blip is never rim-clamped or dimmed: it keeps its true scaled spot", () => {
+  it("an unclamped blip keeps its true scaled spot", () => {
     // 215 u horizontally, inside RADAR_RANGE but past the planets' clamp line.
     const b = radarBlip(0, 215, scale, rimR, false);
     expect(b).toEqual({ px: 0, py: -215 * scale, onRim: false });

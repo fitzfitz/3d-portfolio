@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { planets, SUN_RADIUS } from "../../constants";
-import { MOONS } from "../../data/moons";
-import { WORLDS, type WorldId } from "../../data/worlds";
+import { SUN_RADIUS } from "../../constants";
+import type { BodyId } from "../../data/bodyIds";
+import { SOLAR_BODIES } from "../../data/solarSystem";
+import { MOON_IDS, SOLAR_MOONS, type MoonId } from "../../data/solarMoons";
 import { RING_TAU_MAX } from "../../utils/ringOptics";
 import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 
@@ -18,12 +19,13 @@ import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
  *   whose discs a moon's shadow can cross part of). The loop skips the body
  *   the fragment lies on by distance, so no program depends on a body's slot.
  * - "object": one factor per material, `sunVis`, written on the CPU from
- *   `sunVisibility` (for moons and the ship, small enough to be all in or out).
+ *   `sunVisibility` (for Phobos, Deimos and the ship, small enough to be all
+ *   in or out; the sphere moons take "fragment", like the planets).
  *
  * Patch the material instance that actually renders. `Material.clone()` does
  * not copy `onBeforeCompile`, `onBeforeRender` or `customProgramCacheKey`, so
  * a patched material's clone is unpatched: clone first, then patch the clone
- * (OrbitingMoon does this per moon). Patching is idempotent per instance; a
+ * (a material shared from a GLB must be cloned first). Patching is idempotent per instance; a
  * second call returns the first call's handle.
  */
 
@@ -31,29 +33,40 @@ import { sunVisibility, type Occluder } from "../../utils/sunOcclusion";
 export const MAX_OCCLUDERS = 16;
 
 /**
- * The worlds that hold a GPU slot, in WORLDS order. A body only shadows
- * receivers farther from the sun than itself, so the outermost world (w-blue)
- * needs none; it still shadows the ship and the sun's glare on the CPU.
+ * The bodies that hold a GPU slot, in BODY_IDS order: those with a moon or a
+ * ring (Earth, Mars, Jupiter, Saturn, Uranus, Neptune). The GPU slots exist
+ * for receivers: a planet takes its moons' shadows, a moon its parent's and
+ * its siblings', a ring its planet's. Mercury, Venus and Ceres have no moon
+ * or ring, and at their sizes their shadows never reach another body, so they
+ * shadow only on the CPU (the ship and the sun's glare, through allOccluders).
  */
-const OUTERMOST_WORLD = WORLDS.reduce((a, w) => (w.orbit.radius > a.orbit.radius ? w : a));
-const SLOTTED_WORLDS: readonly WorldId[] = WORLDS.filter((w) => w !== OUTERMOST_WORLD).map((w) => w.id);
+const SLOTTED_BODIES: readonly BodyId[] = SOLAR_BODIES
+  .filter((b) => b.look.rings !== undefined || SOLAR_MOONS.some((m) => m.parent === b.id))
+  .map((b) => b.id);
 
 /**
- * Fixed occluder slots (F4, docs/UNIVERSE-RULES.md L20): the planets in
- * `planets` order, the moons in MOONS order, then the worlds in WORLDS order
- * less the outermost (w-rock 8, w-ringed 9, w-tilted 10, w-dwarf 11). Fixed,
- * never a per-frame nearest-N choice, which would make shadows pop.
+ * Fixed occluder slots (F4, docs/UNIVERSE-RULES.md L20): the slotted bodies
+ * from 0 (earth 0 … neptune 5), then the nine moons in MOON_IDS order
+ * (moon 6 … triton 14): 15 of the 16. Fixed, never a per-frame nearest-N
+ * choice, which would make shadows pop.
  */
 export const OCCLUDER_SLOTS = {
-  planets: { first: 0, count: planets.length },
-  moons: { first: planets.length, count: MOONS.length },
-  worlds: { first: planets.length + MOONS.length, count: SLOTTED_WORLDS.length },
+  bodies: { first: 0, count: SLOTTED_BODIES.length },
+  moons: { first: SLOTTED_BODIES.length, count: MOON_IDS.length },
 } as const;
 
-/** World `id`'s occluder slot, or -1 for the outermost world, which has none. */
-export function worldSlot(id: WorldId): number {
-  const i = SLOTTED_WORLDS.indexOf(id);
-  return i < 0 ? -1 : OCCLUDER_SLOTS.worlds.first + i;
+/** How many slots the frame loop fills: the shaders read only these. */
+export const OCCLUDER_COUNT = OCCLUDER_SLOTS.moons.first + OCCLUDER_SLOTS.moons.count;
+
+/** Body `id`'s occluder slot, or -1 when it shadows on the CPU only (Mercury, Venus, Ceres). */
+export function bodySlot(id: BodyId): number {
+  const i = SLOTTED_BODIES.indexOf(id);
+  return i < 0 ? -1 : OCCLUDER_SLOTS.bodies.first + i;
+}
+
+/** Moon `id`'s occluder slot (every moon holds one). */
+export function moonSlot(id: MoonId): number {
+  return OCCLUDER_SLOTS.moons.first + MOON_IDS.indexOf(id);
 }
 
 /**
@@ -71,7 +84,7 @@ export const SELF_SKIP_RADII = 1.05;
  * position. Patched materials refresh it themselves from the camera they are
  * rendered with (see `patchSunShadow`); `updateSunView` does it by hand.
  * In GLSL it is called `uSunShadowView`, so it never collides with the
- * `uniform vec3 uSunView;` that SpacePlanets' night-side patch declares.
+ * `uniform vec3 uSunView;` that SolarBodies' night-side patch declares.
  */
 export const sunShadowUniforms = {
   uOccluders: { value: Array.from({ length: MAX_OCCLUDERS }, () => new THREE.Vector4()) },
@@ -93,6 +106,34 @@ export const sunShadowDebug = { countOverride: -1 };
  */
 export const occluders: readonly Occluder[] = Array.from({ length: MAX_OCCLUDERS }, () => ({ x: 0, y: 0, z: 0, r: 0 }));
 
+/**
+ * The bodies with no GPU slot (Mercury, Venus, Ceres): they shadow nothing the
+ * GPU draws, but they can hide the sun from the ship and the camera.
+ */
+export const CPU_ONLY_BODIES: readonly BodyId[] = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0).map((b) => b.id);
+
+/** CPU_ONLY_BODIES' occluders, in that order, at their equatorial sizes; utils/bodyPositions.ts updateBodies writes them. */
+const cpuOnlyOccluders: Occluder[] = SOLAR_BODIES.filter((b) => bodySlot(b.id) < 0).map((b) => ({ x: 0, y: 0, z: 0, r: b.size }));
+
+/**
+ * Everything that can hide the sun, for the CPU's tests: the GPU slots (the
+ * same objects as `occluders`: the bodies with a moon or a ring, and the nine
+ * moons), then the CPU-only bodies. The ship's shadow (Spaceship) and the
+ * sun's glare (Sun.tsx) both read it with `sunVisibility`.
+ */
+export const allOccluders: readonly Occluder[] = [...occluders, ...cpuOnlyOccluders];
+
+/** Body `id`'s index in CPU_ONLY_BODIES, or -1 when it holds a GPU slot. */
+export function cpuOnlyIndex(id: BodyId): number {
+  return CPU_ONLY_BODIES.indexOf(id);
+}
+
+/** Writes CPU-only occluder `k` (CPU_ONLY_BODIES order) in place. Frame loops call this; it allocates nothing. */
+export function setCpuOnlyOccluder(k: number, x: number, y: number, z: number): void {
+  const o = cpuOnlyOccluders[k];
+  o.x = x; o.y = y; o.z = z;
+}
+
 /** Writes occluder slot `i` in place, GPU and CPU. Frame loops call this; it allocates nothing. */
 export function setOccluder(i: number, x: number, y: number, z: number, r: number): void {
   sunShadowUniforms.uOccluders.value[i].set(x, y, z, r);
@@ -112,7 +153,7 @@ export function updateSunView(camera: THREE.Camera): void {
 
 /**
  * The coverage maths on its own, shared by the lit-material patch below and
- * by shaders that are not lit materials (Ruangrapi's ring, guideLine.ts):
+ * by shaders that are not lit materials (Saturn's ring, guideLine.ts):
  * the slot uniforms, and two functions mirroring `sunVisibility` term for
  * term. The sun is a disc of radius SUN_SHADOW_RADIUS at the origin; points
  * are in world space.
@@ -279,7 +320,7 @@ const RING_GATE =
 type Mode = keyof typeof GATE;
 
 /**
- * The ringed giant's rings, for their shadow on it (`RING_SHADOW_GLSL`).
+ * Saturn's rings, for their shadow on it (`RING_SHADOW_GLSL`).
  * `normal` is the ring plane's normal (the spin axis), a uniform the frame
  * loop rewrites in place; `inner`/`outer` are the ring's radii (u); `map` is
  * the ring strip.
@@ -312,7 +353,7 @@ const patched = new WeakMap<THREE.Material, Handle>();
  * so objects sharing a material share it; pass `opts.sunVis` to make several
  * materials (the ship's hull parts) read one shared value instead.
  *
- * `opts.ringShadow` (fragment mode, the ringed giant only) also lets the
+ * `opts.ringShadow` (fragment mode, Saturn only) also lets the
  * sunlight through its rings (`RING_SHADOW_GLSL`): one more program, its own.
  *
  * Patching the same material again returns the existing handle unchanged.

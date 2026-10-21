@@ -5,12 +5,13 @@ import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import type { Beacon } from "../utils/beacons";
-import { planets, projects } from "../constants";
+import { projects } from "../constants";
 import { PROBES, PROBE_IDS } from "../data/probes";
 import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
-import { WORLDS, WORLD_IDS, isWorld, type WorldId } from "../data/worlds";
+import { isBodyId, type BodyId } from "../data/bodyIds";
+import { SOLAR_BODIES } from "../data/solarSystem";
 import { destinationById } from "../data/destinations";
-import { orbitPosition } from "../utils/orbits";
+import { bodyPositionAt } from "../utils/bodyPositions";
 import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
@@ -18,7 +19,7 @@ import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { CHANGELOG } from "../data/changelog";
 import { SHARDS } from "../data/shards";
-import { loadCharted, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
+import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
 
 const PROJECT_IDS: readonly string[] = projects.map((p) => p.id);
 
@@ -248,32 +249,37 @@ export const flight = {
 };
 
 /**
- * Live positions of orbiting bodies, written once per frame by SpacePlanets'
- * useFrame (planets, by name) and SpaceWorlds' (worlds, by id), and read by
- * Spaceship (lock center), RadarMap, HUD, and the scannable registry. Mutable
- * outside React — same pattern as `flight`.
+ * Live positions of the nine bodies, by body id, written once per frame by
+ * SolarBodies' useFrame (utils/bodyPositions.ts updateBodies) and read by
+ * Spaceship (wells, collisions), RadarMap, HUD, and the scannable registry.
+ * Mutable outside React — same pattern as `flight`. Seeded at game time 0.
  */
-export const bodies: Record<string, { x: number; y: number; z: number }> = Object.fromEntries([
-  ...planets.map((p) => [p.name, orbitPosition(p.orbit, 0)] as const),
-  ...WORLDS.map((w) => [w.id, orbitPosition(w.orbit, 0)] as const),
-]);
+export const bodies: Record<BodyId, { x: number; y: number; z: number }> = Object.fromEntries(
+  SOLAR_BODIES.map((b) => [b.id, bodyPositionAt(b, 0, { x: 0, y: 0, z: 0 })] as const),
+) as Record<BodyId, { x: number; y: number; z: number }>;
 
-/** Charted worlds from fitz-charted, read once at import (sanitised). */
-const initialCharted = loadCharted(safeGetJSON<unknown>("fitz-charted", []));
+/**
+ * Charted bodies from fitz-charted, read once at import (sanitised; the five
+ * legacy world ids become their real bodies, charting.ts loadCharted). The
+ * key is rewritten in the new ids on the next charting write.
+ */
+const rawCharted = safeGetJSON<unknown>("fitz-charted", []);
+const initialCharted = loadCharted(rawCharted);
+/**
+ * A pilot whose stored records covered all five legacy worlds earned the title
+ * before the real Solar System: they stay cartographers with AURUM at 5/9.
+ * Written once, at load, and never cleared (charting.ts LEGACY_CARTOGRAPHER_KEY).
+ */
+const initialLegacyCartographer = (() => {
+  if (safeGetFlag(LEGACY_CARTOGRAPHER_KEY, false)) return true;
+  if (!coversLegacyWorlds(rawCharted)) return false;
+  safeSetFlag(LEGACY_CARTOGRAPHER_KEY, true);
+  return true;
+})();
 const initialShout = (() => {
   const v = safeGetJSON<unknown>("fitz-charted-shout", null);
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 })();
-
-/**
- * Which worlds are charted, for what draws only once a world is: module-level
- * and mutable outside React, like `bodies`. Charting toggles visibility, never
- * mounts (the worlds are always mounted). Seeded from the stored charting, so
- * a returning visitor's orbit lines and radar arrows show at once.
- */
-export const worldVisibility: Record<WorldId, { charted: boolean }> = Object.fromEntries(
-  WORLD_IDS.map((id) => [id, { charted: initialCharted.some((c) => c.id === id) }]),
-) as Record<WorldId, { charted: boolean }>;
 
 export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
 
@@ -296,7 +302,8 @@ export interface WorldEventState {
   /** Director clock (flying seconds) at start; compare with worldClock.now. */
   startedAt: number;
   comet?: CometPass;
-  convoy?: { planet: string; plan: ConvoyPlan };
+  /** The body the convoy delivers to (its `bodies` key). */
+  convoy?: { planet: BodyId; plan: ConvoyPlan };
 }
 
 export interface SpaceState {
@@ -426,17 +433,18 @@ export interface SpaceState {
    */
   liveSkySeen: boolean;
   setLiveSkySeen: (v: boolean) => void;
-  /** Worlds charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
+  /** Bodies charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
   charted: ChartRecord[];
+  /** Earned the title before the real Solar System (charting.ts LEGACY_CARTOGRAPHER_KEY): cartographer at 5/9, never cleared. */
+  legacyCartographer: boolean;
   /**
-   * Charts a world on its first scan (Scanner.tsx); a repeat is a no-op.
-   * Persists, shows its orbit line and radar arrow (worldVisibility), and
-   * announces through announceLogbook, so the line queues behind the scan
-   * report; the fifth also announces the survey.
+   * Charts a body on its first scan (Scanner.tsx); a repeat is a no-op.
+   * Persists (in the new ids, so a legacy record is rewritten) and announces through announceLogbook, so
+   * the line queues behind the scan report; the last also announces the survey.
    */
-  chartWorld: (id: WorldId) => void;
+  chartWorld: (id: BodyId) => void;
   /**
-   * When the fifth world was charted, until the live sky has announced it
+   * When the last body was charted, until the live sky has announced it
    * (persisted as fitz-charted-shout; see shoutDue). Null when nothing is due.
    */
   chartShoutAt: number | null;
@@ -475,7 +483,7 @@ const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
 const initialPlume = (() => {
   const raw = safeGetJSON<unknown>("fitz-plume", "stock");
   const progress = { visitedDossiers: loadVisitedDossiers(), shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])), badges: initialBadges };
-  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour, initialCharted) ? raw : "stock";
+  return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour, initialCharted, initialLegacyCartographer) ? raw : "stock";
 })();
 
 /** First visit: everything is new, so mark the newest entry seen and show no dot. */
@@ -529,7 +537,7 @@ export const useSpaceStore = create<SpaceState>()(
     setPlumeColor: (id) => {
       const s = get();
       const progress = { visitedDossiers: s.visitedDossiers, shardsCollected: s.shardsCollected, badges: s.badges };
-      if (!plumeAllowed(id, progress, hasPlumeColour, s.charted) || s.plumeColor === id) return;
+      if (!plumeAllowed(id, progress, hasPlumeColour, s.charted, s.legacyCartographer) || s.plumeColor === id) return;
       safeSetJSON("fitz-plume", id);
       set({ plumeColor: id });
     },
@@ -538,12 +546,12 @@ export const useSpaceStore = create<SpaceState>()(
       set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
     },
     charted: initialCharted,
+    legacyCartographer: initialLegacyCartographer,
     chartWorld: (id) => {
-      if (!isWorld(id) || get().charted.some((c) => c.id === id)) return;
+      if (!isBodyId(id) || get().charted.some((c) => c.id === id)) return;
       const next = [...get().charted, { id, at: todayStamp() }];
       safeSetJSON("fitz-charted", next);
       set({ charted: next });
-      worldVisibility[id].charted = true;
       get().announceLogbook(chartLine(id, next.length));
       if (isCartographer(next)) {
         get().announceLogbook(SURVEY_LINE);
@@ -560,7 +568,7 @@ export const useSpaceStore = create<SpaceState>()(
     aurumTold: safeGetFlag("fitz-aurum-told", false),
     tellAurumOnce: () => {
       const s = get();
-      if (s.aurumTold || !isCartographer(s.charted)) return;
+      if (s.aurumTold || !isCartographer(s.charted, s.legacyCartographer)) return;
       s.announceLogbook(AURUM_LINE);
       safeSetFlag("fitz-aurum-told", true);
       set({ aurumTold: true });

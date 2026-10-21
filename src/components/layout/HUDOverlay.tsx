@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
-import { speedKmS, distanceAU } from "../../utils/realUnits";
+import { speedKmS, distanceAU, lightFractionLabel } from "../../utils/realUnits";
+import { bodiesGameSeconds } from "../../utils/bodyPositions";
+import { formatOrreryDate, orreryJd } from "../../utils/orreryClock";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
 import { PROBES } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
@@ -44,6 +46,7 @@ let completionAnnounced = false;
 
 /** How long after leaving the spawn pad the HUD quiets down. */
 const QUIET_AFTER_MS = 6000;
+
 
 export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?: boolean }) {
   const activeZone = useSpaceStore((s) => s.activeZone);
@@ -92,7 +95,9 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
+  const lightRef = useRef<HTMLSpanElement>(null);
   const sunDistRef = useRef<HTMLSpanElement>(null);
+  const orreryDateRef = useRef<HTMLSpanElement>(null);
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
   const oreRef = useRef<HTMLDivElement>(null);
@@ -104,9 +109,12 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     const tick = () => {
       if (locRef.current)
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
-      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${speedKmS(flight.speed).toFixed(0)} KM/S`;
+      const kmS = speedKmS(flight.speed);
+      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S`;
+      if (lightRef.current) lightRef.current.textContent = lightFractionLabel(flight.speed);
       if (sunDistRef.current)
         sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
+      if (orreryDateRef.current) orreryDateRef.current.textContent = ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`;
       // Accent while a gravity assist carries the ship past cruise speed.
       if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
@@ -208,10 +216,15 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {/* Flavour readouts fold away once the pilot is flying (data-quiet). */}
         <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {distanceAU(SYSTEM_RADIUS * 2).toFixed(2)} AU</div>
-        {/* The AU part is hidden on phones: the longer line ran into the gravity warning in the right column. */}
+        {/* The light-speed, AU and date parts are hidden on phones: the longer
+            line ran into the right column (the probe pickup tip). Ruling R30
+            accepts the phone line without "% C"; desktops keep it
+            (tests/hudLightFraction.test.tsx). */}
         <div ref={velRef} data-testid="hud-velocity">
           <span ref={speedRef}>VELOCITY: 0 KM/S</span>
+          <span ref={lightRef} data-testid="hud-light-fraction" className="hidden sm:inline">{lightFractionLabel(0)}</span>
           <span ref={sunDistRef} data-testid="hud-sun-distance" className="hidden sm:inline"> · SUN 0.00 AU</span>
+          <span ref={orreryDateRef} data-testid="hud-orrery-date" className="hidden sm:inline"> · ORRERY {formatOrreryDate(orreryJd(0))}</span>
         </div>
         <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">

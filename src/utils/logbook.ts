@@ -33,7 +33,7 @@ export const LOGBOOK: readonly LogbookEntry[] = [
   { id: "fuxx", section: "essential", title: "Read the fuxx dossier", hint: "GRAB THE FUXX PROBE (HOLD F)", hintShort: "FUXX PROBE", plume: false },
   { id: "career", section: "essential", title: "Read the career dossier", hint: "DOCK AT THE CAREER STATION", hintShort: "CAREER DOSSIER", plume: false },
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
-  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR WORLD", hintShort: "SLINGSHOT A PLANET", plume: true },
+  { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR MOON", hintShort: "SLINGSHOT A BODY", plume: true },
   { id: "comet", section: "badge", title: "Comet chaser", hint: "SCAN A VISITING COMET (HOLD E)", hintShort: "SCAN A COMET", plume: true },
   { id: "ring", section: "badge", title: "Ring runner", hint: "LAP THE RING COURSE UNDER 1:00", hintShort: "RING LAP < 1:00", plume: true },
   { id: "ore", section: "badge", title: "Prospector", hint: "MINE A CRYSTAL'S WORTH OF ORE (HOLD F)", hintShort: "MINE 16 ORE", plume: true },
@@ -92,14 +92,14 @@ export function convoySighted(ship: Vec3, ships: readonly Vec3[], radius = CONVO
 
 /**
  * Whether plume `id` may be selected: "stock" always; "cartographer" (AURUM)
- * once all five worlds are charted; otherwise a badge entry with a colour
+ * once every body is charted (charting.ts isCartographer); otherwise a badge entry with a colour
  * whose entry is done (derived badges count too).
  */
 export function plumeAllowed(
-  id: string, p: LogbookProgress, hasColour: (id: string) => boolean, charted: readonly ChartRecord[] = [],
+  id: string, p: LogbookProgress, hasColour: (id: string) => boolean, charted: readonly ChartRecord[] = [], legacyCartographer = false,
 ): boolean {
   if (id === "stock") return true;
-  if (id === "cartographer") return hasColour(id) && isCartographer(charted);
+  if (id === "cartographer") return hasColour(id) && isCartographer(charted, legacyCartographer);
   const e = LOGBOOK.find((x) => x.id === id);
   return !!e && e.section === "badge" && e.plume && hasColour(id) && entryDone(e, p);
 }
