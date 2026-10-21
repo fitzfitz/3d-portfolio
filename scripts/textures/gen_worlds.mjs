@@ -13,9 +13,8 @@
  *   w-tilted.jpg        1024  Uranus-type: pale cyan, almost featureless, faint polar brightening
  *   w-blue.jpg          2048  Neptune: deep blue bands, one dark storm, white methane-ice streaks
  *   w-ringed_ring.png   2048x4 RGBA ring strip: RGB = particle colour, A = tau / RING_TAU_MAX
- * (w-rock, the Mercury-type, is scripts/blender/gen_world_rock.py and w-dwarf,
- * the Ceres-type, scripts/blender/gen_world_dwarf.py: both need the shared
- * crater stamper and a normal map.)
+ * (The fictional w-rock and w-dwarf maps were retired with their Blender
+ * generators: the real Mercury and Ceres wear NASA mosaics.)
  *
  * --width overrides every equirect map's width (the ring strip stays 2048).
  * Noise, sphere sampling and the JPEG writer are gen_planets.mjs's, so the

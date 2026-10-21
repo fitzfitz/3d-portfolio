@@ -30,8 +30,9 @@ mkdir -p assets-src
 # The real bodies' maps (2026-10-20, real-solar-system spec §5.5): NASA/USGS
 # public-domain mosaics (pinned URL + SHA-256), the seeded Venus, Titan and
 # Triton fill, and Saturn's, Uranus's and Neptune's seeded maps (pure Node +
-# sharp, no Blender). The retired fictional maps' generators (gen_planets.mjs's
-# own outputs, gen_world_rock.py, gen_world_dwarf.py) no longer run.
+# sharp, no Blender). The retired fictional maps' generators no longer run:
+# gen_planets.mjs's own outputs, and the w-rock and w-dwarf Blender scripts,
+# since deleted.
 node scripts/textures/fetch_nasa_maps.mjs
 node scripts/textures/gen_body_maps.mjs
 node scripts/textures/gen_worlds.mjs

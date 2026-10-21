@@ -32,16 +32,15 @@ Delete an entry when it is fixed.
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
   comment went with the fictional worlds in PR #40):
-  - Dead generators: `scripts/blender/gen_world_rock.py` and
-    `gen_world_dwarf.py` remain although their maps were retired (the real
-    Mercury and Ceres wear NASA mosaics); delete them, or keep them only as
-    `surface_lib.py` examples. Their own minors (the rock's ray bundles share
-    one random stream; the dwarf's comment says Occator is 4 km deep where
-    the code makes ~5.6 km) go with them.
-  - Duplication: `surface_lib.py`'s `soften_sphere` repeats `soften`'s
-    latitude pass; the turntable script (`turntable_bodies.py`) recomputes
-    exposure instead of calling `targetExposure`, and loads the TypeScript
-    through jiti, which is only a transitive dependency.
+  - The turntable script (`turntable_bodies.py`) restates the exposure
+    (every body lit as at 1 AU under a uniform 0.15 / PI fill) instead of
+    calling `targetExposure`, and loads the TypeScript through jiti, which is
+    only a transitive dependency (Node 22's type stripping cannot load `src/`:
+    its imports are extensionless). Calling the game's functions needs each
+    body's distance, and would change the inner planets' renders: inside
+    1 AU the game's fill is AMBIENT_BASE × exposure (Venus ×0.52, Mercury
+    ×0.15), not the full 0.15. Left while the look-check renders back an
+    owner colour decision (2026-10-21).
   - Tests: `fillLight.test.ts`, `starLayer.test.ts` and `ringOptics.test.ts`
     pin wiring and GLSL by source regex rather than behaviour;
     `destinations.test.ts`'s `nextWaypoint` check is near-tautological (assert

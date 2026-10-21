@@ -1,8 +1,11 @@
 # Shared numpy surface painting for the Blender generators (gen_mars_moons.py;
-# formerly gen_moon.py, gen_world_rock.py, gen_world_dwarf.py, whose outputs
-# are retired): seeded gradient noise,
+# formerly also gen_moon.py and the fictional worlds' gen_world_rock.py and
+# gen_world_dwarf.py, deleted with their retired maps): seeded gradient noise,
 # fbm, domain warp, cellular noise, crater profiles and stamping, ray streaks,
-# colour helpers, and the new worlds' equirect grid, normal map and writer.
+# colour helpers, and an equirect grid, normal map and writer for a generated
+# body map. Only gen_mars_moons.py calls it today (Perlin, fbm, crater_height,
+# smoothstep); the equirect half has no caller and is kept for the next
+# generated world.
 # Pure numpy, no bpy, no grid globals: each generator owns its grid (the
 # moon's own, or equirect_grid() for the worlds) and binds a crater stamper to
 # it with crater_stamper(). Import it from a generator with
@@ -265,15 +268,23 @@ def calibrate(alb, target):
     return lin_to_srgb(lin * s), s
 
 
+def _blur_lat(G, sigma):
+    """The latitude pass both blurs share: a Gaussian of `sigma` texels down
+    each column, edge-padded at the poles."""
+    r = int(math.ceil(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k = (k / k.sum()).astype(np.float32)
+    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
+    return sum(k[i + r] * Gp[r + i:r + i + G.shape[0]] for i in range(-r, r + 1)).astype(np.float32)
+
+
 def soften(F, sigma):
     """Small separable Gaussian (texels; wraps in longitude): drops sub-texel relief
     that would only alias and that WebP cannot carry inside the byte cap."""
     r = int(math.ceil(3 * sigma))
     k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
     k = (k / k.sum()).astype(np.float32)
-    G = sum(k[i + r] * np.roll(F, i, 1) for i in range(-r, r + 1))
-    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
-    return sum(k[i + r] * Gp[r + i:r + i + F.shape[0]] for i in range(-r, r + 1)).astype(np.float32)
+    return _blur_lat(sum(k[i + r] * np.roll(F, i, 1) for i in range(-r, r + 1)), sigma)
 
 
 def soften_sphere(F, sigma):
@@ -286,11 +297,7 @@ def soften_sphere(F, sigma):
     s_row = sigma * (w / (2 * h)) / np.maximum(np.cos(lat), 1e-3)     # texels of longitude
     f = np.fft.rfftfreq(w)
     G = np.fft.irfft(np.fft.rfft(F, axis=1) * np.exp(-2 * (np.pi * s_row[:, None] * f[None, :]) ** 2), n=w, axis=1)
-    r = int(math.ceil(3 * sigma))
-    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
-    k = k / k.sum()
-    Gp = np.pad(G, ((r, r), (0, 0)), mode="edge")
-    return sum(k[i + r] * Gp[r + i:r + i + h] for i in range(-r, r + 1)).astype(np.float32)
+    return _blur_lat(G, sigma)
 
 
 def write_png(path, rgb01):
