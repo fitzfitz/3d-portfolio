@@ -1,4 +1,4 @@
-import { withPage, tap, settle, readStore, PLANET_STANDOFF } from "./harness.mjs";
+import { withPage, tap, settle, nextFrames, readStore, PLANET_STANDOFF } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const readInput = (page) => page.evaluate(() => ({ ...window.__fitz.flight.input }));
@@ -58,17 +58,32 @@ export default async function run() {
     checks.check("RISE releases the ascend input cleanly", afterRise.ascend === false,
       `ascend=${afterRise.ascend}`);
 
-    const pitchBefore = await page.evaluate(() => window.__fitz.flight.pitch);
+    // The tap leaves the nose coasting up toward PITCH_MAX (1.45; measured
+    // 0.56 -> 1.25 at release), and that coast alone beat the old +0.01 bar
+    // with a dead RISE. Level the nose (setAttitude also stops the pitch),
+    // check it holds still, then hold RISE with interleaved reads (see the
+    // DIVE comment below) and require a real climb: 1.5 s at up to 1.8 rad/s.
+    const pitchNow = () => page.evaluate(() => window.__fitz.flight.pitch);
+    await page.evaluate(() => window.__fitz.setAttitude(window.__fitz.flight.heading, 0));
+    await nextFrames(page, 3); // flight.pitch is published by the frame loop
+    const pitchBefore = await pitchNow();
+    await settle(page, 300);
+    const pitchStill = await pitchNow();
+    checks.check("the nose is level and still before the RISE hold (precondition)",
+      Math.abs(pitchBefore) < 1e-6 && Math.abs(pitchStill - pitchBefore) < 1e-4, `pitch ${pitchBefore.toFixed(4)} -> ${pitchStill.toFixed(4)}`);
     const el = await page.$('[data-testid="touch-rise"]');
     const box = await el.boundingBox();
     await page.touchscreen.touchStart(box.x + box.width / 2, box.y + box.height / 2);
-    await settle(page, 300);
-    const held = await readInput(page);
-    await settle(page, 1200);
-    const pitchAfter = await page.evaluate(() => window.__fitz.flight.pitch);
+    let held = null;
+    let pitchAfter = pitchBefore;
+    for (let i = 0; i < 6; i++) {
+      await settle(page, 250);
+      pitchAfter = await pitchNow();
+      if (i === 0) held = await readInput(page); // the flag while still held
+    }
     await page.touchscreen.touchEnd();
-    checks.check("holding RISE sets ascend", held.ascend === true);
-    checks.check("holding RISE pitches the nose up", pitchAfter > pitchBefore + 0.01,
+    checks.check("holding RISE sets ascend", held?.ascend === true);
+    checks.check("holding RISE pitches the nose up", pitchAfter - pitchBefore > 0.2,
       `pitch ${pitchBefore.toFixed(3)} -> ${pitchAfter.toFixed(3)}`);
 
     // Hold DIVE with interleaved reads rather than one long blind settle (as

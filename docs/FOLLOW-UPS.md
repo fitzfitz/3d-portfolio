@@ -55,12 +55,6 @@ Delete an entry when it is fixed.
     WaypointDriver's real list); the codec-fidelity guard skips in CI (no
     `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
     never type-checked.
-- **E2E checks that cannot fail as written** (read-only probe audit during the
-  e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
-  fixed there, to keep that branch about speed):
-  - `touch.probe.mjs` RISE: coasting alone beats its +0.01 pitch bar. Wait
-    for pitch to settle before `pitchBefore`, then assert it rises or reaches
-    1.45.
 - **E2E timing gambles the GPU does not remove:** `transition.probe.mjs`'s two
   orbit-lock setups miss at 25–46% of orbital phases (1–2.5 s of drift), and
   the 1800 ms `breakOrbit` cooldown can block the second lock (:676/:684).
