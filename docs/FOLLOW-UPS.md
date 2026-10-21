@@ -78,5 +78,8 @@ Delete an entry when it is fixed.
   branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not
   bisected. Suspects: the NASA maps' texture uploads and the nine moons'
   materials at warm-up. Bisect over the branch's commits (`startup.probe.mjs`
-  alone, best of three each) before the ceiling is next touched.
+  alone, best of three each) before the ceiling is next touched. Tried
+  2026-10-21 and abandoned: the machine sat at load 21–46 from other
+  processes, and main (6513572) itself read 12–51 s a load, so bisect on a
+  quiet machine.
 
