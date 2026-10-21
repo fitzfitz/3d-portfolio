@@ -14,49 +14,51 @@ import { withPage, settle, toDeepSpace, pollUntil, SCENE_READY_TIMEOUT_MS, jumpT
 // matching, deliberate scene change is the regression this file exists to
 // catch.
 //
-// Re-derived 2026-10-19 from 11 runs with the five worlds in the scene (New
-// Worlds C1) and detail by distance (sphereLod.ts); each baseline is the
-// highest of the 11. Programs is the exception to the rule above: its
-// ceilings stay at the deliberate 79 (the deep-space family) and 84 (the
-// close-approach and modal states), well above the 58-59 measured (57-58
-// before the probes' material, PR 39), because a headless run can
-// decline to low-perf before warm-up and then compile both variants (see
-// docs/PERF-BUDGETS.md). The real program guard is programs.probe.mjs's tour,
-// which must add 0.
-const DEEP_CALLS_CEILING = 50; // baseline 35
-const DEEP_TRIS_CEILING = 278210; // baseline 241916
-const DEEP_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
+// Re-derived 2026-10-20 for the real Solar System (PR 40): each baseline is
+// the highest of 6 serial runs of this probe alone (docs/PERF-BUDGETS.md,
+// "Real Solar System re-baseline"). The states keep their poses; what is in
+// them changed: nine always-visible orbit ribbons, far-body dots, the nine
+// moons, Saturn's and Uranus's rings, a smaller Earth for the close approach,
+// and the deep-space point moved clear of the real orbits. Programs is the
+// exception to the rule above: its ceilings stay at the deliberate 79 (the
+// deep-space family) and 84 (the close-approach and modal states), well above
+// the 56-57 measured, because a headless run can decline to low-perf before
+// warm-up and then compile both variants (see docs/PERF-BUDGETS.md). The real
+// program guard is programs.probe.mjs's tour, which must add 0.
+const DEEP_CALLS_CEILING = 50; // baseline 42
+const DEEP_TRIS_CEILING = 303490; // baseline 263904
+const DEEP_PROGRAMS_CEILING = 79; // baseline 56, deliberately high (above)
 
-const APPROACH_CALLS_CEILING = 140; // baseline 116
-const APPROACH_TRIS_CEILING = 429540; // baseline 373512
-const APPROACH_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
+// Earth now, drawn 8.4 (Ruangrapi was 12): a lighter frame than before.
+const APPROACH_CALLS_CEILING = 120; // baseline 100
+const APPROACH_TRIS_CEILING = 419950; // baseline 365168
+const APPROACH_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
-// Re-derived 2026-10-20 (project probes, PR 39): "modal open" is now an open
-// probe dossier, entered by a jump to probe 1 and a beam grab, so the frozen
-// view is probe 1 at the nose, seen from its jump point, not a planet filling
-// the frame from an orbit lock. Highest of 12 serial runs (docs/PERF-BUDGETS.md).
-const MODAL_CALLS_CEILING = 60; // baseline 50
-const MODAL_TRIS_CEILING = 317530; // baseline 276112
-const MODAL_PROGRAMS_CEILING = 84; // baseline 57, deliberately high (above)
+// "Modal open" is an open probe dossier (PR 39), entered by a jump to probe 1
+// and a beam grab, so the frozen view is probe 1 at the nose, seen from its
+// jump point.
+const MODAL_CALLS_CEILING = 70; // baseline 56
+const MODAL_TRIS_CEILING = 323450; // baseline 281256
+const MODAL_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
-const ANOMALIES_CALLS_CEILING = 50; // baseline 35
-const ANOMALIES_TRIS_CEILING = 278210; // baseline 241916
-const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 58, deliberately high (above)
+const ANOMALIES_CALLS_CEILING = 50; // baseline 42
+const ANOMALIES_TRIS_CEILING = 303490; // baseline 263904
+const ANOMALIES_PROGRAMS_CEILING = 79; // baseline 57, deliberately high (above)
 const ANOMALIES_LIGHTS_CEILING = 5;
 
 // Deep space again, nose on the sun: the disc, its corona and the six lens
 // sprites in frame, counted on purpose (the deep-space and 40-anomalies states
-// face away from it), with the inner system and three worlds.
-const FACING_SUN_CALLS_CEILING = 140; // baseline 118
-const FACING_SUN_TRIS_CEILING = 461930; // baseline 401672
+// face away from it), with the inner planets, their ribbons and dots.
+const FACING_SUN_CALLS_CEILING = 160; // baseline 136
+const FACING_SUN_TRIS_CEILING = 430280; // baseline 374148
 const FACING_SUN_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const FACING_SUN_LIGHTS_CEILING = 5;
 
-// Near the ringed giant, nose on it, rings in frame (nearRingedGiant).
-const RINGED_CALLS_CEILING = 50; // baseline 39
-const RINGED_TRIS_CEILING = 289620; // baseline 251836
+// Near Saturn, nose on it, rings in frame (nearRingedGiant), Titan's rim too.
+const RINGED_CALLS_CEILING = 60; // baseline 49
+const RINGED_TRIS_CEILING = 323720; // baseline 281490
 const RINGED_PROGRAMS_CEILING = DEEP_PROGRAMS_CEILING;
 const RINGED_LIGHTS_CEILING = 5;
 
@@ -370,8 +372,13 @@ export default async function run() {
       const st = window.__fitz.store.getState();
       return { k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked };
     }, planet);
-    checks.check("the approach parked inside 1.8 planet sizes, where the old zone was (precondition)",
-      close.k > 1 && close.k < 1.8, `planet=${planet} distance=${close.k.toFixed(2)} sizes`);
+    // Earth drifts off the parked spot at its orbital speed (1.72 u/s, 0.21 of
+    // its drawn 8.4 u size a second; Ruangrapi's 12 drifted 0.14), so from
+    // 1.45 sizes the gap passes the old 1.8 zone after ~5 s of game time, which
+    // a slow SwiftShader settle can take (1 run in 8 read 1.88). 2.2 sizes is
+    // ~9 s of drift: still a close approach, still well inside its well.
+    checks.check("the approach parked within 2.2 planet sizes (precondition)",
+      close.k > 1 && close.k < 2.2, `planet=${planet} distance=${close.k.toFixed(2)} sizes`);
     checks.check("a close approach to a planet sets no zone and no lock (planets are scan-only)",
       close.zone === null && !close.locked, `activeZone=${close.zone} locked=${close.locked}`);
     checks.check("zero canvas re-renders on a close planet approach",

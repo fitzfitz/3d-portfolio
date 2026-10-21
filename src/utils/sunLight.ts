@@ -26,7 +26,7 @@ export const SUN_FLARE_SWELL = 1.1 / 2.1;
 
 export const EXPOSURE_POWER = 2;
 export const EXPOSURE_MIN = 0.15;
-/** The exposure at the system's edge, ≈ 17.4: no clamp inside the system. */
+/** The exposure at the system's edge, (3,600 / 115)² ≈ 980: no clamp inside the system. */
 export const EXPOSURE_MAX = (SYSTEM_RADIUS / AU) ** EXPOSURE_POWER;
 export const EXPOSURE_HALF_LIFE_S = 1.5;
 

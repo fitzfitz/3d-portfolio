@@ -160,7 +160,7 @@ export default function RadarMap() {
       // gate here used to draw ~57% of blips farther than RADAR_RANGE with no
       // altitude cue at all), never rim-clamped. Only crystals inside the
       // 3D RADAR_RANGE sphere draw, so the radar is the "where is my nearest fuel"
-      // cue without swamping the display with all 40 across the 400 system.
+      // cue without swamping the display with all 40 across the 480 u crystal field.
       {
         for (const s of crystalSlots) {
           if (!s.active) continue;

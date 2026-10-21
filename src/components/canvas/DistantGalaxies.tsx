@@ -84,7 +84,7 @@ export default function DistantGalaxies() {
   useFrame((state) => {
     // Anchored to the ship like the star shells: the galaxies are at effectively
     // infinite distance, so they translate with the ship and show no parallax
-    // (the system is now flyable out to r 400, past where they used to sit).
+    // (the system is flyable out to r 3,600, far past where they used to sit).
     groupRef.current?.position.set(flight.x, flight.y, flight.z);
     const t = ambientTime(state.clock.getElapsedTime());
     sprites.forEach((s) => {

@@ -6,13 +6,6 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Bake Fuxx's albedo into the texture.** The shared dark-surface display
-  curve (`displayAlbedo.ts`, P3) draws Fuxx 3× brighter because its baked map
-  is ~1.4% median linear luminance, far below a C-type's ~4%. Raising it in
-  `scripts/textures/gen_planets.mjs` would let the curve lift it less: then
-  update `PLANET_PROPS.fuxx.texelMedianLinear` (tests/displayAlbedo.test.ts
-  checks it against the map) and re-pick the curve's calibration, which today
-  pins γ by Fuxx's median getting 3×.
 - **Owner ruling owed: dark worlds and ice giants under the 25-luma target.**
   At a 2.5×-size, ~22° phase frame the lit-side disc medians are rock 19,
   dwarf 14, Fuxx 15, tilted 22, blue 24 (ringed 30, Ruangrapi ~40, Portfolio
@@ -30,53 +23,55 @@ Delete an entry when it is fixed.
   Since the camera adapts fully (2026-10-19, L19) the same frames read rock
   25, dwarf 23, Fuxx 19, tilted 34, blue 35, ringed 39, Ruangrapi ~39 and
   Portfolio 50: only the dwarf and Fuxx are still under 25.
+  These numbers were measured on the fictional system, retired by the real
+  Solar System (PR #40): the knee is now Earth's map median (0.0766), γ ≈
+  0.2985 lifts Ceres exactly 3× (P3), and the bodies to re-measure are
+  Ceres, Mercury, Mars, the Moon, Callisto and Phobos/Deimos.
+  **Also owed (Ruling R29, 2026-10-20):** Venus's, Saturn's and Uranus's
+  discs read olive rather than cream or pale cyan. It is not their maps or
+  rims (Venus with its rim hidden reads the same): their surfaces sit at
+  ~0.03–0.08 linear on the scene's 0.177 × albedo scale, where the PBR
+  Neutral tone mapper's toe subtracts the smallest channel and crushes blue,
+  so a warm grey turns olive-brown. A fix is global (exposure, the knee or
+  the toe) and re-baselines every body, so it is the same owner call as the
+  one above. Screenshots: the real-solar-system run's Task 15 look check.
 - **Night-side red glow breaks L29.** The faint red on night sides is the
   specular IBL reflection of the `#ff5500` Lightformer in the studio
   `<Environment>` (GlobalCanvas.tsx), constant and lifted by exposure. Fix:
   give planet and cloud materials an explicit `envMap` with a low
   `envMapIntensity`, or neutralise the orange Lightformer. Verify the e2e
   programs probe still reports `added=0`.
-- **Draw the Jupiter-type oblate.** Portfolio is a round sphere, but a real
-  Jupiter-type is 6.5% flattened (Jupiter's own (equatorial − polar) /
-  equatorial). The ringed giant already draws its 10% through `flattening`
-  in `src/data/worlds.ts`; give `PLANET_PROPS` the same field and scale
-  Portfolio's polar axis, with its atmosphere and limb shells. Its occluder
-  and clearance stay on the equatorial radius (L36).
 - **New Worlds C1 minors, left for later** (each noticed in review, none
-  wrong on screen):
-  - Comments: `DistantGalaxies.tsx` and `RadarMap.tsx` still say the system
-    is 400; `worlds.ts` gives the ringed giant–dwarf gap as 3.56
-    on one world and 3.55 on the other; `guideLine.ts`'s ring-strip epsilon
-    reasoning does not hold under linear filtering; `gen_worlds.mjs` blames
-    8-bit quantisation for the maps' drift where it is lossy chroma (hue band
-    margin ~0.03); `gen_world_dwarf.py` says Occator is 4 km deep where the
-    code makes ~5.6 km; `assetContracts.test.ts`'s cap comment overstates the
-    new maps (~0.15 MiB real); `worldMaps.test.ts` labels KiB caps as KB;
-    `deepSpacePoint.mjs` and `harness.mjs` claim comet, jelly and landmark
-    clearances no test enforces, and `DEEP_SPACE_POINT` has no 3-tuple JSDoc.
-  - Duplication: `SpaceWorlds.tsx` exports `ICE_GIANT_DUSK` from a component
-    (the test imports the `.tsx`; move it to `atmosphereMaterial.ts`), its
-    `mapUrl` re-implements `planetMap`'s non-hi-res branch, and its per-tier
-    `uNightFloor` effect copies SpacePlanets' (extract a hook); the worlds'
-    albedo targets are written in three places (`gen_worlds.mjs`,
-    `gen_world_rock.py`, `worldMaps.test.ts`); `surface_lib.py`'s
-    `soften_sphere` repeats `soften`'s latitude pass; the turntable script
-    recomputes exposure instead of calling `targetExposure`, and loads the
-    TypeScript through jiti, which is only a transitive dependency.
+  wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
+  `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
+  comment went with the fictional worlds in PR #40):
+  - Comments: `guideLine.ts`'s ring-strip epsilon reasoning does
+    not hold under linear filtering; `gen_worlds.mjs` blames 8-bit
+    quantisation for the maps' drift where it is lossy chroma (hue band
+    margin ~0.03); `harness.mjs` says the deep-space point is clear of every
+    landmark, which no test enforces (`tests/solarClearance.test.ts` holds it
+    60 u from the swept orbits, belt, Trojans and comets only), and
+    `DEEP_SPACE_POINT` has no 3-tuple JSDoc.
+  - Dead generators: `scripts/blender/gen_world_rock.py` and
+    `gen_world_dwarf.py` remain although their maps were retired (the real
+    Mercury and Ceres wear NASA mosaics); delete them, or keep them only as
+    `surface_lib.py` examples. Their own minors (the rock's ray bundles share
+    one random stream; the dwarf's comment says Occator is 4 km deep where
+    the code makes ~5.6 km) go with them.
+  - Duplication: `surface_lib.py`'s `soften_sphere` repeats `soften`'s
+    latitude pass; the turntable script (`turntable_bodies.py`) recomputes
+    exposure instead of calling `targetExposure`, and loads the TypeScript
+    through jiti, which is only a transitive dependency.
   - Tests: `fillLight.test.ts`, `starLayer.test.ts` and `ringOptics.test.ts`
     pin wiring and GLSL by source regex rather than behaviour;
     `destinations.test.ts`'s `nextWaypoint` check is near-tautological (assert
-    WaypointDriver's real list); the orbit-line in-plane placement test was
-    deleted and wants a regression test back; the codec-fidelity guard skips
-    in CI (no `assets-src`); `w-dwarf_normal`'s seam reads 4.65 against a
-    bound of 5 (the plan's 2/255 was ratified as < 5 for the normal maps);
-    `tsconfig.app.json` type-checks `src` only, so `tests/` is never
-    type-checked.
-  - Look and feel: `gen_world_rock.py`'s ray bundles share one random stream,
-    so the lesser ray systems still read as stars; the camera shake after a
-    push-out can briefly clip the near plane's corners into a world after a
-    bounce; the slingshot badge's short hint still says "SLINGSHOT A PLANET"
-    (its long hint says "PLANET OR WORLD").
+    WaypointDriver's real list); the codec-fidelity guard skips in CI (no
+    `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
+    never type-checked.
+  - Look and feel: the camera shake after a push-out can briefly clip the
+    near plane's corners into a body after a bounce; the slingshot badge's
+    short hint still says "SLINGSHOT A PLANET" (its long hint says "PLANET OR
+    WORLD").
 - **E2E checks that cannot fail as written** (read-only probe audit during the
   e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
   fixed there, to keep that branch about speed):
@@ -98,3 +93,18 @@ Delete an entry when it is fixed.
   before (`BADGE_LINE_HOLD_MS`), `announceLogbook` defers the line by 4.5 s
   (`BADGE_LINE_DELAY_MS`) and the read misses it. Poll the aria-live text for
   SLINGSHOT EARNED (about 6 s) instead of a fixed settle.
+- **The real star catalogue.** The background is still the painted Milky Way
+  and three random star shells (L24). An astronomy fan who flies to Earth
+  expects the real sky: the constellations from a catalogue (e.g. Hipparcos
+  or Yale BSC, brightest few thousand), Polaris within a degree of Earth's
+  IAU north pole, the Milky Way band along the real galactic plane, and
+  every pole in the scene pointing where the real sky says (the poles are
+  already IAU, `bodySpin.ts`). A non-goal of the real-solar-system PR (#40,
+  spec §2), named there as the natural next step. Keep it inside the
+  program and draw-call budgets (one Points per magnitude band).
+- **The sun slingshot is a knife-edge.** With the Sun's well cut to 34 u
+  (inside Mercury's perihelion, PR #40) and G 3,500, a sun skim leaves above
+  SLINGSHOT_SPEED only for impact parameters b ≈ 29.5–30.5 u; the test flies
+  a single b (30). It is earnable but hard to find by hand. Revisit with F2
+  (Newtonian ship gravity), which replaces the well law; do not retune G
+  alone, since 4,000 already brings a surface touch.

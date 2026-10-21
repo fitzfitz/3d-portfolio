@@ -4,6 +4,7 @@ import { SYSTEM_RADIUS, SHIP_MAX_SPEED, SHIP_WARP_SPEED, GM_SUN } from "../src/c
 import { SIZE_LAW_JUPITER_R, JUPITER_DIAMETER_KM, enlargement } from "../src/utils/sizeLaw";
 import { visVivaKmS } from "../src/utils/ephemeris";
 import { KM_PER_UNIT, SECONDS_PER_GAME_SECOND, speedKmS, distanceAU, earthYears, ORRERY_NOTE } from "../src/utils/realUnits";
+import { CRUISE_MAX_FACTOR } from "../src/utils/cruise";
 
 // These are the numbers in docs/UNIVERSE-RULES.md "Units". Change both together.
 describe("real units", () => {
@@ -54,5 +55,11 @@ describe("docs/UNIVERSE-RULES.md Units table (spec F13)", () => {
     expect(row("187 km/s")).toContain(speedKmS(SHIP_MAX_SPEED).toFixed(0) + " km/s");
     expect(row("675 km/s")).toContain(speedKmS(SHIP_WARP_SPEED).toFixed(0) + " km/s");
     expect(row("0.23%")).toContain(((speedKmS(SHIP_WARP_SPEED) / 299_792.458) * 100).toFixed(2) + "%");
+    const cruise = SHIP_WARP_SPEED * CRUISE_MAX_FACTOR;
+    expect(row("Long-range cruise")).toContain(`${cruise} u/s`);
+    expect(row("Long-range cruise")).toContain(Math.round(speedKmS(cruise)).toLocaleString("en-US") + " km/s");
+    expect(row("Long-range cruise")).toContain(((speedKmS(cruise) / 299_792.458) * 100).toFixed(1) + "%");
+    expect(row("edge")).toContain(`${SYSTEM_RADIUS.toLocaleString("en-US")} u`);
+    expect(row("edge")).toContain(distanceAU(SYSTEM_RADIUS).toFixed(1) + " AU");
   });
 });
