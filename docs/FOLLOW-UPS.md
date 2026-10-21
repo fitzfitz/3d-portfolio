@@ -95,14 +95,6 @@ Delete an entry when it is fixed.
   a single b (30). It is earnable but hard to find by hand. Revisit with F2
   (Newtonian ship gravity), which replaces the well law; do not retune G
   alone, since 4,000 already brings a surface touch.
-- **Convoy events skip Mercury.** The convoy world event flies to the body
-  nearest the ship (`WorldEventDirector.tsx`), and its delivery orbit around
-  Mercury (convoyRadius 20.8 u at r 35–54) almost always crosses the Sun's
-  34 u keep-out, so no route clears and the director silently skips the event.
-  From the spawn pad (0.92 AU) Mercury or Venus is often the nearest body,
-  depending on the date. Lawful-looking but quiet: choose "the nearest body
-  with a clear route" instead, if convoys should show up more near the Sun.
-  (`events.probe.mjs` parks by Earth before triggering one.)
 - **SwiftShader start-up rose with the real Solar System.** The start-up
   probe's best of three read 13.0 s and 15.4 s in two full runs on PR #40's
   branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not

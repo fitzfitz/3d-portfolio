@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  flareEnvelope, flareLevel, planCometPass, cometPassAt, convoyOffsetAt, convoyShipOffsetAt, planConvoy,
+  flareEnvelope, flareLevel, planCometPass, cometPassAt, convoyOffsetAt, convoyShipOffsetAt, planConvoy, planNearestConvoy,
   COMET_PASS_DIST, COMET_ENTRY_DIST, COMET_SPEED,
   CONVOY_ORBIT_FACTOR, convoyRadius, CONVOY_APPROACH_S, CONVOY_ORBIT_S, CONVOY_HIDE_DIST, CONVOY_SPACING,
   type CometPass, type ConvoyPlan,
 } from "../src/utils/worldEvents";
-import { LOCK_RETAIN_FACTOR } from "../src/constants";
-import { SOLAR_BODIES } from "../src/data/solarSystem";
+import { AU, LOCK_RETAIN_FACTOR, SUN_RADIUS } from "../src/constants";
+import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
 import { eventLines } from "../src/data/chatterLines";
 
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
@@ -165,6 +165,44 @@ describe("convoy path", () => {
     const u = [p.ux, p.uy, p.uz], vv = [p.vx, p.vy, p.vz], w = [p.wx, p.wy, p.wz];
     expect(dot(u, u)).toBeCloseTo(1); expect(dot(vv, vv)).toBeCloseTo(1); expect(dot(w, w)).toBeCloseTo(1);
     expect(dot(u, vv)).toBeCloseTo(0); expect(dot(u, w)).toBeCloseTo(0); expect(dot(vv, w)).toBeCloseTo(0);
+  });
+});
+
+describe("convoy target", () => {
+  const at = (x: number, y = 0, z = 0) => v(x, y, z);
+  it("takes the nearest body whose route is clear, not just the nearest", () => {
+    const near = { id: "near", size: 2, pos: at(50) }, mid = { id: "mid", size: 2, pos: at(-80) }, far = { id: "far", size: 2, pos: at(300) };
+    const tried: string[] = [];
+    const got = planNearestConvoy([far, mid, near], (b) => b.pos, at(40), (b) => { tried.push(b.id); return b.id !== "near"; });
+    expect(got?.body.id).toBe("mid");
+    // The nearest tries all eight entry angles first, then the next nearest.
+    expect(tried.slice(0, 8)).toEqual(Array(8).fill("near"));
+    expect(tried[8]).toBe("mid");
+  });
+  it("is null only when no body has a clear route", () => {
+    const a = { id: "a", size: 2, pos: at(50) }, b = { id: "b", size: 2, pos: at(90) };
+    expect(planNearestConvoy([a, b], (x) => x.pos, at(0), () => false)).toBeNull();
+  });
+  it("near Mercury, whose delivery orbit crosses the Sun's keep-out, the convoy goes to Venus instead of nowhere", () => {
+    // Mercury at perihelion-ish 0.39 AU, Venus 0.72 AU on the far side; the
+    // ship parked just outside Mercury. Clear = every ship clears the Sun's
+    // keep-out (SUN_RADIUS + 10, as WorldEventDirector checks) over the route.
+    const mercury = { ...bodyById("mercury"), pos: at(0.39 * AU) };
+    const venus = { ...bodyById("venus"), pos: at(0, 0, -0.72 * AU) };
+    const sunClear = (b: { pos: { x: number; y: number; z: number } }, plan: ConvoyPlan) => {
+      for (let t = 0; t <= 40; t += 0.5) {
+        for (const slot of [0, 1, 2] as const) {
+          const o = convoyShipOffsetAt(v(), plan, t, slot);
+          if (Math.hypot(b.pos.x + o.x, b.pos.y + o.y, b.pos.z + o.z) < SUN_RADIUS + 10) return false;
+        }
+      }
+      return true;
+    };
+    const ship = at(0.39 * AU + 12);
+    // The old rule (nearest only) found no route at all here.
+    expect(planConvoy(mercury.pos, mercury.size, (p) => sunClear(mercury, p))).toBeNull();
+    const got = planNearestConvoy([mercury, venus], (b) => b.pos, ship, sunClear);
+    expect(got?.body.id).toBe("venus");
   });
 });
 

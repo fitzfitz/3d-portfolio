@@ -191,3 +191,25 @@ export function planConvoy(planetPos: Vec3, planetSize: number, isClear: (plan: 
   }
   return null;
 }
+
+/**
+ * The convoy's target: the body nearest `from` that has a clear route, tried
+ * nearest first (each through planConvoy's eight entry angles), with its
+ * plan. Null only when no body has one. Mercury's delivery orbit almost
+ * always crosses the Sun's keep-out, so "the nearest body" alone silently
+ * skipped most convoys near the spawn pad.
+ */
+export function planNearestConvoy<B extends { size: number }>(
+  candidates: readonly B[], posOf: (b: B) => Vec3, from: Vec3,
+  isClear: (b: B, plan: ConvoyPlan) => boolean,
+): { body: B; plan: ConvoyPlan } | null {
+  const order = candidates.map((b) => {
+    const p = posOf(b);
+    return { b, d: Math.hypot(p.x - from.x, p.y - from.y, p.z - from.z) };
+  }).sort((a, c) => a.d - c.d);
+  for (const { b } of order) {
+    const plan = planConvoy(posOf(b), b.size, (p) => isClear(b, p));
+    if (plan) return { body: b, plan };
+  }
+  return null;
+}

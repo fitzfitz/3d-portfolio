@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, worldEventElapsed, type WorldEventState } from "../../store/spaceStore";
 import { SUN_RADIUS } from "../../constants";
 import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent, type DirectorStep, type DirectorInput } from "../../utils/eventDirector";
-import { planCometPass, planConvoy, convoyShipOffsetAt, CONVOY_APPROACH_S, CONVOY_ORBIT_S, type Sphere } from "../../utils/worldEvents";
+import { planCometPass, planNearestConvoy, convoyShipOffsetAt, CONVOY_APPROACH_S, CONVOY_ORBIT_S, type Sphere } from "../../utils/worldEvents";
 import { convoySighted } from "../../utils/logbook";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { gameTime, ambientTime } from "../../utils/ambientTime";
@@ -39,9 +39,10 @@ const sightOff = { x: 0, y: 0, z: 0 };
  * Turns a director start into a stored event with its target, or null when no
  * clear route exists (the event is then skipped and the next is scheduled).
  * Comet: a line past the player's current position, clear of the sun and of
- * every body padded for its drift. Convoy: the body nearest the player, on an
- * approach that clears the other bodies and the sun at their positions
- * through the next 40s.
+ * every body padded for its drift. Convoy: the body nearest the player that
+ * has an approach clearing the other bodies and the sun at their positions
+ * through the next 40s (Mercury's rarely clears the sun, so a convoy near it
+ * goes to the next body out).
  */
 function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventState; line: string } | null {
   const base = { kind: ev.kind, id: ev.id, startedAt: ev.startedAt };
@@ -56,16 +57,9 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
     return comet ? { state: { ...base, comet }, line: pick(eventLines.comet) } : null;
   }
 
-  // convoy: the nearest body
-  let target = SOLAR_BODIES[0];
-  let best = Infinity;
-  for (const b of SOLAR_BODIES) {
-    const p = bodies[b.id];
-    const d = Math.hypot(p.x - flight.x, p.y - flight.y, p.z - flight.z);
-    if (d < best) { best = d; target = b; }
-  }
+  // convoy: the nearest body with a clear route.
   // Every body's position along the route's 40 s, once per plan (not per
-  // candidate and slot): ROUTE_STEPS × SOLAR_BODIES, xyz.
+  // target, candidate and slot): ROUTE_STEPS × SOLAR_BODIES, xyz.
   for (let s = 0; s < ROUTE_STEPS; s++) {
     for (let i = 0; i < SOLAR_BODIES.length; i++) {
       const q = bodyPositionAt(SOLAR_BODIES[i], ambientNow + s * ROUTE_DT, routeScratch);
@@ -73,9 +67,9 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
       routeTrack[o] = q.x; routeTrack[o + 1] = q.y; routeTrack[o + 2] = q.z;
     }
   }
-  const ti = SOLAR_BODIES.indexOf(target);
   const off = { x: 0, y: 0, z: 0 };
-  const plan = planConvoy(bodies[target.id], target.size, (candidate) => {
+  const found = planNearestConvoy(SOLAR_BODIES, (b) => bodies[b.id], flight, (target, candidate) => {
+    const ti = SOLAR_BODIES.indexOf(target);
     for (let s = 0; s < ROUTE_STEPS; s++) {
       const row = s * SOLAR_BODIES.length * 3, c = row + ti * 3;
       for (const slot of [0, 1, 2] as const) {
@@ -91,8 +85,8 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
     }
     return true;
   });
-  return plan
-    ? { state: { ...base, convoy: { planet: target.id, plan } }, line: pick(eventLines.convoy[target.id] ?? eventLines.convoyAny) }
+  return found
+    ? { state: { ...base, convoy: { planet: found.body.id, plan: found.plan } }, line: pick(eventLines.convoy[found.body.id] ?? eventLines.convoyAny) }
     : null;
 }
 
