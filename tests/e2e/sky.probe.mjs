@@ -285,7 +285,9 @@ async function exposureChecks(page, checks, tier) {
 
   const at115 = await parkFacingSun(page, u, 115);
   const disc115 = await sunDisc(page, `sky-exposure-${tier}-115`, !lowPerf);
-  checks.check(`[${tier}] exposure is 1 at Ruangrapi's distance`, Math.abs(at115.exposure - 1) <= 0.02,
+  // 1 AU: the law's 1 times the constant lift (1.5, owner's pick 2026-10-21).
+  const lift = await page.evaluate(async () => (await import("/src/utils/sunLight.ts")).EXPOSURE_LIFT);
+  checks.check(`[${tier}] exposure is the lift (${lift}) at Ruangrapi's distance`, Math.abs(at115.exposure - lift) <= 0.02 * lift,
     `camera ${at115.camDist.toFixed(2)} from the sun, exposure=${at115.exposure.toFixed(4)}`);
   // The compensation follows the tier: the post pass exposes the sun and the
   // guides (1 / exposure); in low-perf nothing exposes them (1).
@@ -346,12 +348,18 @@ async function exposureChecks(page, checks, tier) {
   // d=48, 4.0 at d=230), same method: d=48 0.650 vs 0.250, d=230 0.466 vs
   // 1.555 (power 1.5 had 0.620 and 0.520 compensated). The geometric
   // midpoints are 0.403 and 0.851, so the bounds still separate every pair.
+  // Re-checked 2026-10-21 under the hue-keeping toe (hueToe.ts) and the 1.5
+  // lift (exposure 0.261 at d=48, 6.0 at d=230): d=48 0.648-0.730 vs 0.310,
+  // d=230 0.339-0.401 vs 1.252. The toe alone (lift 1) read d=230 0.377: it
+  // compresses the corona's increment over the brighter far-out backdrop. So
+  // the d=230 band is [0.25, 0.65], under its new geometric midpoint 0.68;
+  // d=48 keeps [0.4, 1.0] (midpoint 0.47).
   if (!lowPerf) {
     const cfmt = (d) => `${d.corona.toFixed(1)} over ${d.coronaBg?.toFixed(1)} (${d.coronaN}px)`;
     const kNear = discNear.corona / disc115.corona, k230 = disc230.corona / disc115.corona;
     checks.check(`[${tier}] the sun's corona looks the same at every exposure`,
       discsOk && [disc115, discNear, disc230].every((d) => d.coronaN > 200)
-        && kNear >= 0.4 && kNear <= 1.0 && k230 >= 0.4 && k230 <= 0.8,
+        && kNear >= 0.4 && kNear <= 1.0 && k230 >= 0.25 && k230 <= 0.65,
       `corona's own light, band 0.70-0.78 of its half-size, mean luma: d115 ${cfmt(disc115)}; dNear ${cfmt(discNear)} (x${kNear.toFixed(3)}); d230 ${cfmt(disc230)} (x${k230.toFixed(3)})`);
   }
 
@@ -551,7 +559,11 @@ export default async function run() {
     // sunlight, is lit by the ambient fill alone, so it reads neutral (its
     // dark oceans lean blue). Measured 2026-10-21: [0.2, 1.0, 2.7] sRGB; with
     // the studio IBL on the bodies (before noIbl.ts) it read [13.4, 0.4, 2.8],
-    // the orange panel's red.
+    // the orange panel's red. Under the hue-keeping toe and the 1.5 lift
+    // (later that day) it reads greyer and brighter: [5.0, 4.8, 5.2],
+    // [5.1, 4.6, 4.4] and [2.7, 3.0, 4.1] in three runs, against
+    // [14.8, 8.4, 9.7] with the IBL put back, so the 3-level bar still
+    // separates them.
     {
       const nh = await nightHalf(page, "earth");
       const [r, g, b] = nh.rgb;

@@ -6,36 +6,19 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Owner ruling owed: dark bodies under the 25-luma target.** The display
-  curve (P3, `displayAlbedo.ts`) is the identity at Earth's map median
-  (0.0766) and strictly increasing below it, so no body below the knee can be
-  drawn brighter than 0.0766: it lifts Ceres 3×, the Moon 2.47×, Mercury
-  2.17×, Mars 1.93×, Callisto 1.79× and Titan 1.63× (Phobos 3.59×, Deimos
-  3.27×). The real bodies' lit-side disc medians have not been measured
-  against the 25-luma target yet: measure Ceres, Mercury, Mars, the Moon,
-  Callisto, Phobos and Deimos at a 2.5×-size, ~22° phase frame. (The same
-  check on the retired fictional system left its two darkest bodies under 25
-  even after full adaptation; roughness, the atmosphere shell and limb
-  darkening each moved the median by 0–2.) What the curve cannot fix is the
-  PBR Neutral tone curve's toe, which is global (P4). The choices: accept the
-  lawful result; or change the toe or exposure globally and re-baseline every
-  body; or raise the knee above Earth's median, which lifts Earth too.
-  **Also owed (Ruling R29, 2026-10-20):** Venus's, Saturn's and Uranus's
-  discs read olive rather than cream or pale cyan. It is not their maps or
-  rims (Venus with its rim hidden reads the same): their surfaces sit at
-  ~0.03–0.08 linear on the scene's 0.177 × albedo scale, where the PBR
-  Neutral tone mapper's toe subtracts the smallest channel and crushes blue,
-  so a warm grey turns olive-brown. A fix is global (exposure, the knee or
-  the toe) and re-baselines every body, so it is the same owner call as the
-  one above. Screenshots: the real-solar-system run's Task 15 look check.
-  Both were seen with the studio IBL still on the bodies; PR #42 took it
-  off (`noIbl.ts`, L29), and its orange and cyan panels tinted lit sides
-  too. Same pose and exposure, 2.5× size at 22° phase, inner 60% of the
-  disc, IBL on → off: median luma Venus 39.9 → 39.3, Earth 23.5 → 21.8,
-  Mars 36.6 → 35.6, Jupiter 48.7 → 47.4, Saturn 52.3 → 50.7, Uranus
-  45.5 → 43.7; mean sRGB blue Saturn 22.3 → 18.3, Uranus 45.0 → 42.0,
-  Earth 26.3 → 22.3 (the cyan panel had been adding blue). Re-shoot
-  before ruling.
+- **Uranus still reads teal-green.** With the hue-keeping toe and the 1.5×
+  exposure lift (2026-10-21), its lit disc's median hue is ~160° against the
+  174° its map and sunlight should give (b/g 0.97 against 0.99). The cause is
+  not the tone curve: the warm `#fff4e0` sunlight times its map leaves green
+  about equal to blue, and every curve tried (the toe, the knee, AgX) read
+  158–160°. A fix is a bluer or brighter map, or whiter sunlight, which
+  re-baselines every body.
+- **Earth's lit disc reads grey-brown.** Since the studio IBL came off the
+  bodies (1ffe387, L29), its blue/green is ~0.97 against the 1.56 its map
+  should give: the IBL's cyan panel had been faking blue oceans, and its lit
+  median is now cloud-dominated (hue ~40°). A targeted fix is the ocean
+  albedo or the atmosphere rim's tint, not a global change to the light or
+  the tone curve.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
@@ -47,8 +30,10 @@ Delete an entry when it is fixed.
     its imports are extensionless). Calling the game's functions needs each
     body's distance, and would change the inner planets' renders: inside
     1 AU the game's fill is AMBIENT_BASE × exposure (Venus ×0.52, Mercury
-    ×0.15), not the full 0.15. Left while the look-check renders back an
-    owner colour decision (2026-10-21).
+    ×0.15), not the full 0.15. The owner's colour decision came back
+    2026-10-21 (the hue-keeping toe, `hueToe.ts`, and `EXPOSURE_LIFT` 1.5):
+    the script applies neither, so its renders now sit ~0.58 stop under the
+    game, and its Khronos curve keeps the olive toe.
   - Tests: `fillLight.test.ts`, `starLayer.test.ts` and `ringOptics.test.ts`
     pin wiring and GLSL by source regex rather than behaviour. Not a quick
     swap: vitest has no WebGL to run a shader and no R3F renderer to mount

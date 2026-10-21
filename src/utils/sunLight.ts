@@ -6,11 +6,11 @@ import { AU, SYSTEM_RADIUS } from "../constants";
  * The sun is a point light with decay 2, so a surface at distance d gets
  * SUN_LIGHT_INTENSITY / d², which is today's 2.1 at 1 AU.
  * The camera adapts fully, like a spacecraft camera exposing for its target
- * (lawful, L22): exposure = clamp((d / AU)^2, EXPOSURE_MIN, EXPOSURE_MAX), d
- * being the camera's distance from the sun. It is exactly 1 at 1 AU and
- * cancels the inverse-square sunlight wherever it is unclamped, so the net
- * brightness of a lit surface, irradiance × exposure, is its 1 AU value at
- * every distance from AU·√EXPOSURE_MIN (≈ 44.5) to the edge: a world reads
+ * (lawful, L22): exposure = EXPOSURE_LIFT × clamp((d / AU)^2, EXPOSURE_MIN,
+ * EXPOSURE_MAX), d being the camera's distance from the sun. It is
+ * EXPOSURE_LIFT at 1 AU and cancels the inverse-square sunlight wherever it is
+ * unclamped, so the net brightness of a lit surface, irradiance × exposure, is
+ * the same at every distance from AU·√EXPOSURE_MIN (≈ 44.5) to the edge: a world reads
  * at its true albedo wherever the camera meets it. Distance reads from the
  * sun's shrinking disc instead. The ceiling is the edge's own exposure, so
  * the law holds all the way out. (Until 2026-10-19 main had partial
@@ -29,6 +29,14 @@ export const EXPOSURE_MIN = 0.15;
 /** The exposure at the system's edge, (3,600 / 115)² ≈ 980: no clamp inside the system. */
 export const EXPOSURE_MAX = (SYSTEM_RADIUS / AU) ** EXPOSURE_POWER;
 export const EXPOSURE_HALF_LIFE_S = 1.5;
+/**
+ * A constant longer exposure on top of the law (owner's pick, 2026-10-21).
+ * With the hue-keeping toe (hueToe.ts) it lifts every lit disc's median to at
+ * least 25 luma: measured 2026-10-21, the darkest, the Moon and Earth, read
+ * ~32 (19.7 and 19.0 before). It is a constant, so the law still holds: a lit
+ * surface reads at one brightness at every distance inside the clamps.
+ */
+export const EXPOSURE_LIFT = 1.5;
 
 /** Sunlight falling on a surface `d` scene units from the sun. */
 export function sunIrradiance(d: number): number {
@@ -38,7 +46,7 @@ export function sunIrradiance(d: number): number {
 /** The exposure the camera settles to at distance `d` from the sun. */
 export function targetExposure(d: number): number {
   const e = Math.pow(d / AU, EXPOSURE_POWER);
-  return Math.min(EXPOSURE_MAX, Math.max(EXPOSURE_MIN, e));
+  return EXPOSURE_LIFT * Math.min(EXPOSURE_MAX, Math.max(EXPOSURE_MIN, e));
 }
 
 /**
@@ -96,8 +104,9 @@ export const BACKDROP_NET_MAX = 8.5;
  * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
  * dims (1 at 1 AU and inward), and capped so the net gain never passes
  * BACKDROP_NET_MAX (≈ 0.179 at the 3,600 u edge). The backdrop then follows
- * (d / AU)^1.5 from 1 AU to ≈ 480 u, flat beyond and the exposure's (d / AU)^2 inside
- * 1 AU. The stars are not toned: they may brighten.
+ * EXPOSURE_LIFT × (d / AU)^1.5 from 1 AU to ≈ 365 u (480 u before the lift),
+ * flat beyond and the exposure's (d / AU)^2 inside 1 AU. The stars are not
+ * toned: they may brighten.
  */
 export function backdropScale(cameraDistance: number): number {
   const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));

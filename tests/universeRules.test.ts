@@ -15,7 +15,7 @@ import { RING_IN, RING_OUT, URANUS_RING_R, fluidRocheLimit, RINGED_GIANT_DENSITY
 import { COMET_ELEMENTS, makeBelt, makeTrojans, BELT_COUNT, TROJAN_COUNT, KIRKWOOD_GAPS_AU, GAP_HALF_WIDTH_AU } from "../src/data/smallBodyField";
 import { orbitWorldPosition } from "../src/utils/beltRocks";
 import { HAZE_START } from "../src/utils/edgeHaze";
-import { EXPOSURE_MAX, EXPOSURE_MIN, BACKDROP_NET_MAX, SUN_IRRADIANCE_AT_AU, backdropScale, sunIrradiance, targetExposure } from "../src/utils/sunLight";
+import { EXPOSURE_MAX, EXPOSURE_MIN, EXPOSURE_LIFT, BACKDROP_NET_MAX, SUN_IRRADIANCE_AT_AU, backdropScale, sunIrradiance, targetExposure } from "../src/utils/sunLight";
 import { MAX_OCCLUDERS, OCCLUDER_COUNT, CPU_ONLY_BODIES } from "../src/components/canvas/sunShadow";
 import { DISPLAY_KNEE_LINEAR, DISPLAY_TOE_GAMMA, displayAlbedoGain } from "../src/utils/displayAlbedo";
 import { CRUISE_MAX_FACTOR, cruiseLimit } from "../src/utils/cruise";
@@ -319,10 +319,10 @@ describe("L18 the edge at 31.3 AU", () => {
 });
 
 describe("L19 inverse-square light, a camera that adapts, a backdrop that never glares", () => {
-  it("the exposure's ceiling is the edge's own, (3600 / 115)² ≈ 980, so a lit surface reads at its 1 AU brightness out to the edge", () => {
+  it("the exposure's ceiling is the edge's own, (3600 / 115)² ≈ 980, so a lit surface reads at one brightness out to the edge", () => {
     expect(EXPOSURE_MAX).toBeCloseTo((SYSTEM_RADIUS / AU) ** 2, 9);
     for (let d = AU * Math.sqrt(EXPOSURE_MIN); d <= SYSTEM_RADIUS; d += 25) {
-      expect(sunIrradiance(d) * targetExposure(d), `d=${d}`).toBeCloseTo(SUN_IRRADIANCE_AT_AU, 9);
+      expect(sunIrradiance(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT * SUN_IRRADIANCE_AT_AU, 9);
     }
   });
   it("the backdrop's net gain never passes BACKDROP_NET_MAX (8.5, the old 480 u edge's)", () => {

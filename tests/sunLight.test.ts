@@ -16,6 +16,7 @@ import {
   EXPOSURE_MAX,
   EXPOSURE_MIN,
   EXPOSURE_POWER,
+  EXPOSURE_LIFT,
   SUN_LIGHT_INTENSITY,
   irradianceVsAU,
   cutExposure,
@@ -26,39 +27,41 @@ describe("sunlight falls with distance squared; the camera's exposure follows (F
     expect(sunIrradiance(AU)).toBeCloseTo(2.1, 9);
     expect(sunIrradiance(2 * AU)).toBeCloseTo(2.1 / 4, 9);
   });
-  it("exposure is exactly 1 at 1 AU and follows (d/AU)^2 between the clamps", () => {
+  it("exposure is the lift, 1.5, at 1 AU and follows 1.5 × (d/AU)^2 between the clamps", () => {
     expect(EXPOSURE_POWER).toBe(2);
-    expect(targetExposure(AU)).toBeCloseTo(1, 12);
-    expect(targetExposure(185)).toBeCloseTo((185 / 115) ** 2, 9);
-    expect(targetExposure(1)).toBe(0.15);
-    expect(targetExposure(10_000)).toBe(EXPOSURE_MAX);
+    // Owner's pick 2026-10-21 with the hue-keeping toe: every lit disc ≥ 25 luma.
+    expect(EXPOSURE_LIFT).toBe(1.5);
+    expect(targetExposure(AU)).toBeCloseTo(1.5, 12);
+    expect(targetExposure(185)).toBeCloseTo(1.5 * (185 / 115) ** 2, 9);
+    expect(targetExposure(1)).toBeCloseTo(1.5 * 0.15, 12);
+    expect(targetExposure(10_000)).toBe(EXPOSURE_LIFT * EXPOSURE_MAX);
   });
   it("the exposure ceiling is the edge's own exposure, derived from SYSTEM_RADIUS", () => {
     expect(EXPOSURE_MAX).toBe((SYSTEM_RADIUS / AU) ** EXPOSURE_POWER);
     // (SYSTEM_RADIUS / AU)² ≈ 980 at the 3,600 u edge (spec §6.1); 17.42 at the old 480.
     expect(EXPOSURE_MAX).toBeCloseTo((3600 / 115) ** 2, 9);
     expect(EXPOSURE_MAX).toBeCloseTo(979.96, 2);
-    expect(targetExposure(SYSTEM_RADIUS)).toBeCloseTo(EXPOSURE_MAX, 12);
+    expect(targetExposure(SYSTEM_RADIUS)).toBeCloseTo(EXPOSURE_LIFT * EXPOSURE_MAX, 12);
   });
   it("the near-sun floor 0.15 starts at AU·√0.15 ≈ 44.5, just inside the belt (r 40-70), not at the spawn", () => {
     const floorStart = AU * Math.sqrt(EXPOSURE_MIN);
     expect(floorStart).toBeCloseTo(44.54, 2);
-    expect(targetExposure(floorStart + 0.01)).toBeGreaterThan(EXPOSURE_MIN);
-    expect(targetExposure(floorStart - 0.01)).toBe(EXPOSURE_MIN);
-    expect(targetExposure(40)).toBe(EXPOSURE_MIN); // the belt's inner edge: was (40/115)^1.5 ≈ 0.205
-    expect(targetExposure(48)).toBeCloseTo((48 / 115) ** 2, 12); // the sky probe's near stop is unclamped
-    expect(targetExposure(105.4)).toBeCloseTo((105.4 / 115) ** 2, 12); // the spawn
+    expect(targetExposure(floorStart + 0.01)).toBeGreaterThan(EXPOSURE_LIFT * EXPOSURE_MIN);
+    expect(targetExposure(floorStart - 0.01)).toBe(EXPOSURE_LIFT * EXPOSURE_MIN);
+    expect(targetExposure(40)).toBe(EXPOSURE_LIFT * EXPOSURE_MIN); // the belt's inner edge: was (40/115)^1.5 ≈ 0.205
+    expect(targetExposure(48)).toBeCloseTo(EXPOSURE_LIFT * (48 / 115) ** 2, 12); // the sky probe's near stop is unclamped
+    expect(targetExposure(105.4)).toBeCloseTo(EXPOSURE_LIFT * (105.4 / 115) ** 2, 12); // the spawn
   });
-  it("the camera adapts fully: a lit surface reads at its 1 AU brightness at every distance inside the clamps", () => {
+  it("the camera adapts fully: a lit surface reads at the same brightness at every distance inside the clamps", () => {
     const net = (d: number) => (sunIrradiance(d) * targetExposure(d)) / 2.1;
-    // Exposure (d/AU)^2 cancels inverse-square sunlight (AU/d)^2 exactly.
+    // Exposure (d/AU)^2 cancels inverse-square sunlight (AU/d)^2 exactly; the lift is a constant on top.
     for (const r of [AU * Math.sqrt(EXPOSURE_MIN), 48, 105.4, 115, 150, 185, 210, 242, 300, 358, 402, SYSTEM_RADIUS]) {
-      expect(net(r), `r=${r}`).toBeCloseTo(1, 12);
+      expect(net(r), `r=${r}`).toBeCloseTo(EXPOSURE_LIFT, 12);
     }
     // Outside the clamps it does not: brighter near the sun under the floor, dimmer past the edge.
-    expect(net(40)).toBeCloseTo(EXPOSURE_MIN * (AU / 40) ** 2, 12);
-    expect(net(40)).toBeGreaterThan(1.2);
-    expect(net(2 * SYSTEM_RADIUS)).toBeCloseTo(0.25, 12);
+    expect(net(40)).toBeCloseTo(EXPOSURE_LIFT * EXPOSURE_MIN * (AU / 40) ** 2, 12);
+    expect(net(40)).toBeGreaterThan(1.2 * EXPOSURE_LIFT);
+    expect(net(2 * SYSTEM_RADIUS)).toBeCloseTo(0.25 * EXPOSURE_LIFT, 12);
   });
   it("eases with a 1.5 s half-life and snaps when asked", () => {
     expect(stepExposure(1, 2, 1.5, false)).toBeCloseTo(1.5, 9);

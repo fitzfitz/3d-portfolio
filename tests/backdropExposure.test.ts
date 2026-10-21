@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { AU, SYSTEM_RADIUS } from "../src/constants";
 import {
-  applyBackdrop, backdropDim, backdropScale, BACKDROP_EXPOSURE_POWER, BACKDROP_NET_MAX, EXPOSURE_POWER, targetExposure,
+  applyBackdrop, backdropDim, backdropScale, BACKDROP_EXPOSURE_POWER, BACKDROP_NET_MAX, EXPOSURE_LIFT, EXPOSURE_POWER, targetExposure,
 } from "../src/utils/sunLight";
 
 const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
@@ -17,9 +17,9 @@ const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
 describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () => {
   it("is the exposure's growth beyond the power-1.5 curve, undone", () => {
     expect(BACKDROP_EXPOSURE_POWER).toBe(1.5);
-    // Up to where the net gain reaches BACKDROP_NET_MAX (about the old 480 u edge).
-    for (const d of [AU, 150, 185, 242, 300, 425]) {
-      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo((d / AU) ** BACKDROP_EXPOSURE_POWER, 9);
+    // Up to where the net gain reaches BACKDROP_NET_MAX (~365 u under the 1.5 lift; the old 480 u edge without it).
+    for (const d of [AU, 150, 185, 242, 300, 360]) {
+      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT * (d / AU) ** BACKDROP_EXPOSURE_POWER, 9);
     }
   });
   it("caps the net backdrop gain at the old edge's value, non-decreasing out to the 3,600 u edge", () => {
@@ -42,7 +42,7 @@ describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () =
   });
   it("inside 1 AU it follows the full exposure, (d / AU)^2 down to the floor, not the 1.5 curve (L19 says so)", () => {
     for (const d of [50, 60, 90]) {
-      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo((d / AU) ** EXPOSURE_POWER, 9);
+      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT * (d / AU) ** EXPOSURE_POWER, 9);
     }
   });
   it("sets the scene's background intensity and the shared factor together", () => {

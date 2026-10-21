@@ -1,3 +1,5 @@
+// First: the hue-keeping toe must be in the tone-mapping chunk before any program compiles.
+import "./hueToe";
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
 import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense, use, useRef, useMemo, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
