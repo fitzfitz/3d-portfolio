@@ -30,16 +30,20 @@ const DEEP_TRIS_CEILING = 303490; // baseline 263904
 const DEEP_PROGRAMS_CEILING = 79; // baseline 56, deliberately high (above)
 
 // Earth now, drawn 8.4 (Ruangrapi was 12): a lighter frame than before.
-const APPROACH_CALLS_CEILING = 120; // baseline 100
-const APPROACH_TRIS_CEILING = 419950; // baseline 365168
+// Re-derived from 6 runs with the pose pinned to Earth's live position at
+// the read (pinnedApproach): 65-76 calls, 306,652-339,962 triangles.
+const APPROACH_CALLS_CEILING = 90; // baseline 76
+const APPROACH_TRIS_CEILING = 390960; // baseline 339962
 const APPROACH_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const APPROACH_LIGHTS_CEILING = 5;
 
 // "Modal open" is an open probe dossier (PR 39), entered by a jump to probe 1
 // and a beam grab, so the frozen view is probe 1 at the nose, seen from its
 // jump point.
-const MODAL_CALLS_CEILING = 70; // baseline 56
-const MODAL_TRIS_CEILING = 323450; // baseline 281256
+// Read after the pinned approach: 48-57 calls, 273,052-333,636 triangles
+// over the same 6 runs (the high one has more of the inner system behind).
+const MODAL_CALLS_CEILING = 70; // baseline 57
+const MODAL_TRIS_CEILING = 383690; // baseline 333636
 const MODAL_PROGRAMS_CEILING = 84; // baseline 56, deliberately high (above)
 const MODAL_LIGHTS_CEILING = 5;
 
@@ -260,31 +264,59 @@ const bodiesUseLods = (page) => page.evaluate(async () => {
   });
 });
 
+/** Earth's close-approach pose: this many of its sizes out along its outward radial. */
+const APPROACH_SIZES = 1.45;
+
 /**
- * Teleports close to Earth: 1.45x its size out along its outward radial.
+ * Parks the ship APPROACH_SIZES Earth sizes out on Earth's outward radial and
+ * holds it there against Earth's LIVE position every frame for `ms` (at least
+ * 30 frames), so the chase camera settles on a pose pinned to the planet;
+ * then reads the renderer counters and the distance, in sizes, on the same
+ * frame. Earth moves 1.72 u/s (0.21 of its drawn 8.4 u size a second): parked
+ * once and read after a SwiftShader settle, the gap had grown to 1.88 sizes
+ * in 1 run of 8, so what was in frame drifted with the timing.
  *
- * That is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
+ * 1.45 sizes is inside the 1.8x radius (ZONE_FACTOR, src/constants.ts) where
  * planets used to set activeZone and outside the 1.3x where they used to
  * lock; planets do neither now (their dossiers moved onto probes), so the
  * spot is kept for the close-approach budget's continuity. It is well clear
- * of the solid surface (1x size plus the ship's half length). Size is read
- * from the live module, so the probe follows the planet table instead of
- * pinning a size.
+ * of the solid surface (1x size plus the ship's half length). On the outward
+ * radial the planet's motion is perpendicular to the line, so it never sweeps
+ * into the ship. Size is read from the live module.
  */
-async function approachPlanet(page) {
-  return page.evaluate(async () => {
+async function pinnedApproach(page, ms = 1500) {
+  return page.evaluate(async (k, ms) => {
     const { bodyById } = await import("/src/data/solarSystem.ts");
     const name = "earth";
-    const p = window.__fitz.bodies[name];
-    // On the planet's outward radial (away from the sun at the origin), at
-    // 1.45x the planet size. Orbits are centred on the origin, so planet
-    // motion is perpendicular to this line and the gap can only grow while
-    // the probe waits: the planet never sweeps into the ship.
-    const r = Math.hypot(p.x, p.y, p.z) || 1;
-    const d = bodyById(name).size * 1.45;
-    window.__fitz.teleport(p.x + (p.x / r) * d, p.y + (p.y / r) * d, p.z + (p.z / r) * d);
-    return name;
-  });
+    const size = bodyById(name).size;
+    const d = window.__fitz;
+    const park = () => {
+      const p = d.bodies[name];
+      const r = Math.hypot(p.x, p.y, p.z) || 1;
+      d.teleport(p.x + (p.x / r) * k * size, p.y + (p.y / r) * k * size, p.z + (p.z / r) * k * size);
+    };
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      let n = 0;
+      const step = () => {
+        park();
+        n++;
+        if (performance.now() - t0 < ms || n < 30) { requestAnimationFrame(step); return; }
+        // One more frame renders the last pose; read on the frame after it.
+        requestAnimationFrame(() => {
+          let lights = 0;
+          d.scene.traverse((o) => { if (o.isLight) lights++; });
+          const b = d.bodies[name], f = d.flight, st = d.store.getState();
+          resolve({
+            name, frames: n,
+            counters: { calls: d.perfStats.calls, triangles: d.perfStats.triangles, programs: d.gl.info.programs.length, lights },
+            k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked,
+          });
+        });
+      };
+      step();
+    });
+  }, APPROACH_SIZES, ms);
 }
 
 export default async function run() {
@@ -358,27 +390,11 @@ export default async function run() {
 
     // ---- close approach to a planet: no zone, no lock, no re-render ----
     const beforeApproach = await canvasRenders(page);
-    const planet = await approachPlanet(page);
-    await settle(page, 1500);
+    const pinned = await pinnedApproach(page);
     const afterApproach = await canvasRenders(page);
-    // Counted first, straight after the settle, as before planets lost their
-    // zone: the chase camera is still easing in, so a slower read in between
-    // (the module import below) changes what is in frame.
-    const approach = await readPerfCounters(page);
-    const close = await page.evaluate(async (name) => {
-      const { bodyById } = await import("/src/data/solarSystem.ts");
-      const size = bodyById(name).size;
-      const b = window.__fitz.bodies[name], f = window.__fitz.flight;
-      const st = window.__fitz.store.getState();
-      return { k: Math.hypot(f.x - b.x, f.y - b.y, f.z - b.z) / size, zone: st.activeZone, locked: st.isOrbitLocked };
-    }, planet);
-    // Earth drifts off the parked spot at its orbital speed (1.72 u/s, 0.21 of
-    // its drawn 8.4 u size a second; Ruangrapi's 12 drifted 0.14), so from
-    // 1.45 sizes the gap passes the old 1.8 zone after ~5 s of game time, which
-    // a slow SwiftShader settle can take (1 run in 8 read 1.88). 2.2 sizes is
-    // ~9 s of drift: still a close approach, still well inside its well.
-    checks.check("the approach parked within 2.2 planet sizes (precondition)",
-      close.k > 1 && close.k < 2.2, `planet=${planet} distance=${close.k.toFixed(2)} sizes`);
+    const planet = pinned.name, approach = pinned.counters, close = pinned;
+    checks.check(`the approach is pinned at ${APPROACH_SIZES} sizes from Earth's live centre at the read (precondition)`,
+      Math.abs(close.k - APPROACH_SIZES) < 0.05, `planet=${planet} distance=${close.k.toFixed(3)} sizes frames=${pinned.frames}`);
     checks.check("a close approach to a planet sets no zone and no lock (planets are scan-only)",
       close.zone === null && !close.locked, `activeZone=${close.zone} locked=${close.locked}`);
     checks.check("zero canvas re-renders on a close planet approach",

@@ -190,7 +190,14 @@ function hookExit() {
  */
 export function spawnGroup(cmd, args, options = {}) {
   const child = spawn(cmd, args, { ...options, detached: true });
-  liveGroups.add(child.pid);
+  const pgid = child.pid;
+  liveGroups.add(pgid);
+  // A leader that exits on its own (a port clash under --strictPort, a crash)
+  // leaves the set, so a later exit hook never signals a recycled pgid. Any
+  // child it left behind is still in the group: signal it once on the way out.
+  child.once("exit", () => {
+    if (liveGroups.delete(pgid)) signalGroup(pgid, "SIGTERM");
+  });
   hookExit();
   return child;
 }
@@ -198,7 +205,8 @@ export function spawnGroup(cmd, args, options = {}) {
 /** Stops `child`'s process group and waits (≤ 5 s, then SIGKILL) until it is gone. */
 export async function stopGroup(child) {
   const pgid = child.pid;
-  if (!liveGroups.delete(pgid)) return;
+  liveGroups.delete(pgid);
+  if (!groupAlive(pgid)) return;
   signalGroup(pgid, "SIGTERM");
   const deadline = Date.now() + 5000;
   while (groupAlive(pgid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));

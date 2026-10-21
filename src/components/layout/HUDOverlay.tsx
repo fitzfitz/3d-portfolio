@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
-import { speedKmS, distanceAU } from "../../utils/realUnits";
+import { speedKmS, distanceAU, lightFractionLabel } from "../../utils/realUnits";
 import { bodiesGameSeconds } from "../../utils/bodyPositions";
 import { formatOrreryDate, orreryJd } from "../../utils/orreryClock";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
@@ -47,8 +47,6 @@ let completionAnnounced = false;
 /** How long after leaving the spawn pad the HUD quiets down. */
 const QUIET_AFTER_MS = 6000;
 
-/** c in km/s, for the speed readout's percent of light. */
-const LIGHT_KM_S = 299_792.458;
 
 export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?: boolean }) {
   const activeZone = useSpaceStore((s) => s.activeZone);
@@ -113,7 +111,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       const kmS = speedKmS(flight.speed);
       if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S`;
-      if (lightRef.current) lightRef.current.textContent = ` · ${((kmS / LIGHT_KM_S) * 100).toFixed(3)}% C`;
+      if (lightRef.current) lightRef.current.textContent = lightFractionLabel(flight.speed);
       if (sunDistRef.current)
         sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
       if (orreryDateRef.current) orreryDateRef.current.textContent = ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`;
@@ -219,10 +217,12 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {distanceAU(SYSTEM_RADIUS * 2).toFixed(2)} AU</div>
         {/* The light-speed, AU and date parts are hidden on phones: the longer
-            line ran into the right column (the probe pickup tip). */}
+            line ran into the right column (the probe pickup tip). Ruling R30
+            accepts the phone line without "% C"; desktops keep it
+            (tests/hudLightFraction.test.tsx). */}
         <div ref={velRef} data-testid="hud-velocity">
           <span ref={speedRef}>VELOCITY: 0 KM/S</span>
-          <span ref={lightRef} data-testid="hud-light-fraction" className="hidden sm:inline"> · 0.000% C</span>
+          <span ref={lightRef} data-testid="hud-light-fraction" className="hidden sm:inline">{lightFractionLabel(0)}</span>
           <span ref={sunDistRef} data-testid="hud-sun-distance" className="hidden sm:inline"> · SUN 0.00 AU</span>
           <span ref={orreryDateRef} data-testid="hud-orrery-date" className="hidden sm:inline"> · ORRERY {formatOrreryDate(orreryJd(0))}</span>
         </div>

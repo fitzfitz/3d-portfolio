@@ -6,27 +6,20 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Owner ruling owed: dark worlds and ice giants under the 25-luma target.**
-  At a 2.5×-size, ~22° phase frame the lit-side disc medians are rock 19,
-  dwarf 14, Fuxx 15, tilted 22, blue 24 (ringed 30, Ruangrapi ~40, Portfolio
-  51). The display curve cannot fix the dark ones within its own terms: it
-  is identity at Ruangrapi's median and strictly increasing, so no body below
-  the knee can be drawn above 0.0533, and at exactly 0.0533 the rock reads 22
-  and the dwarf 16 (displayed-albedo sweep on the same frame). The giants'
-  named suspects were measured one at a time: roughness 0.95 → 0.8 or 1.0
-  moves the median 0, the Atmosphere shell 0 (it only adds a rim), the limb
-  darkening 1–2. What is left is the law's distance falloff and the PBR
-  Neutral tone curve's toe, which is global (P4). The choices: accept these
-  as the lawful result; or change the toe or exposure globally and
-  re-baseline Fuxx and Portfolio; or raise the knee above Ruangrapi's median,
-  which lifts Ruangrapi too.
-  Since the camera adapts fully (2026-10-19, L19) the same frames read rock
-  25, dwarf 23, Fuxx 19, tilted 34, blue 35, ringed 39, Ruangrapi ~39 and
-  Portfolio 50: only the dwarf and Fuxx are still under 25.
-  These numbers were measured on the fictional system, retired by the real
-  Solar System (PR #40): the knee is now Earth's map median (0.0766), γ ≈
-  0.2985 lifts Ceres exactly 3× (P3), and the bodies to re-measure are
-  Ceres, Mercury, Mars, the Moon, Callisto and Phobos/Deimos.
+- **Owner ruling owed: dark bodies under the 25-luma target.** The display
+  curve (P3, `displayAlbedo.ts`) is the identity at Earth's map median
+  (0.0766) and strictly increasing below it, so no body below the knee can be
+  drawn brighter than 0.0766: it lifts Ceres 3×, the Moon 2.47×, Mercury
+  2.17×, Mars 1.93×, Callisto 1.79× and Titan 1.63× (Phobos 3.59×, Deimos
+  3.27×). The real bodies' lit-side disc medians have not been measured
+  against the 25-luma target yet: measure Ceres, Mercury, Mars, the Moon,
+  Callisto, Phobos and Deimos at a 2.5×-size, ~22° phase frame. (The same
+  check on the retired fictional system left its two darkest bodies under 25
+  even after full adaptation; roughness, the atmosphere shell and limb
+  darkening each moved the median by 0–2.) What the curve cannot fix is the
+  PBR Neutral tone curve's toe, which is global (P4). The choices: accept the
+  lawful result; or change the toe or exposure globally and re-baseline every
+  body; or raise the knee above Earth's median, which lifts Earth too.
   **Also owed (Ruling R29, 2026-10-20):** Venus's, Saturn's and Uranus's
   discs read olive rather than cream or pale cyan. It is not their maps or
   rims (Venus with its rim hidden reads the same): their surfaces sit at
@@ -108,3 +101,18 @@ Delete an entry when it is fixed.
   a single b (30). It is earnable but hard to find by hand. Revisit with F2
   (Newtonian ship gravity), which replaces the well law; do not retune G
   alone, since 4,000 already brings a surface touch.
+- **Convoy events skip Mercury.** The convoy world event flies to the body
+  nearest the ship (`WorldEventDirector.tsx`), and its delivery orbit around
+  Mercury (convoyRadius 20.8 u at r 35–54) almost always crosses the Sun's
+  34 u keep-out, so no route clears and the director silently skips the event.
+  From the spawn pad (0.92 AU) Mercury or Venus is often the nearest body,
+  depending on the date. Lawful-looking but quiet: choose "the nearest body
+  with a clear route" instead, if convoys should show up more near the Sun.
+  (`events.probe.mjs` parks by Earth before triggering one.)
+- **SwiftShader start-up rose with the real Solar System.** The start-up
+  probe's best of three read 13.0 s and 15.4 s in two full runs on PR #40's
+  branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not
+  bisected. Suspects: the NASA maps' texture uploads and the nine moons'
+  materials at warm-up. Bisect over the branch's commits (`startup.probe.mjs`
+  alone, best of three each) before the ceiling is next touched.
+

@@ -10,6 +10,10 @@ export const KM_PER_UNIT = AU_KM / AU;
 export const SECONDS_PER_GAME_SECOND = (365.25 * 86400) / YEAR_S;
 
 export const speedKmS = (uPerS: number): number => (uPerS * KM_PER_UNIT) / SECONDS_PER_GAME_SECOND;
+export const LIGHT_KM_S = 299_792.458;
+/** The HUD's light-speed readout for a ship speed in u/s: " · 0.061% C" (L39). */
+export const lightFractionLabel = (uPerS: number): string =>
+  ` · ${((speedKmS(uPerS) / LIGHT_KM_S) * 100).toFixed(3)}% C`;
 export const distanceAU = (units: number): number => units / AU;
 export const earthYears = (gameSeconds: number): number => gameSeconds / YEAR_S;
 
