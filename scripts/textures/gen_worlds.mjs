@@ -162,9 +162,10 @@ function genTilted(W) {
   // 0.674; the image 0.66) and bluer (B/G 1.15; the image 1.04), since the
   // tone mapping's toe subtracts the same offset from every channel of a dim
   // pixel, which saturates it, so a G ≈ B cyan would read teal-green in the
-  // game (tests/worldMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
-  // little off the shipped means: 8-bit quantization of the calibrated, dim
-  // map. Hue by chroma only: the median stays the honest albedo target.
+  // game (tests/bodyMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
+  // little off the shipped means: the JPEG's lossy chroma coding (quality 92)
+  // moves a dim map's channel ratios, by about the ~0.03 margin the test's
+  // hue band leaves. Hue by chroma only: the median stays the honest albedo target.
   const pal = ramp([[0, "#9bbcc6"], [0.45, "#abceda"], [0.75, "#b8deea"], [1, "#c4ecf9"]]);
   const rgb = new Float32Array(W * (W / 2) * 3);
   const c = [0, 0, 0];

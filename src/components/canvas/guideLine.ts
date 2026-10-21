@@ -241,9 +241,13 @@ const RING_FRAG = /* glsl */ `
   // ringOptics.ts ringRadiance: single scattering in a layer of normal
   // optical depth tau, amu0 and amu the sun's and the viewer's |cosines| to
   // its normal, litFace when both are on one side. ×2: Lambert face-on.
-  // tau = 0 (gaps, the strip's ends) returns first, as the mirror does: under
-  // a mediump fallback a 1e-12 epsilon flushes to 0 and 0/0 would be a NaN in
-  // the premultiplied pixel. 1e-4 is a mediump normal (2^-14 ~ 6.1e-5).
+  // tau = 0 returns first, as the mirror does: a run of empty texels (a wide
+  // gap, the strip's ends) samples exactly 0. Linear filtering also gives a
+  // tau just above 0 beside any empty texel, which this test does not catch:
+  // there the 1e-4 floor keeps the lit face's division finite (under a
+  // mediump fallback a 1e-12 epsilon flushes to 0, and 0/0 would be a NaN in
+  // the premultiplied pixel; 1e-4 is a mediump normal, 2^-14 ~ 6.1e-5), and
+  // the result tends to 0 with tau on either face.
   float ringRadiance(float tau, float amu0, float amu, bool litFace) {
     if (tau <= 0.0) return 0.0;
     float x = tau / amu;

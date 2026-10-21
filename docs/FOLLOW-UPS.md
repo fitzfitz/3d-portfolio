@@ -32,13 +32,6 @@ Delete an entry when it is fixed.
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
   comment went with the fictional worlds in PR #40):
-  - Comments: `guideLine.ts`'s ring-strip epsilon reasoning does
-    not hold under linear filtering; `gen_worlds.mjs` blames 8-bit
-    quantisation for the maps' drift where it is lossy chroma (hue band
-    margin ~0.03); `harness.mjs` says the deep-space point is clear of every
-    landmark, which no test enforces (`tests/solarClearance.test.ts` holds it
-    60 u from the swept orbits, belt, Trojans and comets only), and
-    `DEEP_SPACE_POINT` has no 3-tuple JSDoc.
   - Dead generators: `scripts/blender/gen_world_rock.py` and
     `gen_world_dwarf.py` remain although their maps were retired (the real
     Mercury and Ceres wear NASA mosaics); delete them, or keep them only as
