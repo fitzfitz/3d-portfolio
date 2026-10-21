@@ -1,7 +1,4 @@
 import { headingToward } from "./pitchFlight";
-import { afterProbes } from "../data/destinations";
-import { PROBE_IDS } from "../data/probes";
-import { probePos } from "../store/probeState";
 
 interface Vec3 { x: number; y: number; z: number }
 
@@ -27,7 +24,7 @@ export function jumpPoint(ship: Vec3, target: Vec3, standoff: number): JumpPoint
 
 /**
  * The nearest of `names` (at `bodies`) not yet in `visited`, then `fallback`
- * once all are. recruiterWaypoint below is the HUD's use of it.
+ * once all are. recruiterWaypoint.ts is the HUD's use of it.
  */
 export function nextWaypoint(
   ship: Vec3,
@@ -45,14 +42,4 @@ export function nextWaypoint(
     if (d < bestD) { bestD = d; best = n; }
   }
   return best;
-}
-
-/**
- * The HUD waypoint's target outside a race (WaypointDriver): the nearest
- * project probe whose dossier is unread, at its live spot, then the next
- * destination from the table (`afterProbes`, src/data/destinations.ts) once
- * every dossier is read. Never a body: the bodies stay off the recruiter path.
- */
-export function recruiterWaypoint(ship: Vec3, visited: readonly string[], badges: readonly { id: string }[]): string {
-  return nextWaypoint(ship, PROBE_IDS, probePos, visited, afterProbes(badges));
 }

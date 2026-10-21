@@ -4,7 +4,7 @@ import { projectById } from "../../constants";
 import { DESTINATIONS, destinationById } from "../../data/destinations";
 import { probePos } from "../../store/probeState";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
-import { recruiterWaypoint } from "../../utils/navigation";
+import { recruiterWaypoint } from "../../utils/recruiterWaypoint";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
 
