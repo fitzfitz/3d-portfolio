@@ -46,14 +46,24 @@ export default async function run() {
       `steer=${input.steer}`);
     await page.evaluate(() => { window.__fitz.flight.input.steer = 0; });
 
-    // Left stick right → steer, and the ship actually turns.
-    const headingBefore = await page.evaluate(() => window.__fitz.flight.heading);
+    // Left stick right → steer, and the ship actually turns. The hand-set
+    // steer above left the ship turning the same way (right: heading falls),
+    // so let that turn die out first, or a dead stick passes on the residual.
+    const heading = () => page.evaluate(() => window.__fitz.flight.heading);
+    const still = await pollUntil(async () => {
+      const a = await heading();
+      await frames(page, 2);
+      return Math.abs((await heading()) - a) < 1e-4;
+    }, { timeoutMs: 10_000, intervalMs: 50 });
+    checks.check("the ship has stopped turning before the stick test (precondition)", still.ok);
+    const headingBefore = await heading();
     await setAxis(page, 0, 1);
     await frames(page, 10);
     input = await readInput(page);
-    const headingAfter = await page.evaluate(() => window.__fitz.flight.heading);
+    const headingAfter = await heading();
     checks.check("left stick right sets steer to +1", input.steer === 1, `steer=${input.steer}`);
-    checks.check("left stick turns the ship", Math.abs(headingAfter - headingBefore) > 0.01,
+    // ~0.8 s of full right stick turns ~1 rad; a dead stick turns 0.
+    checks.check("left stick turns the ship right", headingBefore - headingAfter > 0.2,
       `heading ${headingBefore.toFixed(3)} -> ${headingAfter.toFixed(3)}`);
     await setAxis(page, 0, 0.05); // resting drift, inside the deadzone
     await frames(page);

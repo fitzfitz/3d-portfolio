@@ -58,9 +58,6 @@ Delete an entry when it is fixed.
 - **E2E checks that cannot fail as written** (read-only probe audit during the
   e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
   fixed there, to keep that branch about speed):
-  - `gamepad.probe.mjs:50-57`, "left stick turns the ship" passes on residual
-    turn from the earlier steer, so a dead stick still passes. Settle the
-    heading first, or raise the bar above 0.5 rad.
   - `touch.probe.mjs` RISE: coasting alone beats its +0.01 pitch bar. Wait
     for pitch to settle before `pitchBefore`, then assert it rises or reaches
     1.45.
