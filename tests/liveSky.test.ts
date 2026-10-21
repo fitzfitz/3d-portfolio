@@ -180,7 +180,7 @@ describe("GhostBuffer", () => {
 });
 
 describe("nearestGhosts", () => {
-  const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
+  const pose = (id: string, x: number): GhostPose => ({ id, p: [x, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0, cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
   it("sorts by plain distance and keeps n", () => {
     const at = { x: -EDGE + 5, y: 0, z: 0 };
     const list = [pose("mid", 0), pose("far", EDGE - 5), pose("near", -EDGE + 8)];
@@ -260,7 +260,7 @@ describe("shipQuat", () => {
 describe("radar blips", () => {
   it("lists every ghost with its plume colour, reusing entries", () => {
     const g = (id: string, x: number, plume: string): GhostPose =>
-      ({ id, p: [x, 1, 2], q: [0, 0, 0, 1], plume, cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
+      ({ id, p: [x, 1, 2], q: [0, 0, 0, 1], plume, ch: 0, cc: null, alpha: 1, scanId: ghostScanId(id), dist: 0 });
     writeRadarBlips([g("a", 5, "ring"), g("b", -9, "stock")]);
     expect(liveRadar.count).toBe(2);
     const first = liveRadar.blips[0];

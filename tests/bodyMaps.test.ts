@@ -11,6 +11,9 @@ import { packTier } from "../src/utils/packFormat";
 import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
 import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
 
+/** The pinned sources, looked up by a recipe's source id. */
+const SOURCE_BY_ID: Record<string, (typeof SOURCES)[keyof typeof SOURCES]> = SOURCES;
+
 /**
  * The real bodies' and moons' shipped maps (real-solar-system spec §5.5):
  * provenance (each NASA/USGS map pins its source URL and SHA-256, the rest
@@ -75,7 +78,7 @@ describe("provenance: a pinned NASA/USGS source or a seeded generator for every 
       if ("sources" in recipe) {
         expect(recipe.sources.length).toBeGreaterThan(0);
         for (const id of recipe.sources) {
-          const s = SOURCES[id];
+          const s = SOURCE_BY_ID[id];
           expect(s, id).toBeDefined();
           expect(s.url).toMatch(/^https:\/\//);
           expect(s.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -100,8 +103,8 @@ describe("provenance: a pinned NASA/USGS source or a seeded generator for every 
       expect(text, name).toContain(`\`${name}.jpg\``);
       if ("sources" in recipe) {
         for (const id of recipe.sources) {
-          expect(text, `${name} ← ${id}`).toContain(SOURCES[id].url);
-          expect(text, `${name} ← ${id}`).toContain(SOURCES[id].sha256.slice(0, 16));
+          expect(text, `${name} ← ${id}`).toContain(SOURCE_BY_ID[id].url);
+          expect(text, `${name} ← ${id}`).toContain(SOURCE_BY_ID[id].sha256.slice(0, 16));
         }
       }
     }

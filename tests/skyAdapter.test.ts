@@ -15,7 +15,7 @@ class FakeSocket {
 }
 
 const pilot = (id: string): Pilot => ({
-  id, cc: "ID", last: { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" }, lastAt: Date.now(), recent: [], visitor: null,
+  id, cc: "ID", last: { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 0 }, lastAt: Date.now(), recent: [], visitor: null,
 });
 const me = JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock" });
 

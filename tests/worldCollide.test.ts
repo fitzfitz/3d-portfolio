@@ -82,7 +82,7 @@ describe("resolveWorldContact", () => {
 });
 
 /** Every centre SOLID_BODIES needs, as Spaceship reads them: `bodies` plus `moonPositions`. */
-const allCenters = () => ({ ...bodies, ...moonPositions });
+const allCenters = (): Record<string, { x: number; y: number; z: number }> => ({ ...bodies, ...moonPositions });
 /** A body's fastest orbital speed (u/s): vis-viva at perihelion, on the orrery clock. */
 const fastest = (id: (typeof SOLAR_BODIES)[number]["id"]) => {
   const s = orbitShape(bodyById(id).orbit.el, JD_J2000);

@@ -367,15 +367,18 @@ describe("selectSceneFrozen", () => {
   });
 
   it("is true while the dossier modal is open", () => {
-    expect(selectSceneFrozen({ ...base, isOrbitLocked: true, activeZone: "contact" })).toBe(true);
+    expect(selectSceneFrozen({ ...base, isOrbitLocked: true })).toBe(true);
   });
 
   it("is false in photo mode, which needs live frames for OrbitControls", () => {
     expect(selectSceneFrozen({ ...base, photoMode: true })).toBe(false);
   });
 
-  it("is false when merely near a planet but not locked", () => {
-    expect(selectSceneFrozen({ ...base, activeZone: "ruangrapi" })).toBe(false);
+  it("is false when merely inside a zone but not locked", () => {
+    // The selector does not read activeZone at all (its type picks the lock,
+    // the dossier and photo mode), so a zone alone can never freeze it.
+    const inZone = { ...base, activeZone: "ruangrapi" };
+    expect(selectSceneFrozen(inZone)).toBe(false);
   });
 });
 

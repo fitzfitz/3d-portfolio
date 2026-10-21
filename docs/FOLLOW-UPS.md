@@ -42,10 +42,11 @@ Delete an entry when it is fixed.
     ×0.15), not the full 0.15. Left while the look-check renders back an
     owner colour decision (2026-10-21).
   - Tests: `fillLight.test.ts`, `starLayer.test.ts` and `ringOptics.test.ts`
-    pin wiring and GLSL by source regex rather than behaviour; the
-    codec-fidelity guard skips in CI (no
-    `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
-    never type-checked.
+    pin wiring and GLSL by source regex rather than behaviour. Not a quick
+    swap: vitest has no WebGL to run a shader and no R3F renderer to mount
+    the JSX, so behaviour tests would be e2e (the sky probe already reads the
+    fill, the star shells and the ring budgets in a browser). The
+    codec-fidelity guard skips in CI (no `assets-src`).
 - **The real star catalogue.** The background is still the painted Milky Way
   and three random star shells (L24). An astronomy fan who flies to Earth
   expects the real sky: the constellations from a catalogue (e.g. Hipparcos
