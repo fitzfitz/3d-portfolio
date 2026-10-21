@@ -145,7 +145,7 @@ describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the 
       expect(Math.abs(col[0] / col[1] / (sum[0] / sum[1]) - 1), `${b.id} R/G`).toBeLessThan(0.12);
       expect(Math.abs(col[2] / col[1] / (sum[2] / sum[1]) - 1), `${b.id} B/G`).toBeLessThan(0.12);
     }
-  });
+  }, 30_000); // decodes every shipped map; slow on a loaded machine
 });
 
 describe("maps: shape, seam and poles", () => {

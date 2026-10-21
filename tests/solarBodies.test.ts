@@ -31,9 +31,8 @@ describe("what SolarBodies draws", () => {
     expect(src).not.toMatch(/PlanetRing_|ruangrapi_ring/);
   });
 
-  it("keeps all nine orbit ribbons always visible (charting rewards the radar arrow and the chart)", () => {
-    expect(src).toMatch(/name=\{`BodyOrbit_\$\{b\.id\}`\}/);
-    expect(src).not.toMatch(/visible=\{false\}/);
+  it("draws no orbit lines in the scene (owner, 2026-10-21: the system chart shows the ellipses)", () => {
+    expect(src).not.toMatch(/BodyOrbit_|orbitRibbonGeometry|from "\.\/orbitRibbon"/);
   });
 
   it("writes `bodies` through updateBodies, once a frame, on the ambient clock", () => {

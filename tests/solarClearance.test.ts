@@ -29,7 +29,7 @@ describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () =
     for (const p of JELLY_POINTS) {
       expect(landmarkMargin(p, JELLY_KEEP_RADIUS), `jelly ${p.join(",")} vs ${worstRule(p, JELLY_KEEP_RADIUS)}`).toBeGreaterThan(0);
     }
-  }, 20_000);
+  }, 90_000); // 400 path points × every swept orbit at ROCK_SAMPLES 512: ~15 s idle, 30+ s on a loaded machine
 
   it("keeps the deep-space point inside the edge haze", () => {
     expect(Math.hypot(...DEEP_SPACE_POINT)).toBeLessThan(HAZE_START);

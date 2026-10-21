@@ -14,18 +14,12 @@ import { meshScale, ringNormal, spinQuaternion } from "../../utils/bodySpin";
 import { assetUrl } from "../../utils/assetUrl";
 import { updateBodies } from "../../utils/bodyPositions";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
-import { orbitShape } from "../../utils/ephemeris";
 import { hiResChoice } from "../../utils/hiResMaps";
-import { orreryJd } from "../../utils/orreryClock";
 import { ringIrradiance, ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyRings";
-import { guideViewportHeight, makeGuideLineMaterial, RING_NIGHT_FLOOR } from "./guideLine";
+import { guideViewportHeight, RING_NIGHT_FLOOR } from "./guideLine";
 import { patchNightGlow } from "./nightGlow";
-import {
-  apsides, ORBIT_MIN_HALF_PX, ORBIT_RIBBON_HALF_WIDTH, ORBIT_RIBBON_SAMPLES, ORBIT_TICK_MIN_HALF_PX,
-  orbitFrameQuaternion, orbitRibbonGeometry, perifocalEllipse,
-} from "./orbitRibbon";
 import { OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 
 /**
@@ -37,8 +31,10 @@ import { OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } fro
  * NASA/USGS public-domain map (or a seeded one where no true-colour global
  * map exists; spec §5.5, data/solarSystem.ts). Earth adds its clouds and
  * night lights, Saturn and Uranus their rings (bodyRings.ts), and `look` adds
- * the limb darkening and the atmosphere rims. Every orbit is drawn as its
- * true ellipse.
+ * the limb darkening and the atmosphere rims. No orbit lines are drawn in the
+ * scene (owner, 2026-10-21): the logbook's system chart shows the true
+ * ellipses instead. orbitRibbon.ts keeps the tested ribbon geometry should
+ * they come back as a toggle.
  */
 
 
@@ -98,17 +94,6 @@ const mapUrl = (file: string, hiRes: boolean) => {
 function bodyColor(b: SolarBody): THREE.Color {
   return new THREE.Color(1, 1, 1).multiplyScalar(displayAlbedoGain(b.texelMedianLinear));
 }
-
-/**
- * Orbit lines: one ribbon per body, its true ellipse for the orrery date
- * (orbitRibbon.ts), in the body's HUD colour with the guide-line program,
- * never under 2 px wide from anywhere, with a solid tick across it at
- * perihelion and at aphelion (§6.2).
- * All nine are always visible: they are known orbits (charting keeps the
- * radar arrow and the chart as its reward). Steady, fainter than the old
- * planets' breathing rings at their peak.
- */
-const ORBIT_LINE_OPACITY = 0.22;
 
 export default function SolarBodies() {
   // Desktop only, decided once per page and shared with the asset pack loader
@@ -223,20 +208,6 @@ export default function SolarBodies() {
     return useSpaceStore.subscribe((st) => st.isLowPerf, apply);
   }, [ringMats]);
 
-  // One ellipse per body for the orrery date at mount: JPL's element rates
-  // move an orbit by well under a degree in a long session's millennia.
-  const orbits = useMemo(() => SOLAR_BODIES.map((b) => {
-    const shape = orbitShape(b.orbit.el, orreryJd(0));
-    const a = shape.a * AU;
-    const geometry = orbitRibbonGeometry(perifocalEllipse(a, shape.e, ORBIT_RIBBON_SAMPLES), ORBIT_RIBBON_HALF_WIDTH, apsides(a, shape.e));
-    const material = makeGuideLineMaterial({
-      color: b.color, opacity: ORBIT_LINE_OPACITY, dashes: 220, fadeIn: [10, 55],
-      minHalfPx: ORBIT_MIN_HALF_PX, tickHalfPx: ORBIT_TICK_MIN_HALF_PX,
-    });
-    return { geometry, material, quaternion: orbitFrameQuaternion(shape, new THREE.Quaternion()) };
-  }), []);
-  useEffect(() => () => orbits.forEach((o) => { o.geometry.dispose(); o.material.dispose(); }), [orbits]);
-
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.sunShadow = sunShadowUniforms;
@@ -296,11 +267,6 @@ export default function SolarBodies() {
           </group>
         );
       })}
-      {/* Orbit lines: each in its own perifocal frame, the Sun at the origin. */}
-      {SOLAR_BODIES.map((b, i) => (
-        <mesh key={`orbit-${b.id}`} name={`BodyOrbit_${b.id}`} quaternion={orbits[i].quaternion}
-          geometry={orbits[i].geometry} material={orbits[i].material} />
-      ))}
     </group>
   );
 }
