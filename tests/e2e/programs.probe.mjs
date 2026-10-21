@@ -72,7 +72,9 @@ function tour({ label, init, tier }) {
         ["dormant gate", GATE_POS[0] + GATE_NORMAL[0] * 40, GATE_POS[1] + GATE_NORMAL[1] * 40, GATE_POS[2] + GATE_NORMAL[2] * 40],
         ["sun", 0, 0, 40],
         ["deep space", -230, -210, -230],
-        ["world edge", 240, 200, 240],
+        // r ≈ 3,496: near the 3,600 edge, just short of the haze (HAZE_START 3,560),
+        // 30° above the ecliptic, far off Neptune's orbit (≤ 3,488, I 1.8°).
+        ["world edge", 2130, 1775, 2130],
       ];
     });
     const bodyIds = await page.evaluate(async () => (await import("/src/data/bodyIds.ts")).BODY_IDS);

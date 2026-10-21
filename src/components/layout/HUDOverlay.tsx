@@ -97,6 +97,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const locRef = useRef<HTMLDivElement>(null);
   const velRef = useRef<HTMLDivElement>(null);
   const speedRef = useRef<HTMLSpanElement>(null);
+  const lightRef = useRef<HTMLSpanElement>(null);
   const sunDistRef = useRef<HTMLSpanElement>(null);
   const orreryDateRef = useRef<HTMLSpanElement>(null);
   const fuelFillRef = useRef<HTMLDivElement>(null);
@@ -111,7 +112,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       if (locRef.current)
         locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
       const kmS = speedKmS(flight.speed);
-      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S · ${((kmS / LIGHT_KM_S) * 100).toFixed(3)}% C`;
+      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S`;
+      if (lightRef.current) lightRef.current.textContent = ` · ${((kmS / LIGHT_KM_S) * 100).toFixed(3)}% C`;
       if (sunDistRef.current)
         sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
       if (orreryDateRef.current) orreryDateRef.current.textContent = ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`;
@@ -216,9 +218,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {/* Flavour readouts fold away once the pilot is flying (data-quiet). */}
         <div ref={locRef} className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">NAV.LOC: X(0.00) / Y(0.0) / Z(18.00)</div>
         <div className="hidden sm:block group-data-[quiet=true]/hud:sm:hidden">SECTOR.RANGE: {distanceAU(SYSTEM_RADIUS * 2).toFixed(2)} AU</div>
-        {/* The AU part is hidden on phones: the longer line ran into the gravity warning in the right column. */}
+        {/* The light-speed, AU and date parts are hidden on phones: the longer
+            line ran into the right column (the probe pickup tip). */}
         <div ref={velRef} data-testid="hud-velocity">
           <span ref={speedRef}>VELOCITY: 0 KM/S</span>
+          <span ref={lightRef} data-testid="hud-light-fraction" className="hidden sm:inline"> · 0.000% C</span>
           <span ref={sunDistRef} data-testid="hud-sun-distance" className="hidden sm:inline"> · SUN 0.00 AU</span>
           <span ref={orreryDateRef} data-testid="hud-orrery-date" className="hidden sm:inline"> · ORRERY {formatOrreryDate(orreryJd(0))}</span>
         </div>

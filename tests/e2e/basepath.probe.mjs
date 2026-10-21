@@ -15,7 +15,7 @@
 import puppeteer from "puppeteer-core";
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
-import { Checks, isFontHost, respondInertFont, settle, pollUntil, CANVAS_READY_TIMEOUT_MS, chromeArgs } from "./harness.mjs";
+import { Checks, isFontHost, respondInertFont, settle, pollUntil, CANVAS_READY_TIMEOUT_MS, chromeArgs, spawnGroup, stopGroup } from "./harness.mjs";
 
 const CHROME = process.env.CHROME_PATH
   ?? "/Users/fitzgeral/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -61,7 +61,7 @@ export default async function basepathProbe() {
   // test page must never call the live Worker (its CORS refuses localhost).
   await run("npx", ["vite", "build", "--outDir", OUT_DIR], { BASE_PATH: BASE, VITE_BEACON_API: "", VITE_LIVE_SKY: "" });
 
-  const server = spawn(
+  const server = spawnGroup(
     "npx",
     ["vite", "preview", "--port", String(PORT), "--strictPort", "--outDir", OUT_DIR],
     { env: { ...process.env, BASE_PATH: BASE }, stdio: ["ignore", "pipe", "pipe"] },
@@ -78,7 +78,7 @@ export default async function basepathProbe() {
     await settle(null, 300);
   }
   if (!up) {
-    server.kill("SIGTERM");
+    await stopGroup(server);
     throw new Error(`vite preview did not come up on ${PORT} within 30s`);
   }
 
@@ -272,7 +272,7 @@ export default async function basepathProbe() {
     }
   } finally {
     await browser.close();
-    server.kill("SIGTERM");
+    await stopGroup(server);
   }
 
   return checks;

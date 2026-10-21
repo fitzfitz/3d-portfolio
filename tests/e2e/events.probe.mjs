@@ -43,6 +43,12 @@ async function events(page, checks) {
   checks.check("the corona settles back after the flare", Math.abs(after - 1) < 0.02, `scale=${after.toFixed(3)}`);
 
   // ---- convoy: reaches its orbit around the nearest planet ----
+  // Park 30 u above Earth first, so Earth is the nearest body. From the spawn
+  // pad (0.92 AU) Mercury or Venus can be nearest, depending on the date, and
+  // a convoy to Mercury rarely has a route: its delivery orbit would cross the
+  // Sun's keep-out, so the director skips it.
+  await page.evaluate(() => { const b = window.__fitz.bodies.earth; window.__fitz.teleport(b.x, b.y + 30, b.z); });
+  await settle(page, 300);
   await trigger(page, "convoy");
   await settle(page, 300);
   const ev = (await readStore(page)).worldEvent;

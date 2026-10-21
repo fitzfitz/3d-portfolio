@@ -20,7 +20,7 @@ export default async function run() {
     checks.check("belt is 400 instances at full detail", beltFull.count === 400,
       `count=${beltFull.count}`);
     const haloFull = await sceneQuery(page, "BeltHalo");
-    checks.check("polar halo present at full detail", haloFull.found);
+    checks.check("Jupiter's Trojans (scene object BeltHalo) present at full detail", haloFull.found);
     const cargoFull = await countCargoShips(page);
     checks.check("5 cargo ships at full detail", cargoFull === 5, `count=${cargoFull}`);
     const coronaFull = await sceneQuery(page, "SunCorona");
@@ -35,7 +35,7 @@ export default async function run() {
     const beltLow = await sceneQuery(page, "BeltMain");
     checks.check("belt halves to 200 in low-perf", beltLow.count === 200, `count=${beltLow.count}`);
     const haloLow = await sceneQuery(page, "BeltHalo");
-    checks.check("polar halo dropped in low-perf", !haloLow.found);
+    checks.check("Jupiter's Trojans (BeltHalo) dropped in low-perf", !haloLow.found);
     const cargoLow = await countCargoShips(page);
     checks.check("cargo drops to 3 in low-perf", cargoLow === 3, `count=${cargoLow}`);
     const coronaLow = await sceneQuery(page, "SunCorona");

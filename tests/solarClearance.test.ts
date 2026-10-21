@@ -23,11 +23,13 @@ describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () =
     expect(landmarkMargin(l.pos, l.radius), `${name} vs ${worstRule(l.pos, l.radius)}`).toBeGreaterThan(0);
   });
 
+  // ~2.4 s alone, but 5.3 s once under the full suite's parallel load, past
+  // vitest's 5 s default: hundreds of path points against every swept orbit.
   it("keeps the jellyfish swim path clear of every real orbit", () => {
     for (const p of JELLY_POINTS) {
       expect(landmarkMargin(p, JELLY_KEEP_RADIUS), `jelly ${p.join(",")} vs ${worstRule(p, JELLY_KEEP_RADIUS)}`).toBeGreaterThan(0);
     }
-  });
+  }, 20_000);
 
   it("keeps the deep-space point inside the edge haze", () => {
     expect(Math.hypot(...DEEP_SPACE_POINT)).toBeLessThan(HAZE_START);

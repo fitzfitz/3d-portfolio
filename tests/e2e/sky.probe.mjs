@@ -32,8 +32,13 @@ const clearDirection = (page) => page.evaluate(async (dists) => {
   const { STATION_POS } = await import("/src/data/careerTrail.ts");
   const { SHIPYARD_POS } = await import("/src/data/shipyard.ts");
   const { GATE_POS } = await import("/src/data/dormantGate.ts");
+  const { bodyById } = await import("/src/data/solarSystem.ts");
+  // Each body kept 3 sizes + 15 u off the sight line (Mercury 32, Earth 40,
+  // Jupiter 81). The old flat 75 u held every body of the fictional system
+  // clear; Mercury now orbits at r 35–54, so 75 u around it blocks every
+  // line that starts at the Sun.
   const obstacles = [
-    ...Object.values(window.__fitz.bodies).map((b) => [b.x, b.y, b.z, 75]),
+    ...Object.entries(window.__fitz.bodies).map(([id, b]) => [b.x, b.y, b.z, bodyById(id).size * 3 + 15]),
     [...STATION_POS, 30], [...SHIPYARD_POS, 30], [...GATE_POS, 30],
   ];
   // Distance from p to the segment 0..q.
@@ -388,7 +393,9 @@ export default async function run() {
       const scene = window.__fitz.scene;
       let ok = true, n = 0;
       scene.traverse((o) => {
-        if (o.type === "Points" && o.name !== "NebulaCluster" && o.parent === scene) {
+        // BodyDots (far bodies drawn as dots) is world-anchored on purpose: its
+        // points sit on the bodies, not on a shell around the ship.
+        if (o.type === "Points" && o.name !== "NebulaCluster" && o.name !== "BodyDots" && o.parent === scene) {
           n++;
           if (Math.hypot(o.position.x - f.x, o.position.y - f.y, o.position.z - f.z) > 1) ok = false;
         }

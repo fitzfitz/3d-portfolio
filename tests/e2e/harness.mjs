@@ -138,11 +138,77 @@ let server = null;
  */
 const SHARED_SERVER = process.env.E2E_SERVER_UP === "1";
 
+/**
+ * True while any process is left in process group `pgid` (signal 0 only
+ * checks; ESRCH means the group is empty).
+ */
+function groupAlive(pgid) {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Signals every process in group `pgid`; a group already gone is fine. */
+function signalGroup(pgid, signal) {
+  try {
+    process.kill(-pgid, signal);
+  } catch { /* already gone */ }
+}
+
+/** Server processes this harness started and has not stopped yet, by pgid. */
+const liveGroups = new Set();
+
+let exitHooked = false;
+/**
+ * Stops every server this process started however it ends: a normal exit
+ * (run-one.mjs's process.exit), an uncaught throw, or Ctrl-C / a kill.
+ * "exit" handlers must be synchronous, so they can only send the signal.
+ */
+function hookExit() {
+  if (exitHooked) return;
+  exitHooked = true;
+  process.on("exit", () => {
+    for (const pgid of liveGroups) signalGroup(pgid, "SIGTERM");
+  });
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.once(sig, () => {
+      for (const pgid of liveGroups) signalGroup(pgid, "SIGTERM");
+      process.exit(128 + ({ SIGHUP: 1, SIGINT: 2, SIGTERM: 15 })[sig]);
+    });
+  }
+}
+
+/**
+ * Spawns a long-running server (`npx vite ...`) in its own process group
+ * (detached: pgid = its pid), so stopGroup can stop npx and the vite it runs
+ * together. Killing npx alone (the old `child.kill`) left vite reparented to
+ * launchd, still holding the port, after every run. Only that group is ever
+ * signalled, and it holds nothing this harness did not start.
+ */
+export function spawnGroup(cmd, args, options = {}) {
+  const child = spawn(cmd, args, { ...options, detached: true });
+  liveGroups.add(child.pid);
+  hookExit();
+  return child;
+}
+
+/** Stops `child`'s process group and waits (≤ 5 s, then SIGKILL) until it is gone. */
+export async function stopGroup(child) {
+  const pgid = child.pid;
+  if (!liveGroups.delete(pgid)) return;
+  signalGroup(pgid, "SIGTERM");
+  const deadline = Date.now() + 5000;
+  while (groupAlive(pgid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+  if (groupAlive(pgid)) signalGroup(pgid, "SIGKILL");
+}
+
 export async function startServer() {
   if (server || SHARED_SERVER) return;
-  server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], {
+  server = spawnGroup("npx", ["vite", "--port", String(PORT), "--strictPort"], {
     stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
   });
   server.stderr.on("data", (d) => process.stderr.write(`[vite] ${d}`));
   const deadline = Date.now() + 30_000;
@@ -158,8 +224,9 @@ export async function startServer() {
 
 export async function stopServer() {
   if (!server) return;
-  server.kill("SIGTERM");
+  const child = server;
   server = null;
+  await stopGroup(child);
 }
 
 /** Collects named pass/fail results for one probe. */
