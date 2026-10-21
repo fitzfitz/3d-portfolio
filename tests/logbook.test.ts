@@ -4,6 +4,7 @@ import {
   badgeLine, convoySighted, plumeAllowed, milestoneFor, type LogbookProgress,
 } from "../src/utils/logbook";
 import projects from "../src/data/projects.json";
+import { BODY_REACH, bodyById } from "../src/data/solarSystem";
 
 const empty: LogbookProgress = { visitedDossiers: [], shardsCollected: [], badges: [] };
 const withBadges = (...ids: string[]): LogbookProgress => ({ ...empty, badges: ids.map((id) => ({ id, at: "2026-10-13" })) });
@@ -20,8 +21,13 @@ describe("LOGBOOK", () => {
   it("gives every badge a plume and no essential one", () => {
     for (const e of LOGBOOK) expect(e.plume).toBe(e.section === "badge");
   });
-  it("hints the slingshot in real-system words", () => {
-    expect(byId("slingshot").hint).toBe("SKIM A PLANET OR MOON");
+  it("hints the slingshot by what earns it: a fast exit from a planet's well, in both hints", () => {
+    // Only the roster bodies have slingshot wells (Spaceship's BODY_WELLS:
+    // the eight planets and dwarf Ceres); the moons have none, and leaving
+    // the Sun's well does not count.
+    for (const b of BODY_REACH) expect(bodyById(b.key).ordinal).toMatch(/PLANET$/);
+    expect(byId("slingshot").hint).toBe("SKIM A PLANET AND LEAVE FAST");
+    expect(byId("slingshot").hintShort).toBe("SLINGSHOT A PLANET");
   });
 });
 

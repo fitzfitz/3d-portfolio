@@ -56,9 +56,7 @@ Delete an entry when it is fixed.
     `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
     never type-checked.
   - Look and feel: the camera shake after a push-out can briefly clip the
-    near plane's corners into a body after a bounce; the slingshot badge's
-    short hint still says "SLINGSHOT A PLANET" (its long hint says "PLANET OR
-    WORLD").
+    near plane's corners into a body after a bounce.
 - **E2E checks that cannot fail as written** (read-only probe audit during the
   e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
   fixed there, to keep that branch about speed):
