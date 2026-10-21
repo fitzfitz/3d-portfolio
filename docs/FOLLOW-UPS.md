@@ -58,9 +58,6 @@ Delete an entry when it is fixed.
 - **E2E checks that cannot fail as written** (read-only probe audit during the
   e2e speed-up, 2026-10-19, each finding re-checked by a second reader; not
   fixed there, to keep that branch about speed):
-  - `gameplay.probe.mjs:162-175`, the ring check runs while the scene loop is
-    frozen, so it reads the same frame it set up.
-  - `shipyard.probe.mjs:65`, the same: it reads a frozen frame.
   - `gamepad.probe.mjs:50-57`, "left stick turns the ship" passes on residual
     turn from the earlier steer, so a dead stick still passes. Settle the
     heading first, or raise the bar above 0.5 rad.
