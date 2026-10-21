@@ -18,6 +18,7 @@ import { hiResChoice } from "../../utils/hiResMaps";
 import { ringIrradiance, ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyRings";
+import { noIbl } from "./noIbl";
 import { guideViewportHeight, RING_NIGHT_FLOOR } from "./guideLine";
 import { patchNightGlow } from "./nightGlow";
 import { OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
@@ -224,6 +225,8 @@ export default function SolarBodies() {
     // The orbit lines' screen-constant width is measured in CSS px of this view.
     guideViewportHeight.value = state.size.height;
     sunShadowUniforms.uOccluderCount.value = sunShadowDebug.countOverride >= 0 ? sunShadowDebug.countOverride : OCCLUDER_COUNT;
+    // Sunlit and ambient only: no studio IBL on a body (noIbl.ts, L29).
+    noIbl(materials, state.scene.environment);
     for (let i = 0; i < SOLAR_BODIES.length; i++) {
       const b = SOLAR_BODIES[i];
       const p = bodies[b.id];

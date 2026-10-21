@@ -14,6 +14,7 @@ import { makeSphereLOD } from "../../utils/sphereLod";
 import { irradianceVsAU } from "../../utils/sunLight";
 import Atmosphere from "./Atmosphere";
 import { eclipseGlow, patchNightGlow } from "./nightGlow";
+import { noIbl } from "./noIbl";
 import { occluders, patchSunShadow, sunShadowCoverage } from "./sunShadow";
 
 /**
@@ -133,11 +134,14 @@ export default function SolarMoons() {
   }, [round, shaped]);
 
   const all = useMemo(() => [...round, ...shaped], [round, shaped]);
+  const materials = useMemo(() => all.map((a) => a.material), [all]);
   const groups = useRef<(THREE.Group | null)[]>(all.map(() => null));
 
   useFrame((state) => {
     const time = ambientTime(state.clock.getElapsedTime());
     updateMoons(time, moonPositions);
+    // Sunlit and ambient only: no studio IBL on a moon (noIbl.ts, L29).
+    noIbl(materials, state.scene.environment);
     for (let i = 0; i < all.length; i++) {
       const { moon, object } = all[i];
       const p = moonPositions[moon.id];

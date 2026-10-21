@@ -28,12 +28,6 @@ Delete an entry when it is fixed.
   so a warm grey turns olive-brown. A fix is global (exposure, the knee or
   the toe) and re-baselines every body, so it is the same owner call as the
   one above. Screenshots: the real-solar-system run's Task 15 look check.
-- **Night-side red glow breaks L29.** The faint red on night sides is the
-  specular IBL reflection of the `#ff5500` Lightformer in the studio
-  `<Environment>` (GlobalCanvas.tsx), constant and lifted by exposure. Fix:
-  give planet and cloud materials an explicit `envMap` with a low
-  `envMapIntensity`, or neutralise the orange Lightformer. Verify the e2e
-  programs probe still reports `added=0`.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
