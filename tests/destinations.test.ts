@@ -7,10 +7,12 @@ import { SOLAR_BODIES } from "../src/data/solarSystem";
 import { bodies } from "../src/store/spaceStore";
 import { STATION_POS } from "../src/data/careerTrail";
 import { SHIPYARD_POS } from "../src/data/shipyard";
-import { nextWaypoint } from "../src/utils/navigation";
+import { nextWaypoint, recruiterWaypoint } from "../src/utils/navigation";
 import { PORTAL_POS, PORTAL_LOCK_R, projects } from "../src/constants";
 import { PROBE_IDS } from "../src/data/probes";
 import { probePos } from "../src/store/probeState";
+
+const dist3 = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
 describe("destination table", () => {
   it("keeps the contact portal exactly as it was before the table", () => {
@@ -139,16 +141,23 @@ describe("the bodies stay off the recruiter path", () => {
   });
 
   it("the waypoint walks the probes only, no body, whatever the ship is next to", () => {
-    const names = PROBE_IDS;
-    for (const n of names) expect(isBodyId(n), n).toBe(false);
+    // recruiterWaypoint is what WaypointDriver calls: the real list, at the
+    // probes' live positions, with the table's next destination after them.
     expect(Object.keys(bodies).filter(isBodyId).length).toBe(SOLAR_BODIES.length);
+    const allowed = new Set<string>([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id)]);
     for (const b of SOLAR_BODIES) {
       const ship = { ...bodies[b.id] };
-      for (const visited of [[], names]) {
-        for (const fallback of [afterProbes([]), afterProbes([{ id: "career" }])]) {
-          expect(isBodyId(nextWaypoint(ship, names, probePos, visited, fallback))).toBe(false);
+      for (const visited of [[], PROBE_IDS]) {
+        for (const badges of [[], [{ id: "career" }]]) {
+          const id = recruiterWaypoint(ship, visited, badges);
+          expect(isBodyId(id), `${b.id}: ${id}`).toBe(false);
+          expect(allowed.has(id), `${b.id}: ${id}`).toBe(true);
         }
       }
+      // Unread probes come first, nearest to the ship at their live spots.
+      const nearest = [...PROBE_IDS].sort((p, q) => dist3(probePos[p], ship) - dist3(probePos[q], ship))[0];
+      expect(recruiterWaypoint(ship, [], [])).toBe(nearest);
+      expect(recruiterWaypoint(ship, PROBE_IDS, [])).toBe(afterProbes([]));
     }
   });
 

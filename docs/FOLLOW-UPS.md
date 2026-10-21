@@ -42,9 +42,8 @@ Delete an entry when it is fixed.
     ×0.15), not the full 0.15. Left while the look-check renders back an
     owner colour decision (2026-10-21).
   - Tests: `fillLight.test.ts`, `starLayer.test.ts` and `ringOptics.test.ts`
-    pin wiring and GLSL by source regex rather than behaviour;
-    `destinations.test.ts`'s `nextWaypoint` check is near-tautological (assert
-    WaypointDriver's real list); the codec-fidelity guard skips in CI (no
+    pin wiring and GLSL by source regex rather than behaviour; the
+    codec-fidelity guard skips in CI (no
     `assets-src`); `tsconfig.app.json` type-checks `src` only, so `tests/` is
     never type-checked.
 - **The real star catalogue.** The background is still the painted Milky Way
