@@ -28,6 +28,9 @@ Delete an entry when it is fixed.
   so a warm grey turns olive-brown. A fix is global (exposure, the knee or
   the toe) and re-baselines every body, so it is the same owner call as the
   one above. Screenshots: the real-solar-system run's Task 15 look check.
+  Both were seen with the studio IBL still on the bodies; PR #42 took it
+  off (`noIbl.ts`, L29), and its orange and cyan panels had tinted lit sides
+  too (Mars's lit-half red fell ~7% at one pose), so re-shoot before ruling.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
@@ -61,7 +64,10 @@ Delete an entry when it is fixed.
   SLINGSHOT_SPEED only for impact parameters b ≈ 29.5–30.5 u; the test flies
   a single b (30). It is earnable but hard to find by hand. Revisit with F2
   (Newtonian ship gravity), which replaces the well law; do not retune G
-  alone, since 4,000 already brings a surface touch.
+  alone, since 4,000 already brings a surface touch. Note (2026-10-21): only
+  the nine roster bodies' wells are watched for a slingshot (Spaceship's
+  `wellNow` loop over BODY_REACH), so a fast exit from the Sun's well earns
+  no whoosh, line or badge today; the physics test alone shows it is fast.
 - **SwiftShader start-up rose with the real Solar System.** The start-up
   probe's best of three read 13.0 s and 15.4 s in two full runs on PR #40's
   branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not
