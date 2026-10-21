@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   loadCharted, chartLine, SURVEY_LINE, AURUM_LINE, isCartographer, shoutDue, shoutLine, SHOUT_PENDING_MS, SHOUT_HEAR_GAP_MS,
-  createShoutGate, coversLegacyWorlds, wireChartCount, LEGACY_CARTOGRAPHER_KEY, type ChartRecord,
+  createShoutGate, coversLegacyWorlds, wireChartCount, makeWireChartCache, LEGACY_CARTOGRAPHER_KEY, type ChartRecord,
 } from "../src/utils/charting";
 import { useSpaceStore } from "../src/store/spaceStore";
 import { BODY_IDS, LEGACY_WORLD_TO_BODY } from "../src/data/bodyIds";
@@ -202,5 +202,18 @@ describe("the AURUM radio line", () => {
     st().tellAurumOnce();
     expect(lines).toEqual([AURUM_LINE]);
     useSpaceStore.setState({ announceLogbook: real });
+  });
+});
+
+describe("makeWireChartCache", () => {
+  it("matches wireChartCount and recomputes only when the array or flag changes", () => {
+    const five: ChartRecord[] = (["mercury", "venus", "earth", "mars", "jupiter"] as const).map((id) => ({ id, at: "2026-10-20" }));
+    const cached = makeWireChartCache();
+    expect(cached(five, false)).toBe(wireChartCount(five, false));
+    // Mutating in place keeps the reference: the cached value stands (the store replaces the array on change).
+    five.push({ id: "saturn", at: "2026-10-20" });
+    expect(cached(five, false)).toBe(5);
+    expect(cached([...five], false)).toBe(6);
+    expect(cached(five, true)).toBe(CHART_TOTAL);
   });
 });

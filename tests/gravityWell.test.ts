@@ -247,7 +247,7 @@ describe.each(SOLAR_BODIES.map((b) => [b.id, b.size] as const))("tuning targets 
   });
 });
 
-describe("the sun's well (G = 1000, softened inside its collider)", () => {
+describe("the sun's well (G = 3500, softened inside its collider)", () => {
   it("is built from SUN_COLLIDER", () => {
     expect(sun().rMin).toBe(SUN_COLLIDER.r);
   });

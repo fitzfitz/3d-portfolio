@@ -9,7 +9,7 @@ import {
 } from "../src/data/careerTrail";
 import { SPAWN } from "../src/data/spawn";
 import { d3, MARGIN } from "./helpers/clearance";
-import { landmarkMargin, worstRule } from "./helpers/solarClearance";
+import { landmarkMarginNamed, worstRule } from "./helpers/solarClearance";
 
 const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
@@ -84,7 +84,7 @@ describe("career trail shape", () => {
 describe("career landmark clearance", () => {
   it("never shares space with a body's swept orbit, its well, its moons, or a belt, Trojan or comet orbit", () => {
     for (const p of PLACES) {
-      expect(landmarkMargin(p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
+      expect(landmarkMarginNamed(p.name, p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
     }
   });
   it("keeps clear of the sun, the contact portal and the scenery asteroids", () => {

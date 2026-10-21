@@ -2,10 +2,10 @@ import { buildGates } from "../utils/race";
 
 /**
  * The time-trial course: a closed loop of rings, flown in order, starting and
- * finishing through ring 0 in the inner belt, near the sun.
+ * finishing through ring 0 in the inner system, near the sun.
  *
- * Out through the asteroid belt (r 40-70), a climbing turn up to y≈50, then a
- * dive home. The loop weaves through the inner system, so each ring is placed
+ * Out across the inner system (every ring inside r < 115, around the orbits of
+ * Mercury, Venus and Earth), a climbing turn up to y≈70, then a dive home. The loop weaves through the inner system, so each ring is placed
  * clear of every real swept orbit (planet wells and moon systems, belt,
  * Trojans, comets): rings above or below the plane where the orbit tubes fill
  * it (tests/solarClearance.test.ts). They also clear colliders and shards
@@ -15,8 +15,8 @@ import { buildGates } from "../utils/race";
  * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
  */
 export const RING_GATES: [number, number, number][] = [
-  [-12, 23, 34],   // 0 start / finish, inner belt near the sun
-  [-45, -33, 40],   // into the belt
+  [-12, 23, 34],   // 0 start / finish, inner system near the sun
+  [-45, -33, 40],   // out across the inner system
   [-62, -38, -5],
   [-26, -34, -52], // past the boulder at (-40, -5, -60)
   [20, 50, -70],

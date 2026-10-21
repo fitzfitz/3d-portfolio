@@ -17,6 +17,11 @@ describe("orrery clock", () => {
     expect(formatOrreryDate(2461333.5)).toBe("2026-10-20");
     expect(ORRERY_TEST_JD).toBe(2461333.5);
   });
+  it("holds the displayed date at 9999-12-31 instead of printing a signed year", () => {
+    expect(formatOrreryDate(jdFromUnixMs(Date.UTC(9999, 11, 31)))).toBe("9999-12-31");
+    expect(formatOrreryDate(jdFromUnixMs(Date.UTC(10000, 0, 15)))).toBe("9999-12-31");
+    expect(formatOrreryDate(jdFromUnixMs(Date.UTC(9999, 5, 1)))).toBe("9999-06-01");
+  });
   it("runs one Julian year per YEAR_S game seconds", () => {
     expect(orreryJd(420) - orreryJd(0)).toBeCloseTo(365.25, 9);
   });

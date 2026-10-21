@@ -34,7 +34,7 @@ export const PLAYER_SHIP_SCALE = 0.35;
 /**
  * Sun core radius: the solid sphere, bigger than any planet (Jupiter's 22), so
  * the star outsizes its planets (docs/UNIVERSE-RULES.md L35, fix F12). The
- * corona billboard (72 wide, sunMaterials.ts) ends inside the belt's r 40.
+ * corona billboard (72 wide, sunMaterials.ts) ends well inside the main belt (2.1 AU, about 241 u).
  */
 export const SUN_RADIUS = 24;
 // Off-plane destination: pilots must climb to reach the contact portal (spec §3).

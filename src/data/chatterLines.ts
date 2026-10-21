@@ -13,7 +13,7 @@ export const chatterPools: ChatterPools = {
     "DEEP SPACE IS QUIET. TOO QUIET. SPAWN A PLASMA ANOMALY?",
     "TELEMETRY ARCHIVED. SHORT ON TIME? THE NUMBER KEYS JUMP TO EACH PROBE",
     "ASTEROID BELT: POLITE. IT MOVES FOR YOU",
-    "TIME TRIAL GATE LIT IN THE INNER BELT, NEAR THE SUN. THE PILOT'S RECORD IS... NOT PUBLISHED",
+    "TIME TRIAL GATE LIT IN THE INNER SOLAR SYSTEM, CLOSE TO THE SUN. THE PILOT'S RECORD IS... NOT PUBLISHED",
   ],
   // Keyed by zone: a project's pool fires when its probe comes in range
   // (store `probeNear`), a destination's when the ship enters its zone

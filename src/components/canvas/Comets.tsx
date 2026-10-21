@@ -5,7 +5,7 @@ import { useGLTF } from "@react-three/drei";
 import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt, type CometPass } from "../../utils/worldEvents";
-import { COMET_ELEMENTS } from "../../data/smallBodyField";
+import { COMET_ELEMENTS, COMET_LABELS, COMET_SCAN_IDS } from "../../data/smallBodyField";
 import { orbitWorldPosition } from "../../utils/beltRocks";
 import { orreryJd } from "../../utils/orreryClock";
 import { dustEmitBack } from "../../utils/cometDust";
@@ -183,7 +183,7 @@ export default function Comets() {
       const t = isVisitor ? visitorElapsed! : time;
       cometPos(i, t, pass, head);
       if (isVisitor) setScannable("comet_visitor", head.x, head.y, head.z, "COMET_VISITOR");
-      else setScannable("comet_" + i, head.x, head.y, head.z, "COMET_" + i);
+      else setScannable(COMET_SCAN_IDS[i], head.x, head.y, head.z, COMET_LABELS[i]);
 
       const distSun = head.length();
       const act = isVisitor ? 1 : activityAt(distSun); // the visitor stays bright far from the sun

@@ -49,8 +49,8 @@ export default function Sun() {
       fitGroup.scale.setScalar(CORONA_FIT.scale);
       fitGroup.lookAt(cam);
     }
-    // The swell (1 + 0.6 * flare) briefly pushes the halo to ~r 58, past the belt's
-    // inner edge (r 40): an accepted transient; the resting halo stays under 40.
+    // The swell (1 + 0.6 * flare) briefly pushes the halo to ~r 58, still far inside the
+    // belt's inner edge (2.1 AU, about 241 u).
     if (coronaRef.current) coronaRef.current.scale.setScalar(1 + 0.6 * flare);
   });
 

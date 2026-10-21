@@ -125,8 +125,8 @@ export function makeSunSurfaceMaterial(): THREE.ShaderMaterial {
 }
 
 /**
- * The corona billboard's edge length. Half of it (36) must stay inside the
- * belt's inner edge (r 40); the core is SUN_RADIUS (24), so the halo is the
+ * The corona billboard's edge length. Half of it (36) must stay far inside
+ * the belt's inner edge (2.1 AU, about 241 u); the core is SUN_RADIUS (24), so the halo is the
  * 12 units between (tests/sunProportions.test.ts).
  */
 export const CORONA_SIZE = 72;

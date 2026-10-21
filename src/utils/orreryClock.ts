@@ -39,4 +39,7 @@ export const setOrreryEpochJd = (jd: number): void => {
 export const orreryJd = (gameSeconds: number): number => epochJd + gameSeconds * ORRERY_DAYS_PER_SECOND;
 
 /** "YYYY-MM-DD" in UTC. */
-export const formatOrreryDate = (jd: number): string => new Date(unixMsFromJd(jd)).toISOString().slice(0, 10);
+const LAST_DISPLAYED_MS = Date.UTC(9999, 11, 31);
+/** The JD keeps running, but the displayed date holds at 9999-12-31 (ISO would print "+010000-01"). */
+export const formatOrreryDate = (jd: number): string =>
+  new Date(Math.min(unixMsFromJd(jd), LAST_DISPLAYED_MS)).toISOString().slice(0, 10);

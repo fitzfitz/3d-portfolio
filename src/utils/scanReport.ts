@@ -4,6 +4,15 @@ import { BUOYS } from "../data/careerTrail";
 import { isBodyId } from "../data/bodyIds";
 import { bodyById } from "../data/solarSystem";
 import { bodyReport } from "./bodyReports";
+import { COMET_ELEMENTS, COMET_LABELS, COMET_SCAN_IDS } from "../data/smallBodyField";
+
+/** One real-orbit report per comet: semi-major axis, eccentricity and period from its SBDB elements. */
+const COMET_REPORTS = new Map(COMET_SCAN_IDS.map((id, i) => {
+  const el = COMET_ELEMENTS[i];
+  const periodYears = 360 / el.nDegPerDay / 365.25;
+  return [id,
+    `SCAN[${COMET_LABELS[i]}] // PERIODIC COMET // A ${el.a.toFixed(2)} AU · E ${el.e.toFixed(2)} · PERIOD ${periodYears.toFixed(1)} YR // ICE AND DUST ON A REAL ORBIT, TAILS GROW NEAR THE SUN`];
+}));
 
 /** One report per career buoy: the posting it marks, from src/data/career.ts. */
 const BUOY_REPORTS = new Map(BUOYS.map((b) => [b.id,
@@ -14,7 +23,7 @@ const FIXED_REPORTS: Record<string, string> = {
   career: "SCAN[STATION_CAREER] // HABITAT RING SPINNING. THE PILOT'S WORK HISTORY IS ON FILE. DOCK TO READ IT",
   shipyard: "SCAN[DRYDOCK_01] // CRANE RUNNING. ENGINE PLUMES ARE REFITTED HERE. DOCK TO OPEN THE HANGAR",
   dormant_gate: "SCAN[UNKNOWN_STRUCTURE] // ORIGIN UNKNOWN // DORMANT // NO RESPONSE TO HAIL",
-  time_trial: "SCAN[TIME_TRIAL_GATE] // A LOOP OF RINGS THROUGH THE BELT AND BACK. FLY THROUGH TO START THE CLOCK. PAR 35 S",
+  time_trial: "SCAN[TIME_TRIAL_GATE] // A LOOP OF RINGS THROUGH THE INNER SYSTEM, ABOVE AND BELOW THE ORBITS OF MERCURY, VENUS AND EARTH. FLY THROUGH TO START THE CLOCK. PAR 35 S",
 };
 
 const ELEMENTS = ["FE", "NI", "SI", "MG", "H2O-ICE", "IR", "AU", "CAFFEINE"];
@@ -40,6 +49,8 @@ export function generateScanReport(id: string, gameSeconds = 0): string {
   if (ghost) return ghostReport(ghost.cc, ghost.ch);
   const beacon = beaconRegistry.get(id);
   if (beacon) return beaconReport(beacon, Date.now());
+  const comet = COMET_REPORTS.get(id);
+  if (comet) return comet;
   const buoy = BUOY_REPORTS.get(id);
   if (buoy) return buoy;
   if (isBodyId(id)) return bodyReport(bodyById(id), gameSeconds);

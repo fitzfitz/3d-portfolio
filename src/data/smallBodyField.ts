@@ -18,6 +18,9 @@ export const TROJAN_COUNT = 160;
 
 /** The real comets (Encke, 67P), SBDB elements. */
 export const COMET_ELEMENTS: readonly OsculatingElements[] = [ENCKE, CHURYUMOV];
+/** Scannable ids and labels of COMET_ELEMENTS, in the same order. */
+export const COMET_SCAN_IDS: readonly string[] = ["comet_2p", "comet_67p"];
+export const COMET_LABELS: readonly string[] = ["2P/ENCKE", "67P/CHURYUMOV–GERASIMENKO"];
 
 /** Mean motion of a body at `a` AU, degrees per day (Gaussian k in degrees). */
 const meanMotion = (a: number): number => 0.9856076686 / a ** 1.5;

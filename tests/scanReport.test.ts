@@ -29,6 +29,24 @@ describe("generateScanReport", () => {
       expect(generateScanReport(id)).not.toMatch(/AU FROM THE SUN|SUPABASE|RUST/);
     }
   });
+  it("scans the real comets by name with orbit numbers derived from their elements", async () => {
+    const { COMET_ELEMENTS, COMET_SCAN_IDS, COMET_LABELS } = await import("../src/data/smallBodyField");
+    expect(COMET_LABELS).toEqual(["2P/ENCKE", "67P/CHURYUMOV–GERASIMENKO"]);
+    COMET_SCAN_IDS.forEach((id, i) => {
+      const el = COMET_ELEMENTS[i];
+      const r = generateScanReport(id);
+      expect(r).toMatch(new RegExp(`^SCAN\\[${COMET_LABELS[i]}\\] // `));
+      expect(r).toContain(`A ${el.a.toFixed(2)} AU`);
+      expect(r).toContain(`E ${el.e.toFixed(2)}`);
+      expect(r).toContain(`PERIOD ${(360 / el.nDegPerDay / 365.25).toFixed(1)} YR`);
+      expect(r).not.toMatch(/MASS CLASS|UNKNOWN \d+%/);
+    });
+    expect(generateScanReport("comet_2p")).toContain("PERIOD 3.3 YR");
+    expect(generateScanReport("comet_67p")).toContain("PERIOD 6.4 YR");
+  });
+  it("describes the time-trial course without the old belt", () => {
+    expect(generateScanReport("time_trial")).not.toMatch(/BELT/);
+  });
   it("always uppercases and prefixes SCAN[", () => {
     expect(generateScanReport("asteroid_1")).toMatch(/^SCAN\[/);
   });

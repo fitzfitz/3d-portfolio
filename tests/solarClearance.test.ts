@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PROBES } from "../src/data/probes";
 import {
-  LANDMARKS, JELLY_POINTS, JELLY_KEEP_RADIUS, landmarkMargin, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
+  LANDMARKS, JELLY_POINTS, JELLY_KEEP_RADIUS, landmarkMargin, landmarkMarginNamed, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
 } from "./helpers/solarClearance";
 import { DEEP_SPACE_POINT } from "./e2e/deepSpacePoint.mjs";
 import { HAZE_START } from "../src/utils/edgeHaze";
@@ -20,7 +20,7 @@ describe("sweptOrbit", () => {
 
 describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () => {
   it.each(LANDMARKS.map((l) => [l.name, l] as const))("%s", (name, l) => {
-    expect(landmarkMargin(l.pos, l.radius), `${name} vs ${worstRule(l.pos, l.radius)}`).toBeGreaterThan(0);
+    expect(landmarkMarginNamed(name, l.pos, l.radius), `${name} vs ${worstRule(l.pos, l.radius)}`).toBeGreaterThan(0);
   });
 
   // ~2.4 s alone, but 5.3 s once under the full suite's parallel load, past

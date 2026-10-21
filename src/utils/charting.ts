@@ -87,6 +87,20 @@ export function wireChartCount(c: readonly ChartRecord[], legacy: boolean): numb
   return isCartographer(c, legacy) ? CHART_TOTAL : Math.min(new Set(c.filter((r) => isBodyId(r.id)).map((r) => r.id)).size, CHART_TOTAL);
 }
 
+/**
+ * A wireChartCount memo for the frame loop: recomputes only when the `charted`
+ * array reference or the legacy flag changes, so a steady frame allocates nothing.
+ */
+export function makeWireChartCache(): (c: readonly ChartRecord[], legacy: boolean) => number {
+  let lastC: readonly ChartRecord[] | null = null;
+  let lastLegacy = false;
+  let value = 0;
+  return (c, legacy) => {
+    if (c !== lastC || legacy !== lastLegacy) { lastC = c; lastLegacy = legacy; value = wireChartCount(c, legacy); }
+    return value;
+  };
+}
+
 /** The radio line for the `count`th body charted: its name and one fact. */
 export function chartLine(id: BodyId, count: number): string {
   return `WORLD CHARTED ${count}/${BODY_COUNT} — ${bodyById(id).name}: ${BODY_FACTS[id][0]}`;
