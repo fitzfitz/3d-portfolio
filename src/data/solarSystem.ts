@@ -25,8 +25,8 @@ import type { BodyId } from "./bodyIds";
  *   `texelMedianLinear` is the shipped map's measured linear-luminance median
  *   (Earth's is the mean under its cloud layer: geometric albedo is a disc
  *   average, and on a two-tone planet the median texel is open sea;
- *   tests/bodyMaps.test.ts). `color` (the HUD
- *   swatch, orbit lines and far dots) is the map's mean colour at one brightness.
+ *   tests/bodyMaps.test.ts). `color` (the HUD swatch, orbit lines and far
+ *   dots) is the map's mean colour at one brightness.
  */
 /**
  * An atmosphere rim (Atmosphere.tsx, L27): scattered sunlight in a shell

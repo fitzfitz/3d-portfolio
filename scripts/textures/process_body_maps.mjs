@@ -58,8 +58,9 @@
  * only lights glow.
  *
  * Prints each shipped map's measured linear median (Earth's mean under its
- * clouds): those are the `texelMedianLinear` values in src/data/solarSystem.ts and solarMoons.ts
- * (tests/bodyMaps.test.ts holds them to 3%).
+ * clouds): those are the `texelMedianLinear` values in
+ * src/data/solarSystem.ts and solarMoons.ts (tests/bodyMaps.test.ts holds
+ * them to 3%).
  */
 import sharp from "sharp";
 import { existsSync, mkdirSync } from "node:fs";
@@ -371,9 +372,10 @@ async function processSourced(name, r, W) {
   return { bytes: toBytes(lin), scale };
 }
 
-/** Earth's surface at width W; `k` (the shared surface-and-cloud scale) is solved here at 2048. */
 /** The Rayleigh sky's reflectance over the disc at 650 / 550 / 450 nm (0.75 τ; see the header). */
-export const RAYLEIGH = [0.75 * 0.05, 0.75 * 0.1, 0.75 * 0.24];
+const RAYLEIGH = [0.75 * 0.05, 0.75 * 0.1, 0.75 * 0.24];
+
+/** Earth's surface at width W; `k` (the shared surface-and-cloud scale) is solved here at 2048. */
 async function processEarth(W, kGiven) {
   const H = W / 2, n = W * H;
   const { lin } = await load(srcFile("bmng-2004-07"), W, false);
