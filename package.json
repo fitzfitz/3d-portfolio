@@ -11,7 +11,8 @@
     "assets:optimize": "node scripts/optimize-assets.mjs",
     "assets:generate": "scripts/blender/generate.sh",
     "test": "vitest run",
-    "test:e2e": "node tests/e2e/run.mjs"
+    "test:e2e": "node tests/e2e/run.mjs",
+    "test:e2e:quiet": "E2E_JOBS=2 node tests/e2e/run.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

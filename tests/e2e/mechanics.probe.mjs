@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, installEdgeRecorder, readEdgeRecorder, stopEdgeRecorder, runParts } from "./harness.mjs";
 
 /** src/constants.ts SYSTEM_RADIUS (3,600 since the real Solar System, Task 6). */
 const EDGE = 3600;
@@ -469,17 +469,14 @@ async function ringShade(page, dark) {
   return { ok: on.onScreen && off.lum > 0.005, ratio: Number(ratio.toFixed(3)), on: Number(on.lum.toFixed(4)), off: Number(off.lum.toFixed(4)), ...setup };
 }
 
-export default async function run() {
-  const checks = await withPage({ label: "mechanics: edge" }, edge);
-  for (const [label, fn, opts] of [
-    ["mechanics: gravity (bodies frozen)", gravity, { emulateReducedMotion: true }],
-    ["mechanics: beam", beam, {}],
-    ["mechanics: photo mode", photoMode, {}],
-    ["mechanics: reduced motion", reducedMotion, { emulateReducedMotion: true }],
-    ["mechanics: eclipses (bodies frozen)", eclipses, { emulateReducedMotion: true }],
-  ]) {
-    const c = await withPage({ label, ...opts }, fn);
-    checks.results.push(...c.results);
-  }
-  return checks;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  ["mechanics: edge", edge, {}],
+  ["mechanics: gravity (bodies frozen)", gravity, { emulateReducedMotion: true }],
+  ["mechanics: beam", beam, {}],
+  ["mechanics: photo mode", photoMode, {}],
+  ["mechanics: reduced motion", reducedMotion, { emulateReducedMotion: true }],
+  ["mechanics: eclipses (bodies frozen)", eclipses, { emulateReducedMotion: true }],
+].map(([label, fn, opts]) => () => withPage({ label, ...opts }, fn));
+
+export default function run() { return runParts(parts); }

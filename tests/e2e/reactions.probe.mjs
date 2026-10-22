@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, runParts } from "./harness.mjs";
 
 // Mirrors src/utils/beltPush.ts (the probe runs in Node, outside Vite);
 // tests/beltPush.test.ts guards the source of truth.
@@ -121,9 +121,10 @@ async function stillUnderReducedMotion(page, checks) {
   checks.check("reduced motion: the belt does not part", nearest < 1, `nearest rock ${nearest.toFixed(2)}u`);
 }
 
-export default async function run() {
-  const checks = await withPage({ label: "reactions" }, reacting);
-  const rm = await withPage({ label: "reactions (reduced motion)", emulateReducedMotion: true }, stillUnderReducedMotion);
-  checks.results.push(...rm.results);
-  return checks;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  () => withPage({ label: "reactions" }, reacting),
+  () => withPage({ label: "reactions (reduced motion)", emulateReducedMotion: true }, stillUnderReducedMotion),
+];
+
+export default function run() { return runParts(parts); }

@@ -16,8 +16,16 @@ import { startServer, stopServer } from "./harness.mjs";
 const ALL = ["startup", "smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "career", "careerphone", "shipyard", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "probes", "basepath", "memory"];
 /** Run first, in this order, alone on the machine. */
 const SERIAL = ["startup", "transition"];
-/** Measured GPU seconds (2026-10-19; probes 2026-10-20), for longest-first scheduling; unknown probes go first. */
-const COST = { events: 168, programs: 112, mechanics: 107, gameplay: 70, sky: 68, logbook: 54, assets: 53, fuel: 43, probes: 35, memory: 70, career: 30, reactions: 25, livesky: 23, shipyard: 23, reducedmotion: 22, flight: 21, gamepad: 18, perf: 16, race: 16, touch: 16, audio: 15, beacons: 14, careerphone: 11, contact: 11, basepath: 11, smoke: 9 };
+/** Measured seconds per job (2026-10-23, PR 48), for longest-first scheduling; unknown jobs go first. */
+const COST = { sky: 80, gameplay: 69, "events#0": 65, fuel: 39, "logbook#0": 37, career: 35, "programs#1": 34, "programs#0": 34, "mechanics#1": 29, livesky: 29, assets: 26, "memory#0": 25, shipyard: 20, reducedmotion: 20, flight: 18, gamepad: 18, "memory#1": 16, "mechanics#0": 14, perf: 14, touch: 14, "probes#0": 13, race: 13, basepath: 12, audio: 11, "reactions#0": 11, "events#1": 10, beacons: 10, "mechanics#2": 10, "logbook#2": 9, careerphone: 9, "mechanics#5": 9, "probes#2": 8, "reactions#1": 8, "probes#4": 8, contact: 8, "probes#5": 7, "logbook#1": 7, "probes#3": 6, "mechanics#4": 6, smoke: 5, "mechanics#3": 5, "probes#1": 5 };
+
+/**
+ * Probes whose pages are independent and run as one job each ("events#0",
+ * "events#1"...), so the longest probe no longer sets the suite's wall time
+ * (events alone was 170 s of a 370 s run). Each exports `parts`; run-one.mjs
+ * fails a part if the probe's count no longer matches this one.
+ */
+const PARTS = { mechanics: 6, probes: 6, logbook: 3, programs: 2, reactions: 2, memory: 2, events: 2 };
 
 const PROBES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const JOBS = Number(process.env.E2E_JOBS ?? 4);
@@ -32,7 +40,7 @@ function runProbe(name) {
   const start = Date.now();
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [RUN_ONE, name], {
-      env: { ...process.env, E2E_SERVER_UP: "1", E2E_RESULT_FILE: file },
+      env: { ...process.env, E2E_SERVER_UP: "1", E2E_RESULT_FILE: file, E2E_PARTS: String(PARTS[name.split("#")[0]] ?? "") },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let log = "";
@@ -67,8 +75,11 @@ async function pool(names, jobs) {
 const suiteStart = Date.now();
 await startServer();
 const serial = SERIAL.filter((n) => PROBES.includes(n));
-const parallel = PROBES.filter((n) => !SERIAL.includes(n))
-  .sort((a, b) => (COST[b] ?? Infinity) - (COST[a] ?? Infinity));
+// A split probe becomes one job per page, each costed as its share.
+const jobs = PROBES.filter((n) => !SERIAL.includes(n))
+  .flatMap((n) => (PARTS[n] ? Array.from({ length: PARTS[n] }, (_, k) => `${n}#${k}`) : [n]));
+const cost = (job) => COST[job] ?? Infinity;
+const parallel = jobs.sort((a, b) => cost(b) - cost(a));
 const runs = [...await pool(serial, 1)];
 const phase1Ms = Date.now() - suiteStart;
 runs.push(...await pool(parallel, JOBS));
@@ -77,7 +88,7 @@ rmSync(dir, { recursive: true, force: true });
 
 const all = runs.flatMap((r) => r.results.map((c) => ({ ...c, probe: r.probe })));
 // No scheduling slip may pass as green: every requested probe must have run.
-for (const name of PROBES.filter((n) => !runs.some((r) => r.probe === n))) {
+for (const name of [...serial, ...jobs].filter((n) => !runs.some((r) => r.probe === n))) {
   all.push({ probe: name, name: "probe never ran", pass: false });
 }
 const crashed = runs.filter((r) => r.crashed).length;

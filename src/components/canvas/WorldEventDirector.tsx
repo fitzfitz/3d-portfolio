@@ -105,8 +105,9 @@ export default function WorldEventDirector() {
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     fitzDebug.triggerEvent = (kind) => { forced.current = kind; };
-    return () => { fitzDebug.triggerEvent = null; };
-  }, []);
+    fitzDebug.eventDirector = director;
+    return () => { fitzDebug.triggerEvent = null; fitzDebug.eventDirector = null; };
+  }, [director]);
   // Unmounting (the classic-résumé round trip) must not leave an event behind.
   useEffect(() => () => useSpaceStore.getState().endWorldEvent(), []);
 

@@ -80,6 +80,12 @@ export interface FitzDebug {
   /** Starts a world event now (dev only), registered by WorldEventDirector. */
   triggerEvent: ((kind: WorldEventKind) => void) | null;
   /**
+   * The world-event director's live state (clock, nextAt, active), registered
+   * by WorldEventDirector in dev: events.probe.mjs sets the clock near its
+   * first due start instead of waiting out FIRST_EVENT_AT in real time.
+   */
+  eventDirector: import("../utils/eventDirector").DirectorState | null;
+  /**
    * Live renderer counters sampled in-frame by PerfSampler, before
    * EffectComposer resets `gl.info` — see PerfSampler's own comment. Exposed
    * here so e2e probes can read `calls`/`triangles` reliably; `lights` on
@@ -133,6 +139,7 @@ export const fitzDebug: FitzDebug = {
   cargoSwerve: null,
   jelly: null,
   triggerEvent: null,
+  eventDirector: null,
   gravity: null,
   beam: null,
   mining: null,
