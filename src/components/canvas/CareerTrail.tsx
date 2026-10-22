@@ -12,7 +12,7 @@ import { assetUrl } from "../../utils/assetUrl";
 import { arcPlacement } from "../../utils/trailGuide";
 import { makeGuideLineMaterial, withGuideOffsets } from "./guideLine";
 
-/** The model is ~3.3 tall; at 1.8x a buoy reads from the next one, about 50 units away (see TRAIL_ARC). */
+/** The model is ~3.3 tall; at 1.8x a buoy reads from the next one, 43 units away (see TRAIL_ARC). */
 const BUOY_SCALE = 1.8;
 const BUOY_GLOW = 2.2;
 /** Dash period along the trail, in world units. */

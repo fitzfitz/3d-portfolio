@@ -8,8 +8,10 @@ import {
   STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_ARC, arcThrough, arcPoint, startKey, type Vec3,
 } from "../src/data/careerTrail";
 import { SPAWN } from "../src/data/spawn";
+import { PROBES } from "../src/data/probes";
+import { headingToward } from "../src/utils/pitchFlight";
 import { d3, MARGIN } from "./helpers/clearance";
-import { landmarkMarginNamed, worstRule } from "./helpers/solarClearance";
+import { landmarkMargin, worstRule } from "./helpers/solarClearance";
 
 const SPAWN_V: Vec3 = [SPAWN.x, SPAWN.y, SPAWN.z];
 /** Each landmark with its keep-out: the station's proximity zone, a buoy's card radius. */
@@ -69,24 +71,48 @@ describe("career trail shape", () => {
     expect(last).toBeGreaterThanOrEqual(15);
     expect(last).toBeLessThanOrEqual(25);
   });
-  it("keeps the whole arc 60+ from the sun and the buoys no more than 80 apart", () => {
+  it("keeps the whole arc 60+ from the sun and the buoys no more than 50 apart", () => {
     for (let k = 0; k <= 400; k++) {
       const p = arcPoint(TRAIL_ARC, k / 400);
       expect(d3(p, [SUN_COLLIDER.x, SUN_COLLIDER.y, SUN_COLLIDER.z]), `arc t=${k / 400}`).toBeGreaterThanOrEqual(60);
     }
-    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(80);
+    for (let i = 1; i < BUOYS.length; i++) expect(d3(BUOYS[i].pos, BUOYS[i - 1].pos)).toBeLessThanOrEqual(50);
   });
-  it("puts the station below the orbital plane, as the portal is above it", () => {
-    expect(STATION_POS[1]).toBeLessThan(-80);
+  it("climbs out of the ecliptic: every buoy above the last, the station above them all", () => {
+    for (let i = 1; i < BUOYS.length; i++) expect(BUOYS[i].pos[1]).toBeGreaterThan(BUOYS[i - 1].pos[1]);
+    expect(BUOYS[0].pos[1]).toBeGreaterThan(SPAWN.y);
+    expect(STATION_POS[1]).toBeGreaterThan(BUOYS[BUOYS.length - 1].pos[1]);
+  });
+  it("puts the first buoy ahead of the spawn pad, in the opening view", () => {
+    // The ship spawns nosed at probe 1 (Spaceship.tsx); the chase camera
+    // frames about ±40° across. Within ±35° of that heading and 30° of level
+    // is on screen from the first frame.
+    const heading = headingToward(SPAWN.x, SPAWN.z, PROBES[0].home[0], PROBES[0].home[2]);
+    const [dx, dy, dz] = [BUOYS[0].pos[0] - SPAWN.x, BUOYS[0].pos[1] - SPAWN.y, BUOYS[0].pos[2] - SPAWN.z];
+    const off = Math.atan2(Math.sin(Math.atan2(dx, dz) - heading), Math.cos(Math.atan2(dx, dz) - heading));
+    expect(Math.abs(off) * (180 / Math.PI)).toBeLessThanOrEqual(35);
+    expect(Math.abs(Math.atan2(dy, Math.hypot(dx, dz))) * (180 / Math.PI)).toBeLessThanOrEqual(30);
   });
 });
 
 describe("career landmark clearance", () => {
   it("never shares space with a body's swept orbit, its well, its moons, or a belt, Trojan or comet orbit", () => {
     for (const p of PLACES) {
-      expect(landmarkMarginNamed(p.name, p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
+      expect(landmarkMargin(p.pos, p.keepOut), `${p.name} vs ${worstRule(p.pos, p.keepOut)}`).toBeGreaterThan(0);
     }
   });
+  it("keeps the whole flight, first buoy to the station's dock, out of them too (no waivers)", () => {
+    // The guide arc every 1/32 (~5 u) and the leg from the last buoy into the
+    // station, each point held at a buoy's card radius: a pilot who follows the
+    // trail never crosses a swept well or a rock orbit's tube.
+    const last = BUOYS[BUOYS.length - 1].pos;
+    const leg: Vec3[] = [0.25, 0.5, 0.75].map((t) => [
+      last[0] + (STATION_POS[0] - last[0]) * t, last[1] + (STATION_POS[1] - last[1]) * t, last[2] + (STATION_POS[2] - last[2]) * t,
+    ]);
+    for (const p of [...Array.from({ length: 33 }, (_, k) => arcPoint(TRAIL_ARC, k / 32)), ...leg]) {
+      expect(landmarkMargin(p, BUOY_CARD_R), `trail ${p.map((v) => v.toFixed(0)).join(",")} vs ${worstRule(p, BUOY_CARD_R)}`).toBeGreaterThan(0);
+    }
+  }, 60_000);
   it("keeps clear of the sun, the contact portal and the scenery asteroids", () => {
     for (const p of PLACES) {
       expect(d3(p.pos, [SUN_COLLIDER.x, SUN_COLLIDER.y, SUN_COLLIDER.z]), `sun vs ${p.name}`)

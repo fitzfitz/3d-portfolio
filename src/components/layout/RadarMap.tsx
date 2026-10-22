@@ -201,9 +201,10 @@ export default function RadarMap() {
 
       // Career buoys: small hollow amber rings (crystals are filled dots), in
       // range only and never rim-clamped; the station itself is a destination
-      // blip above.
-      ctx.globalAlpha = 0.9;
+      // blip above. The trail climbs out of the plane, so each ring carries
+      // the planets' altitude chevron: the next buoy reads as "above".
       ctx.strokeStyle = CAREER_AMBER;
+      ctx.fillStyle = CAREER_AMBER;
       ctx.lineWidth = 1.2;
       for (const p of BUOY_POSITIONS) {
         const dx = (p[0] - flight.x);
@@ -211,9 +212,22 @@ export default function RadarMap() {
         const dy = (p[1] - flight.y);
         if (Math.hypot(dx, dz, dy) > RADAR_RANGE) continue;
         const { x: sx, up } = worldToRadar(dx, dz, a);
+        const px = sx * scale, py = -up * scale;
+        ctx.globalAlpha = 0.9;
         ctx.beginPath();
-        ctx.arc(c + sx * scale, c - up * scale, 2.4, 0, Math.PI * 2);
+        ctx.arc(c + px, c + py, 2.4, 0, Math.PI * 2);
         ctx.stroke();
+        const cue = altitudeCue(dy);
+        if (cue.dir !== 0) {
+          ctx.globalAlpha = cue.alpha * 0.9;
+          const by = c + py - cue.dir * 6;
+          ctx.beginPath();
+          ctx.moveTo(c + px - 2.5, by + cue.dir * 2.5);
+          ctx.lineTo(c + px, by);
+          ctx.lineTo(c + px + 2.5, by + cue.dir * 2.5);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
       ctx.globalAlpha = 1;
 
