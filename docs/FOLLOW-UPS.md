@@ -6,25 +6,6 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Earth's ocean sheen.** Since PR #43 (2026-10-22) the lit disc reads
-  blue (median hue 218–220°, b/g 1.13–1.21 by face, against 1.47 for its
-  ocean map × the sunlight; 28–30 luma). What still greys the sea is the
-  sheen: MeshStandardMaterial's dielectric F0 is 0.04 where water's is
-  0.02, and roughness 0.5 is right for the sea (Cox–Munk at ~7 m/s) but
-  lies on land and ice too. Taking it out lifted b/g 1.35 → 1.63 on a
-  cloudless disc. A fix needs an ocean mask or MeshPhysicalMaterial's ior,
-  each a new program for Earth (the programs probe holds added = 0), so it
-  waits for an owner call. The cloud opacity is the Blue Marble grey^1.3
-  (owner's pick, `CLOUD_OPACITY_GAMMA` in process_body_maps.mjs): a higher
-  γ gives bluer seas and fainter swirls, and changing it means regenerating
-  Earth's maps and copying the printed k into `look.clouds.linear`.
-- **The probes' foil flattens with distance.** The MLI blankets' sparkle is
-  normal-map crinkle; past ~15 u its mips average the facets into one flat
-  mirror, which reflects the dark sky. v7 (PR #44) keeps them reading gold
-  with a little diffuse under the film (metalness 0.88). The real fix is
-  Toksvig-style roughness from the mipped normal's length in
-  `ProjectProbes`' material patch (no new program, but a shader change),
-  after which the blankets could go back to full metal.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap

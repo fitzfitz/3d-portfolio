@@ -541,3 +541,24 @@ ringed giant 46 → 46, close approach 55 → 70 (the state that varies run to r
 pinned runs read 65–76; ceiling 90), modal 49 → 48, 40 anomalies 37 → 37; programs 55 (56 with the
 anomalies) in every state before and after. `programs.probe.mjs` adds 0 in both tiers
 (55 full fidelity, 42 low-perf, before and after). Ceilings changed: none.
+
+**Earth's sea, the probes' foil and their burn (PR 46, 2026-10-22).** Earth's surface became a
+`MeshPhysicalMaterial` at water's ior with a compile hook that reads the ocean mask from its
+map's alpha (`oceanGloss.ts`; owner-approved, 2026-10-22): one more program, Earth's own, which
+used to share Io's night-lights program. It compiles in the warm-up like every other, so the
+tour still adds 0. The low-perf tier keeps the same material: the colour is a fidelity fix,
+not a frame-rate one, the physical path with no extra lobes costs about what the standard one
+does per pixel, and swapping materials by tier would compile a second Earth program whenever
+the tier flips in play. The mask rides in the existing map (no texture, sampler or fetch
+added); the maps grew 70 → 85 KB (2048) and 224 → 262 KB (4096). The probes' Toksvig term is
+inside their existing patch (cache key `projectProbe:v3` replaces v2), and the burn's root
+fade is a uniform in the shared plume program (`uRoot`, 0 for every other plume), so neither
+adds a program. Same session, main (ab0ddb5) → this branch, load average 11–18:
+`programs.probe.mjs` 55 → 56 full fidelity, 42 → 43 low-perf, adding 0 in both tiers before
+and after; transition probe programs 55 → 56 in every state (56 → 57 with the 40 anomalies),
+inside the deliberate 79 / 84; calls deep space 37 → 37, facing the sun 127 → 127, ringed
+giant 46 → 46, close approach 69 → 68 (the state that varies run to run), modal 48 → 48,
+40 anomalies 37 → 37, triangles identical but the close approach's (332,250 → 331,802);
+lights 4. `probes.probe.mjs`: the burn compiles no program (55 → 55). Startup best of three
+13.8 s (ceiling 20 s). The programs column of the table above (56, 57 with the anomalies)
+holds again. Ceilings changed: none.
