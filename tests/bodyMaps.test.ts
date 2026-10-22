@@ -155,7 +155,7 @@ describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the 
       it(`${s.id}: ${name}.webp ${s.id === "earth" ? "mean under its clouds" : "median"} is within 3% of ${s.stat}`, async () => {
         const m = await surfaceStat(name, s.id);
         expect(Math.abs(m / s.stat - 1)).toBeLessThan(0.03);
-      });
+      }, 30_000); // decodes a 4096 map (and Earth's clouds at its size); slow on a loaded machine
     }
   }
 
