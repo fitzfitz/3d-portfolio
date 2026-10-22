@@ -75,7 +75,7 @@ export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   const { pathPos, player, dt } = inp;
   const base = inp.basePos ?? pathPos;
   // While curious, hold the creature still in the world against its path's
-  // own drift (~4.6u/s): eased against a moving point, the offset lagged ~5u
+  // own drift (~3 u/s; 4.6 when this was found): eased against a moving point, the offset lagged ~5u
   // and it parked at ~23u instead of the rest distance. A jump is not drift.
   // Measured on the BASE path: the swim surge and bob ride on top and must
   // survive, or a curious jellyfish freezes mid-stroke.

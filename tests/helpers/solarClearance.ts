@@ -96,20 +96,6 @@ export function landmarkMargins(p: Vec3, radius: number): { what: string; margin
 export const landmarkMargin = (p: Vec3, radius: number): number =>
   Math.min(...landmarkMargins(p, radius).map((m) => m.margin));
 
-/**
- * Career-trail landmarks that sit inside the belt's swept-orbit tubes. With
- * orbits sampled ~8 u apart (ROCK_SAMPLES) the old 64-point sampling's "clear"
- * was an artefact: no trail geometry within 15 u of this one clears all 400
- * belt orbits (best joint search: -2.8 u). They stay clear of every planet,
- * moon and well; only the belt/Trojan/comet rule is waived, and only for these.
- * Rocks are moving, sparse points on those orbits, so a flight rarely meets one.
- */
-export const BELT_TUBE_WAIVED: ReadonlySet<string> = new Set(["trail bend", "buoy career_2", "buoy career_3", "career_2", "career_3"]);
-/** landmarkMargin, minus the belt/Trojan/comet rule for BELT_TUBE_WAIVED names. */
-export const landmarkMarginNamed = (name: string, p: Vec3, radius: number): number =>
-  Math.min(...landmarkMargins(p, radius)
-    .filter((m) => !(BELT_TUBE_WAIVED.has(name) && /^(belt|trojan|comet) /.test(m.what)))
-    .map((m) => m.margin));
 /** Name of the worst rule, for failure messages. */
 export const worstRule = (p: Vec3, radius: number): string => {
   const ms = landmarkMargins(p, radius);
@@ -151,4 +137,4 @@ export const JELLY_KEEP_RADIUS = JELLY_RADIUS;
 
 /** Every landmark with its margin, for the ledger. */
 export const clearanceReport = (): { name: string; margin: number }[] =>
-  LANDMARKS.map((l) => ({ name: l.name, margin: landmarkMarginNamed(l.name, l.pos, l.radius) }));
+  LANDMARKS.map((l) => ({ name: l.name, margin: landmarkMargin(l.pos, l.radius) }));

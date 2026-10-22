@@ -3,18 +3,20 @@ import { career, type CareerEntry } from "./career";
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1):
  * the station you dock at for the Career dossier, and five buoys, one per job,
- * oldest first, on a trail from the spawn pad down to it. The scene and
+ * oldest first, on a trail that climbs from the spawn pad up to it. The scene and
  * tests/careerTrail.test.ts read these same numbers.
  */
 export type Vec3 = readonly [number, number, number];
 
 /**
- * Below the orbital plane, mirroring the portal above it. The spec's target
- * was (0, -95, 150), but the portfolio planet's orbit (with its moons) passes
- * 35.7 units from that point. This is the nearest point on x = 0 that clears
- * it (tests/careerTrail.test.ts).
+ * High above the orbital plane, at the top of the trail. Every planet, its
+ * swept gravity well, the belt and the comets live near the plane, so the
+ * station sits where none of them ever reaches (latitude ~51°, r 193; the
+ * nearest rule is 33 u off, tests/careerTrail.test.ts). It was below the plane
+ * at (0, -108, 156), but a trail down to it has to cross the plane, and inside
+ * ~2 AU every near-plane spot is in Earth's or Mars's swept well.
  */
-export const STATION_POS: Vec3 = [0, -108, 156];
+export const STATION_POS: Vec3 = [67, 152, -104];
 
 /**
  * The portal's lock radii scaled for a model of radius ~5 (about 4x the
@@ -32,15 +34,16 @@ export const BUOY_CARD_R = 6;
 
 /**
  * The trail is the circular arc from TRAIL_START through TRAIL_BEND to
- * TRAIL_END. It starts about 45 units from the spawn pad, stays 60+
- * units from the sun along its whole length, and sweeps down through the
- * orbital plane to the station. The buoys sit at equal angles along it, about
- * 77 apart (the real Earth and Mars wells leave no clear buoy spots nearer the
- * plane, so the first moved up and the spacing opened from 50; tests/solarClearance.test.ts).
+ * TRAIL_END: a rising ramp out of the ecliptic. It starts about 40 units
+ * ahead of the spawn pad, in the opening view, climbs from ~14° to ~33° as it
+ * passes over the sun (never nearer than 60), and the station sits 20 on along
+ * the same curve. The buoys sit at equal angles along it, 43 apart. The whole
+ * flight stays above every swept well and rock orbit, with no waivers
+ * (tests/careerTrail.test.ts, tests/solarClearance.test.ts).
  */
-export const TRAIL_START: Vec3 = [-32, 80, 85];
-export const TRAIL_BEND: Vec3 = [-40, 48, 208];
-export const TRAIL_END: Vec3 = [-11, -104, 178];
+export const TRAIL_START: Vec3 = [-37, 71, 32];
+export const TRAIL_BEND: Vec3 = [14, 101, -43];
+export const TRAIL_END: Vec3 = [56, 140, -93];
 
 /** A circular arc: angle 0 at centre + radius·u, turning toward v, for `span` radians. n = u × v. */
 export interface Arc { centre: Vec3; radius: number; u: Vec3; v: Vec3; n: Vec3; span: number }
