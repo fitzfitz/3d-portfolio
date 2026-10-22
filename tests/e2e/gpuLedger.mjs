@@ -91,7 +91,7 @@ export function installGpuLedger() {
   const boundTex = (gl, target) => {
     const s = state(gl);
     const bindTarget = isCube(target) ? GL.TEXTURE_CUBE_MAP : target;
-    return s.tex.get(`${s.unit}:${bindTarget}`) ?? null;
+    return s.tex.get(s.unit * 65536 + bindTarget) ?? null;
   };
   // Each entry keeps its context: a lost one (R3F's unmount forces the loss)
   // has freed everything, so the report leaves its entries out.
@@ -118,8 +118,29 @@ export function installGpuLedger() {
     };
   };
 
-  wrap("activeTexture", (gl, [unit]) => { state(gl).unit = unit - GL.TEXTURE0; });
-  wrap("bindTexture", (gl, [target, tex]) => { const s = state(gl); s.tex.set(`${s.unit}:${target}`, tex); });
+  // The binds run hundreds of times a frame: fixed-arity wrappers, which
+  // allocate nothing (rest arguments would, and the memory probe weighs every
+  // frame's garbage).
+  const wrap2 = (name, after) => {
+    const orig = P[name];
+    if (!orig) return;
+    P[name] = function (a, b) {
+      orig.call(this, a, b);
+      try { after(this, a, b); } catch { /* the ledger must never break rendering */ }
+    };
+  };
+  const wrap1 = (name, after) => {
+    const orig = P[name];
+    if (!orig) return;
+    P[name] = function (a) {
+      orig.call(this, a);
+      try { after(this, a); } catch { /* the ledger must never break rendering */ }
+    };
+  };
+  // Texture bindings by unit and target, as small integer keys (no strings).
+  const texKey = (unit, target) => unit * 65536 + target;
+  wrap1("activeTexture", (gl, unit) => { state(gl).unit = unit - GL.TEXTURE0; });
+  wrap2("bindTexture", (gl, target, tex) => { const s = state(gl); s.tex.set(texKey(s.unit, target), tex); });
   wrap("deleteTexture", (_gl, [tex]) => { textures.delete(tex); });
   wrap("texStorage2D", (gl, [target, levels, ifmt, w, h]) => {
     const tex = boundTex(gl, target);
@@ -177,7 +198,7 @@ export function installGpuLedger() {
   wrap("framebufferTexture2D", (gl, [, , , tex]) => { if (tex) entry(gl, tex).attached = true; });
   wrap("framebufferTextureLayer", (gl, [, , tex]) => { if (tex) entry(gl, tex).attached = true; });
 
-  wrap("bindRenderbuffer", (gl, [, rb]) => { state(gl).rb = rb; });
+  wrap2("bindRenderbuffer", (gl, _target, rb) => { state(gl).rb = rb; });
   wrap("deleteRenderbuffer", (_gl, [rb]) => { renderbuffers.delete(rb); });
   wrap("renderbufferStorage", (gl, [, ifmt, w, h]) => {
     const rb = state(gl).rb;
@@ -188,8 +209,8 @@ export function installGpuLedger() {
     if (rb) renderbuffers.set(rb, { gl, bytes: levelBytes(ifmt, w, h) * Math.max(1, samples), w, h, fmt: ifmt, samples });
   });
 
-  wrap("bindVertexArray", (gl, [vao]) => { state(gl).vao = vao; });
-  wrap("bindBuffer", (gl, [target, buf]) => {
+  wrap1("bindVertexArray", (gl, vao) => { state(gl).vao = vao; });
+  wrap2("bindBuffer", (gl, target, buf) => {
     const s = state(gl);
     // The element binding belongs to the bound vertex array, not the context.
     if (target === GL.ELEMENT_ARRAY_BUFFER) s.vaoElem.set(s.vao, buf);

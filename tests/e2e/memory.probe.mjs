@@ -25,6 +25,15 @@ export const CEILINGS_MB = {
   low: { textures: 250, renderTargets: 30, drawingBuffer: 20, total: 295 },
 };
 /**
+ * JS allocated per frame at idle, sampled by V8's heap profiler including
+ * objects already collected (dev build). drei's <Trail> rebuilding its
+ * geometry every frame made ~125 KB of it until EngineWake replaced it
+ * (2026-10-22: 225 → 99 KB a frame; 118 here, with the ledger's own wrappers).
+ * Per frame, so the frame rate barely moves it; the ceiling leaves room for
+ * a loaded machine's longer frames and still fails the trails coming back.
+ */
+const ALLOC_KB_PER_FRAME = 160;
+/**
  * The tour may add vertex buffers (about 1.1 MB at baseline, jump effects and
  * trails) but no texture or render target: those are all made at load.
  */
@@ -86,6 +95,26 @@ async function checkReloaded(page, checks, tier, what, atSpawn) {
   checks.check(`[${tier}] after ${what}, no texture keeps its image`, r.retained === 0, `${r.retained} of ${r.textures}`);
 }
 
+/**
+ * Bytes of JS allocated per animation frame over `ms`, from V8's sampling heap
+ * profiler with collected objects included: garbage, not what survives.
+ */
+async function allocationPerFrame(page, ms) {
+  const cdp = await page.createCDPSession();
+  await cdp.send("HeapProfiler.enable");
+  await page.evaluate(() => { window.__allocFrames = 0; const f = () => { window.__allocFrames++; requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await cdp.send("HeapProfiler.startSampling", { samplingInterval: 1024, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true });
+  const f0 = await page.evaluate(() => window.__allocFrames);
+  await settle(page, ms);
+  const { profile } = await cdp.send("HeapProfiler.stopSampling");
+  const frames = (await page.evaluate(() => window.__allocFrames)) - f0;
+  await cdp.detach();
+  let bytes = 0;
+  const walk = (n) => { bytes += n.selfSize; for (const c of n.children) walk(c); };
+  walk(profile.head);
+  return { kb: bytes / Math.max(1, frames) / 1000, frames };
+}
+
 function budget({ label, tier, lowPerf }) {
   return withPage({ label, viewport: VIEWPORT, initScript: installGpuLedger }, async (page, checks) => {
     if (lowPerf) {
@@ -139,6 +168,10 @@ function budget({ label, tier, lowPerf }) {
       `${imageGrowth} bytes`);
 
     if (!lowPerf) {
+      const perFrame = await allocationPerFrame(page, 8000);
+      checks.check(`[${tier}] idle allocates ≤ ${ALLOC_KB_PER_FRAME} KB of JS a frame`, perFrame.kb <= ALLOC_KB_PER_FRAME,
+        `${perFrame.kb.toFixed(1)} KB a frame over ${perFrame.frames} frames`);
+
       // The classic résumé round trip mounts a new canvas, which must load
       // the released images again rather than find them gone in the cache.
       await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
