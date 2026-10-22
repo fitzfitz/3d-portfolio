@@ -368,7 +368,7 @@ export async function withPage({ label, backend = DEFAULT_BACKEND, device = null
     // can still call setLowPerf(true) themselves — only the automatic decline
     // path is blocked.
     await page.evaluate(() => window.__fitz.store.getState().setLowPerf(false, true));
-    await settle(page, 4000); // let GLBs load and the first frames run
+    await warmUp(page);
     page.off("request", offlineFonts);
     await page.setRequestInterception(false);
     lap("warm");
@@ -432,6 +432,47 @@ export function nextFrames(page, n = 3) {
     const tick = () => (--k > 0 ? requestAnimationFrame(tick) : resolve());
     requestAnimationFrame(tick);
   }), n);
+}
+
+/** The warm-up's cap: what the blind wait it replaced always took. */
+const WARM_CAP_MS = 4000;
+/** Frames the scene must draw first, and how long the shader-program count must then hold still. */
+const WARM_FRAMES = 20;
+const WARM_STABLE_MS = 1000;
+
+/**
+ * After scene-ready, before a probe's body: replaces a blind settle(4000).
+ * The scene is ready by then (ShaderWarmup has linked the programs and
+ * uploaded the textures); what is left is the first frames and anything
+ * mounted after warm-up compiling on first sight. So: WARM_FRAMES frames
+ * drawn, then the program count unchanged for WARM_STABLE_MS of real time
+ * (career, livesky, shipyard and mechanics compare counts against it), all
+ * capped at WARM_CAP_MS. On the GPU that is ~1.3 s; headless SwiftShader
+ * draws ~1 fps, so its pages still take the full 4 s.
+ */
+async function warmUp(page) {
+  const start = Date.now();
+  const left = () => Math.max(0, WARM_CAP_MS - (Date.now() - start));
+  await Promise.race([nextFrames(page, WARM_FRAMES), new Promise((r) => setTimeout(r, left()))]);
+  const programs = () => page.evaluate(() => window.__fitz?.gl?.info.programs.length ?? -1);
+  let last = await programs();
+  let stableSince = Date.now();
+  while (left() > 0 && Date.now() - stableSince < WARM_STABLE_MS) {
+    await new Promise((r) => setTimeout(r, Math.min(250, left())));
+    const n = await programs();
+    if (n !== last) { last = n; stableSince = Date.now(); }
+  }
+}
+
+/**
+ * A probe's pages, run in order with their checks merged: the default run()
+ * of a probe that also exports them as `parts`, which run.mjs schedules one
+ * page per job (PARTS there) so a long probe no longer sets the suite's wall.
+ */
+export async function runParts(parts) {
+  const checks = await parts[0]();
+  for (const part of parts.slice(1)) checks.results.push(...(await part()).results);
+  return checks;
 }
 
 export function settle(page, ms) {

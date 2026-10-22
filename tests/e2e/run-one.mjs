@@ -9,11 +9,23 @@
 import { writeFileSync } from "node:fs";
 import { stopServer, timings } from "./harness.mjs";
 
+// `name#k` runs page k of a probe that exports `parts` (run.mjs PARTS); its
+// count must match what run.mjs expects, so the two cannot drift silently.
 const name = process.argv[2];
+const [base, part] = name.split("#");
 const out = { probe: name, results: [], timings, crashed: false };
 try {
-  const mod = await import(`./${name}.probe.mjs`);
-  const checks = await mod.default();
+  const mod = await import(`./${base}.probe.mjs`);
+  let checks;
+  if (part === undefined) checks = await mod.default();
+  else {
+    const expected = Number(process.env.E2E_PARTS);
+    if (!Array.isArray(mod.parts)) throw new Error(`${base}.probe.mjs exports no parts, but run.mjs PARTS splits it`);
+    // Run by hand (`node tests/e2e/run-one.mjs events#1`) there is no PARTS to check against.
+    if (process.env.E2E_PARTS && mod.parts.length !== expected) throw new Error(`${base}.probe.mjs has ${mod.parts.length} parts, run.mjs PARTS says ${expected}`);
+    if (!mod.parts[Number(part)]) throw new Error(`${base}.probe.mjs has no part ${part}`);
+    checks = await mod.parts[Number(part)]();
+  }
   out.results = checks.results;
 } catch (e) {
   out.crashed = true;

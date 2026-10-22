@@ -1,14 +1,29 @@
-import { withPage, settle, readStore, pollUntil } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, runParts } from "./harness.mjs";
 
 const trigger = (page, kind) => page.evaluate((k) => window.__fitz.triggerEvent(k), kind);
+/**
+ * Puts the director's clock `ahead` seconds from its next due start (negative:
+ * before it). The first start is FIRST_EVENT_AT (45 s) of the director's own
+ * clock; waiting it out in real time cost both pages ~55 s each, while this
+ * still runs the real step: the clock advancing, the start firing (or held).
+ */
+const nearDue = (page, ahead) => page.evaluate((a) => {
+  const d = window.__fitz.eventDirector;
+  if (!d) throw new Error("__fitz.eventDirector unavailable: WorldEventDirector did not register it");
+  d.clock = d.nextAt + a;
+  return { clock: d.clock, nextAt: d.nextAt };
+}, ahead);
 const lines = (page) => page.evaluate(async () => (await import("/src/data/chatterLines.ts")).eventLines);
 
 async function events(page, checks) {
   const L = await lines(page);
 
-  // ---- the director starts one on its own ----
-  const auto = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 55_000 })).value;
-  checks.check("an event starts on its own within ~50s of the scene being ready", !!auto, auto ? `kind=${auto.kind}` : "none");
+  // ---- the director starts one on its own when it falls due ----
+  const early = (await readStore(page)).worldEvent;
+  checks.check("no event before the director's first is due (precondition)", !early, early ? `kind=${early.kind}` : "none");
+  await nearDue(page, -0.5);
+  const auto = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 10_000, intervalMs: 200 })).value;
+  checks.check("an event starts on its own when the director's first falls due", !!auto, auto ? `kind=${auto.kind}` : "none");
 
   // ---- comet: passes close ----
   await trigger(page, "comet");
@@ -92,13 +107,17 @@ async function events(page, checks) {
 }
 
 async function quietUnderReducedMotion(page, checks) {
-  const started = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 55_000 })).ok;
-  checks.check("reduced motion: no world event starts", !started);
+  // Past due: without reduced motion a start fires on the next frame (the
+  // first page proves it), so 4 s of none is the setting holding it.
+  const due = await nearDue(page, 1);
+  const started = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 4000, intervalMs: 200 })).ok;
+  checks.check("reduced motion: no world event starts, even past due", !started, `clock=${due.clock.toFixed(1)} nextAt=${due.nextAt}`);
 }
 
-export default async function run() {
-  const checks = await withPage({ label: "events" }, events);
-  const rm = await withPage({ label: "events (reduced motion)", emulateReducedMotion: true }, quietUnderReducedMotion);
-  checks.results.push(...rm.results);
-  return checks;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  () => withPage({ label: "events" }, events),
+  () => withPage({ label: "events (reduced motion)", emulateReducedMotion: true }, quietUnderReducedMotion),
+];
+
+export default function run() { return runParts(parts); }

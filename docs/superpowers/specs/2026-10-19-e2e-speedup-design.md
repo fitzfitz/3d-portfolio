@@ -39,7 +39,7 @@ Both GPU failures were one probe-side race. `teleport()` moved the ship but `fli
    - **Phase 1, alone:** startup, then transition (SwiftShader). Startup's first load also warms Vite's dependency optimizer before anything runs in parallel.
    - **Phase 2:** every other probe on the GPU, in a pool of `E2E_JOBS` (default 4), longest-first by measured cost. Each child's output is printed as one block when it finishes.
    - `npm run test:e2e <names>` still runs a subset, and `E2E_JOBS=1` runs serially.
-4. **Wait trims: deferred.** The suite reached ~5.4 min without them, under the 10 min goal. The next win, if one is wanted:
+4. **Wait trims: done in PR 48 (2026-10-23), 370 → 303 s wall at 4 jobs.** The warm-up became frames plus a stable program count (175 → 64 s summed), events sets the director's clock near due (`__fitz.eventDirector`), and the multi-page probes run one page per job (run.mjs `PARTS`). As first deferred: The suite reached ~5.4 min without them, under the 10 min goal. The next win, if one is wanted:
    - The harness warm-up `settle(4000)` (~144 s summed, ~35 s of wall at 4 jobs) could become "N frames rendered and the program count stable for 1 s". Career, livesky, shipyard and mechanics compare program counts, so the stable window must be real time.
    - events (~170 s, the longest probe and phase 2's critical path) could split its two pages into separate jobs and replace its 55 s reduced-motion negative poll.
    - The probe trims rejected in the audit stay rejected.

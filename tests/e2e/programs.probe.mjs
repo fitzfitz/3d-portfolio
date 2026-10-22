@@ -1,4 +1,4 @@
-import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS, runParts } from "./harness.mjs";
 
 // Shader programs must all exist by the end of warm-up: flying the whole
 // system must not compile any more. Before ShaderWarmup compiled for the
@@ -18,12 +18,13 @@ import { withPage, settle, nextFrames, lockFullFidelity, SCENE_READY_TIMEOUT_MS 
 // (no PostFX: warm-up compiles the on-screen variants), so the worlds' rings
 // and atmospheres, exposed in that tier like their planets, are proven to be
 // warmed there too.
-export default async function run() {
-  const full = await tour({ label: "programs", init: lockFullFidelity, tier: "full fidelity" });
-  const low = await tour({ label: "programs (low-perf)", init: lockLowPerf, tier: "low-perf" });
-  full.results.push(...low.results);
-  return full;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  () => tour({ label: "programs", init: lockFullFidelity, tier: "full fidelity" }),
+  () => tour({ label: "programs (low-perf)", init: lockLowPerf, tier: "low-perf" }),
+];
+
+export default function run() { return runParts(parts); }
 
 /** Page-side, for evaluateOnNewDocument: lockFullFidelity's twin, pinning low-perf ON (manual). */
 function lockLowPerf() {

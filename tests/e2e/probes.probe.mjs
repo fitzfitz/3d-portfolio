@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil, chatterText, nextFrames, lockFullFidelity, jumpToProbe, holdBeamUntilOpen, grabProbe, probeRelocating } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, chatterText, nextFrames, lockFullFidelity, jumpToProbe, holdBeamUntilOpen, grabProbe, probeRelocating, runParts } from "./harness.mjs";
 
 /**
  * Project probes (docs/superpowers/specs/2026-10-20-project-probes-design.md):
@@ -338,17 +338,14 @@ async function classicRoundTrip(page, checks) {
   checks.check("round trip: the next-stop hint arrives once the cabin is back", hint.ok, hint.value ?? JSON.stringify(await page.evaluate(() => window.__rtLog)));
 }
 
-export default async function run() {
-  const checks = await withPage({ label: "probes" }, grabAndRelocate);
-  for (const [label, fn, opts] of [
-    ["probes: reduced motion", reducedMotion, { emulateReducedMotion: true }],
-    ["probes: photo mode", photoMode, {}],
-    ["probes: jump key under an open dossier", jumpUnderDossier, {}],
-    ["probes: jump key during the relocation burn", jumpDuringBurn, {}],
-    ["probes: classic-CV round trip on the last dossier", classicRoundTrip, { initScript: seedTwoRead }],
-  ]) {
-    const c = await withPage({ label, ...opts }, fn);
-    checks.results.push(...c.results);
-  }
-  return checks;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  ["probes", grabAndRelocate, {}],
+  ["probes: reduced motion", reducedMotion, { emulateReducedMotion: true }],
+  ["probes: photo mode", photoMode, {}],
+  ["probes: jump key under an open dossier", jumpUnderDossier, {}],
+  ["probes: jump key during the relocation burn", jumpDuringBurn, {}],
+  ["probes: classic-CV round trip on the last dossier", classicRoundTrip, { initScript: seedTwoRead }],
+].map(([label, fn, opts]) => () => withPage({ label, ...opts }, fn));
+
+export default function run() { return runParts(parts); }

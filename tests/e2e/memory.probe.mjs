@@ -1,4 +1,4 @@
-import { withPage, settle, SCENE_READY_TIMEOUT_MS } from "./harness.mjs";
+import { withPage, settle, nextFrames, SCENE_READY_TIMEOUT_MS, runParts } from "./harness.mjs";
 import { installGpuLedger, readGpuLedger } from "./gpuLedger.mjs";
 
 // GPU memory budget (docs/PERF-BUDGETS.md, "GPU memory"). The ledger counts
@@ -39,12 +39,13 @@ const ALLOC_KB_PER_FRAME = 160;
  */
 const TOUR_GROWTH_MB = 2;
 
-export default async function run() {
-  const full = await budget({ label: "memory", tier: "full", lowPerf: false });
-  const low = await budget({ label: "memory (low-perf)", tier: "low", lowPerf: true });
-  full.results.push(...low.results);
-  return full;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  () => budget({ label: "memory", tier: "full", lowPerf: false }),
+  () => budget({ label: "memory (low-perf)", tier: "low", lowPerf: true }),
+];
+
+export default function run() { return runParts(parts); }
 
 /** Page-side: pins low-perf ON (manual) as soon as the store exists, before the canvas mounts. */
 function lockLowPerf() {
@@ -86,7 +87,7 @@ const sceneReadyAgain = (page) => page.waitForFunction(
  */
 async function checkReloaded(page, checks, tier, what, atSpawn) {
   await sceneReadyAgain(page);
-  await settle(page, 2000);
+  await settle(page, 1000);
   const after = await readGpuLedger(page, 8);
   checks.check(`[${tier}] after ${what}, every texture is back on the GPU`,
     after.bytes.textures === atSpawn.bytes.textures,
@@ -123,7 +124,9 @@ function budget({ label, tier, lowPerf }) {
       await page.reload({ waitUntil: "domcontentloaded" });
     }
     await page.waitForFunction(() => window.__fitz?.store?.getState().sceneReady, { timeout: SCENE_READY_TIMEOUT_MS });
-    await settle(page, 3000);
+    // The harness's warm-up has run (or, after the reload, the ready wait):
+    // a few frames for anything mounted on first sight.
+    await nextFrames(page, 10);
     const isLow = await page.evaluate(() => window.__fitz.store.getState().isLowPerf);
     checks.check(`[${tier}] tier is pinned (precondition)`, isLow === lowPerf, `isLowPerf=${isLow}`);
 
@@ -155,9 +158,9 @@ function budget({ label, tier, lowPerf }) {
     });
     for (const id of ids) {
       await page.evaluate((i) => window.__fitz.store.getState().requestJump(i), id);
-      await settle(page, 2500);
+      await settle(page, 1200);
       await page.keyboard.press("Escape");
-      await settle(page, 500);
+      await settle(page, 300);
     }
     const afterTour = await readGpuLedger(page, 8);
     const growth = Math.round((afterTour.mb.total - atSpawn.mb.total) * 100) / 100;
@@ -168,14 +171,14 @@ function budget({ label, tier, lowPerf }) {
       `${imageGrowth} bytes`);
 
     if (!lowPerf) {
-      const perFrame = await allocationPerFrame(page, 8000);
+      const perFrame = await allocationPerFrame(page, 5000);
       checks.check(`[${tier}] idle allocates ≤ ${ALLOC_KB_PER_FRAME} KB of JS a frame`, perFrame.kb <= ALLOC_KB_PER_FRAME,
         `${perFrame.kb.toFixed(1)} KB a frame over ${perFrame.frames} frames`);
 
       // The classic résumé round trip mounts a new canvas, which must load
       // the released images again rather than find them gone in the cache.
       await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
-      await settle(page, 1500);
+      await settle(page, 1000);
       await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(false));
       await checkReloaded(page, checks, tier, "the classic résumé round trip", atSpawn);
 
@@ -185,7 +188,7 @@ function budget({ label, tier, lowPerf }) {
         ext.loseContext();
         setTimeout(() => ext.restoreContext(), 500);
       });
-      await settle(page, 1500);
+      await settle(page, 1000);
       await checkReloaded(page, checks, tier, "a lost and restored context", atSpawn);
     }
 

@@ -1,4 +1,4 @@
-import { withPage, settle, readStore, pollUntil, grabProbe } from "./harness.mjs";
+import { withPage, settle, readStore, pollUntil, grabProbe, runParts } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const tracker = (page) => page.evaluate(() => document.querySelector('[data-testid="logbook-tracker"]')?.textContent ?? "");
@@ -243,11 +243,11 @@ async function changelog(page, checks) {
   checks.check("résumé entries answer what, why, when and how", JSON.stringify(labels) === JSON.stringify(["WHAT", "WHY", "WHEN", "HOW"]), JSON.stringify(labels));
 }
 
-export default async function run() {
-  const checks = await withPage({ label: "logbook" }, desktop);
-  const p = await withPage({ label: "logbook (phone)", device: KnownDevices["iPhone 13"] }, phone);
-  checks.results.push(...p.results);
-  const c = await withPage({ label: "changelog" }, changelog);
-  checks.results.push(...c.results);
-  return checks;
-}
+/** One page each, independent: run.mjs runs them as separate jobs. */
+export const parts = [
+  () => withPage({ label: "logbook" }, desktop),
+  () => withPage({ label: "logbook (phone)", device: KnownDevices["iPhone 13"] }, phone),
+  () => withPage({ label: "changelog" }, changelog),
+];
+
+export default function run() { return runParts(parts); }
