@@ -13,11 +13,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer, stopServer } from "./harness.mjs";
 
-const ALL = ["startup", "smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "career", "careerphone", "shipyard", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "probes", "basepath"];
+const ALL = ["startup", "smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "career", "careerphone", "shipyard", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "probes", "basepath", "memory"];
 /** Run first, in this order, alone on the machine. */
 const SERIAL = ["startup", "transition"];
 /** Measured GPU seconds (2026-10-19; probes 2026-10-20), for longest-first scheduling; unknown probes go first. */
-const COST = { events: 168, programs: 112, mechanics: 107, gameplay: 70, sky: 68, logbook: 54, assets: 53, fuel: 43, probes: 35, career: 30, reactions: 25, livesky: 23, shipyard: 23, reducedmotion: 22, flight: 21, gamepad: 18, perf: 16, race: 16, touch: 16, audio: 15, beacons: 14, careerphone: 11, contact: 11, basepath: 11, smoke: 9 };
+const COST = { events: 168, programs: 112, mechanics: 107, gameplay: 70, sky: 68, logbook: 54, assets: 53, fuel: 43, probes: 35, memory: 70, career: 30, reactions: 25, livesky: 23, shipyard: 23, reducedmotion: 22, flight: 21, gamepad: 18, perf: 16, race: 16, touch: 16, audio: 15, beacons: 14, careerphone: 11, contact: 11, basepath: 11, smoke: 9 };
 
 const PROBES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const JOBS = Number(process.env.E2E_JOBS ?? 4);
