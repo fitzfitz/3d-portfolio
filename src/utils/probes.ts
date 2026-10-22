@@ -81,6 +81,22 @@ export function burnPlume(t: number): number {
   return smooth01((t - PLUME_IGNITE_S) / PLUME_RISE_S) * relocationScale(t);
 }
 
+/** Camera distance (u) inside which the nozzle flare is off: the bell and the plume's root show. */
+export const FLARE_CLEAR_DIST = 20;
+/** Camera distance (u) past which the nozzle flare is at full strength (the probe is a few pixels). */
+export const FLARE_FULL_DIST = 45;
+
+/**
+ * The nozzle flare's share (0..1) at camera distance `dist`. The flare is a
+ * soft sprite that keeps a burn reading as a hot point at range; up close it
+ * sat over the main engine bell and hid it, while the plume alone already
+ * reads there. So it fades in with range, smoothly, between FLARE_CLEAR_DIST
+ * and FLARE_FULL_DIST.
+ */
+export function burnFlare(dist: number): number {
+  return smooth01((dist - FLARE_CLEAR_DIST) / (FLARE_FULL_DIST - FLARE_CLEAR_DIST));
+}
+
 /** Beacon pulse frequency (Hz): well under the 3 Hz flash limit. */
 const BEACON_HZ = 1.2;
 /** Soft power so the beacon rests dim and peaks briefly. */

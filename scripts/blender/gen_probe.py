@@ -1058,8 +1058,9 @@ def blanket(part, film, film_dark, metal, rough_lo, rough_hi, tape_rgb, button_r
     def met(nt, co):
         f = blanket_fields(nt, co, cell, amp=amp)
         m = mix_f(nt, f["tape"], math_(nt, "ADD", 0.0, metal), 1.0 if metal > 0.5 else 0.0)
-        # (a touch of diffuse under the film: at game range the mipped normals
-        # flatten the crinkle into one mirror, which would read black)
+        # (full metal: at game range the mipped crinkle would flatten into one
+        # mirror of the black sky, but ProjectProbes widens the gloss by the
+        # mipped normal's length, Toksvig, so the facets still spread the sun)
         return mix_f(nt, f["button"], m, 0.0)
 
     def height(nt, co):
@@ -1269,10 +1270,10 @@ def nozzle_albedo(nt, co):
 
 
 # amber Kapton: F0 of an aluminised film seen through amber polyimide
-blanket("foil", (0.93, 0.61, 0.23), (0.74, 0.37, 0.10), 0.88, 0.10, 0.40,
+blanket("foil", (0.93, 0.61, 0.23), (0.74, 0.37, 0.10), 1.0, 0.10, 0.40,
         (0.80, 0.80, 0.82), (0.42, 0.40, 0.36), 0.85, 48.0, 1.0)
 for _p in ("silver", "tank"):
-    blanket(_p, (0.88, 0.885, 0.90), (0.76, 0.77, 0.79), 0.9, 0.10, 0.40,
+    blanket(_p, (0.88, 0.885, 0.90), (0.76, 0.77, 0.79), 1.0, 0.10, 0.40,
             (0.66, 0.66, 0.68), (0.42, 0.40, 0.36), 0.85, 48.0, 1.0)
 for _p in ("foil_dark", "cap"):
     blanket(_p, (0.040, 0.039, 0.044), (0.028, 0.027, 0.03), 0.0, 0.26, 0.48,

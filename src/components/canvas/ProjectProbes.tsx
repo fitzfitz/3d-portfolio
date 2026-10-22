@@ -10,11 +10,12 @@ import { projectById } from "../../constants";
 import { BEAM_MAX_TARGETS, pullStep } from "../../utils/tractorBeam";
 import { tetherCount } from "../../utils/mining";
 import {
-  ARRIVE_S, PROBE_DRIFT_SPEED, arrivalScale, beaconLevel, burnDirection, burnPlume, nearestProbe, probeTip, rcsPuff,
+  ARRIVE_S, PROBE_DRIFT_SPEED, arrivalScale, beaconLevel, burnDirection, burnFlare, burnPlume, nearestProbe, probeTip, rcsPuff,
   relocationDone, relocationLine, relocationScale, relocationTravel, spotPos, trimTone,
 } from "../../utils/probes";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG } from "./enginePlume";
 import { softSprite } from "./softSprite";
+import { TOKSVIG_FRAGMENT } from "./toksvig";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -47,16 +48,28 @@ const BORESIGHT = new THREE.Vector3(0, 0, 1);
  * engine plume's own shader and settings (enginePlume.ts), so it shares the
  * ship plume's compiled program, warm-tinted through uColor. One tube per
  * probe, drawn only while that probe burns (no draw call otherwise), out of
- * the aft of the bus along the model's -Z (the throats sit at z ~ -0.36).
+ * the main engine bell along the model's -Z. It leaves the bell's exit plane
+ * at the bell's own radius (gen_probe.py ENG_EXIT: glTF z -0.399, r 0.076),
+ * so the bell shows at the plume's root, its throat lit by the B zone, as a
+ * real engine does; a wider tube from inside the bell drew over it.
  */
-const PLUME_NOZZLE_R = 0.22;
-const PLUME_AFT_Z = -0.38;
+const PLUME_NOZZLE_R = 0.076;
+const PLUME_AFT_Z = -0.40;
 /** Full plume length (u) at burnPlume 1; about twice the model's length. */
 const PLUME_LEN = 5;
+/** World length (u, at full scale) over which the plume fades in from the bell's exit (enginePlume.ts uRoot). */
+const PLUME_ROOT = 0.3;
+/**
+ * uPower at burnPlume 1. The narrower root fans out over more of its own
+ * radius (enginePlume.ts thins the exhaust by the widening), so it starts
+ * hotter to keep the plume's far end as bright as the 0.22 tube's was.
+ */
+const PLUME_POWER = 5.5;
 /**
  * The nozzle flare: one soft sprite per probe (softSprite, the ship sparks'
  * exact PointsMaterial settings, so their program), so the burn still reads
- * as a hot point once the probe is a few pixels across.
+ * as a hot point once the probe is a few pixels across. It fades in with the
+ * camera's distance (burnFlare): up close it hid the bell.
  */
 const FLARE_SIZE = 1.8;
 const PLUME_WARM = new THREE.Color(1.0, 0.55, 0.18);
@@ -77,6 +90,9 @@ interface Burn { t: number; sx: number; sy: number; sz: number; dx: number; dy: 
  *  - R: albedo times the trim colour, so it reads as paint. No emissive.
  *  - G: emissive tint times the beacon level (the only lamp).
  *  - B: a warm emissive flash for the RCS puff and the relocation burn.
+ * And Toksvig (toksvig.ts): the mipped normal map's shortened normals widen
+ * the gloss, so the MLI crinkle stays a spread of glints at range instead of
+ * one flat mirror of the black sky.
  * One material and one InstancedMesh, compiled at load by ShaderWarmup.
  */
 function patchProbeMaterial(m: THREE.MeshStandardMaterial): void {
@@ -107,9 +123,11 @@ varying vec2 vProbeGlow;`)
 diffuseColor.rgb *= mix(vec3(1.0), vProbeTrim, vProbeMask.r);`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
 totalEmissiveRadiance += vProbeMask.g * vProbeTint * (vProbeGlow.x * ${BEACON_GAIN.toFixed(3)});
-totalEmissiveRadiance += vProbeMask.b * vec3(1.0, 0.82, 0.55) * vProbeGlow.y;`);
+totalEmissiveRadiance += vProbeMask.b * vec3(1.0, 0.82, 0.55) * vProbeGlow.y;`)
+      .replace("#include <lights_physical_fragment>", `${TOKSVIG_FRAGMENT}
+#include <lights_physical_fragment>`);
   };
-  m.customProgramCacheKey = () => "projectProbe:v2";
+  m.customProgramCacheKey = () => "projectProbe:v3";
 }
 
 /**
@@ -210,6 +228,7 @@ export default function ProjectProbes() {
     if (!mesh) return;
     const dt = Math.min(delta, 0.05);
     const t = ambientTime(state.clock.getElapsedTime());
+    const cam = state.camera.position;
     const s = useSpaceStore.getState();
     // Photo mode can run frames under an open dossier: nothing moves then.
     const moving = !s.photoMode;
@@ -314,7 +333,7 @@ export default function ProjectProbes() {
       if (plume) {
         plume.visible = level > 1e-3;
         if (plume.visible) {
-          // Nozzle at the aft of the bus; the tube's centre half a length further back.
+          // From the bell's exit plane; the tube's centre half a length further back.
           const len = PLUME_LEN * level * scale;
           _v.set(0, 0, PLUME_AFT_Z * scale - len / 2).applyQuaternion(dummy.quaternion);
           plume.position.set(p.x + _v.x, p.y + _v.y, p.z + _v.z);
@@ -322,14 +341,17 @@ export default function ProjectProbes() {
           plume.scale.set(scale, len, scale);
           const u = plumeMaterials[i].uniforms;
           u.uTime.value = t;
-          u.uPower.value = 1.4 * level;
+          u.uPower.value = PLUME_POWER * level;
+          u.uRoot.value = Math.min((PLUME_ROOT * scale) / Math.max(len, 1e-3), 1);
           u.uSpread.value = plumeSpreadFor(len, PLUME_NOZZLE_R * scale, PLUME_HALF_ANGLE_DEG);
         }
       }
-      // Flare at the nozzle; black (additive: nothing) when not burning.
+      // Flare at the bell's exit; black (additive: nothing) when not burning,
+      // and up close, where the bell and the plume carry the burn (burnFlare).
       _v.set(0, 0, PLUME_AFT_Z * scale).applyQuaternion(dummy.quaternion);
       fp[i * 3] = p.x + _v.x; fp[i * 3 + 1] = p.y + _v.y; fp[i * 3 + 2] = p.z + _v.z;
-      fc[i * 3] = PLUME_WARM.r * level * 1.6; fc[i * 3 + 1] = PLUME_WARM.g * level * 1.6; fc[i * 3 + 2] = PLUME_WARM.b * level * 1.6;
+      const fl = level > 1e-3 ? level * 1.6 * burnFlare(cam.distanceTo(_v.set(fp[i * 3], fp[i * 3 + 1], fp[i * 3 + 2]))) : 0;
+      fc[i * 3] = PLUME_WARM.r * fl; fc[i * 3 + 1] = PLUME_WARM.g * fl; fc[i * 3 + 2] = PLUME_WARM.b * fl;
       if (level > 1e-3) flaring = true;
       ga[i * 2] = beaconLevel(t, (i * 2 * Math.PI) / N);
       ga[i * 2 + 1] = probeRelocating[id] ? BURN_GLOW : rcsPuff(t, i * 2);
