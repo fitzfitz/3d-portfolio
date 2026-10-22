@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { SHIPYARD_POS } from "../../data/shipyard";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
@@ -19,7 +19,7 @@ const POSITION: [number, number, number] = [SHIPYARD_POS[0], SHIPYARD_POS[1], SH
  * (ambientTime freezes).
  */
 export default function Shipyard() {
-  const { scene } = useGLTF(assetUrl("/models/shipyard.glb"));
+  const { scene } = useModel(assetUrl("/models/shipyard.glb"));
   const trolley = useMemo(() => scene.getObjectByName("CraneTrolley") ?? null, [scene]);
   useFrame((state) => {
     if (!trolley) return;

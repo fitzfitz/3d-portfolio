@@ -1,7 +1,8 @@
 import { useRef, useMemo, useEffect, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF, Trail } from "@react-three/drei";
+import EngineWake from "./EngineWake";
+import { useModel } from "../../utils/sceneAssets";
 import { flight, useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
 import { convoyShipOffsetAt, CONVOY_HIDE_DIST } from "../../utils/worldEvents";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
@@ -11,6 +12,9 @@ import { cargoSwerveTarget, curvatureRoll, HailGate, CARGO_REACT_RADIUS, RADIO_B
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
+
+/** The wake narrows to nothing at its oldest point. */
+const wakeTaper = (t: number) => t * t;
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
@@ -77,7 +81,7 @@ function buildShip(scene: THREE.Object3D, name: string) {
 }
 
 export default function CargoTraffic() {
-  const { scene } = useGLTF(assetUrl("/models/cargo_ship.glb"));
+  const { scene } = useModel(assetUrl("/models/cargo_ship.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? 3 : 5;
   const rolls = useRef<number[]>(SHIPS.map(() => 0));
@@ -216,7 +220,7 @@ export default function CargoTraffic() {
       {/* Faint engine wake, gated off in low-perf mode */}
       {!isLowPerf &&
         ships.slice(0, count).map((s, i) => (
-          <Trail key={`t${i}`} target={s.trailTarget} width={1.1} length={3.5} color="#7fd8ff" attenuation={(t) => t * t} />
+          <EngineWake key={`t${i}`} target={s.trailTarget} width={1.1} length={3.5} color="#7fd8ff" attenuation={wakeTaper} />
         ))}
     </>
   );

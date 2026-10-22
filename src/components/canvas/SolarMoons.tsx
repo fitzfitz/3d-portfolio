@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { useModels, useCompressedMaps } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { SOLAR_MOONS, type SolarMoon } from "../../data/solarMoons";
 import { moonPositions } from "../../store/moonState";
@@ -78,13 +78,14 @@ function makeIoGlowMap(): THREE.DataTexture {
   return tex;
 }
 
-const mapUrl = (m: SolarMoon) => assetUrl(`/models/${m.map}.webp`);
+/** Every moon map ships as KTX2 (hiResMaps.ts KTX2_VARIANTS; tests/bodyMaps.test.ts holds it). */
+const mapUrl = (m: SolarMoon) => assetUrl(`/models/${m.map}.ktx2`);
 const glbUrl = (m: SolarMoon) => assetUrl(`/models/${m.shape}.glb`);
 
 export default function SolarMoons() {
   const gl = useThree((s) => s.gl);
-  const textures = useTexture(ROUND.map(mapUrl));
-  const glbs = useGLTF(SHAPED.map(glbUrl));
+  const textures = useCompressedMaps(ROUND.map(mapUrl));
+  const glbs = useModels(SHAPED.map(glbUrl));
 
   useEffect(() => {
     const maxAniso = gl.capabilities.getMaxAnisotropy();

@@ -17,6 +17,7 @@ const HEAD = 8;
 export const PACK_TYPES: Record<string, string> = {
   glb: "model/gltf-binary",
   webp: "image/webp",
+  ktx2: "image/ktx2",
   png: "image/png",
   jpg: "image/jpeg",
 };
@@ -24,11 +25,12 @@ export const PACK_TYPES: Record<string, string> = {
 /**
  * Which pack a public/models file ships in: `x_4k.*` (Mercury's, Earth's and Mars's 4096
  * maps) is hd, an `x.*` with an `x_4k.*` sibling (the 2048 original it
- * replaces) is sd, and everything else is common.
+ * replaces, in any format: Earth's is KTX2) is sd, and everything else is common.
  */
 export function packTier(file: string, names: readonly string[]): "common" | "hd" | "sd" {
   if (/_4k\.\w+$/.test(file)) return "hd";
-  return names.includes(file.replace(/(\.\w+)$/, "_4k$1")) ? "sd" : "common";
+  const hi = file.replace(/\.\w+$/, "_4k.");
+  return names.some((n) => n.startsWith(hi)) ? "sd" : "common";
 }
 
 export function encodePack(files: { path: string; bytes: Uint8Array }[]): Uint8Array {

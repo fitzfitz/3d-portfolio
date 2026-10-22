@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
@@ -17,7 +17,7 @@ const byVariant = Array.from({ length: VARIANTS }, (_, v) =>
 );
 
 export default function Asteroids() {
-  const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
+  const { scene } = useModel(assetUrl("/models/asteroids.glb"));
   const gl = useThree((s) => s.gl);
   const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([null, null, null, null]);
 

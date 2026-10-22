@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { useSpaceStore, flight } from "../../store/spaceStore";
 import { mulberry32 } from "../../utils/mulberry32";
 import { makeBelt, makeTrojans, BELT_COUNT, BELT_COUNT_LOW, TROJAN_COUNT, type FieldRock } from "../../data/smallBodyField";
@@ -155,7 +155,7 @@ const TROJAN_R_MIN = 5.2 * 0.85 * AU, TROJAN_R_MAX = 5.2 * 1.15 * AU;
 const BELT_ROCK_RADIUS = 1.1;
 
 export default function AsteroidBelt() {
-  const { scene } = useGLTF(assetUrl("/models/asteroids.glb"));
+  const { scene } = useModel(assetUrl("/models/asteroids.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   useEffect(() => {
     if (!import.meta.env.DEV) return;

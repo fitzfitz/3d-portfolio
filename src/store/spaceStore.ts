@@ -322,6 +322,8 @@ export interface SpaceState {
   pendingLowPerf: boolean | null;
   worldEvent: WorldEventState | null;
   showClassicCV: boolean;
+  /** The canvas's React key: remountCanvas bumps it for a fresh WebGL context. */
+  canvasEpoch: number;
   isNearSpawn: boolean;
   isTeleporting: boolean;
   isMuted: boolean;
@@ -383,6 +385,13 @@ export interface SpaceState {
   setWarping: (v: boolean) => void;
   setLowPerf: (v: boolean, manual?: boolean) => void;
   setShowClassicCV: (v: boolean) => void;
+  /**
+   * Mounts a new canvas in place of the current one, as the classic-résumé
+   * round trip does: GlobalCanvas calls it when a lost WebGL context comes
+   * back, since the scene's images were released after upload (sceneAssets.ts)
+   * and three cannot re-upload from them.
+   */
+  remountCanvas: () => void;
   setNearSpawn: (v: boolean) => void;
   triggerTeleportFlash: () => void;
   setMuted: (v: boolean) => void;
@@ -591,6 +600,7 @@ export const useSpaceStore = create<SpaceState>()(
     },
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
+    canvasEpoch: 0,
     isNearSpawn: true,
     isTeleporting: false,
     isMuted: safeGetMuted(),
@@ -705,6 +715,12 @@ export const useSpaceStore = create<SpaceState>()(
       if (v) { get().breakOrbit(); get().closeDossier(); }
       // The ship unmounts with the canvas, so nothing else would clear warp.
       set(v ? { showClassicCV: true, isWarping: false } : { showClassicCV: false });
+    },
+    // Same guards as the round trip's way in: a canvas must not mount frozen.
+    remountCanvas: () => {
+      get().breakOrbit();
+      get().closeDossier();
+      set((s) => ({ canvasEpoch: s.canvasEpoch + 1, isWarping: false }));
     },
     setLiveSky: (v) => {
       set({ liveSky: v });

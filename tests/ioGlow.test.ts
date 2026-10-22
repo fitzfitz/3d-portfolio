@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { IO_HOT_SPOTS } from "../src/data/ioHotSpots";
 import { ioGlowAt, ioGlowMask, IO_GLOW_SIZE } from "../src/utils/ioGlow";
 import { eclipseGlow, NIGHT_GLOW_FRAGMENT, nightGlowFactor, patchNightGlow } from "../src/components/canvas/nightGlow";
+import { readKtx2 } from "./ktx2Image";
 
 /**
  * Io's hot spots (spec §5.5, L33): a faint glow from the catalogued volcanic
@@ -109,7 +110,9 @@ describe("Io's glow mask", () => {
   });
 
   it("sits on the dark paterae of the shipped Io map (Loki, Prometheus): the catalogue and the map agree", async () => {
-    const { data, info } = await sharp("public/models/io.webp").resize(720, 360).raw().toBuffer({ resolveWithObject: true });
+    // The shipped map, decoded as the GPU gets it (KTX2 since PR 47).
+    const k = await readKtx2("public/models/io.ktx2");
+    const { data, info } = await sharp(k.data, { raw: { width: k.w, height: k.h, channels: 4 } }).resize(720, 360).raw().toBuffer({ resolveWithObject: true });
     const s2l = (c: number) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
     const lum = (x: number, y: number) => {
       const o = (y * info.width + ((x % info.width) + info.width) % info.width) * info.channels;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useTexture } from "@react-three/drei";
+import { useMaps, useCompressedMaps } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
@@ -14,7 +14,7 @@ import { meshScale, ringNormal, spinQuaternion } from "../../utils/bodySpin";
 import { assetUrl } from "../../utils/assetUrl";
 import { updateBodies } from "../../utils/bodyPositions";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
-import { hiResChoice } from "../../utils/hiResMaps";
+import { hiResChoice, KTX2_VARIANTS, mapExt } from "../../utils/hiResMaps";
 import { ringIrradiance, ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyRings";
@@ -84,10 +84,10 @@ const MAPS: readonly string[] = [...new Set(SOLAR_BODIES.map((b) => b.map))];
 const TEX_NIGHT = MAPS.length;
 const TEX_RING = TEX_NIGHT + 1;
 const TEX_CLOUDS = TEX_RING + 1;
-const mapUrl = (file: string, hiRes: boolean) => {
-  const variant = hiRes && HI_RES_MAPS.has(file) ? `${file}_4k` : file;
-  return assetUrl(`/models/${variant}.webp`);
-};
+/** The file a map ships as on this device: its 4096 variant on desktops. */
+const mapFile = (file: string, hiRes: boolean) => (hiRes && HI_RES_MAPS.has(file) ? `${file}_4k` : file);
+/** KTX2 for the maps encode_ktx2.mjs compresses, WebP for the rest (the ring strip). */
+const mapUrl = (variant: string) => assetUrl(`/models/${variant}.${mapExt(variant)}`);
 
 /**
  * A body's material colour: white times the dark-surface display curve
@@ -104,12 +104,16 @@ export default function SolarBodies() {
   const [hiRes] = useState(hiResChoice);
   // Resolved at render, not at import: in a build, assetUrl answers from the
   // asset pack, which can still be downloading while this module loads.
-  const textures = useTexture([
-    ...MAPS.map((m) => mapUrl(m, hiRes)),
-    mapUrl(NIGHT_LIGHTS_MAP, false),
-    mapUrl(RING_MAP, false),
-    mapUrl(CLOUDS.map, false),
-  ]);
+  const files = [...MAPS.map((m) => mapFile(m, hiRes)), NIGHT_LIGHTS_MAP, RING_MAP, CLOUDS.map];
+  // Two loaders, one list in the same order (TEX_NIGHT etc. index into it).
+  const plain = useMaps(files.filter((f) => !KTX2_VARIANTS.has(f)).map(mapUrl));
+  const packed = useCompressedMaps(files.filter((f) => KTX2_VARIANTS.has(f)).map(mapUrl));
+  const textures: THREE.Texture[] = useMemo(() => {
+    let i = 0, j = 0;
+    return files.map((f) => (KTX2_VARIANTS.has(f) ? packed[j++] : plain[i++]));
+    // files follows hiRes, fixed for the page; plain and packed are cached.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plain, packed]);
   const gl = useThree((s) => s.gl);
 
   // The ring strip: colour in RGB (sRGB, decoded on sampling; alpha stays

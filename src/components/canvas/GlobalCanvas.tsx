@@ -1,8 +1,8 @@
 // First: the hue-keeping toe must be in the tone-mapping chunk before any program compiles.
 import "./hueToe";
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
-import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
-import { Suspense, use, useRef, useMemo, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
+import { Html, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
+import { Suspense, use, useRef, useMemo, useState, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
 import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
@@ -53,6 +53,8 @@ import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
 import { SPAWN } from "../../data/spawn";
 import { HAS_ASSET_PACK, loadAssetPack, onPackEntry, packProgress } from "../../utils/assetPack";
+import { sceneTextures, releaseUploadedImages, clearSceneAssets, retireKtx2Workers } from "../../utils/sceneAssets";
+import { budgetDpr } from "../../utils/pixelBudget";
 
 // Parse each model the moment the asset pack delivers it (utils/assetPack.ts),
 // while the rest still streams, so the scene's own useGLTF finds it cached.
@@ -299,6 +301,27 @@ function LoadProgress() {
  * once and gets ready while the packs download. loadAssetPack() is one
  * cached promise that never rejects, which use() requires.
  */
+/**
+ * Keeps the canvas inside its pixel budget (utils/pixelBudget.ts) as the
+ * window resizes or moves to a screen with another pixel ratio. Replaces
+ * drei's AdaptiveDpr, which only ever acted on performance.regress(), which
+ * nothing here calls.
+ */
+function PixelBudget() {
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  const setDpr = useThree((s) => s.setDpr);
+  const [deviceDpr, setDeviceDpr] = useState(() => window.devicePixelRatio);
+  useEffect(() => {
+    const query = window.matchMedia?.(`(resolution: ${deviceDpr}dppx)`);
+    const onChange = () => setDeviceDpr(window.devicePixelRatio);
+    query?.addEventListener("change", onChange);
+    return () => query?.removeEventListener("change", onChange);
+  }, [deviceDpr]);
+  useEffect(() => { setDpr(budgetDpr(width, height, deviceDpr)); }, [width, height, deviceDpr, setDpr]);
+  return null;
+}
+
 function PackGate({ children }: { children: ReactNode }) {
   use(loadAssetPack());
   return children;
@@ -391,18 +414,17 @@ function ShaderWarmup() {
       // Upload textures one per task rather than in one loop: a single
       // 2048² map is tens of ms, and all of them back to back was a ~300ms
       // freeze of its own. Spread out, the page stays responsive throughout.
-      const textures = new Set<THREE.Texture>();
-      scene.traverse((o) => {
-        const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-        for (const m of Array.isArray(mat) ? mat : mat ? [mat] : []) {
-          for (const v of Object.values(m)) if (v instanceof THREE.Texture) textures.add(v);
-        }
-      });
+      // Uniform maps too (the bodies' shaders), so none waits for first sight.
+      const textures = sceneTextures(scene);
       const queue = [...textures];
       const step = () => {
         if (cancelled) return;
         const t = queue.pop();
         if (t) { gl.initTexture(t); setTimeout(step, 0); return; }
+        // Everything is on the GPU: let the CPU copies and the KTX2
+        // transcoder workers go (sceneAssets.ts).
+        releaseUploadedImages(gl, textures);
+        retireKtx2Workers();
         const s = useSpaceStore.getState();
         s.setWarmingUp(false); // GlobalCanvas resumes the loop and invalidates
         s.setSceneReady(true);
@@ -494,6 +516,9 @@ function GlobalCanvas() {
   // happens), so if either effect here or R3F's own sync ever became a
   // layout/passive pair in the other order, this would go back to a
   // permanently-frozen canvas with no signal that anything was wrong.
+  // The next canvas (the classic-résumé round trip) gets a new WebGL context
+  // and must load the scene's images again: ShaderWarmup let them go.
+  useEffect(() => () => clearSceneAssets(), []);
   const wasFrozen = useRef(false);
   useEffect(() => {
     if (wasFrozen.current && !sceneFrozen) invalidate();
@@ -509,7 +534,7 @@ function GlobalCanvas() {
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
-        dpr={[1, 1.5]}
+        dpr={budgetDpr(window.innerWidth, window.innerHeight, window.devicePixelRatio)}
         // Relies on this Canvas never mounting with sceneFrozen already true
         // (mount always starts unlocked, and setShowClassicCV's breakOrbit()
         // call keeps the one other remount path — the classic-CV round trip
@@ -524,7 +549,12 @@ function GlobalCanvas() {
         // Removing the one reachable mount-while-frozen path is the fix.
         frameloop={sceneFrozen ? "never" : "always"}
         gl={{
-          antialias: true,
+          // Off: the full tier draws into the composer's own targets and SMAA
+          // smooths its edges, so a multisampled canvas only held ~76 MB at
+          // 1512×802 (4 samples of colour and depth, plus the resolve) for a
+          // final full-screen quad. Low-perf, which draws to the canvas
+          // directly, goes without anti-aliasing: the cheaper tier is its job.
+          antialias: false,
           alpha: true,
           powerPreference: "high-performance",
           // From the hull at 0.1 u to the far side of the system without
@@ -538,12 +568,18 @@ function GlobalCanvas() {
         // colours nearly untouched and only rolls off highlights. PostFX's
         // ToneMapping pass uses the same curve, so the grade no longer shifts
         // when the low-perf tier unmounts the composer.
-        onCreated={({ gl }) => { gl.toneMapping = THREE.NeutralToneMapping; }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = THREE.NeutralToneMapping;
+          // three restores a lost context by re-uploading every texture from
+          // its image, and ShaderWarmup has let those go (sceneAssets.ts): a
+          // fresh canvas loads them again instead.
+          gl.domElement.addEventListener("webglcontextrestored", () => useSpaceStore.getState().remountCanvas(), { once: true });
+        }}
         style={{ pointerEvents: "auto" }} // Listen for click spawning
         eventSource={document.getElementById("root") || undefined}
         eventPrefix="client"
       >
-        <AdaptiveDpr pixelated />
+        <PixelBudget />
         <PerformanceMonitor
           onDecline={() => {
             const s = useSpaceStore.getState();

@@ -562,3 +562,31 @@ giant 46 → 46, close approach 69 → 68 (the state that varies run to run), mo
 lights 4. `probes.probe.mjs`: the burn compiles no program (55 → 55). Startup best of three
 13.8 s (ceiling 20 s). The programs column of the table above (56, 57 with the anomalies)
 holds again. Ceilings changed: none.
+
+## GPU memory
+
+`tests/e2e/memory.probe.mjs` holds what WebGL is asked to allocate, counted by
+`tests/e2e/gpuLedger.mjs` (it wraps WebGL2's allocation calls, so render
+targets made behind the scene graph count too), at the real-GPU
+measurement's laptop size (1512×802, device scale 2), in both tiers. Ceilings
+are the baseline per category + 5%, up to the next 5 MB.
+
+| Tier | Textures | Render targets | Canvas | Total | Ceilings |
+|---|---|---|---|---|---|
+| full (main, afa2573) | 490.9 | 181.2 | 98.2 | 775.2 | — |
+| full (PR 47) | 252.2 | 115.3 | 16.0 | 388.4 | 265 / 125 / 20 / 410 |
+| low-perf (PR 47) | 234.7 | 24.7 | 16.0 | 280.2 | 250 / 30 / 20 / 295 |
+
+It also requires: no texture keeps its CPU image after upload; flying every
+jump target allocates no texture or render target (≤ 2 MB of buffers); the
+classic résumé round trip and a lost-and-restored context bring every texture
+back; and idle JS allocation stays ≤ 160 KB a frame (118 KB with the ledger
+installed, 2026-10-23).
+
+The real footprint is `scripts/perf/memory-footprint.mjs <dirA> [dirB ...]`
+(headed Chrome on the real GPU, fresh profile, network off, a fixed route,
+`footprint` per Chrome process, steady and post-GC "live" figures; it fails a
+run that drew under 20 frames a second). Results and method:
+`docs/superpowers/specs/2026-10-22-memory-budget-design.md`. The GPU process
+sits ~600 MB above the ledger: Chrome's compositing, the canvas's swap chain
+and driver copies, which the ledger cannot see.

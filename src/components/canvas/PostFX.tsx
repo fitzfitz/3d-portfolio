@@ -1,5 +1,5 @@
 import { EffectComposer, Bloom, Vignette, ChromaticAberration, ToneMapping, SMAA } from "@react-three/postprocessing";
-import { ToneMappingMode } from "postprocessing";
+import { ToneMappingMode, EffectAttribute, type Effect } from "postprocessing";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect } from "react";
 import * as THREE from "three";
@@ -31,6 +31,19 @@ function WarpAberration() {
   });
   return null;
 }
+
+/**
+ * SMAA declares that it reads scene depth (postprocessing's SMAAEffect sets
+ * EffectAttribute.DEPTH for depth edge detection and predication), so the
+ * composer kept a second full-screen depth target and copied the depth buffer
+ * into it every frame. It reads none: edges come from colour and predication
+ * is off, both postprocessing's defaults. A ref callback runs before the
+ * composer builds its passes (its layout effect), so the copy is never set up.
+ */
+const colourOnly = (effect: Effect | null) => {
+  // setAttributes is protected in the typings only; the effect is not yet in a pass.
+  (effect as unknown as { setAttributes(a: number): void } | null)?.setAttributes(EffectAttribute.CONVOLUTION);
+};
 
 interface PostFXProps {
   /** False in the low-perf tier: the chain stays mounted but stops rendering. */
@@ -68,11 +81,11 @@ export default function PostFX({ enabled }: PostFXProps) {
             renderer's mapping applies again. Same curve as the renderer
             (GlobalCanvas onCreated), last so it sees the full HDR result. */}
         <ToneMapping mode={ToneMappingMode.NEUTRAL} />
-        {/* The composer renders into an offscreen target, so the canvas's
-            MSAA never touched this tier (and multisampling stays 0, see
-            above): planet limbs, rings and the ship edges were fully aliased.
-            SMAA runs on the final tone-mapped image, where it is designed to. */}
-        <SMAA />
+        {/* The composer renders into an offscreen target and multisampling
+            stays 0 (see above), so this is the tier's only anti-aliasing: the
+            canvas itself has none (GlobalCanvas). SMAA runs on the final
+            tone-mapped image, where it is designed to. */}
+        <SMAA ref={colourOnly} />
       </EffectComposer>
     </>
   );

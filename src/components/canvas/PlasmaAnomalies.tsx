@@ -1,7 +1,7 @@
 import { useRef, useImperativeHandle, forwardRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { flight } from "../../store/spaceStore";
 import { SYSTEM_RADIUS } from "../../constants";
 import { assetUrl } from "../../utils/assetUrl";
@@ -127,7 +127,7 @@ export interface AnomaliesRef {
  * the screen untouched.
  */
 export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
-  const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
+  const { scene } = useModel(assetUrl("/models/space_crystal.glb"));
   const meshRef = useRef<THREE.InstancedMesh>(null);
   /** Round-robin cursor, advanced only when a spawn must evict a live slot. */
   const nextSlot = useRef(0);

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { STATION_POS } from "../../data/careerTrail";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
@@ -19,7 +19,7 @@ const POSITION: [number, number, number] = [STATION_POS[0], STATION_POS[1], STAT
  * habitat ring stops turning under reduced motion (ambientTime freezes).
  */
 export default function CareerStation() {
-  const { scene } = useGLTF(assetUrl("/models/career_station.glb"));
+  const { scene } = useModel(assetUrl("/models/career_station.glb"));
   const ring = useMemo(() => scene.getObjectByName("HabitatRing") ?? null, [scene]);
   useFrame((state) => {
     if (ring) ring.rotation.y = ambientTime(state.clock.getElapsedTime()) * RING_SPIN;
