@@ -4,17 +4,30 @@
 // (docs/superpowers/specs/2026-10-22-memory-budget-design.md).
 //
 //   npm run build && cp -R dist /tmp/a    # one build per directory
-//   node scripts/perf/memory-footprint.mjs <dirA> [dirB] [--runs 3] [--sizes 1512x802,760x377] [--out dir]
+//   node scripts/perf/memory-footprint.mjs <dirA> [dirB ...up to 4] [--runs 3] [--sizes 1512x802,760x377] [--out dir]
 //
 // Each run launches its own HEADED Chrome on the real GPU (not SwiftShader:
 // its memory lives elsewhere and behaves differently) with a fresh profile,
 // samples the idle browser on about:blank, then loads the game at the given
 // viewport (device scale 2, a Retina laptop), waits for the spawn banner and
 // flies a fixed route: idle, the number-key jumps 1-6 (three probes, career,
-// shipyard, contact; Escape after each), the logbook open and shut, idle.
-// Every 2 s it reads `footprint` for each of that Chrome's processes. Runs
-// alternate A, B, A, B per size; the first run of each also saves screenshots
+// shipyard, contact; Escape after each), the logbook open and shut, idle,
+// then a forced garbage collection. Every 2 s it reads `footprint` for each
+// of that Chrome's processes.
+//
+// "steady" is what a visitor's Activity Monitor shows; it includes whatever
+// JS garbage V8 has not collected yet (up to ~180 MB here, timing-dependent).
+// "live" is the same after three forced collections: compare builds on it.
+// A run fails unless the page drew at least 20 frames a second during the
+// steady phase: a sleeping display or hidden window stops drawing, which
+// measures an idle page (one such session read ~200 MB low, 2026-10-22). Runs
+// alternate A, B, … per size; the first run of each also saves screenshots
 // after every jump, the same views in A and B (the orrery date is pinned).
+//
+// Nothing outside localhost resolves: a production build joins the real live
+// sky (VITE_LIVE_SKY) and fetches beacons, so other visitors' ghost ships would
+// otherwise come and go with whoever is flying, and fonts fall back the same
+// way every run.
 //
 // Chrome windows open on screen while it runs and may take focus. Each run
 // closes only the browser it launched.
@@ -37,8 +50,8 @@ const RUNS = Number(opt("runs", 3));
 const SIZES = opt("sizes", "1512x802,760x377").split(",").map((s) => s.split("x").map(Number));
 const OUT = resolve(opt("out", mkdtempSync(join(tmpdir(), "fitz-memory-"))));
 const DIRS = argv.filter((a) => !a.startsWith("--"));
-if (!DIRS.length || DIRS.length > 2 || !Number.isInteger(RUNS) || RUNS < 1) {
-  console.error("usage: node scripts/perf/memory-footprint.mjs <dirA> [dirB] [--runs 3] [--sizes 1512x802,760x377] [--out dir]");
+if (!DIRS.length || DIRS.length > 4 || !Number.isInteger(RUNS) || RUNS < 1) {
+  console.error("usage: node scripts/perf/memory-footprint.mjs <dirA> [dirB ...up to 4] [--runs 3] [--sizes 1512x802,760x377] [--out dir]");
   process.exit(2);
 }
 const CHROME = process.env.CHROME_PATH
@@ -95,6 +108,8 @@ async function measure(label, url, [width, height], runIndex) {
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--disable-background-timer-throttling",
+      // Live sky, beacons and fonts are off the network (see the header).
+      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",
       "--no-first-run",
       "--no-default-browser-check",
     ],
@@ -145,13 +160,25 @@ async function measure(label, url, [width, height], runIndex) {
     await sleep(2000);
     await page.keyboard.press("KeyL");
     phase = "steady";
-    await sleep(20_000);
+    const fps = await page.evaluate(() => new Promise((done) => {
+      let n = 0;
+      const t0 = performance.now();
+      const tick = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(tick); else done(n / ((performance.now() - t0) / 1000)); };
+      requestAnimationFrame(tick);
+    }));
+    if (fps < 20) throw new Error(`the page drew ${fps.toFixed(1)} frames/s: display asleep or window hidden, so this run measured an idle page`);
+    await sleep(18_000);
+    phase = "live";
+    const pageCdp = await page.createCDPSession();
+    await pageCdp.send("HeapProfiler.enable");
+    for (let i = 0; i < 3; i++) { await pageCdp.send("HeapProfiler.collectGarbage"); await sleep(1500); }
+    await sleep(4000);
     stop = true;
     await loop;
 
     const ledger = await readGpuLedger(page, 40);
     const { JSHeapUsedSize } = await page.metrics();
-    return { label, width, height, renderer, samples, ledger, jsHeap: JSHeapUsedSize };
+    return { label, width, height, renderer, fps, samples, ledger, jsHeap: JSHeapUsedSize };
   } finally {
     await browser.close();
     rmSync(profile, { recursive: true, force: true });
@@ -161,7 +188,7 @@ async function measure(label, url, [width, height], runIndex) {
 /** One run's headline numbers, in MB. */
 function summarise(r) {
   const of = (phase) => r.samples.filter((s) => s.phase === phase);
-  const idle = of("chrome-idle"), steady = of("steady");
+  const idle = of("chrome-idle"), steady = of("steady"), live = of("live");
   const pick = (list, key) => median(list.map((s) => (key ? s.byType[key] ?? 0 : s.total)));
   const chromeIdle = pick(idle);
   const steadyTotal = pick(steady);
@@ -170,8 +197,10 @@ function summarise(r) {
     steadyTotal: MB(steadyTotal),
     peakTotal: MB(Math.max(...r.samples.map((s) => s.total))),
     gameShare: MB(steadyTotal - chromeIdle),
+    liveShare: MB(pick(live) - chromeIdle),
     gpu: MB(pick(steady, "gpu")),
     renderer: MB(pick(steady, "renderer")),
+    liveRenderer: MB(pick(live, "renderer")),
     browser: MB(pick(steady, "browser")),
     jsHeap: MB(r.jsHeap),
     ledger: r.ledger.mb.total,
@@ -179,19 +208,19 @@ function summarise(r) {
   };
 }
 
-const ports = [4481, 4482];
+const ports = DIRS.map((_, i) => 4481 + i);
 const servers = [];
 const results = [];
 try {
   for (let i = 0; i < DIRS.length; i++) servers.push(await serve(DIRS[i], ports[i]));
-  const labels = DIRS.length === 2 ? ["A", "B"] : ["A"];
+  const labels = DIRS.map((_, i) => "ABCD"[i]);
   for (const size of SIZES) {
     for (let k = 0; k < RUNS; k++) {
       for (let i = 0; i < labels.length; i++) {
         const r = await measure(labels[i], `http://localhost:${ports[i]}/`, size, k);
         results.push(r);
         const s = summarise(r);
-        console.log(`${labels[i]} ${size.join("x")} run ${k + 1}: total ${s.steadyTotal.toFixed(0)} MB (peak ${s.peakTotal.toFixed(0)}), game share ${s.gameShare.toFixed(0)}, GPU ${s.gpu.toFixed(0)}, renderer ${s.renderer.toFixed(0)}, ledger ${s.ledger.toFixed(0)}`);
+        console.log(`${labels[i]} ${size.join("x")} run ${k + 1}: total ${s.steadyTotal.toFixed(0)} MB (peak ${s.peakTotal.toFixed(0)}), game share ${s.gameShare.toFixed(0)} (live ${s.liveShare.toFixed(0)}), GPU ${s.gpu.toFixed(0)}, renderer ${s.renderer.toFixed(0)} (live ${s.liveRenderer.toFixed(0)}), ledger ${s.ledger.toFixed(0)}, ${r.fps.toFixed(0)} fps`);
       }
     }
   }
@@ -209,7 +238,7 @@ for (const label of new Set(results.map((r) => r.label))) {
     table.push(row);
   }
 }
-console.log(`\nMedians in MB (${RUNS} run${RUNS > 1 ? "s" : ""} each). gameShare = steady total minus the same Chrome idle on about:blank.`);
+console.log(`\nMedians in MB (${RUNS} run${RUNS > 1 ? "s" : ""} each). gameShare = steady total minus the same Chrome idle on about:blank; live* = after forced GC.`);
 console.table(table);
 
 // Two sizes give a line through the GPU process: what scales with the canvas's
