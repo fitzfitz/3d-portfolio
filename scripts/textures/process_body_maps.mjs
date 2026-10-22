@@ -35,11 +35,11 @@
  * clouds, drawn as an alpha-mapped shell) are one image to the eye, so the
  * rule is applied to the two together: surface and clouds take the same
  * linear scale k, the cloud shell's colour is k (the cloud map's white).
- * - The cloud map is display-encoded grey (NASA composites it as stored, in
- *   sRGB), so its opacity is its grey decoded from sRGB (SolarBodies uploads
- *   it as SRGBColorSpace): α = sRGB⁻¹(grey). Taken as stored, its thin haze
- *   (median grey 0.24) drew at a quarter opacity in linear light and veiled
- *   every ocean in grey.
+ * - The cloud shell's opacity is the cloud grey^γ (CLOUD_OPACITY_GAMMA),
+ *   shipped sRGB-encoded for SolarBodies's sRGB upload. The grey is
+ *   display-encoded (NASA composites it as stored, in sRGB): taken as a
+ *   linear opacity (γ 1), its thin haze (median grey 0.24) veiled every
+ *   ocean in grey; fully decoded (≈ γ 2.2) the haze all but vanished.
  * - k puts the MEAN of surface·(1 − α) + k·α at 0.177 × 0.434: geometric
  *   albedo is a disc average, and on a two-tone planet (bright cloud, dark
  *   sea) the median texel is open ocean, so the median rule would have
@@ -372,6 +372,19 @@ async function processSourced(name, r, W) {
   return { bytes: toBytes(lin), scale };
 }
 
+/**
+ * The cloud shell's opacity from The Blue Marble's cloud grey g (0..1):
+ * g^CLOUD_OPACITY_GAMMA. γ = 1 drew the grey as stored (its thin haze veiled
+ * every ocean); γ ≈ 2.2 is the grey's full sRGB decode, as NASA composites
+ * it (thin haze all but vanishes). The shipped earth_clouds map holds the
+ * opacity sRGB-encoded, so SolarBodies's sRGB upload decodes it on the GPU
+ * with the dark end's precision and no shader change. Tunable:
+ * CLOUD_GAMMA=1.3 node scripts/textures/process_body_maps.mjs earth
+ * (then copy the printed k into solarSystem.ts `look.clouds.linear`).
+ */
+export const CLOUD_OPACITY_GAMMA = Number(process.env.CLOUD_GAMMA ?? 1.3);
+const cloudOpacity = (g) => g ** CLOUD_OPACITY_GAMMA;
+
 /** The Rayleigh sky's reflectance over the disc at 650 / 550 / 450 nm (0.75 τ; see the header). */
 const RAYLEIGH = [0.75 * 0.05, 0.75 * 0.1, 0.75 * 0.24];
 
@@ -384,7 +397,7 @@ async function processEarth(W, kGiven) {
   if (k === undefined) {
     const a = await sharp(srcFile("bm-clouds")).resize(W, H, { fit: "fill" }).greyscale().raw().toBuffer();
     const L = luminance(lin, n);
-    for (let j = 0; j < n; j++) L[j] = L[j] * (1 - LUT[a[j]]) + LUT[a[j]];
+    for (let j = 0; j < n; j++) { const o = cloudOpacity(a[j] / 255); L[j] = L[j] * (1 - o) + o; }
     k = (ALBEDO_SCALE * BODY_MAPS.earth.albedo) / meanOf(L);
   }
   for (let j = 0; j < lin.length; j++) lin[j] = clamp01(lin[j] * k);
@@ -393,14 +406,19 @@ async function processEarth(W, kGiven) {
   return { bytes: toBytes(lin), scale: k };
 }
 
-/** A single-band map (Earth's cloud alpha, its night lights) at 2048: bytes as stored (the cloud grey is display-encoded: SolarBodies decodes it). */
-async function processGrey(id, W, blackPoint = 0, gamma = 1) {
+/**
+ * A single-band map at 2048: `transfer` maps the source grey (0..1, after the
+ * black point) to the value wanted, `encode` that value to the stored 0..1.
+ * The night lights are stored as is; the cloud cover is its opacity,
+ * sRGB-encoded (CLOUD_OPACITY_GAMMA).
+ */
+async function processGrey(id, W, { blackPoint = 0, transfer = (v) => v, encode = (v) => v } = {}) {
   const H = W / 2;
   const g = await sharp(srcFile(id)).greyscale().resize(W, H, { fit: "fill" }).raw().toBuffer();
-  const f = Float32Array.from(g, (v) => clamp01((v / 255 - blackPoint) / (1 - blackPoint)) ** gamma);
+  const f = Float32Array.from(g, (v) => transfer(clamp01((v / 255 - blackPoint) / (1 - blackPoint))));
   evenPoles(f, W, H, 1);
   closeSeam(f, W, H, 1);
-  return Buffer.from(Uint8Array.from(f, (v) => Math.round(clamp01(v) * 255)));
+  return Buffer.from(Uint8Array.from(f, (v) => Math.round(clamp01(encode(clamp01(v))) * 255)));
 }
 
 async function main() {
@@ -423,11 +441,11 @@ async function main() {
         await write(name, W, W / 2, bytes, 3, r.quality);
       }
     } else if (name === "earth_clouds") {
-      await write(name, 2048, 1024, await processGrey("bm-clouds", 2048), 1, r.quality);
+      await write(name, 2048, 1024, await processGrey("bm-clouds", 2048, { transfer: cloudOpacity, encode: l2s }), 1, r.quality);
     } else if (name === "earth_night") {
       // The grey 2016 map is black but for the lights (≥ 90% of texels are 0);
       // a 2% black point drops the JPEG's noise floor so only lights glow.
-      await write(name, 2048, 1024, await processGrey("black-marble-2016", 2048, 0.02), 1, r.quality);
+      await write(name, 2048, 1024, await processGrey("black-marble-2016", 2048, { blackPoint: 0.02 }), 1, r.quality);
     } else {
       for (const W of r.hiRes ? [2048, 4096] : [2048]) {
         const { bytes, scale } = await processSourced(name, r, W);

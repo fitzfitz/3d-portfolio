@@ -134,10 +134,10 @@ export default function SolarBodies() {
     textures.forEach((tex, i) => {
       if (i === TEX_RING) return; // set up with ringMap
       tex.anisotropy = maxAniso;
-      // Every map is display-encoded, the cloud cover too: its grey is The
-      // Blue Marble's cloud brightness, which NASA composites as stored, in
-      // sRGB. Decoded, it is the shell's opacity in linear light; taken as
-      // stored, the thin haze veiled the oceans in grey (CloudLayer.tsx).
+      // Every map is display-encoded, the cloud cover too: it holds the
+      // shell's opacity sRGB-encoded (process_body_maps.mjs
+      // CLOUD_OPACITY_GAMMA), so the GPU's decode restores it with the dark
+      // end's precision (CloudLayer.tsx).
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.needsUpdate = true;
     });
