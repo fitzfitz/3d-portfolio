@@ -16,8 +16,9 @@ const VIEWPORT = { width: 1512, height: 802, deviceScaleFactor: 2 };
 export const CEILINGS_MB = {
   // Textures / render targets / canvas / total, at this laptop size.
   // main at afa2573: 490.9 / 181.2 / 98.2 / 775.2. PR 47 (no canvas MSAA,
-  // SMAA without the depth copy, a 2 MP canvas): 490.9 / 115.3 / 16.0 / 627.1.
-  full: { textures: 520, renderTargets: 125, drawingBuffer: 20, total: 660 },
+  // SMAA without the depth copy, a 2 MP canvas): 490.9 / 115.3 / 16.0 / 627.1;
+  // Earth's 4096 map as KTX2: textures 457.4, total 593.5.
+  full: { textures: 485, renderTargets: 125, drawingBuffer: 20, total: 625 },
   // Pinned before load: no 4K maps, and the disabled composer never sizes its
   // targets. main: 389.5 / 24.7 / 98.2 / 517.3; PR 47: 389.5 / 24.7 / 16.0 / 435.1.
   low: { textures: 410, renderTargets: 30, drawingBuffer: 20, total: 460 },

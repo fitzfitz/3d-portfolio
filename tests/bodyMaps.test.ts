@@ -11,6 +11,7 @@ import { packTier } from "../src/utils/packFormat";
 import { SUN_COLOR } from "../src/utils/sunLight";
 import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
 import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
+import { readKtx2 } from "./ktx2Image";
 
 /** The pinned sources, looked up by a recipe's source id. */
 const SOURCE_BY_ID: Record<string, (typeof SOURCES)[keyof typeof SOURCES]> = SOURCES;
@@ -25,7 +26,9 @@ const SOURCE_BY_ID: Record<string, (typeof SOURCES)[keyof typeof SOURCES]> = SOU
  */
 
 const MODELS = "public/models";
-const file = (name: string) => `${MODELS}/${name}.webp`;
+/** A map ships as WebP, or as KTX2 where encode_ktx2.mjs compressed it (Earth's 4096 map). */
+const file = (name: string) => (existsSync(`${MODELS}/${name}.ktx2`) ? `${MODELS}/${name}.ktx2` : `${MODELS}/${name}.webp`);
+const shipped = (name: string) => path.basename(file(name));
 
 /** The scene's albedo scale: a map's linear median is 0.177 × its body's geometric albedo (Jupiter's 0.538 ↔ 0.095). */
 const ALBEDO_SCALE = 0.177;
@@ -43,10 +46,17 @@ const EQUIRECT = [...new Set([...SURFACES.map((s) => s.map), CLOUDS.map, NIGHT])
 /** ... and with them: each `_4k` sibling that ships. */
 const ALL_EQUIRECT = EQUIRECT.flatMap((m) => (existsSync(file(`${m}_4k`)) ? [m, `${m}_4k`] : [m]));
 
+/** The texels, decoded: a KTX2 map through the game's own transcoder. */
 async function raw(name: string) {
+  if (file(name).endsWith(".ktx2")) return readKtx2(file(name));
   const { data, info } = await sharp(file(name)).raw().toBuffer({ resolveWithObject: true });
   return { data, w: info.width, h: info.height, ch: info.channels };
 }
+const dims = async (name: string) => {
+  if (file(name).endsWith(".ktx2")) { const k = await readKtx2(file(name)); return { width: k.w, height: k.h }; }
+  const meta = await sharp(file(name)).metadata();
+  return { width: meta.width!, height: meta.height! };
+};
 
 const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 const lumAt = (data: Buffer, k: number, ch: number) =>
@@ -153,7 +163,7 @@ describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the 
       expect(Math.abs(s.stat / (ALBEDO_SCALE * s.albedo) - 1)).toBeLessThan(0.03);
     });
     for (const name of s.hiRes ? [s.map, `${s.map}_4k`] : [s.map]) {
-      it(`${s.id}: ${name}.webp ${s.id === "earth" ? "mean under its clouds" : "median"} is within 3% of ${s.stat}`, async () => {
+      it(`${s.id}: ${shipped(name)} ${s.id === "earth" ? "mean under its clouds" : "median"} is within 3% of ${s.stat}`, async () => {
         const m = await surfaceStat(name, s.id);
         expect(Math.abs(m / s.stat - 1)).toBeLessThan(0.03);
       }, 30_000); // decodes a 4096 map (and Earth's clouds at its size); slow on a loaded machine
@@ -226,7 +236,7 @@ describe("Earth: blue oceans under white clouds, as from space", () => {
   // oceanMask): SolarBodies reads it for the sea's gloss and water's F0, so
   // the land stays matte. Open water is 1, land and ice 0, the coasts soft.
   for (const name of [EARTH.map, `${EARTH.map}_4k`]) {
-    it(`${name}.webp carries the ocean mask in its alpha: the seas are water, the land and ice are not`, async () => {
+    it(`${shipped(name)} carries the ocean mask in its alpha: the seas are water, the land and ice are not`, async () => {
       const { data, w, h, ch } = await raw(name);
       expect(ch).toBe(4);
       const at = (lon: number, lat: number) => {
@@ -250,8 +260,8 @@ describe("Earth: blue oceans under white clouds, as from space", () => {
 describe("maps: shape, seam and poles", () => {
   for (const name of ALL_EQUIRECT) {
     it(`${name} is 2:1 at 1024, 2048 or (a desktop _4k) 4096`, async () => {
-      const meta = await sharp(file(name)).metadata();
-      expect(meta.width! / meta.height!).toBe(2);
+      const meta = await dims(name);
+      expect(meta.width / meta.height).toBe(2);
       expect(name.endsWith("_4k") ? [4096] : [1024, 2048]).toContain(meta.width);
     });
 
@@ -297,34 +307,44 @@ describe("maps: shape, seam and poles", () => {
 
   it("the 4K maps are desktop-only variants: each has its 2048 sibling and ships in the hd pack", () => {
     const names = readdirSync(MODELS);
-    const hi = names.filter((f) => /_4k\.webp$/.test(f));
+    const hi = names.filter((f) => /_4k\.(webp|ktx2)$/.test(f));
     expect(hi.length).toBeGreaterThan(0);
     for (const f of hi) {
-      expect(names, f).toContain(f.replace("_4k", ""));
+      const sibling = f.replace(/_4k\.\w+$/, ".webp");
+      expect(names, f).toContain(sibling);
       expect(packTier(f, names)).toBe("hd");
-      expect(packTier(f.replace("_4k", ""), names)).toBe("sd");
+      expect(packTier(sibling, names)).toBe("sd");
     }
-    // Exactly the bodies that ask for one.
-    expect(hi.map((f) => f.replace("_4k.webp", "")).sort()).toEqual(SOLAR_BODIES.filter((b) => b.mapHiRes).map((b) => b.map).sort());
+    // Exactly the bodies that ask for one, and one format each.
+    expect(hi.map((f) => f.replace(/_4k\.\w+$/, "")).sort()).toEqual(SOLAR_BODIES.filter((b) => b.mapHiRes).map((b) => b.map).sort());
   });
 });
 
 describe("byte caps: per map, and per asset-pack tier", () => {
   /** Per-file caps by width: a photographic 2048 map at WebP q≈85 is ~200–350 KB. */
   const FILE_CAP: Record<number, number> = { 4096: 1300 * 1024, 2048: 420 * 1024, 1024: 120 * 1024 };
+  /**
+   * KTX2 (UASTC + RDO + zstd, mipmaps inside) is several times a WebP's
+   * bytes for a quarter of its GPU memory (encode_ktx2.mjs): Earth's 4096
+   * map is 2.11 MB against the WebP's 262 KB.
+   */
+  const KTX2_CAP: Record<number, number> = { 4096: 2600 * 1024, 2048: 700 * 1024 };
   for (const name of ALL_EQUIRECT) {
-    it(`${name} stays under its width's cap`, async () => {
-      const { width } = await sharp(file(name)).metadata();
-      expect(statSync(file(name)).size).toBeLessThanOrEqual(FILE_CAP[width!]);
+    it(`${shipped(name)} stays under its width's cap`, async () => {
+      const { width } = await dims(name);
+      const cap = file(name).endsWith(".ktx2") ? KTX2_CAP : FILE_CAP;
+      expect(statSync(file(name)).size).toBeLessThanOrEqual(cap[width]);
     });
   }
 
-  it("the texture tiers stay within their pack budgets (hd ≤ 3.6 MiB, sd ≤ 1.4 MiB, common maps ≤ 6.5 MiB)", () => {
+  // hd 3.6 → 4.0 MiB on purpose (2026-10-22, PR 47): Earth's 4096 map ships
+  // as KTX2 (2.0 MiB, 11 MB of GPU memory rather than 45).
+  it("the texture tiers stay within their pack budgets (hd ≤ 4.0 MiB, sd ≤ 1.4 MiB, common maps ≤ 6.5 MiB)", () => {
     const names = readdirSync(MODELS);
-    const total = (tier: string) => names.filter((f) => f.endsWith(".webp") && packTier(f, names) === tier)
+    const total = (tier: string) => names.filter((f) => /\.(webp|ktx2)$/.test(f) && packTier(f, names) === tier)
       .reduce((s, f) => s + statSync(`${MODELS}/${f}`).size, 0);
     const MiB = 1024 * 1024;
-    expect(total("hd")).toBeLessThanOrEqual(3.6 * MiB);
+    expect(total("hd")).toBeLessThanOrEqual(4.0 * MiB);
     expect(total("sd")).toBeLessThanOrEqual(1.4 * MiB);
     expect(total("common")).toBeLessThanOrEqual(6.5 * MiB);
   });

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { encodePack, packTier } from './src/utils/packFormat.ts'
 
@@ -67,4 +69,7 @@ export default defineConfig({
   // "/models/..." literal reappears.
   base: process.env.BASE_PATH ?? '/',
   plugins: [react(), assetPack()],
+  // Agent worktrees under .claude/ are other branches' checkouts: their tests
+  // read this checkout's public/ and fail on it.
+  test: { exclude: [...configDefaults.exclude, '.claude/**'] },
 })

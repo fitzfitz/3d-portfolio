@@ -6,7 +6,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
 const [dir, port, rate, latency] = [process.argv[2], +process.argv[3], +process.argv[4], +process.argv[5]];
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".webp": "image/webp", ".glb": "model/gltf-binary", ".woff2": "font/woff2", ".woff": "font/woff" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".webp": "image/webp", ".ktx2": "image/ktx2", ".wasm": "application/wasm", ".glb": "model/gltf-binary", ".woff2": "font/woff2", ".woff": "font/woff" };
 const TICK = 10; // ms
 const queue = new Set(); // active responses: { buf, sent, res }
 

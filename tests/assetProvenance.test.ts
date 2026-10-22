@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
 import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
 import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
+import { KTX2_VARIANTS } from "../src/utils/hiResMaps";
 
 /** The pinned sources, looked up by a recipe's source id. */
 const SOURCE_BY_ID: Record<string, (typeof SOURCES)[keyof typeof SOURCES] | undefined> = SOURCES;
@@ -38,11 +39,16 @@ const MODEL_GENERATORS: Record<string, string> = {
   "w-ringed_ring.webp": "scripts/textures/gen_worlds.mjs",
 };
 
-/** The body and moon maps: each recipe's maker (its `_4k` desktop variant too). */
+/**
+ * The body and moon maps: each recipe's maker (its `_4k` desktop variant too,
+ * which encode_ktx2.mjs makes from the same master when it ships as KTX2).
+ */
+const hiResFile = (name: string, maker: string): [string, string] =>
+  KTX2_VARIANTS.has(`${name}_4k`) ? [`${name}_4k.ktx2`, "scripts/textures/encode_ktx2.mjs"] : [`${name}_4k.webp`, maker];
 const MAP_GENERATORS: Record<string, string> = Object.fromEntries(
   Object.entries(BODY_MAPS).flatMap(([name, r]) => {
     const maker = "sources" in r ? "scripts/textures/process_body_maps.mjs" : r.generator;
-    return "hiRes" in r && r.hiRes ? [[`${name}.webp`, maker], [`${name}_4k.webp`, maker]] : [[`${name}.webp`, maker]];
+    return "hiRes" in r && r.hiRes ? [[`${name}.webp`, maker], hiResFile(name, maker)] : [[`${name}.webp`, maker]];
   }),
 );
 const GENERATORS: Record<string, string> = { ...MODEL_GENERATORS, ...MAP_GENERATORS };

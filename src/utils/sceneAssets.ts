@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { useGLTF, useTexture } from "@react-three/drei";
+import { useLoader, useThree } from "@react-three/fiber";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 
 /**
  * The scene's models and maps, loaded through drei but recorded here, so
@@ -15,11 +17,12 @@ import { useGLTF, useTexture } from "@react-three/drei";
  * (clearSceneAssets), and the new canvas loads them afresh from the asset
  * pack's blob: URLs, which stay alive for the page's lifetime.
  *
- * Every useGLTF / useTexture in the scene goes through these hooks: one that
- * did not would come back from the cache with its image gone.
+ * Every useGLTF / useTexture / KTX2 load in the scene goes through these
+ * hooks: one that did not would come back from the cache with its image gone.
  */
 const models = new Map<string, string | string[]>();
 const maps = new Map<string, string[]>();
+const compressedMaps = new Map<string, string[]>();
 let released = false;
 
 /** useGLTF for one model, recorded for clearSceneAssets. */
@@ -38,6 +41,38 @@ export function useModels(urls: string[]) {
 export function useMaps(urls: string[]) {
   maps.set(JSON.stringify(urls), urls);
   return useTexture(urls);
+}
+
+/** The KTX2 loader R3F keeps per class, set up once: the transcoder ships in public/basis/. */
+const configured = new WeakSet<KTX2Loader>();
+let activeKtx2: KTX2Loader | null = null;
+function setUpKtx2(loader: KTX2Loader, gl: THREE.WebGLRenderer) {
+  activeKtx2 = loader;
+  if (configured.has(loader)) return;
+  loader.setTranscoderPath(`${import.meta.env.BASE_URL}basis/`);
+  loader.detectSupport(gl);
+  configured.add(loader);
+}
+
+/**
+ * Ends the KTX2 loader's transcoder workers (up to four, each with its own
+ * WebAssembly heap, grown to fit the largest map it decoded and never given
+ * back). ShaderWarmup calls it once every load has landed; a later KTX2 load
+ * starts a fresh worker (three's WorkerPool keeps its creator).
+ */
+export function retireKtx2Workers(): void {
+  (activeKtx2 as unknown as { workerPool?: { dispose(): void } } | null)?.workerPool?.dispose();
+}
+
+/**
+ * KTX2 maps (scripts/textures/encode_ktx2.mjs): GPU-compressed, so a 4096
+ * map is ~11 MB on the GPU rather than ~45. They arrive bottom row first and
+ * in their own colour space, mipmaps included.
+ */
+export function useCompressedMaps(urls: string[]): THREE.CompressedTexture[] {
+  const gl = useThree((s) => s.gl);
+  compressedMaps.set(JSON.stringify(urls), urls);
+  return useLoader(KTX2Loader, urls, (loader) => setUpKtx2(loader as KTX2Loader, gl)) as THREE.CompressedTexture[];
 }
 
 /** A loaded image three.js would keep only for a re-upload; canvases and data textures are drawn by code and stay. */
@@ -76,14 +111,20 @@ export function sceneTextures(scene: THREE.Object3D): Set<THREE.Texture> {
  */
 export function releaseUploadedImages(gl: THREE.WebGLRenderer, textures: Iterable<THREE.Texture>): number {
   const bySource = new Map<THREE.Source<unknown>, THREE.Texture[]>();
+  const uploaded = (tex: THREE.Texture) => (gl.properties.get(tex) as { __version?: number }).__version === tex.version;
+  let n = 0;
   for (const tex of textures) {
+    // A KTX2 map keeps its transcoded levels as typed arrays, the same copy.
+    if ((tex as THREE.CompressedTexture).isCompressedTexture && tex.mipmaps?.length && uploaded(tex)) {
+      tex.mipmaps = [];
+      n++;
+      continue;
+    }
     if (!releasable(tex)) continue;
     const list = bySource.get(tex.source);
     if (list) list.push(tex);
     else bySource.set(tex.source, [tex]);
   }
-  const uploaded = (tex: THREE.Texture) => (gl.properties.get(tex) as { __version?: number }).__version === tex.version;
-  let n = 0;
   for (const [source, list] of bySource) {
     if (!list.every(uploaded)) continue;
     const img = source.data as unknown;
@@ -104,5 +145,6 @@ export function clearSceneAssets(): void {
   if (!released) return;
   for (const key of models.values()) useGLTF.clear(key);
   for (const key of maps.values()) useTexture.clear(key);
+  for (const key of compressedMaps.values()) useLoader.clear(KTX2Loader, key);
   released = false;
 }

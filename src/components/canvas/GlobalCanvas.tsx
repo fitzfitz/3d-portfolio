@@ -53,7 +53,7 @@ import PerfSampler from "../../debug/PerfSampler";
 import { fitzDebug } from "../../debug/bridge";
 import { SPAWN } from "../../data/spawn";
 import { HAS_ASSET_PACK, loadAssetPack, onPackEntry, packProgress } from "../../utils/assetPack";
-import { sceneTextures, releaseUploadedImages, clearSceneAssets } from "../../utils/sceneAssets";
+import { sceneTextures, releaseUploadedImages, clearSceneAssets, retireKtx2Workers } from "../../utils/sceneAssets";
 import { budgetDpr } from "../../utils/pixelBudget";
 
 // Parse each model the moment the asset pack delivers it (utils/assetPack.ts),
@@ -421,8 +421,10 @@ function ShaderWarmup() {
         if (cancelled) return;
         const t = queue.pop();
         if (t) { gl.initTexture(t); setTimeout(step, 0); return; }
-        // Everything is on the GPU: let the CPU copies go (sceneAssets.ts).
+        // Everything is on the GPU: let the CPU copies and the KTX2
+        // transcoder workers go (sceneAssets.ts).
         releaseUploadedImages(gl, textures);
+        retireKtx2Workers();
         const s = useSpaceStore.getState();
         s.setWarmingUp(false); // GlobalCanvas resumes the loop and invalidates
         s.setSceneReady(true);

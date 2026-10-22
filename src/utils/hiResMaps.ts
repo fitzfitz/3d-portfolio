@@ -11,6 +11,13 @@ import { useSpaceStore } from "../store/spaceStore";
 export const prefersHiResMaps = (): boolean =>
   !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
 
+/**
+ * Variants that ship GPU-compressed as KTX2 (scripts/textures/encode_ktx2.mjs
+ * KTX2_MAPS): ~11 MB of GPU memory for a 4096 map instead of ~45. Earth's
+ * 4096 map first, the phase 4 pilot of the memory budget.
+ */
+export const KTX2_VARIANTS: ReadonlySet<string> = new Set(["earth_4k"]);
+
 let choice: boolean | null = null;
 
 /**
