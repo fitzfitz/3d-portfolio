@@ -1,8 +1,8 @@
 // First: the hue-keeping toe must be in the tone-mapping chunk before any program compiles.
 import "./hueToe";
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
-import { Html, AdaptiveDpr, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
-import { Suspense, use, useRef, useMemo, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
+import { Html, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
+import { Suspense, use, useRef, useMemo, useState, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
 import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
@@ -54,6 +54,7 @@ import { fitzDebug } from "../../debug/bridge";
 import { SPAWN } from "../../data/spawn";
 import { HAS_ASSET_PACK, loadAssetPack, onPackEntry, packProgress } from "../../utils/assetPack";
 import { sceneTextures, releaseUploadedImages, clearSceneAssets } from "../../utils/sceneAssets";
+import { budgetDpr } from "../../utils/pixelBudget";
 
 // Parse each model the moment the asset pack delivers it (utils/assetPack.ts),
 // while the rest still streams, so the scene's own useGLTF finds it cached.
@@ -300,6 +301,27 @@ function LoadProgress() {
  * once and gets ready while the packs download. loadAssetPack() is one
  * cached promise that never rejects, which use() requires.
  */
+/**
+ * Keeps the canvas inside its pixel budget (utils/pixelBudget.ts) as the
+ * window resizes or moves to a screen with another pixel ratio. Replaces
+ * drei's AdaptiveDpr, which only ever acted on performance.regress(), which
+ * nothing here calls.
+ */
+function PixelBudget() {
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  const setDpr = useThree((s) => s.setDpr);
+  const [deviceDpr, setDeviceDpr] = useState(() => window.devicePixelRatio);
+  useEffect(() => {
+    const query = window.matchMedia?.(`(resolution: ${deviceDpr}dppx)`);
+    const onChange = () => setDeviceDpr(window.devicePixelRatio);
+    query?.addEventListener("change", onChange);
+    return () => query?.removeEventListener("change", onChange);
+  }, [deviceDpr]);
+  useEffect(() => { setDpr(budgetDpr(width, height, deviceDpr)); }, [width, height, deviceDpr, setDpr]);
+  return null;
+}
+
 function PackGate({ children }: { children: ReactNode }) {
   use(loadAssetPack());
   return children;
@@ -510,7 +532,7 @@ function GlobalCanvas() {
   return (
     <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
       <Canvas
-        dpr={[1, 1.5]}
+        dpr={budgetDpr(window.innerWidth, window.innerHeight, window.devicePixelRatio)}
         // Relies on this Canvas never mounting with sceneFrozen already true
         // (mount always starts unlocked, and setShowClassicCV's breakOrbit()
         // call keeps the one other remount path — the classic-CV round trip
@@ -555,7 +577,7 @@ function GlobalCanvas() {
         eventSource={document.getElementById("root") || undefined}
         eventPrefix="client"
       >
-        <AdaptiveDpr pixelated />
+        <PixelBudget />
         <PerformanceMonitor
           onDecline={() => {
             const s = useSpaceStore.getState();

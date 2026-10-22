@@ -7,18 +7,20 @@ import { installGpuLedger, readGpuLedger } from "./gpuLedger.mjs";
 // scripts/perf/memory-footprint.mjs measures on the real GPU.
 //
 // The viewport is the measurement's laptop (1512×802 at device scale 2), so
-// the canvas and every screen-sized target are the size users get there.
+// the canvas and every screen-sized target are the size users get there
+// (src/utils/pixelBudget.ts).
 // Ceilings: the baseline per category + 5%, rounded up to the next 5 MB. A
 // new 4K map (45 MB) or a new full-screen half-float target (22 MB) fails
 // one; raising a ceiling is a deliberate edit with its reason in the doc.
 const VIEWPORT = { width: 1512, height: 802, deviceScaleFactor: 2 };
 export const CEILINGS_MB = {
-  // Baseline 2026-10-22 (main at afa2573): 490.9 / 181.2 / 98.2 / 775.2.
-  // Canvas without MSAA: drawing buffer 21.8, total 698.8.
-  full: { textures: 520, renderTargets: 195, drawingBuffer: 25, total: 735 },
+  // Textures / render targets / canvas / total, at this laptop size.
+  // main at afa2573: 490.9 / 181.2 / 98.2 / 775.2. PR 47 (no canvas MSAA,
+  // SMAA without the depth copy, a 2 MP canvas): 490.9 / 115.3 / 16.0 / 627.1.
+  full: { textures: 520, renderTargets: 125, drawingBuffer: 20, total: 660 },
   // Pinned before load: no 4K maps, and the disabled composer never sizes its
-  // targets. Baseline 389.5 / 24.7 / 98.2 / 517.3; without MSAA 21.8 / 440.9.
-  low: { textures: 410, renderTargets: 30, drawingBuffer: 25, total: 465 },
+  // targets. main: 389.5 / 24.7 / 98.2 / 517.3; PR 47: 389.5 / 24.7 / 16.0 / 435.1.
+  low: { textures: 410, renderTargets: 30, drawingBuffer: 20, total: 460 },
 };
 /**
  * The tour may add vertex buffers (about 1.1 MB at baseline, jump effects and
@@ -98,9 +100,15 @@ function budget({ label, tier, lowPerf }) {
     const images = await retainedImages(page);
     checks.check(`[${tier}] no texture keeps its image after upload`, images.retained === 0,
       `${images.retained} of ${images.textures}`);
+    // The canvas the pixel budget gives this laptop (three floors w × dpr).
+    const expected = await page.evaluate(async ([w, h, d]) => {
+      const { budgetDpr } = await import("/src/utils/pixelBudget.ts");
+      const dpr = budgetDpr(w, h, d);
+      return { w: Math.floor(w * dpr), h: Math.floor(h * dpr) };
+    }, [VIEWPORT.width, VIEWPORT.height, VIEWPORT.deviceScaleFactor]);
     const canvas = atSpawn.canvases.reduce((a, c) => (c.w * c.h > a.w * a.h ? c : a), { w: 0, h: 0 });
-    checks.check(`[${tier}] canvas is the laptop's 1.5× buffer, 2268×1203 (precondition)`,
-      canvas.w === 2268 && canvas.h === 1203, `canvas=${canvas.w}×${canvas.h}`);
+    checks.check(`[${tier}] canvas is the pixel budget's ${expected.w}×${expected.h} (precondition)`,
+      canvas.w === expected.w && canvas.h === expected.h, `canvas=${canvas.w}×${canvas.h}`);
 
     const ceilings = CEILINGS_MB[tier];
     for (const [key, ceiling] of Object.entries(ceilings)) {
