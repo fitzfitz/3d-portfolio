@@ -7,6 +7,7 @@
  *   node scripts/textures/fetch_nasa_maps.mjs     # first: sources into assets-src/nasa-src/
  *   node scripts/textures/gen_body_maps.mjs       # Venus, Titan, the Triton fill
  *   node scripts/textures/process_body_maps.mjs   # all; or name maps: ... mercury io
+ *   node scripts/textures/encode_ktx2.mjs         # then: the shipped KTX2 maps from these masters
  *
  * For each sourced map, at each width it ships at (2048; 4096 for the
  * desktop-only `_4k` variant):

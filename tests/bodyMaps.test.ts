@@ -223,12 +223,14 @@ describe("Earth: blue oceans under white clouds, as from space", () => {
   // opacity, its thin haze (median grey 0.24) veiled every ocean in grey:
   // this median read B/G 0.89 at hue 34°. Under the opacity curve the median
   // texel is blue sea (γ 1.3: 1.06 at 243°; the full sRGB decode: 1.28 at 223°).
-  it("in the sunlight, the median colour of its surface under its clouds is blue (hue 205–250°, B/G ≥ 1.0)", async () => {
+  // 250 → 255° (2026-10-22, PR 47): the map now ships as KTX2 from its master
+  // and reads 253°, B/G 1.05; the WebP's 4:2:0 chroma had pulled it under 250.
+  it("in the sunlight, the median colour of its surface under its clouds is blue (hue 205–255°, B/G ≥ 1.0)", async () => {
     const { lin, alpha, n } = await earthTexels();
     const m = [0, 1, 2].map((c) => median(Float32Array.from({ length: n },
       (_, k) => (lin[k * 3 + c] * (1 - alpha[k]) + CLOUDS.linear * alpha[k]) * SUN_LINEAR[c])));
     expect(hueOf(m)).toBeGreaterThanOrEqual(205);
-    expect(hueOf(m)).toBeLessThanOrEqual(250);
+    expect(hueOf(m)).toBeLessThanOrEqual(255);
     expect(m[2] / m[1]).toBeGreaterThanOrEqual(1.0);
   }, 30_000);
 
@@ -310,8 +312,9 @@ describe("maps: shape, seam and poles", () => {
     const hi = names.filter((f) => /_4k\.(webp|ktx2)$/.test(f));
     expect(hi.length).toBeGreaterThan(0);
     for (const f of hi) {
-      const sibling = f.replace(/_4k\.\w+$/, ".webp");
-      expect(names, f).toContain(sibling);
+      const base = f.replace(/_4k\.\w+$/, "");
+      const sibling = names.find((n) => n === `${base}.webp` || n === `${base}.ktx2`)!;
+      expect(sibling, f).toBeDefined();
       expect(packTier(f, names)).toBe("hd");
       expect(packTier(sibling, names)).toBe("sd");
     }
@@ -324,11 +327,12 @@ describe("byte caps: per map, and per asset-pack tier", () => {
   /** Per-file caps by width: a photographic 2048 map at WebP q≈85 is ~200–350 KB. */
   const FILE_CAP: Record<number, number> = { 4096: 1300 * 1024, 2048: 420 * 1024, 1024: 120 * 1024 };
   /**
-   * KTX2 (UASTC + RDO + zstd, mipmaps inside) is several times a WebP's
-   * bytes for a quarter of its GPU memory (encode_ktx2.mjs): Earth's 4096
-   * map is 2.11 MB against the WebP's 262 KB.
+   * KTX2 (encode_ktx2.mjs) trades bytes for GPU memory: ETC1S maps are ~1.5–2×
+   * the WebP (Mars 2048: 0.41 MB for 0.27) at an eighth of the GPU memory;
+   * UASTC, for Earth's masked maps and the two ETC1S could not keep within
+   * the albedo tests (Ceres, the Moon), is 0.6–2.1 MB at a quarter.
    */
-  const KTX2_CAP: Record<number, number> = { 4096: 2600 * 1024, 2048: 700 * 1024 };
+  const KTX2_CAP: Record<number, number> = { 4096: 2600 * 1024, 2048: 1800 * 1024, 1024: 200 * 1024 };
   for (const name of ALL_EQUIRECT) {
     it(`${shipped(name)} stays under its width's cap`, async () => {
       const { width } = await dims(name);
@@ -337,16 +341,17 @@ describe("byte caps: per map, and per asset-pack tier", () => {
     });
   }
 
-  // hd 3.6 → 4.0 MiB on purpose (2026-10-22, PR 47): Earth's 4096 map ships
-  // as KTX2 (2.0 MiB, 11 MB of GPU memory rather than 45).
-  it("the texture tiers stay within their pack budgets (hd ≤ 4.0 MiB, sd ≤ 1.4 MiB, common maps ≤ 6.5 MiB)", () => {
+  // hd 3.6 → 5.0 MiB and common 6.5 → 9 MiB on purpose (2026-10-22, PR 47):
+  // the maps ship as KTX2 (hd 4.8 MiB: Earth UASTC 2.0, Mars and Mercury
+  // ETC1S 1.4 and 1.3), GPU memory 290 → ~45 MB for the maps at 1512×802.
+  it("the texture tiers stay within their pack budgets (hd ≤ 5.0 MiB, sd ≤ 1.4 MiB, common maps ≤ 9 MiB)", () => {
     const names = readdirSync(MODELS);
     const total = (tier: string) => names.filter((f) => /\.(webp|ktx2)$/.test(f) && packTier(f, names) === tier)
       .reduce((s, f) => s + statSync(`${MODELS}/${f}`).size, 0);
     const MiB = 1024 * 1024;
-    expect(total("hd")).toBeLessThanOrEqual(4.0 * MiB);
+    expect(total("hd")).toBeLessThanOrEqual(5.0 * MiB);
     expect(total("sd")).toBeLessThanOrEqual(1.4 * MiB);
-    expect(total("common")).toBeLessThanOrEqual(6.5 * MiB);
+    expect(total("common")).toBeLessThanOrEqual(9 * MiB);
   });
 
   it("retires the interim maps no body draws", () => {

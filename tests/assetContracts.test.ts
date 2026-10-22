@@ -642,10 +642,12 @@ describe("public/models", () => {
   // 10 → 9 MiB (2026-10-20, Task 14): the moons arrived (maps 9.19 MiB in
   // total at Task 12; moon.glb, 416 KiB, retired; phobos.glb + deimos.glb,
   // 131 KiB, added) for 8.91 MiB, so the cap sits ~90 KiB above the real total.
-  // 9 → 11 MiB on purpose (2026-10-22, PR 47): Earth's 4096 map ships as
-  // KTX2, 2.0 MiB for 11 MB of GPU memory where its WebP took 45 (10.73 MiB).
-  it("stays under 11 MiB in total", () => {
+  // 9 → 17 MiB on purpose (2026-10-22, PR 47): the body and moon maps ship
+  // as KTX2 (ETC1S, UASTC where it must), 290 → ~45 MB of GPU memory for the
+  // maps at 1512×802 for ~7.6 MiB more download (16.4 MiB; the owner chose
+  // maps-only over model textures too). Return visits read the packs from cache.
+  it("stays under 17 MiB in total", () => {
     const total = readdirSync("public/models").reduce((s, f) => s + statSync(`public/models/${f}`).size, 0);
-    expect(total / 1024 / 1024).toBeLessThan(11);
+    expect(total / 1024 / 1024).toBeLessThan(17);
   });
 });

@@ -12,11 +12,19 @@ export const prefersHiResMaps = (): boolean =>
   !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
 
 /**
- * Variants that ship GPU-compressed as KTX2 (scripts/textures/encode_ktx2.mjs
- * KTX2_MAPS): ~11 MB of GPU memory for a 4096 map instead of ~45. Earth's
- * 4096 map first, the phase 4 pilot of the memory budget.
+ * Maps that ship GPU-compressed as KTX2 (scripts/textures/encode_ktx2.mjs
+ * KTX2_MAPS, the same names): every body and moon map but Saturn's ring
+ * strip and Earth's clouds. An opaque 4096 map is ~5.6 MB on the GPU
+ * instead of ~45.
  */
-export const KTX2_VARIANTS: ReadonlySet<string> = new Set(["earth_4k"]);
+export const KTX2_VARIANTS: ReadonlySet<string> = new Set([
+  "callisto", "ceres", "earth", "earth_4k", "earth_night", "europa", "ganymede", "io",
+  "jupiter", "mars", "mars_4k", "mercury", "mercury_4k", "moon", "titan", "triton", "venus",
+  "w-blue", "w-ringed", "w-tilted",
+]);
+
+/** The file extension a map ships with. */
+export const mapExt = (variant: string) => (KTX2_VARIANTS.has(variant) ? "ktx2" : "webp");
 
 let choice: boolean | null = null;
 

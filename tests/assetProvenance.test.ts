@@ -40,15 +40,17 @@ const MODEL_GENERATORS: Record<string, string> = {
 };
 
 /**
- * The body and moon maps: each recipe's maker (its `_4k` desktop variant too,
- * which encode_ktx2.mjs makes from the same master when it ships as KTX2).
+ * The body and moon maps: each recipe's maker (its `_4k` desktop variant too),
+ * or encode_ktx2.mjs for the ones that ship as KTX2, made from that maker's
+ * master. A WebP left beside its KTX2 (process_body_maps.mjs run without
+ * encode_ktx2.mjs after it) has no generator here, so it fails, not ships.
  */
-const hiResFile = (name: string, maker: string): [string, string] =>
-  KTX2_VARIANTS.has(`${name}_4k`) ? [`${name}_4k.ktx2`, "scripts/textures/encode_ktx2.mjs"] : [`${name}_4k.webp`, maker];
+const shippedAs = (name: string, maker: string): [string, string] =>
+  KTX2_VARIANTS.has(name) ? [`${name}.ktx2`, "scripts/textures/encode_ktx2.mjs"] : [`${name}.webp`, maker];
 const MAP_GENERATORS: Record<string, string> = Object.fromEntries(
   Object.entries(BODY_MAPS).flatMap(([name, r]) => {
     const maker = "sources" in r ? "scripts/textures/process_body_maps.mjs" : r.generator;
-    return "hiRes" in r && r.hiRes ? [[`${name}.webp`, maker], hiResFile(name, maker)] : [[`${name}.webp`, maker]];
+    return "hiRes" in r && r.hiRes ? [shippedAs(name, maker), shippedAs(`${name}_4k`, maker)] : [shippedAs(name, maker)];
   }),
 );
 const GENERATORS: Record<string, string> = { ...MODEL_GENERATORS, ...MAP_GENERATORS };

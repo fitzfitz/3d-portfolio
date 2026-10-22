@@ -14,7 +14,7 @@ import { meshScale, ringNormal, spinQuaternion } from "../../utils/bodySpin";
 import { assetUrl } from "../../utils/assetUrl";
 import { updateBodies } from "../../utils/bodyPositions";
 import { displayAlbedoGain } from "../../utils/displayAlbedo";
-import { hiResChoice, KTX2_VARIANTS } from "../../utils/hiResMaps";
+import { hiResChoice, KTX2_VARIANTS, mapExt } from "../../utils/hiResMaps";
 import { ringIrradiance, ringRadii } from "../../utils/ringOptics";
 import { makeSphereLOD } from "../../utils/sphereLod";
 import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyRings";
@@ -86,8 +86,7 @@ const TEX_RING = TEX_NIGHT + 1;
 const TEX_CLOUDS = TEX_RING + 1;
 /** The file a map ships as on this device: its 4096 variant on desktops. */
 const mapFile = (file: string, hiRes: boolean) => (hiRes && HI_RES_MAPS.has(file) ? `${file}_4k` : file);
-/** KTX2 for the variants encode_ktx2.mjs compresses, WebP for the rest. */
-const mapExt = (variant: string) => (KTX2_VARIANTS.has(variant) ? "ktx2" : "webp");
+/** KTX2 for the maps encode_ktx2.mjs compresses, WebP for the rest (the ring strip). */
 const mapUrl = (variant: string) => assetUrl(`/models/${variant}.${mapExt(variant)}`);
 
 /**
