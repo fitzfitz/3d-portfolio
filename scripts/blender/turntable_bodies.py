@@ -19,9 +19,9 @@
 #     PBR Neutral (the game's NeutralToneMapping);
 #   - the material colour is the dark-surface display curve's gain
 #     (displayAlbedoGain(texelMedianLinear), P3), as SolarBodies sets it;
-#   - Earth's cloud shell (1.03 R): alpha from earth_clouds, colour its
-#     `look.clouds.linear`; its night lights are not drawn (the game masks
-#     them to the night side);
+#   - Earth's cloud shell (1.03 R): alpha from earth_clouds (decoded from sRGB:
+#     it stores the opacity sRGB-encoded), colour its `look.clouds.linear`; its night lights are not
+#     drawn (the game masks them to the night side);
 #   - the giants' `look.limb` as a facing-ratio limb darkening; Saturn's
 #     rings take tau from the strip's alpha (tau = A * RING_TAU_MAX): opacity
 #     1 - exp(-tau / |mu|) for the view ray and exp(-tau / mu0) for sunlight.
@@ -257,14 +257,14 @@ def planet_material(w):
 
 
 def cloud_material(clouds):
-    """CloudLayer.tsx: colour `linear`, opacity the cloud map's grey (stored linear)."""
+    """CloudLayer.tsx: colour `linear`, opacity the cloud map decoded from sRGB (it stores the opacity sRGB-encoded)."""
     mat = bpy.data.materials.new("Clouds")
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image(clouds["map"], non_color=True)
+    tex.image = image(clouds["map"])  # sRGB: Blender decodes it, as SolarBodies does
     dif = nt.nodes.new("ShaderNodeBsdfDiffuse")
     c = clouds["linear"]
     dif.inputs["Color"].default_value = (c, c, c, 1)

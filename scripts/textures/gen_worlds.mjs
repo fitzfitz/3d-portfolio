@@ -158,14 +158,15 @@ function genTilted(W) {
   const G = sphereGrid(W, W / 2);
   const nB = makeSimplex(701), nW = makeSimplex(702);
   // Voyager 2's pale cyan: about the image's red (shipped mean linear R/G
-  // 0.674; the image 0.66) and bluer (B/G 1.15; the image 1.04), since the
-  // tone mapping's toe subtracts the same offset from every channel of a dim
-  // pixel, which saturates it, so a G ≈ B cyan would read teal-green in the
-  // game (tests/bodyMaps.test.ts). The ramp's own ratios (0.655, 1.13) sit a
-  // little off the shipped means: the JPEG's lossy chroma coding (quality 92)
-  // moves a dim map's channel ratios, by about the ~0.03 margin the test's
-  // hue band leaves. Hue by chroma only: the median stays the honest albedo target.
-  const pal = ramp([[0, "#9bbcc6"], [0.45, "#abceda"], [0.75, "#b8deea"], [1, "#c4ecf9"]]);
+  // 0.656; the image 0.66) and bluer (B/G 1.28; the image 1.04), because the
+  // game's sunlight is warm: #fff4e0 takes B/G × 0.82, so a map at the
+  // image's own B/G is lit teal-green. The ramp before 2026-10-22 (B/G 1.15,
+  // set against the old toe) was lit at B/G 0.95 and read 160° on the disc;
+  // this one is lit at ~1.05, a pale cyan ~188° (tests/bodyMaps.test.ts).
+  // The lossy WebP's chroma moves a dim map's channel ratios by a few
+  // hundredths, so the ramp's own ratios (1.27, 0.65) sit a little off the
+  // shipped means. Hue by chroma only: the median stays the honest albedo target.
+  const pal = ramp([[0, "#93b3c6"], [0.45, "#a2c4da"], [0.75, "#afd3ea"], [1, "#bae0f9"]]);
   const rgb = new Float32Array(W * (W / 2) * 3);
   const c = [0, 0, 0];
   forEachPixel(G, (k, x, y, z) => {

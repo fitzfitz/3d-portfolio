@@ -6,19 +6,18 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Uranus still reads teal-green.** With the hue-keeping toe and the 1.5×
-  exposure lift (2026-10-21), its lit disc's median hue is ~160° against the
-  174° its map and sunlight should give (b/g 0.97 against 0.99). The cause is
-  not the tone curve: the warm `#fff4e0` sunlight times its map leaves green
-  about equal to blue, and every curve tried (the toe, the knee, AgX) read
-  158–160°. A fix is a bluer or brighter map, or whiter sunlight, which
-  re-baselines every body.
-- **Earth's lit disc reads grey-brown.** Since the studio IBL came off the
-  bodies (1ffe387, L29), its blue/green is ~0.97 against the 1.56 its map
-  should give: the IBL's cyan panel had been faking blue oceans, and its lit
-  median is now cloud-dominated (hue ~40°). A targeted fix is the ocean
-  albedo or the atmosphere rim's tint, not a global change to the light or
-  the tone curve.
+- **Earth's ocean sheen.** Since PR #43 (2026-10-22) the lit disc reads
+  blue (median hue 218–220°, b/g 1.13–1.21 by face, against 1.47 for its
+  ocean map × the sunlight; 28–30 luma). What still greys the sea is the
+  sheen: MeshStandardMaterial's dielectric F0 is 0.04 where water's is
+  0.02, and roughness 0.5 is right for the sea (Cox–Munk at ~7 m/s) but
+  lies on land and ice too. Taking it out lifted b/g 1.35 → 1.63 on a
+  cloudless disc. A fix needs an ocean mask or MeshPhysicalMaterial's ior,
+  each a new program for Earth (the programs probe holds added = 0), so it
+  waits for an owner call. The cloud opacity is the Blue Marble grey^1.3
+  (owner's pick, `CLOUD_OPACITY_GAMMA` in process_body_maps.mjs): a higher
+  γ gives bluer seas and fainter swirls, and changing it means regenerating
+  Earth's maps and copying the printed k into `look.clouds.linear`.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap

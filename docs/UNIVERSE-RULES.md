@@ -52,7 +52,7 @@ a number is not NASA's or the IAU's, it is one of the conventions below.
   shared, order-preserving display curve, so they stay visible; their
   relative order is real (`displayAlbedo.ts`). On a body's median linear
   albedo a (its map's texel median), the curve is the identity at and above a
-  knee of 0.0766 (Earth's map median) and knee·(a/knee)^γ below it, with
+  knee of 0.0766 (Earth's map, measured as its mean under its clouds) and knee·(a/knee)^γ below it, with
   γ ≈ 0.2985, set so that the dimmest mapped body, Ceres (0.016), gets
   exactly 3×. It lifts Ceres 3×, the Moon 2.47×, Mercury 2.17×, Mars 1.93×,
   Callisto 1.79×, Titan 1.63× (Phobos 3.59×, Deimos 3.27×); Earth, Venus, the

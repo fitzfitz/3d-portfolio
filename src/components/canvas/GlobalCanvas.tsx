@@ -45,7 +45,7 @@ import SkyBackdrop from "./SkyBackdrop";
 import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../../store/spaceStore";
 import { flareLevel } from "../../utils/worldEvents";
 import {
-  SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
+  SUN_COLOR, SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
   AMBIENT_BASE, applyFill, applyBackdrop, fillLight,
 } from "../../utils/sunLight";
 import DebugBridge from "../../debug/DebugBridge";
@@ -437,7 +437,7 @@ function SunLight() {
       ref.current.intensity = SUN_LIGHT_INTENSITY * (1 + SUN_FLARE_SWELL * flareLevel(worldEventElapsed("flare")));
     }
   });
-  return <pointLight ref={ref} position={[0, 0, 0]} intensity={SUN_LIGHT_INTENSITY} decay={2} color="#fff4e0" />;
+  return <pointLight ref={ref} position={[0, 0, 0]} intensity={SUN_LIGHT_INTENSITY} decay={2} color={SUN_COLOR} />;
 }
 
 /**

@@ -134,8 +134,11 @@ export default function SolarBodies() {
     textures.forEach((tex, i) => {
       if (i === TEX_RING) return; // set up with ringMap
       tex.anisotropy = maxAniso;
-      // The cloud cover is an opacity, not a colour: it stays as stored.
-      tex.colorSpace = i === TEX_CLOUDS ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+      // Every map is display-encoded, the cloud cover too: it holds the
+      // shell's opacity sRGB-encoded (process_body_maps.mjs
+      // CLOUD_OPACITY_GAMMA), so the GPU's decode restores it with the dark
+      // end's precision (CloudLayer.tsx).
+      tex.colorSpace = THREE.SRGBColorSpace;
       tex.needsUpdate = true;
     });
   }, [textures, gl]);
