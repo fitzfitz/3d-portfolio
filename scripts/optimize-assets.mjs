@@ -40,11 +40,16 @@ async function processGlb(name, textureTransforms) {
 // (gen_mars_moons.py, drawn 0.66 and 0.52 u) keep 1024² at q85: the ship can
 // pass close enough for either to fill the view. Hero asteroids keep 1024²
 // (close passes at radius up to 7u) with a slightly lighter quality.
+// The project probe (v7, 2026-10-22) ships its three maps at q88: in game
+// it is never more than ~300 px across, so q92's extra bytes bought nothing
+// on screen, and q88 pays for v7's blanket crinkle, taped seams and bolt
+// rows in the normal map inside v6's footprint (512 KB at q92 -> 506 KB).
 const TEXTURE_OPTS = {
   phobos: { quality: 85 },
   deimos: { quality: 85 },
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
+  probe: { quality: 88 },
 };
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
