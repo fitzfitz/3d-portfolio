@@ -233,6 +233,12 @@ def shoot(name, target, az_deg, el_deg, dist, lens=50, key=1):
 for az, key in ((30, 1), (120, 1), (210, 1), (300, -1)):
     shoot(f"probe_a{az:03d}", BODY, az, 18, 5.6, key=key)
 shoot("probe_plate", PLATE, 90, 6, 0.62)
+# the blanket up close: a gold bay (bay 2, its normal 72 deg from glTF +X
+# toward +Y) from above and to the side, the key raking across it
+BAY2 = gl(0.38 * 0.978 * math.cos(math.radians(72)), 0.38 * 0.978 * math.sin(math.radians(72)), -0.13 * 0.978)
+shoot("probe_foil", BAY2, 70, 58, 1.05)
+# the aft deck: the thruster clusters and the main bell (glTF -Z)
+shoot("probe_aft", gl(0, 0, -0.3), 160, 24, 2.4, key=-1)
 # the reflector face-on, a few degrees off axis so the rim's depth shows
 DISH_C = gl(0, 0, 0.22)
 shoot("probe_dish", DISH_C, 4, 5, 2.55)
