@@ -10,8 +10,8 @@ import { SOLAR_BODIES, bodyById } from "../data/solarSystem";
  * its shipped map (`texelMedianLinear` in SOLAR_BODIES). The output
  * multiplies the body's material colour, a uniform, so no shader changes.
  *
- * - At and above the knee, Earth's own map median (0.0766, measured under
- *   its cloud layer: 0.177 × its geometric albedo 0.434), the gain is 1:
+ * - At and above the knee, Earth's own map statistic (0.0766, its mean
+ *   under its cloud layer: 0.177 × its geometric albedo 0.434), the gain is 1:
  *   Earth, Venus, the giants and the icy Galileans and Triton are drawn as
  *   they are.
  * - Below it a power toe draws albedo a as knee·(a/knee)^γ, so the gain is

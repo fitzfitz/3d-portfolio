@@ -8,6 +8,7 @@ import path from "node:path";
 import { SOLAR_BODIES, bodyById } from "../src/data/solarSystem";
 import { SOLAR_MOONS } from "../src/data/solarMoons";
 import { packTier } from "../src/utils/packFormat";
+import { SUN_COLOR } from "../src/utils/sunLight";
 import { SOURCES } from "../scripts/textures/fetch_nasa_maps.mjs";
 import { BODY_MAPS } from "../scripts/textures/process_body_maps.mjs";
 
@@ -52,20 +53,44 @@ const lumAt = (data: Buffer, k: number, ch: number) =>
   0.2126 * srgbToLinear(data[k * ch] / 255) + 0.7152 * srgbToLinear(data[k * ch + 1] / 255) + 0.0722 * srgbToLinear(data[k * ch + 2] / 255);
 const median = (a: Float32Array) => a.slice().sort()[a.length >> 1];
 
-/** The linear-luminance texel median of a shipped albedo map; Earth's is measured under its cloud layer, as drawn. */
-async function surfaceMedian(name: string, body: string) {
+const mean = (a: Float32Array) => a.reduce((s, v) => s + v, 0) / a.length;
+
+/**
+ * The cloud shell's opacity at each texel of a w × h map: the cloud map's
+ * grey decoded from sRGB, as SolarBodies uploads it (SRGBColorSpace).
+ */
+async function cloudAlpha(w: number, h: number) {
+  const { data, info } = await sharp(file(CLOUDS.map)).resize(w, h, { fit: "fill" }).greyscale().raw().toBuffer({ resolveWithObject: true });
+  return Float32Array.from({ length: w * h }, (_, k) => srgbToLinear(data[k * info.channels] / 255));
+}
+
+/**
+ * A shipped albedo map's linear-luminance statistic: the texel median, but
+ * for Earth the mean under its cloud layer, as drawn. Geometric albedo is a
+ * disc average, and on a two-tone planet the median texel is open ocean.
+ */
+async function surfaceStat(name: string, body: string) {
   const { data, w, h, ch } = await raw(name);
   const lum = new Float32Array(w * h);
   for (let k = 0; k < w * h; k++) lum[k] = lumAt(data, k, ch);
-  if (body === "earth") {
-    // The cloud shell: colour CLOUDS.linear (linear), alpha the cloud map (stored linear, NoColorSpace).
-    const { data: a, info } = await sharp(file(CLOUDS.map)).resize(w, h, { fit: "fill" }).greyscale().raw().toBuffer({ resolveWithObject: true });
-    for (let k = 0; k < w * h; k++) {
-      const alpha = a[k * info.channels] / 255;
-      lum[k] = lum[k] * (1 - alpha) + CLOUDS.linear * alpha;
-    }
-  }
-  return median(lum);
+  if (body !== "earth") return median(lum);
+  // The cloud shell: colour CLOUDS.linear (linear) over the surface.
+  const alpha = await cloudAlpha(w, h);
+  for (let k = 0; k < w * h; k++) lum[k] = lum[k] * (1 - alpha[k]) + CLOUDS.linear * alpha[k];
+  return mean(lum);
+}
+
+/** The game's sunlight colour, linear RGB (sunLight.ts SUN_COLOR, the point light's colour). */
+const SUN_LINEAR = (() => {
+  const v = parseInt(SUN_COLOR.slice(1), 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((c) => srgbToLinear(c / 255));
+})();
+
+/** Hue (deg) of an RGB triple. */
+function hueOf([r, g, b]: number[]) {
+  const X = Math.max(r, g, b), N = Math.min(r, g, b);
+  const h = X === r ? 60 * (((g - b) / (X - N)) % 6) : X === g ? 60 * ((b - r) / (X - N) + 2) : 60 * ((r - g) / (X - N) + 4);
+  return h < 0 ? h + 360 : h;
 }
 
 describe("provenance: a pinned NASA/USGS source or a seeded generator for every map", () => {
@@ -119,8 +144,8 @@ describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the 
       expect(Math.abs(s.stat / (ALBEDO_SCALE * s.albedo) - 1)).toBeLessThan(0.03);
     });
     for (const name of s.hiRes ? [s.map, `${s.map}_4k`] : [s.map]) {
-      it(`${s.id}: ${name}.webp median is within 3% of ${s.stat}${s.id === "earth" ? " (under its clouds)" : ""}`, async () => {
-        const m = await surfaceMedian(name, s.id);
+      it(`${s.id}: ${name}.webp ${s.id === "earth" ? "mean under its clouds" : "median"} is within 3% of ${s.stat}`, async () => {
+        const m = await surfaceStat(name, s.id);
         expect(Math.abs(m / s.stat - 1)).toBeLessThan(0.03);
       });
     }
@@ -149,6 +174,43 @@ describe("honest albedo: 0.177 × geometric (within 3%), dark bodies before the 
       expect(Math.abs(col[2] / col[1] / (sum[2] / sum[1]) - 1), `${b.id} B/G`).toBeLessThan(0.12);
     }
   }, 30_000); // decodes every shipped map; slow on a loaded machine
+});
+
+describe("Earth: blue oceans under white clouds, as from space", () => {
+  /** Linear RGB of every texel of Earth's 2048 map, and the cloud shell's opacity over each. */
+  async function earthTexels() {
+    const { data, w, h, ch } = await raw(EARTH.map);
+    const lin = Float32Array.from({ length: w * h * 3 }, (_, i) => srgbToLinear(data[Math.floor(i / 3) * ch + (i % 3)] / 255));
+    return { lin, alpha: await cloudAlpha(w, h), n: w * h };
+  }
+  const channelMedians = (rgb: number[][]) => rgb.map((c) => median(Float32Array.from(c)));
+
+  // Clear-sky ocean seen from orbit is mostly the Rayleigh sky over it: about
+  // 0.14–0.2 at 450 nm against ~0.7 for thick cloud. The Rayleigh term taken
+  // at nadir alone (0.375 τ) gave a tenth, and the oceans drew near-black.
+  it("the open ocean's blue is a sixth to a third of the cloud tops' (it was a tenth)", async () => {
+    const { lin, n } = await earthTexels();
+    const blue: number[][] = [[], [], []];
+    for (let k = 0; k < n; k++) {
+      const [r, g, b] = [lin[k * 3], lin[k * 3 + 1], lin[k * 3 + 2]];
+      if (b > g && g > r) for (let c = 0; c < 3; c++) blue[c].push(lin[k * 3 + c]);
+    }
+    const ocean = channelMedians(blue);
+    expect(ocean[2] / CLOUDS.linear).toBeGreaterThanOrEqual(1 / 6);
+    expect(ocean[2] / CLOUDS.linear).toBeLessThanOrEqual(1 / 3);
+  });
+
+  // The Blue Marble's cloud map is display-encoded grey, which NASA composites
+  // as stored; drawn in linear light as stored, its thin haze (median grey
+  // 0.24) veiled every ocean in grey. Decoded, the median texel is blue sea.
+  it("in the sunlight, the median colour of its surface under its clouds is blue (hue 205–235°, B/G ≥ 1.2)", async () => {
+    const { lin, alpha, n } = await earthTexels();
+    const m = [0, 1, 2].map((c) => median(Float32Array.from({ length: n },
+      (_, k) => (lin[k * 3 + c] * (1 - alpha[k]) + CLOUDS.linear * alpha[k]) * SUN_LINEAR[c])));
+    expect(hueOf(m)).toBeGreaterThanOrEqual(205);
+    expect(hueOf(m)).toBeLessThanOrEqual(235);
+    expect(m[2] / m[1]).toBeGreaterThanOrEqual(1.2);
+  }, 30_000);
 });
 
 describe("maps: shape, seam and poles", () => {

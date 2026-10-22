@@ -23,7 +23,9 @@ import type { BodyId } from "./bodyIds";
  *   (Venus: gen_body_maps.mjs; Saturn, Uranus, Neptune: gen_worlds.mjs).
  *   Each is scaled in linear light to 0.177 × its geometric albedo;
  *   `texelMedianLinear` is the shipped map's measured linear-luminance median
- *   (Earth's under its cloud layer; tests/bodyMaps.test.ts). `color` (the HUD
+ *   (Earth's is the mean under its cloud layer: geometric albedo is a disc
+ *   average, and on a two-tone planet the median texel is open sea;
+ *   tests/bodyMaps.test.ts). `color` (the HUD
  *   swatch, orbit lines and far dots) is the map's mean colour at one brightness.
  */
 /**
@@ -60,7 +62,7 @@ export interface SolarBody {
   texelMedianLinear: number;
   color: string;
   look: {
-    /** A cloud shell: `map` is its alpha (stored linear), `linear` its colour on the scene's albedo scale. */
+    /** A cloud shell: `map` is its opacity (display-encoded grey, decoded from sRGB), `linear` its colour on the scene's albedo scale. */
     clouds?: { map: string; linear: number };
     /** The night-side emissive map. */
     nightLights?: string;
@@ -106,8 +108,8 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "earth", name: "EARTH", ordinal: "3RD PLANET", diameterKm: 12756.2, flattening: 0.00335,
     obliquityDeg: 23.44, pole: { raDeg: 0, decDeg: 90 }, rotationHours: 23.9345,
     orbit: { kind: "jpl", el: JPL_PLANETS.earth }, geometricAlbedo: 0.434, bondAlbedo: 0.306,
-    map: "earth", mapHiRes: true, texelMedianLinear: 0.0766, color: "#9299ad",
-    look: { clouds: { map: "earth_clouds", linear: 0.2432 }, nightLights: "earth_night", atmosphere: { color: "#6aa8ff", thickness: 1.05, intensity: 1, dusk: "#ff9a5a" } },
+    map: "earth", mapHiRes: true, texelMedianLinear: 0.0766, color: "#8c99b8",
+    look: { clouds: { map: "earth_clouds", linear: 0.2681 }, nightLights: "earth_night", atmosphere: { color: "#6aa8ff", thickness: 1.05, intensity: 1, dusk: "#ff9a5a" } },
     facts: { moons: 1, dayHours: 24, yearDays: 365.256, meanTempC: 15 },
     hint: "the third planet, the blue one, with one Moon",
   }),

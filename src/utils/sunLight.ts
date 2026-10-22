@@ -21,6 +21,12 @@ import { AU, SYSTEM_RADIUS } from "../constants";
 export const SUN_IRRADIANCE_AT_AU = 2.1;
 /** The point light's intensity under decay 2 (three: I / d²). */
 export const SUN_LIGHT_INTENSITY = SUN_IRRADIANCE_AT_AU * AU * AU;
+/**
+ * The sunlight's colour, a warm white: every lit surface is its map times
+ * this (B/G × 0.82 in linear light). Maps whose hue matters under it, such as
+ * Uranus's pale cyan, are checked against it (tests/bodyMaps.test.ts).
+ */
+export const SUN_COLOR = "#fff4e0";
 /** A world-event flare lifts the light by this fraction (2.1 → 3.2 before F3). */
 export const SUN_FLARE_SWELL = 1.1 / 2.1;
 

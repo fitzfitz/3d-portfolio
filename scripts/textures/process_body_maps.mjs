@@ -24,8 +24,8 @@
  *      the body's visible colour; MESSENGER's and Triton's enhanced colour
  *      keep only part of their chroma (BODY_MAPS `color`);
  *   6. scale in linear light so the linear-luminance texel median is
- *      0.177 × the body's NASA geometric albedo (the scene's scale; Earth's is
- *      measured under its cloud layer, see below);
+ *      0.177 × the body's NASA geometric albedo (the scene's scale; Earth's
+ *      is the mean under its cloud layer, see below);
  *   7. even out the last rows at each pole (a sphere's pole is one point)
  *      and spread any step across the ±180° seam over a few columns;
  *   8. write a q95 JPEG master into assets-src/ (4K ones in assets-src/4k/)
@@ -34,16 +34,31 @@
  * Earth: the surface (Blue Marble NG) and the cloud layer (The Blue Marble
  * clouds, drawn as an alpha-mapped shell) are one image to the eye, so the
  * rule is applied to the two together: surface and clouds take the same
- * linear scale k, the cloud shell's colour is k (the cloud map's white), and
- * k puts the median of surface·(1 − α) + k·α at 0.177 × 0.434. Before that,
- * the surface gets the Rayleigh sky's own reflectance (single scattering at
- * nadir, 0.375 τ for τ = 0.05 / 0.10 / 0.24 at 650 / 550 / 450 nm), which
- * Earth's geometric albedo includes and the Blue Marble (a surface map)
- * leaves out; without it the oceans are black. The night lights are Black
- * Marble 2016's grey map, black-pointed at 2% so only lights glow.
+ * linear scale k, the cloud shell's colour is k (the cloud map's white).
+ * - The cloud map is display-encoded grey (NASA composites it as stored, in
+ *   sRGB), so its opacity is its grey decoded from sRGB (SolarBodies uploads
+ *   it as SRGBColorSpace): α = sRGB⁻¹(grey). Taken as stored, its thin haze
+ *   (median grey 0.24) drew at a quarter opacity in linear light and veiled
+ *   every ocean in grey.
+ * - k puts the MEAN of surface·(1 − α) + k·α at 0.177 × 0.434: geometric
+ *   albedo is a disc average, and on a two-tone planet (bright cloud, dark
+ *   sea) the median texel is open ocean, so the median rule would have
+ *   lifted the oceans to the planet's average (k ≈ 0.48, cloud tops past
+ *   0.177 × 2).
+ * - Before that, the surface gets the Rayleigh sky's own reflectance, which
+ *   Earth's geometric albedo includes and the Blue Marble (a surface map)
+ *   leaves out; without it the oceans are black. Single scattering is
+ *   τ·P/(4 μ μ0), 0.375 τ at nadir (P = 1.5); averaged over the lit disc
+ *   inside the limb (μ ≥ 0.4, where the atmosphere shell takes over) it is
+ *   about twice that against a Lambert surface's μ0, so the map takes
+ *   0.75 τ for τ = 0.05 / 0.10 / 0.24 at 650 / 550 / 450 nm. The nadir value
+ *   alone left clear ocean at a tenth of the cloud tops' blue, where seen
+ *   from orbit it is about a fifth (≈ 0.15 against ≈ 0.7 at 450 nm).
+ * The night lights are Black Marble 2016's grey map, black-pointed at 2% so
+ * only lights glow.
  *
- * Prints each shipped map's measured linear median: those are the
- * `texelMedianLinear` values in src/data/solarSystem.ts and solarMoons.ts
+ * Prints each shipped map's measured linear median (Earth's mean under its
+ * clouds): those are the `texelMedianLinear` values in src/data/solarSystem.ts and solarMoons.ts
  * (tests/bodyMaps.test.ts holds them to 3%).
  */
 import sharp from "sharp";
@@ -111,6 +126,7 @@ const LUT = Float32Array.from({ length: 256 }, (_, i) => s2l(i / 255));
 const lum3 = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const medianOf = (a) => a.slice().sort()[a.length >> 1];
+const meanOf = (a) => a.reduce((s, v) => s + v, 0) / a.length;
 
 function luminance(lin, n) {
   const L = new Float32Array(n);
@@ -303,16 +319,18 @@ async function write(name, W, H, bytes, ch, quality) {
   return webp;
 }
 
-/** Linear-luminance median of a shipped WebP (what the tests measure). */
+/**
+ * Linear-luminance median of a shipped WebP (what the tests measure); with
+ * `clouds` (Earth), the mean under the cloud shell, its grey decoded from sRGB.
+ */
 export async function shippedMedian(file, clouds) {
   const { data, info } = await sharp(file).raw().toBuffer({ resolveWithObject: true });
   const n = info.width * info.height, L = new Float32Array(n);
   for (let k = 0; k < n; k++) L[k] = lum3(LUT[data[k * info.channels]], LUT[data[k * info.channels + 1]], LUT[data[k * info.channels + 2]]);
-  if (clouds) {
-    const a = await sharp(clouds.file).resize(info.width, info.height, { fit: "fill" }).greyscale().raw().toBuffer();
-    for (let k = 0; k < n; k++) L[k] = L[k] * (1 - a[k] / 255) + clouds.linear * (a[k] / 255);
-  }
-  return medianOf(L);
+  if (!clouds) return medianOf(L);
+  const a = await sharp(clouds.file).resize(info.width, info.height, { fit: "fill" }).greyscale().raw().toBuffer();
+  for (let k = 0; k < n; k++) L[k] = L[k] * (1 - LUT[a[k]]) + clouds.linear * LUT[a[k]];
+  return meanOf(L);
 }
 
 // ------------------------------------------------------------ recipes
@@ -354,7 +372,8 @@ async function processSourced(name, r, W) {
 }
 
 /** Earth's surface at width W; `k` (the shared surface-and-cloud scale) is solved here at 2048. */
-const RAYLEIGH = [0.375 * 0.05, 0.375 * 0.1, 0.375 * 0.24];
+/** The Rayleigh sky's reflectance over the disc at 650 / 550 / 450 nm (0.75 τ; see the header). */
+export const RAYLEIGH = [0.75 * 0.05, 0.75 * 0.1, 0.75 * 0.24];
 async function processEarth(W, kGiven) {
   const H = W / 2, n = W * H;
   const { lin } = await load(srcFile("bmng-2004-07"), W, false);
@@ -363,8 +382,8 @@ async function processEarth(W, kGiven) {
   if (k === undefined) {
     const a = await sharp(srcFile("bm-clouds")).resize(W, H, { fit: "fill" }).greyscale().raw().toBuffer();
     const L = luminance(lin, n);
-    for (let j = 0; j < n; j++) L[j] = L[j] * (1 - a[j] / 255) + a[j] / 255;
-    k = (ALBEDO_SCALE * BODY_MAPS.earth.albedo) / medianOf(L);
+    for (let j = 0; j < n; j++) L[j] = L[j] * (1 - LUT[a[j]]) + LUT[a[j]];
+    k = (ALBEDO_SCALE * BODY_MAPS.earth.albedo) / meanOf(L);
   }
   for (let j = 0; j < lin.length; j++) lin[j] = clamp01(lin[j] * k);
   evenPoles(lin, W, H, 3);
@@ -372,7 +391,7 @@ async function processEarth(W, kGiven) {
   return { bytes: toBytes(lin), scale: k };
 }
 
-/** A single-band map (Earth's cloud alpha, its night lights) at 2048: bytes as stored, no colour transfer. */
+/** A single-band map (Earth's cloud alpha, its night lights) at 2048: bytes as stored (the cloud grey is display-encoded: SolarBodies decodes it). */
 async function processGrey(id, W, blackPoint = 0, gamma = 1) {
   const H = W / 2;
   const g = await sharp(srcFile(id)).greyscale().resize(W, H, { fit: "fill" }).raw().toBuffer();
@@ -417,14 +436,14 @@ async function main() {
     console.log(`${name}: ${((Date.now() - t) / 1000).toFixed(1)} s`);
   }
   if (earthK !== undefined) console.log(`earth: surface and cloud scale k = ${earthK.toFixed(5)} (the cloud shell's linear colour)`);
-  // What the tests measure: the shipped files' medians.
+  // What the tests measure: the shipped files' medians (Earth's mean under its clouds).
   const cloudLinear = earthK;
   for (const [name, r] of Object.entries(BODY_MAPS)) {
     if (r.albedo === undefined || !want(name)) continue;
     for (const f of [`${name}.webp`, `${name}_4k.webp`].map((x) => path.join(OUT, x)).filter(existsSync)) {
       const clouds = name === "earth" && cloudLinear !== undefined ? { file: path.join(OUT, "earth_clouds.webp"), linear: cloudLinear } : undefined;
       const m = await shippedMedian(f, clouds);
-      console.log(`  ${path.basename(f)}: median ${m.toFixed(5)} (target ${(ALBEDO_SCALE * r.albedo).toFixed(5)})`);
+      console.log(`  ${path.basename(f)}: ${clouds ? "mean under its clouds" : "median"} ${m.toFixed(5)} (target ${(ALBEDO_SCALE * r.albedo).toFixed(5)})`);
     }
   }
   if (results.length) console.log("linear scales:", JSON.stringify(results));

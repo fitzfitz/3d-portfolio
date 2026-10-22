@@ -12,9 +12,11 @@ const CLOUD_SHELL = 1.03;
 interface CloudLayerProps {
   radius: number;
   /**
-   * The cloud cover (Earth: NASA's Blue Marble clouds): its grey value is
-   * the shell's opacity, so it must be uploaded without a colour-space
-   * transfer (NoColorSpace).
+   * The cloud cover (Earth: NASA's Blue Marble clouds): its grey, decoded
+   * from sRGB (uploaded as SRGBColorSpace), is the shell's opacity. The grey
+   * is display-encoded cloud brightness, which NASA composites as stored;
+   * taken as a linear opacity, the thin haze (median grey 0.24) drew at a
+   * quarter opacity and veiled the oceans in grey.
    */
   alphaMap: THREE.Texture;
   /** The cloud tops' colour on the scene's albedo scale, linear (solarSystem.ts `look.clouds.linear`). */
