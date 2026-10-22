@@ -54,6 +54,9 @@
  *   0.75 τ for τ = 0.05 / 0.10 / 0.24 at 650 / 550 / 450 nm. The nadir value
  *   alone left clear ocean at a tenth of the cloud tops' blue, where seen
  *   from orbit it is about a fifth (≈ 0.15 against ≈ 0.7 at 450 nm).
+ * - The map's alpha is the ocean mask (oceanMask: the Blue Marble paints
+ *   the sea one flat navy), kept as a lossless PNG master beside the JPEG;
+ *   SolarBodies reads it to gloss the sea and leave the land matte.
  * The night lights are Black Marble 2016's grey map, black-pointed at 2% so
  * only lights glow.
  *
@@ -309,14 +312,28 @@ const toBytes = (lin) => {
   return out;
 };
 
-async function write(name, W, H, bytes, ch, quality) {
+/**
+ * `ocean` (optional, one byte per texel): a mask the WebP carries in its
+ * alpha channel, kept as a lossless PNG master next to the JPEG
+ * (`${name}_ocean.png`). WebP stores the alpha losslessly, and the colour
+ * as it would without it.
+ */
+async function write(name, W, H, bytes, ch, quality, ocean) {
   const hi = W > 2048;
   const masterDir = hi ? path.join(SRC, "4k") : SRC;
   mkdirSync(masterDir, { recursive: true });
   const master = path.join(masterDir, `${name}.jpg`);
   await sharp(bytes, { raw: { width: W, height: H, channels: ch } }).jpeg({ quality: 95, chromaSubsampling: "4:4:4" }).toFile(master);
   const webp = path.join(OUT, `${name}${hi ? "_4k" : ""}.webp`);
-  await sharp(master).webp({ quality }).toFile(webp);
+  let img = sharp(master);
+  if (ocean) {
+    const mask = path.join(masterDir, `${name}_ocean.png`);
+    await sharp(ocean, { raw: { width: W, height: H, channels: 1 } }).toColourspace("b-w").png({ compressionLevel: 9 }).toFile(mask);
+    img = img.joinChannel(mask);
+  }
+  // `exact`: libwebp would otherwise rewrite the colour under alpha 0 (the
+  // land, under the ocean mask) to save bytes.
+  await img.webp({ quality, alphaQuality: 100, exact: true }).toFile(webp);
   return webp;
 }
 
@@ -388,6 +405,40 @@ const cloudOpacity = (g) => g ** CLOUD_OPACITY_GAMMA;
 /** The Rayleigh sky's reflectance over the disc at 650 / 550 / 450 nm (0.75 τ; see the header). */
 const RAYLEIGH = [0.75 * 0.05, 0.75 * 0.1, 0.75 * 0.24];
 
+/**
+ * Is this Blue Marble texel (sRGB bytes) water? The product paints the open
+ * ocean one flat navy (2, 5, 20), shallow seas a dark teal, and inland seas
+ * and lakes near-black: water is dark and bluer than it is red or green, or
+ * all but black. Land never is (forest is green over blue, desert warm, ice
+ * and snow bright).
+ */
+export const isWater = (r, g, b) => {
+  const mx = Math.max(r, g, b);
+  return (b - Math.max(r, g) >= 3 && mx < 100) || mx <= 6;
+};
+
+/**
+ * Earth's ocean mask at width W (one byte per texel, 255 = water), shipped
+ * in the map's alpha: SolarBodies gives the sea water's F0 and its wind-
+ * roughened gloss and leaves the land matte. Classified at the source's full
+ * 5400, averaged down and cut at half: a hard mask costs the WebP ~15 KB
+ * (2048) against ~100 KB for soft coasts, and the GPU's filtering softens
+ * the coast by a texel anyway.
+ */
+async function oceanMask(W) {
+  const H = W / 2;
+  const { data, info } = await sharp(srcFile("bmng-2004-07"), { limitInputPixels: false }).removeAlpha().toColourspace("srgb").raw()
+    .toBuffer({ resolveWithObject: true });
+  const n = info.width * info.height, full = Buffer.alloc(n);
+  for (let k = 0; k < n; k++) full[k] = isWater(data[k * 3], data[k * 3 + 1], data[k * 3 + 2]) ? 255 : 0;
+  const m = await sharp(full, { raw: { width: info.width, height: info.height, channels: 1 } })
+    .resize(W, H, { fit: "fill", kernel: "linear" }).extractChannel(0).raw().toBuffer();
+  const f = Float32Array.from(m, (v) => v / 255);
+  evenPoles(f, W, H, 1);
+  closeSeam(f, W, H, 1);
+  return Buffer.from(Uint8Array.from(f, (v) => (v >= 0.5 ? 255 : 0)));
+}
+
 /** Earth's surface at width W; `k` (the shared surface-and-cloud scale) is solved here at 2048. */
 async function processEarth(W, kGiven) {
   const H = W / 2, n = W * H;
@@ -438,7 +489,7 @@ async function main() {
       for (const W of [2048, 4096]) {
         const { bytes, scale } = await processEarth(W, earthK);
         earthK ??= scale;
-        await write(name, W, W / 2, bytes, 3, r.quality);
+        await write(name, W, W / 2, bytes, 3, r.quality, await oceanMask(W));
       }
     } else if (name === "earth_clouds") {
       await write(name, 2048, 1024, await processGrey("bm-clouds", 2048, { transfer: cloudOpacity, encode: l2s }), 1, r.quality);

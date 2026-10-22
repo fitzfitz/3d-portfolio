@@ -41,11 +41,17 @@ const FRAG = /* glsl */ `
   uniform float uPower;   // 0 idle .. 1 cruise .. ~2 warp
   uniform float uSeed;
   uniform vec3 uColor;   // the plume's cool end (engine cyan by default)
+  uniform float uRoot;   // share of the length the root fades in over (0 = none; plumeRootFade)
   varying float vAlong;
   varying float vWiden;
   varying vec3 vNormal;
   varying vec3 vView;
   ${LOG_DEPTH_FRAG_PARS}
+  float plumeRoot( float t, float root ) {
+    if ( root <= 0.0 ) return 1.0;
+    float k = clamp( t / root, 0.0, 1.0 );
+    return k * k * ( 3.0 - 2.0 * k );
+  }
   void main() {
     ${LOG_DEPTH_FRAG}
     float t = vAlong;
@@ -60,7 +66,7 @@ const FRAG = /* glsl */ `
     vec3 col = mix(hot, cool, smoothstep(0.0, 0.45, t));
     // The same exhaust over a wider cross-section is thinner: fade with the widening.
     float thin = 1.0 / pow(vWiden, 0.6);
-    float a = core * fall * thin * flicker * (0.25 + 0.55 * min(uPower, 1.6));
+    float a = core * fall * thin * flicker * (0.25 + 0.55 * min(uPower, 1.6)) * plumeRoot( t, uRoot );
     gl_FragColor = vec4(col * (1.0 + 0.6 * uPower), a);
   }
 `;
@@ -82,8 +88,23 @@ export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL
       uSeed: { value: seed },
       uColor: { value: color.clone() },
       uSpread: { value: 0 },
+      uRoot: { value: 0 },
     },
   });
+}
+
+/**
+ * The CPU mirror of the shader's root fade: the plume's opacity factor at
+ * `t` (0 at the nozzle, 1 at the tip) when its root fades in over `root` of
+ * the length. 0 keeps the root at full, as every plume but the probes' does:
+ * their burn fades in over its first few tenths of a unit, so the engine
+ * bell shows at the root, its throat lit, the exhaust streaming out of it.
+ * A uniform, so every plume still shares the one program.
+ */
+export function plumeRootFade(t: number, root: number): number {
+  if (root <= 0) return 1;
+  const k = Math.min(Math.max(t / root, 0), 1);
+  return k * k * (3 - 2 * k);
 }
 
 /** Half-angle of the exhaust cone, degrees (spec F7: about 25-40). */

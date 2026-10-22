@@ -221,6 +221,30 @@ describe("Earth: blue oceans under white clouds, as from space", () => {
     expect(hueOf(m)).toBeLessThanOrEqual(250);
     expect(m[2] / m[1]).toBeGreaterThanOrEqual(1.0);
   }, 30_000);
+
+  // The ocean mask rides in the map's alpha (process_body_maps.mjs
+  // oceanMask): SolarBodies reads it for the sea's gloss and water's F0, so
+  // the land stays matte. Open water is 1, land and ice 0, the coasts soft.
+  for (const name of [EARTH.map, `${EARTH.map}_4k`]) {
+    it(`${name}.webp carries the ocean mask in its alpha: the seas are water, the land and ice are not`, async () => {
+      const { data, w, h, ch } = await raw(name);
+      expect(ch).toBe(4);
+      const at = (lon: number, lat: number) => {
+        const x = Math.min(w - 1, Math.floor(((lon + 180) / 360) * w)), y = Math.min(h - 1, Math.floor(((90 - lat) / 180) * h));
+        return data[(y * w + x) * ch + 3] / 255;
+      };
+      const seas = { pacific: [-150, 0], atlantic: [-30, 0], indian: [75, -20], mediterranean: [18, 35], caspian: [51, 42], "lake superior": [-88, 47.6] };
+      const lands = { sahara: [10, 23], amazon: [-60, -5], siberia: [100, 62], himalaya: [85, 30], greenland: [-40, 72], antarctica: [0, -85] };
+      for (const [k, [lon, lat]] of Object.entries(seas)) expect(at(lon, lat), k).toBeGreaterThan(0.95);
+      for (const [k, [lon, lat]] of Object.entries(lands)) expect(at(lon, lat), k).toBeLessThan(0.05);
+      // Earth is 71% water by area; on the equirect texel grid (poles
+      // stretched: Antarctica's land, the Arctic's sea) it reads ~0.64.
+      let water = 0;
+      for (let k = 0; k < w * h; k++) water += data[k * ch + 3] / 255;
+      expect(water / (w * h)).toBeGreaterThan(0.6);
+      expect(water / (w * h)).toBeLessThan(0.7);
+    }, 30_000);
+  }
 });
 
 describe("maps: shape, seam and poles", () => {

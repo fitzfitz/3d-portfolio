@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { makePlumeMaterial, makeBeamGeometry, makePlumeGeometry, plumeSpreadFor, PLUME_HALF_ANGLE_DEG } from "../src/components/canvas/enginePlume";
+import { makePlumeMaterial, makeBeamGeometry, makePlumeGeometry, plumeRootFade, plumeSpreadFor, PLUME_HALF_ANGLE_DEG } from "../src/components/canvas/enginePlume";
 
 describe("makePlumeMaterial", () => {
   it("defaults to the engine's cyan and accepts a tint without changing the shader source", () => {
@@ -56,6 +56,20 @@ describe("vacuum plume (L31)", () => {
   });
   it("keeps the same triangle count", () => {
     expect(makePlumeGeometry(0.07).index!.count).toBe(20 * 12 * 6);
+  });
+  // The probes' relocation burn leaves its engine bell visible at the plume's
+  // root (uRoot > 0); every other plume keeps its root at full (uRoot 0), the
+  // same program either way.
+  it("can fade the plume's root in over uRoot of its length, off (0) by default", () => {
+    const m = makePlumeMaterial(0);
+    expect(m.uniforms.uRoot.value).toBe(0);
+    expect(m.fragmentShader).toMatch(/uniform float uRoot;/);
+    expect(m.fragmentShader).toMatch(/plumeRoot\( t, uRoot \)/);
+    for (const t of [0, 0.01, 0.5, 1]) expect(plumeRootFade(t, 0)).toBe(1);
+    expect(plumeRootFade(0, 0.1)).toBe(0);
+    expect(plumeRootFade(0.05, 0.1)).toBeCloseTo(0.5, 6);
+    expect(plumeRootFade(0.1, 0.1)).toBe(1);
+    expect(plumeRootFade(0.7, 0.1)).toBe(1);
   });
   it("has no shock diamonds (they need an atmosphere)", () => {
     const f = makePlumeMaterial(0).fragmentShader;

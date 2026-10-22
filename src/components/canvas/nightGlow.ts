@@ -14,7 +14,9 @@ import { sunShadowUniforms } from "./sunShadow";
  * sunShadow.ts's uSunView, which the shadow patch refreshes from the camera
  * before every draw, so a night-glow material must also be patched by
  * patchSunShadow (after this). One compile hook for every such material, so
- * Earth and Io share one program; each keeps its own eclipse uniform.
+ * materials of one type share one program, each with its own eclipse
+ * uniform (Earth is a physical material with its sea gloss since PR 46,
+ * oceanGloss.ts, so it no longer shares Io's).
  */
 
 /** The fragment chunk that replaces `#include <emissivemap_fragment>`. nightGlowFactor mirrors it. */

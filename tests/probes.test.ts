@@ -14,7 +14,7 @@ import { CRYSTAL_PICKUP_RADIUS } from "../src/utils/crystalField";
 import { PROBES, PROBE_IDS, PROBE_RADIUS } from "../src/data/probes";
 import {
   loadProbeSpots, nextSpot, spotPos, RELOCATE_S, RELOCATE_DIST, relocationTravel, beaconLevel,
-  POP_FADE_S, ARRIVE_S, relocationScale, arrivalScale, burnPlume,
+  POP_FADE_S, ARRIVE_S, relocationScale, arrivalScale, burnPlume, burnFlare, FLARE_CLEAR_DIST, FLARE_FULL_DIST,
 } from "../src/utils/probes";
 
 const S = [SPAWN.x, SPAWN.y, SPAWN.z] as const;
@@ -159,6 +159,26 @@ describe("relocationScale / arrivalScale / burnPlume", () => {
     expect(burnPlume(1.5)).toBe(1);
     expect(burnPlume(RELOCATE_S)).toBe(0);
     for (let t = 0; t <= RELOCATE_S; t += 0.01) expect(burnPlume(t)).toBeLessThanOrEqual(relocationScale(t));
+  });
+  // The nozzle flare is for range, where the probe is a few pixels and the
+  // plume a streak: up close it covered the main engine bell, so it fades in
+  // with the camera's distance and the plume carries the burn there.
+  it("fades the nozzle flare in with range: none up close, full past FLARE_FULL_DIST, smooth between", () => {
+    expect(burnFlare(0)).toBe(0);
+    expect(burnFlare(FLARE_CLEAR_DIST)).toBe(0);
+    expect(burnFlare(FLARE_FULL_DIST)).toBe(1);
+    expect(burnFlare(500)).toBe(1);
+    expect(burnFlare((FLARE_CLEAR_DIST + FLARE_FULL_DIST) / 2)).toBeCloseTo(0.5, 6);
+    let prev = 0;
+    for (let d = 0; d <= FLARE_FULL_DIST + 5; d += 0.25) {
+      expect(burnFlare(d)).toBeGreaterThanOrEqual(prev);
+      prev = burnFlare(d);
+    }
+    // Where the chase camera watches a burn start (the probe 4 u off the
+    // nose when its dossier closes, the camera ~5 u behind), the bell is clear.
+    expect(FLARE_CLEAR_DIST).toBeGreaterThanOrEqual(14);
+    // ...and by the time the probe is ~25 px across (3 u long at 45 u), the flare is all there.
+    expect(FLARE_FULL_DIST).toBeLessThanOrEqual(50);
   });
 });
 

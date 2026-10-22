@@ -21,6 +21,7 @@ import { makeBodyRing, makeBodyRingMaterial, makeUranusRingStrip } from "./bodyR
 import { noIbl } from "./noIbl";
 import { guideViewportHeight, RING_NIGHT_FLOOR } from "./guideLine";
 import { patchNightGlow } from "./nightGlow";
+import { patchOceanGloss, SEA_ROUGHNESS, WATER_IOR } from "./oceanGloss";
 import { OCCLUDER_COUNT, patchSunShadow, sunShadowDebug, sunShadowUniforms } from "./sunShadow";
 
 /**
@@ -155,19 +156,21 @@ export default function SolarBodies() {
   // over the shadow patch. Fragment mode skips each body's own sphere by
   // distance, so all share the same programs.
   const materials = useMemo(() => SOLAR_BODIES.map((b) => {
-    const m = new THREE.MeshStandardMaterial({
-      map: textures[MAPS.indexOf(b.map)],
-      // Earth takes a sheen for its oceans (0.5, as before); every other surface is matte.
-      roughness: b.id === "earth" ? 0.5 : 0.95, metalness: 0,
-    });
+    const map = textures[MAPS.indexOf(b.map)];
+    // Every surface is matte but Earth's sea: water's F0 and its gloss where
+    // the map's alpha says ocean (oceanGloss.ts), its own physical program.
+    const m = b.id === "earth"
+      ? new THREE.MeshPhysicalMaterial({ map, ior: WATER_IOR, roughness: SEA_ROUGHNESS, metalness: 0 })
+      : new THREE.MeshStandardMaterial({ map, roughness: 0.95, metalness: 0 });
     m.color.copy(bodyColor(b));
     if (b.look.nightLights) {
-      // City lights on the night side only (nightGlow.ts; Io's hot spots share the program).
+      // City lights on the night side only (nightGlow.ts; Io's hot spots share the hook, not Earth's physical program).
       m.emissiveMap = textures[TEX_NIGHT];
       m.emissive.set("#ffd9a0");
       m.emissiveIntensity = 1.4;
       patchNightGlow(m);
     }
+    if (m instanceof THREE.MeshPhysicalMaterial) patchOceanGloss(m);
     // Saturn also takes its rings' shadow: one more program, its own.
     patchSunShadow(m, "fragment", b.look.rings === "saturn"
       ? { ringShadow: { normal: saturnRingNormal, inner: RING_INNER, outer: RING_OUTER, map: ringMap } }
