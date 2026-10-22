@@ -93,6 +93,14 @@ function hueOf([r, g, b]: number[]) {
   return h < 0 ? h + 360 : h;
 }
 
+/** Mean linear colour of a shipped map. */
+async function meanLinear(name: string) {
+  const { data, w, h, ch } = await raw(name);
+  const sum = [0, 0, 0];
+  for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
+  return sum.map((s) => s / (w * h));
+}
+
 describe("provenance: a pinned NASA/USGS source or a seeded generator for every map", () => {
   it("covers every map a body or moon draws", () => {
     expect(EQUIRECT.filter((m) => !(m in BODY_MAPS))).toEqual([]);
@@ -303,20 +311,31 @@ describe("byte caps: per map, and per asset-pack tier", () => {
   });
 });
 
-describe("w-tilted (Uranus): Voyager 2's pale blue-cyan, not teal", () => {
-  // The game's tone mapping (Khronos PBR Neutral) subtracts the same toe
-  // offset from every channel of a dim pixel, which saturates it and lets a
-  // cyan with G ≈ B read teal-green. So the map carries a bluer hue than
-  // Voyager's image (B over G; the image is 1.04, Task 2's map 1.11), at
+describe("w-tilted (Uranus): Voyager 2's pale cyan, not teal; Neptune stays the deep blue", () => {
+  // The map is bluer than Voyager's image (B over G; the image is 1.04) at
   // about the image's red (R over G 0.66; Task 2's map 0.60 read teal, Task
-  // 2b's 0.72 grey-slate): bracketed around the reference, not one direction.
-  it("has R/G in 0.64–0.70 and B/G ≥ 1.12 in mean linear colour", async () => {
-    const { data, w, h, ch } = await raw("w-tilted");
-    const sum = [0, 0, 0];
-    for (let k = 0; k < w * h; k++) for (let c = 0; c < 3; c++) sum[c] += srgbToLinear(data[k * ch + c] / 255);
-    expect(sum[2] / sum[1]).toBeGreaterThanOrEqual(1.12);
-    expect(sum[0] / sum[1]).toBeGreaterThanOrEqual(0.64);
-    expect(sum[0] / sum[1]).toBeLessThanOrEqual(0.7);
+  // 2b's 0.72 grey-slate): the game's sunlight is warm (#fff4e0 takes B/G
+  // × 0.82), so a map at the image's own B/G is lit teal-green.
+  it("has R/G in 0.64–0.70 and B/G ≥ 1.22 in mean linear colour", async () => {
+    const [r, g, b] = await meanLinear("w-tilted");
+    expect(b / g).toBeGreaterThanOrEqual(1.22);
+    expect(r / g).toBeGreaterThanOrEqual(0.64);
+    expect(r / g).toBeLessThanOrEqual(0.7);
+  });
+
+  // B/G 1.15 lit 0.95 at hue ~168° and read 160° on the disc (2026-10-21).
+  it("in the sunlight its mean colour is pale cyan: blue at least green, hue 180–200°", async () => {
+    const lit = (await meanLinear("w-tilted")).map((v, c) => v * SUN_LINEAR[c]);
+    expect(lit[2] / lit[1]).toBeGreaterThanOrEqual(1);
+    expect(hueOf(lit)).toBeGreaterThanOrEqual(180);
+    expect(hueOf(lit)).toBeLessThanOrEqual(200);
+  });
+
+  it("Neptune (w-blue) stays clearly bluer in the same light: hue ≥ 215° and at least twice Uranus's B/G", async () => {
+    const u = (await meanLinear("w-tilted")).map((v, c) => v * SUN_LINEAR[c]);
+    const n = (await meanLinear("w-blue")).map((v, c) => v * SUN_LINEAR[c]);
+    expect(hueOf(n)).toBeGreaterThanOrEqual(215);
+    expect(n[2] / n[1]).toBeGreaterThanOrEqual(2 * (u[2] / u[1]));
   });
 });
 

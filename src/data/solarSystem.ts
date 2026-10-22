@@ -152,7 +152,7 @@ export const SOLAR_BODIES: readonly SolarBody[] = [
     id: "uranus", name: "URANUS", ordinal: "7TH PLANET", diameterKm: 51118, flattening: 0.02293,
     obliquityDeg: 97.77, pole: { raDeg: 257.311, decDeg: -15.175 }, rotationHours: -17.24,
     orbit: { kind: "jpl", el: JPL_PLANETS.uranus }, geometricAlbedo: 0.488, bondAlbedo: 0.3,
-    map: "w-tilted", texelMedianLinear: 0.0857, color: "#849ea8",
+    map: "w-tilted", texelMedianLinear: 0.0857, color: "#829eb0",
     look: { rings: "uranus", atmosphere: { color: "#a8e0e6", thickness: 1.04, intensity: 0.5, dusk: ICE_GIANT_DUSK }, limb: 0.7 },
     facts: { moons: 28, dayHours: 17.24, yearDays: 30685.4, meanTempC: -195 },
     hint: "the pale cyan ice giant, rolling on its side",
