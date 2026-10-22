@@ -7,16 +7,17 @@ reproducible; none is urgent enough to have justified widening a branch.
 Delete an entry when it is fixed.
 
 - **Earth's ocean sheen.** Since PR #43 (2026-10-22) the lit disc reads
-  blue (median hue ~220°, b/g 1.19–1.28 by face, against 1.47 for its
-  ocean map × the sunlight; ~29–31 luma). What still greys the sea is the
+  blue (median hue 218–220°, b/g 1.13–1.21 by face, against 1.47 for its
+  ocean map × the sunlight; 28–30 luma). What still greys the sea is the
   sheen: MeshStandardMaterial's dielectric F0 is 0.04 where water's is
   0.02, and roughness 0.5 is right for the sea (Cox–Munk at ~7 m/s) but
   lies on land and ice too. Taking it out lifted b/g 1.35 → 1.63 on a
   cloudless disc. A fix needs an ocean mask or MeshPhysicalMaterial's ior,
   each a new program for Earth (the programs probe holds added = 0), so it
-  waits for an owner call. Also an owner call: decoding the cloud map from
-  sRGB makes thin haze nearly clear, so Earth shows less cloud than the old
-  grey veil did (thick cloud is unchanged).
+  waits for an owner call. The cloud opacity is the Blue Marble grey^1.3
+  (owner's pick, `CLOUD_OPACITY_GAMMA` in process_body_maps.mjs): a higher
+  γ gives bluer seas and fainter swirls, and changing it means regenerating
+  Earth's maps and copying the printed k into `look.clouds.linear`.
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
   `worldMaps.test.ts`, the w-rock and w-dwarf maps and the assetContracts cap
