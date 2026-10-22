@@ -10,8 +10,8 @@
  * constant fraction of the distance at every range, in both render tiers.
  *
  * Why not a reversed depth buffer (tried first): measured on Chrome's
- * ANGLE/Metal backend, the low-perf tier (drawn straight to the antialiased
- * canvas) drew no depth-tested object at all with it on; and it gains only
+ * ANGLE/Metal backend, the low-perf tier (drawn straight to the canvas, then
+ * antialiased) drew no depth-tested object at all with it on; and it gains only
  * with a float depth attachment, which the composer's 24-bit renderbuffer is
  * on Apple GPUs (Metal stores it as float) but not on most others.
  * The cost: every fragment writes gl_FragDepth, which turns off early depth

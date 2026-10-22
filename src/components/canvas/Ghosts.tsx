@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { useSpaceStore, flight } from "../../store/spaceStore";
 import { assetUrl } from "../../utils/assetUrl";
@@ -72,7 +72,7 @@ function releaseScan(slot: Slot) {
  * canvas (and so this) unmounts on the classic résumé, which closes the socket.
  */
 export default function Ghosts() {
-  const { scene: shipScene } = useGLTF(assetUrl("/models/spaceship.glb"));
+  const { scene: shipScene } = useModel(assetUrl("/models/spaceship.glb"));
   const flameGeometry = useMemo(() => makePlumeGeometry(GHOST_NOZZLE_R), []);
   const slots = useMemo(
     () => Array.from({ length: MAX_GHOSTS }, (_, i) => makeSlot(shipScene, flameGeometry, i)),

@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../../data/jellyfishPath";
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
 import { setScannable } from "../../utils/scannables";
@@ -105,7 +105,7 @@ function pulseCycle(t: number): number {
 }
 
 export default function SpaceJellyfish() {
-  const { scene } = useGLTF(assetUrl("/models/creature.glb"));
+  const { scene } = useModel(assetUrl("/models/creature.glb"));
   const groupRef = useRef<THREE.Group>(null);
   const tOffset = useRef(0);
   const jelly = useMemo(createJellyState, []);

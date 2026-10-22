@@ -68,10 +68,10 @@ export default function PostFX({ enabled }: PostFXProps) {
             renderer's mapping applies again. Same curve as the renderer
             (GlobalCanvas onCreated), last so it sees the full HDR result. */}
         <ToneMapping mode={ToneMappingMode.NEUTRAL} />
-        {/* The composer renders into an offscreen target, so the canvas's
-            MSAA never touched this tier (and multisampling stays 0, see
-            above): planet limbs, rings and the ship edges were fully aliased.
-            SMAA runs on the final tone-mapped image, where it is designed to. */}
+        {/* The composer renders into an offscreen target and multisampling
+            stays 0 (see above), so this is the tier's only anti-aliasing: the
+            canvas itself has none (GlobalCanvas). SMAA runs on the final
+            tone-mapped image, where it is designed to. */}
         <SMAA />
       </EffectComposer>
     </>

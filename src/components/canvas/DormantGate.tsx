@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { GATE_POS, GATE_RADIUS, GATE_SCAN_ID, GATE_SCAN_LABEL } from "../../data/dormantGate";
 import { gateDistance, gateLine, gateRadio, seamIntensity } from "../../utils/gatePass";
@@ -21,7 +21,7 @@ const POSITION: [number, number, number] = [GATE_POS[0], GATE_POS[1], GATE_POS[2
  * the frame is allowed, as at the station and the portal.
  */
 export default function DormantGate() {
-  const { scene } = useGLTF(assetUrl("/models/dormant_gate.glb"));
+  const { scene } = useModel(assetUrl("/models/dormant_gate.glb"));
   const group = useRef<THREE.Group>(null);
   const seam = useMemo(() => {
     let found: THREE.MeshStandardMaterial | null = null;

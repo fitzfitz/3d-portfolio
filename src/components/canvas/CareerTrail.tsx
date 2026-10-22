@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { BUOYS, BUOY_POSITIONS, CAREER_AMBER, TRAIL_ARC } from "../../data/careerTrail";
 import { setScannable, removeScannable } from "../../utils/scannables";
@@ -27,7 +27,7 @@ const dummy = new THREE.Object3D();
  * material. Each buoy is a scannable (career_<n>, CAREER_<year>).
  */
 export default function CareerTrail() {
-  const { scene } = useGLTF(assetUrl("/models/buoy.glb"));
+  const { scene } = useModel(assetUrl("/models/buoy.glb"));
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const { geometry, material } = useMemo(() => {

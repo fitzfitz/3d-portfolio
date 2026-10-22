@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { useModels, useMaps } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { SOLAR_MOONS, type SolarMoon } from "../../data/solarMoons";
 import { moonPositions } from "../../store/moonState";
@@ -83,8 +83,8 @@ const glbUrl = (m: SolarMoon) => assetUrl(`/models/${m.shape}.glb`);
 
 export default function SolarMoons() {
   const gl = useThree((s) => s.gl);
-  const textures = useTexture(ROUND.map(mapUrl));
-  const glbs = useGLTF(SHAPED.map(glbUrl));
+  const textures = useMaps(ROUND.map(mapUrl));
+  const glbs = useModels(SHAPED.map(glbUrl));
 
   useEffect(() => {
     const maxAniso = gl.capabilities.getMaxAnisotropy();

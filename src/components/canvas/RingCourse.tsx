@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { RACE_GATES, RING_GATES, RING_RADIUS, PAR_SECONDS } from "../../data/ringCourse";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
@@ -87,7 +87,7 @@ export default function RingCourse() {
   }, []);
 
   // The ghost is the hero ship's own model, recoloured as a translucent wash.
-  const { scene: shipScene } = useGLTF(assetUrl("/models/spaceship.glb"));
+  const { scene: shipScene } = useModel(assetUrl("/models/spaceship.glb"));
   const ghostMaterial = useMemo(() => new THREE.MeshBasicMaterial({
     color: SKY.clone().multiplyScalar(0.55),
     blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false,

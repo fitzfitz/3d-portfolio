@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import { PROBES, PROBE_IN_RANGE, PROBE_OPEN_DIST, PROBE_PULL_SPEED } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
@@ -142,7 +142,7 @@ totalEmissiveRadiance += vProbeMask.b * vec3(1.0, 0.82, 0.55) * vProbeGlow.y;`)
  */
 export default function ProjectProbes() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const { scene } = useGLTF(assetUrl("/models/probe.glb"));
+  const { scene } = useModel(assetUrl("/models/probe.glb"));
 
   const { geometry, material, glow } = useMemo(() => {
     let src: THREE.Mesh | undefined;

@@ -1,7 +1,8 @@
 import { useRef, useMemo, useEffect, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF, Trail } from "@react-three/drei";
+import { Trail } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { flight, useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
 import { convoyShipOffsetAt, CONVOY_HIDE_DIST } from "../../utils/worldEvents";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
@@ -77,7 +78,7 @@ function buildShip(scene: THREE.Object3D, name: string) {
 }
 
 export default function CargoTraffic() {
-  const { scene } = useGLTF(assetUrl("/models/cargo_ship.glb"));
+  const { scene } = useModel(assetUrl("/models/cargo_ship.glb"));
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const count = isLowPerf ? 3 : 5;
   const rolls = useRef<number[]>(SHIPS.map(() => 0));

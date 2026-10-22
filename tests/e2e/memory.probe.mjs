@@ -14,10 +14,11 @@ import { installGpuLedger, readGpuLedger } from "./gpuLedger.mjs";
 const VIEWPORT = { width: 1512, height: 802, deviceScaleFactor: 2 };
 export const CEILINGS_MB = {
   // Baseline 2026-10-22 (main at afa2573): 490.9 / 181.2 / 98.2 / 775.2.
-  full: { textures: 520, renderTargets: 195, drawingBuffer: 105, total: 815 },
+  // Canvas without MSAA: drawing buffer 21.8, total 698.8.
+  full: { textures: 520, renderTargets: 195, drawingBuffer: 25, total: 735 },
   // Pinned before load: no 4K maps, and the disabled composer never sizes its
-  // targets. Baseline 389.5 / 24.7 / 98.2 / 517.3.
-  low: { textures: 410, renderTargets: 30, drawingBuffer: 105, total: 545 },
+  // targets. Baseline 389.5 / 24.7 / 98.2 / 517.3; without MSAA 21.8 / 440.9.
+  low: { textures: 410, renderTargets: 30, drawingBuffer: 25, total: 465 },
 };
 /**
  * The tour may add vertex buffers (about 1.1 MB at baseline, jump effects and
@@ -40,6 +41,47 @@ function lockLowPerf() {
   }, 5);
 }
 
+/**
+ * Scene textures still holding a loaded image (an ImageBitmap or an <img>)
+ * after upload: ShaderWarmup releases them all (src/utils/sceneAssets.ts).
+ */
+const retainedImages = (page) => page.evaluate(() => {
+  const seen = new Set();
+  let retained = 0;
+  window.__fitz.scene.traverse((o) => {
+    for (const m of [o.material].flat().filter(Boolean)) {
+      for (const v of [...Object.values(m), ...Object.values(m.uniforms ?? {}).map((u) => u?.value)]) {
+        if (!v?.isTexture || seen.has(v)) continue;
+        seen.add(v);
+        if (v.image instanceof ImageBitmap || v.image instanceof HTMLImageElement) retained++;
+      }
+    }
+  });
+  return { retained, textures: seen.size };
+});
+
+/** Waits for the next canvas's warm-up to finish (sceneReady drops on unmount, rises after). */
+const sceneReadyAgain = (page) => page.waitForFunction(
+  () => window.__fitz?.store?.getState().sceneReady && window.__fitz.gl && !window.__fitz.gl.getContext().isContextLost(),
+  { timeout: SCENE_READY_TIMEOUT_MS },
+);
+
+/**
+ * After a new canvas, every texture is on the GPU again: the same bytes as at
+ * spawn, which a texture without its image (released, not reloaded) would
+ * not reach, because three skips the upload and allocates nothing.
+ */
+async function checkReloaded(page, checks, tier, what, atSpawn) {
+  await sceneReadyAgain(page);
+  await settle(page, 2000);
+  const after = await readGpuLedger(page, 8);
+  checks.check(`[${tier}] after ${what}, every texture is back on the GPU`,
+    after.bytes.textures === atSpawn.bytes.textures,
+    `spawn ${atSpawn.mb.textures} MB, now ${after.mb.textures} MB`);
+  const r = await retainedImages(page);
+  checks.check(`[${tier}] after ${what}, no texture keeps its image`, r.retained === 0, `${r.retained} of ${r.textures}`);
+}
+
 function budget({ label, tier, lowPerf }) {
   return withPage({ label, viewport: VIEWPORT, initScript: installGpuLedger }, async (page, checks) => {
     if (lowPerf) {
@@ -53,6 +95,9 @@ function budget({ label, tier, lowPerf }) {
     checks.check(`[${tier}] tier is pinned (precondition)`, isLow === lowPerf, `isLowPerf=${isLow}`);
 
     const atSpawn = await readGpuLedger(page, 8);
+    const images = await retainedImages(page);
+    checks.check(`[${tier}] no texture keeps its image after upload`, images.retained === 0,
+      `${images.retained} of ${images.textures}`);
     const canvas = atSpawn.canvases.reduce((a, c) => (c.w * c.h > a.w * a.h ? c : a), { w: 0, h: 0 });
     checks.check(`[${tier}] canvas is the laptop's 1.5× buffer, 2268×1203 (precondition)`,
       canvas.w === 2268 && canvas.h === 1203, `canvas=${canvas.w}×${canvas.h}`);
@@ -82,6 +127,24 @@ function budget({ label, tier, lowPerf }) {
     const imageGrowth = (afterTour.bytes.textures + afterTour.bytes.renderTargets) - (atSpawn.bytes.textures + atSpawn.bytes.renderTargets);
     checks.check(`[${tier}] the tour allocates no texture or render target`, imageGrowth === 0,
       `${imageGrowth} bytes`);
+
+    if (!lowPerf) {
+      // The classic résumé round trip mounts a new canvas, which must load
+      // the released images again rather than find them gone in the cache.
+      await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(true));
+      await settle(page, 1500);
+      await page.evaluate(() => window.__fitz.store.getState().setShowClassicCV(false));
+      await checkReloaded(page, checks, tier, "the classic résumé round trip", atSpawn);
+
+      // A lost context that comes back gets a new canvas the same way.
+      await page.evaluate(() => {
+        const ext = window.__fitz.gl.getContext().getExtension("WEBGL_lose_context");
+        ext.loseContext();
+        setTimeout(() => ext.restoreContext(), 500);
+      });
+      await settle(page, 1500);
+      await checkReloaded(page, checks, tier, "a lost and restored context", atSpawn);
+    }
 
     // The breakdown, for the log: what to look at when a ceiling fails.
     console.log(`  [${tier}] ledger ${JSON.stringify(afterTour.mb)}`);

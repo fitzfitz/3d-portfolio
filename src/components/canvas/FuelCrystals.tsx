@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
 import { BODY_REACH } from "../../data/solarSystem";
 import { ambientTime } from "../../utils/ambientTime";
@@ -46,7 +46,7 @@ let ventedAnnounced = false;
  * render: the matrices and `flight.fuel` carry all of it.
  */
 export default function FuelCrystals() {
-  const { scene } = useGLTF(assetUrl("/models/space_crystal.glb"));
+  const { scene } = useModel(assetUrl("/models/space_crystal.glb"));
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const respawnAccum = useRef(0);
 

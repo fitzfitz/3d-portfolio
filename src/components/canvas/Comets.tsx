@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { flight, useSpaceStore, worldEventElapsed } from "../../store/spaceStore";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { cometPassAt, type CometPass } from "../../utils/worldEvents";
@@ -108,7 +108,7 @@ export default function Comets() {
   );
   useEffect(() => () => comaMaterials.forEach((m) => m.dispose()), [comaMaterials]);
 
-  const { scene } = useGLTF(assetUrl("/models/comet_head.glb"));
+  const { scene } = useModel(assetUrl("/models/comet_head.glb"));
 
   const { headGeometry, headMaterial } = useMemo(() => {
     let g: THREE.BufferGeometry | undefined;

@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { SHARDS, SHARDS_COMPLETE_MESSAGE, shardBroadcast } from "../../data/shards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { soundManager } from "../../audio/soundManager";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { ambientTime } from "../../utils/ambientTime";
@@ -33,7 +33,7 @@ export default function DataShards() {
   // crystal in two machined collars with glowing cyan data traces. Replaces
   // a code-drawn octahedron — the last placeholder shape in the scene, and
   // the first thing a visitor sees beside the spawn pad.
-  const { scene } = useGLTF(assetUrl("/models/data_shard.glb"));
+  const { scene } = useModel(assetUrl("/models/data_shard.glb"));
   const { geometry, material } = useMemo(() => {
     let src: THREE.Mesh | undefined;
     scene.traverse((o) => { if (!src && o instanceof THREE.Mesh) src = o; });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useTexture } from "@react-three/drei";
+import { useMaps } from "../../utils/sceneAssets";
 import * as THREE from "three";
 import Atmosphere, { LimbDarkening } from "./Atmosphere";
 import CloudLayer from "./CloudLayer";
@@ -104,7 +104,7 @@ export default function SolarBodies() {
   const [hiRes] = useState(hiResChoice);
   // Resolved at render, not at import: in a build, assetUrl answers from the
   // asset pack, which can still be downloading while this module loads.
-  const textures = useTexture([
+  const textures = useMaps([
     ...MAPS.map((m) => mapUrl(m, hiRes)),
     mapUrl(NIGHT_LIGHTS_MAP, false),
     mapUrl(RING_MAP, false),

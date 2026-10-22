@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
@@ -141,7 +141,7 @@ const _total = new THREE.Vector3();
 const SHIP_SUN_VIS = { value: 1 };
 
 export default function Spaceship() {
-  const { scene } = useGLTF(assetUrl("/models/spaceship.glb"));
+  const { scene } = useModel(assetUrl("/models/spaceship.glb"));
   const isOrbitLocked = useSpaceStore((s) => s.isOrbitLocked);
 
   // Dim incidental emissives, but keep the engine material hot — it paints the

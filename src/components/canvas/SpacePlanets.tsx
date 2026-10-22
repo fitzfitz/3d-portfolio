@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF } from "@react-three/drei";
+import { useModel } from "../../utils/sceneAssets";
 import PortalRing from "./PortalRing";
 import { PORTAL_POS } from "../../constants";
 import { DESTINATIONS } from "../../data/destinations";
@@ -202,7 +202,7 @@ export default function SpacePlanets() {
   const portalFrameRef = useRef<THREE.Group>(null);
 
   // Load custom stargate portal gateway model
-  const { scene: portalScene } = useGLTF(assetUrl("/models/portal_gateway.glb"));
+  const { scene: portalScene } = useModel(assetUrl("/models/portal_gateway.glb"));
 
   // Swap the GLB's static membrane texture for the animated swirl shader.
   const membraneMaterial = useMemo(

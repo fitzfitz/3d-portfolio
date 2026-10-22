@@ -93,14 +93,16 @@ export function installGpuLedger() {
     const bindTarget = isCube(target) ? GL.TEXTURE_CUBE_MAP : target;
     return s.tex.get(`${s.unit}:${bindTarget}`) ?? null;
   };
-  const entry = (tex) => {
+  // Each entry keeps its context: a lost one (R3F's unmount forces the loss)
+  // has freed everything, so the report leaves its entries out.
+  const entry = (gl, tex) => {
     let e = textures.get(tex);
-    if (!e) { e = { levels: new Map(), w: 0, h: 0, fmt: 0, attached: false }; textures.set(tex, e); }
+    if (!e) { e = { gl, levels: new Map(), w: 0, h: 0, fmt: 0, attached: false }; textures.set(tex, e); }
     return e;
   };
-  const setLevel = (tex, key, bytes, w, h, fmt) => {
+  const setLevel = (gl, tex, key, bytes, w, h, fmt) => {
     if (!tex) return;
-    const e = entry(tex);
+    const e = entry(gl, tex);
     e.levels.set(key, bytes);
     if (key.endsWith(":0") || !e.w) { e.w = w; e.h = h; e.fmt = fmt; }
   };
@@ -124,7 +126,7 @@ export function installGpuLedger() {
     const faces = target === GL.TEXTURE_CUBE_MAP ? 6 : 1;
     for (let f = 0; f < faces; f++) {
       for (let l = 0; l < levels; l++) {
-        setLevel(tex, `${f}:${l}`, levelBytes(ifmt, Math.max(1, w >> l), Math.max(1, h >> l)), w, h, ifmt);
+        setLevel(gl, tex, `${f}:${l}`, levelBytes(ifmt, Math.max(1, w >> l), Math.max(1, h >> l)), w, h, ifmt);
       }
     }
   });
@@ -132,7 +134,7 @@ export function installGpuLedger() {
     const tex = boundTex(gl, target);
     for (let l = 0; l < levels; l++) {
       const depth = target === GL.TEXTURE_3D ? Math.max(1, d >> l) : d;
-      setLevel(tex, `0:${l}`, levelBytes(ifmt, Math.max(1, w >> l), Math.max(1, h >> l)) * depth, w, h, ifmt);
+      setLevel(gl, tex, `0:${l}`, levelBytes(ifmt, Math.max(1, w >> l), Math.max(1, h >> l)) * depth, w, h, ifmt);
     }
   });
   wrap("texImage2D", (gl, args) => {
@@ -141,20 +143,20 @@ export function installGpuLedger() {
     if (args.length === 6) { [w, h] = sourceSize(args[5]); type = args[4]; }
     else { w = args[3]; h = args[4]; type = args[7]; }
     const face = isCube(target) ? target - GL.TEXTURE_CUBE_MAP_POSITIVE_X : 0;
-    setLevel(boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h, type), w, h, ifmt);
+    setLevel(gl, boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h, type), w, h, ifmt);
   });
   wrap("texImage3D", (gl, args) => {
     const [target, level, ifmt, w, h, d, , , type] = args;
-    setLevel(boundTex(gl, target), `0:${level}`, levelBytes(ifmt, w, h, type) * d, w, h, ifmt);
+    setLevel(gl, boundTex(gl, target), `0:${level}`, levelBytes(ifmt, w, h, type) * d, w, h, ifmt);
   });
   wrap("compressedTexImage2D", (gl, args) => {
     const [target, level, ifmt, w, h] = args;
     const face = isCube(target) ? target - GL.TEXTURE_CUBE_MAP_POSITIVE_X : 0;
-    setLevel(boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h), w, h, ifmt);
+    setLevel(gl, boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h), w, h, ifmt);
   });
   wrap("copyTexImage2D", (gl, [target, level, ifmt, , , w, h]) => {
     const face = isCube(target) ? target - GL.TEXTURE_CUBE_MAP_POSITIVE_X : 0;
-    setLevel(boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h, GL.UNSIGNED_BYTE), w, h, ifmt);
+    setLevel(gl, boundTex(gl, target), `${face}:${level}`, levelBytes(ifmt, w, h, GL.UNSIGNED_BYTE), w, h, ifmt);
   });
   // generateMipmap fills levels a texImage2D-only texture never declared.
   wrap("generateMipmap", (gl, [target]) => {
@@ -172,18 +174,18 @@ export function installGpuLedger() {
       }
     }
   });
-  wrap("framebufferTexture2D", (_gl, [, , , tex]) => { if (tex) entry(tex).attached = true; });
-  wrap("framebufferTextureLayer", (_gl, [, , tex]) => { if (tex) entry(tex).attached = true; });
+  wrap("framebufferTexture2D", (gl, [, , , tex]) => { if (tex) entry(gl, tex).attached = true; });
+  wrap("framebufferTextureLayer", (gl, [, , tex]) => { if (tex) entry(gl, tex).attached = true; });
 
   wrap("bindRenderbuffer", (gl, [, rb]) => { state(gl).rb = rb; });
   wrap("deleteRenderbuffer", (_gl, [rb]) => { renderbuffers.delete(rb); });
   wrap("renderbufferStorage", (gl, [, ifmt, w, h]) => {
     const rb = state(gl).rb;
-    if (rb) renderbuffers.set(rb, { bytes: levelBytes(ifmt, w, h), w, h, fmt: ifmt, samples: 1 });
+    if (rb) renderbuffers.set(rb, { gl, bytes: levelBytes(ifmt, w, h), w, h, fmt: ifmt, samples: 1 });
   });
   wrap("renderbufferStorageMultisample", (gl, [, samples, ifmt, w, h]) => {
     const rb = state(gl).rb;
-    if (rb) renderbuffers.set(rb, { bytes: levelBytes(ifmt, w, h) * Math.max(1, samples), w, h, fmt: ifmt, samples });
+    if (rb) renderbuffers.set(rb, { gl, bytes: levelBytes(ifmt, w, h) * Math.max(1, samples), w, h, fmt: ifmt, samples });
   });
 
   wrap("bindVertexArray", (gl, [vao]) => { state(gl).vao = vao; });
@@ -202,7 +204,7 @@ export function installGpuLedger() {
     if (typeof data === "number") bytes = data;
     else if (length) bytes = length * (data.BYTES_PER_ELEMENT ?? 1);
     else bytes = (data?.byteLength ?? 0) - (srcOffset ?? 0) * (data?.BYTES_PER_ELEMENT ?? 1);
-    buffers.set(buf, Math.max(0, bytes));
+    buffers.set(buf, { gl, bytes: Math.max(0, bytes) });
   });
 
   const MB = (b) => Math.round(b / 1e4) / 100;
@@ -212,6 +214,7 @@ export function installGpuLedger() {
       let tex = 0, texCompressed = 0, rt = 0, rb = 0, buf = 0;
       const list = [];
       for (const e of textures.values()) {
+        if (e.gl.isContextLost()) continue;
         let bytes = 0;
         for (const b of e.levels.values()) bytes += b;
         if (e.attached) rt += bytes;
@@ -219,10 +222,11 @@ export function installGpuLedger() {
         list.push({ w: e.w, h: e.h, fmt: fmtName(e.fmt), mips: e.levels.size, rt: e.attached, bytes });
       }
       for (const r of renderbuffers.values()) {
+        if (r.gl.isContextLost()) continue;
         rb += r.bytes;
         list.push({ w: r.w, h: r.h, fmt: fmtName(r.fmt), samples: r.samples, rt: true, renderbuffer: true, bytes: r.bytes });
       }
-      for (const b of buffers.values()) buf += b;
+      for (const b of buffers.values()) if (!b.gl.isContextLost()) buf += b.bytes;
       let drawing = 0;
       const canvases = [];
       for (const gl of contexts) {

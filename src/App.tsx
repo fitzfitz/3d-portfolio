@@ -83,6 +83,7 @@ export default function App() {
   const isTeleporting = useSpaceStore((s) => s.isTeleporting);
   const isNearSpawn = useSpaceStore((s) => s.isNearSpawn);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
+  const canvasEpoch = useSpaceStore((s) => s.canvasEpoch);
   const setShowClassicCV = useSpaceStore((s) => s.setShowClassicCV);
   const breakOrbit = useSpaceStore((s) => s.breakOrbit);
   const photoMode = useSpaceStore((s) => s.photoMode);
@@ -211,7 +212,7 @@ export default function App() {
       {!showClassicCV && (
         <SafeErrorBoundary onError={() => setShowClassicCV(true)}>
           <Suspense fallback={<EngineLoading />}>
-            <GlobalCanvas />
+            <GlobalCanvas key={canvasEpoch} />
           </Suspense>
         </SafeErrorBoundary>
       )}
