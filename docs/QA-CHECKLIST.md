@@ -79,7 +79,10 @@ __fitz.store.getState().setLowPerf(false, true)
 
 // Call the jellyfish guide (no console needed — just press the key; press J
 // again, or the touch GUIDE button, to dismiss it). It streaks to the ship,
-// then leads ahead toward the HUD's next target.
+// then leads ahead toward the HUD's next target. At the stop it circles once,
+// says what to do there, and attends (holds beside it) until the step is done,
+// then leads on to the next step. Its states: roaming, coming, leading,
+// presenting, attending (__fitz.jellyGuide.state).
 // press J
 
 // Watch React commits while you fly — should NOT move during steady,
