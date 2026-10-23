@@ -1,6 +1,7 @@
 # Space monsters: the assets (design)
 
-**Date:** 2026-10-23. **Status:** agreed with the owner in conversation, not built.
+**Date:** 2026-10-23. **Status:** approved by the owner, not built.
+**Plan:** `docs/superpowers/plans/2026-10-23-space-monsters.md`.
 **Stage:** the first step of the PvE combat stage (the game layer: combat →
 coins → shop → realms → PvP). This design covers the two monster **models**
 only. Fighting them (AI, the beam, damage, spawning) is the combat stage's own
@@ -174,8 +175,10 @@ These hold for both models.
   cannot match. The owner sees **both**: Blender turntables and the models
   in the real three.js renderer under the game's lighting (a dev-only
   viewer or test scene is fine; it ships nothing to visitors).
-- **Compressed** through `scripts/optimize-assets.mjs` (added to `MODELS`,
-  texture quality set like the probe's) into `public/models/`.
+- **Compressed** through `scripts/optimize-assets.mjs` (texture quality set
+  like the probe's) into `public/models-lab/`, not `public/models/`: every
+  file in `public/models/` joins an asset pack that all visitors download
+  (the plan's call).
 - **Not loaded by the game yet.** Which asset pack they join is decided in
   the combat stage, so visitors download nothing new now.
 
