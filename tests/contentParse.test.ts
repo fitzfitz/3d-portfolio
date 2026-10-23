@@ -3,7 +3,8 @@ import projectsJson from "../src/data/projects.json";
 import { BUNDLED_CAREER } from "../src/data/career";
 import { BUNDLED_CONTENT } from "../src/data/content";
 import { RESERVED_ZONE_IDS } from "../src/data/destinations";
-import { parseContent, resolveContent, DESTINATION_IDS } from "../src/utils/contentParse";
+import { parseContent, resolveContent, DESTINATION_IDS, BADGE_IDS } from "../src/utils/contentParse";
+import { LOGBOOK } from "../src/utils/logbook";
 
 /** A project as D1 returns it: every column, `tech` as JSON text, NULL for absent. */
 const projectRow = (over: Record<string, unknown> = {}) => ({
@@ -58,6 +59,7 @@ describe("parseContent: projects", () => {
     ["an upper-case id", { id: "Atlas" }],
     ["a destination's id", { id: "contact" }],
     ["a body's id", { id: "earth" }],
+    ["a logbook badge's id", { id: "ring" }],
   ])("drops a row with %s, and warns", (_, over) => {
     const { projects } = parseContent({ projects: [projectRow(over), projectRow({ id: "kept" })] }, warn);
     expect(projects?.map((p) => p.id)).toEqual(["kept"]);
@@ -79,6 +81,10 @@ describe("parseContent: projects", () => {
 
   it("names the only destination ids the engine reserves", () => {
     expect([...DESTINATION_IDS].sort()).toEqual([...RESERVED_ZONE_IDS].sort());
+  });
+
+  it("names the logbook's badge ids, which a project id may not take", () => {
+    expect([...BADGE_IDS].sort()).toEqual(LOGBOOK.filter((e) => e.section === "badge").map((e) => e.id).sort());
   });
 });
 

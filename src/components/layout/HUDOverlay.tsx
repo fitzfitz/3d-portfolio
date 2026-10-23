@@ -4,9 +4,9 @@ import { speedKmS, distanceAU, lightFractionLabel } from "../../utils/realUnits"
 import { bodiesGameSeconds } from "../../utils/bodyPositions";
 import { formatOrreryDate, orreryJd } from "../../utils/orreryClock";
 import { SYSTEM_RADIUS, SHIP_MAX_SPEED, projectById } from "../../constants";
-import { PROBES } from "../../data/probes";
+import { PROBES, PROBE_IDS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
-import { probeTipText, relocationSettled } from "../../utils/probes";
+import { probeTipText, relocationSettled, probeDossiersRead } from "../../utils/probes";
 import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
@@ -25,10 +25,6 @@ import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 import { setText, setStyle } from "../../utils/domWrite";
 
-/** Probe rows only (keyed by probe id); destination rows take their colour from the table. */
-const ZONE_COLORS: Record<string, string> = {
-  ruangrapi: "text-primary", portfolio: "text-secondary", fuxx: "text-accent",
-};
 
 /**
  * Module-level, NOT a ref: App.tsx conditionally unmounts HUDOverlay for
@@ -171,7 +167,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   // holds its 8 s. probePos and probeRelocating are not store state, but
   // ProjectProbes settles a probe and then sends its line in the same tick,
   // and that store write re-runs this selector.
-  const allRead = visitedDossiers.length >= PROBES.length;
+  const dossiersRead = probeDossiersRead(visitedDossiers, PROBE_IDS);
+  const allRead = dossiersRead >= PROBES.length;
   const relocated = useSpaceStore((s) => relocationSettled(s.relocation?.id ?? null, s.probeSpots, probePos, probeRelocating));
   useEffect(() => {
     if (!allRead || modalOpen || !relocated || completionAnnounced) return;
@@ -226,7 +223,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         </div>
         <div className={`hidden sm:block ${!isWarping && !fuelEmpty ? "group-data-[quiet=true]/hud:sm:hidden" : ""}`}>WARP.CORE: {fuelEmpty ? "OFFLINE (NO FUEL)" : isWarping ? "ACTIVE (STRETCH)" : "CHARGED (STANDBY)"}</div>
         <div className={allRead ? "text-primary" : "text-white/70"} data-testid="hud-dossiers">
-          DOSSIERS: {visitedDossiers.length}/{PROBES.length}
+          DOSSIERS: {dossiersRead}/{PROBES.length}
         </div>
         <div>SHARDS: {shardsCollected.length}/{SHARDS.length}</div>
         <LogbookTracker />
@@ -385,7 +382,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {PROBES.map((def, i) => (
           <button key={def.id} onClick={() => requestJump(def.id)}
             title={`Jump to the ${projectById(def.id)?.title ?? def.id} probe [${i + 1}]`}
-            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? ZONE_COLORS[def.id] : "text-white/40"}`}>
+            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? "" : "text-white/40"}`}
+            style={probeNear === def.id ? { color: projectById(def.id)?.color } : undefined}>
             <span className="text-white/30">[{i + 1}]</span>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projectById(def.id)?.color }} />
             <span ref={(el) => { probeRowRefs.current[def.id] = el; }}>

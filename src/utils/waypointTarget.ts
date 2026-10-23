@@ -57,7 +57,7 @@ export function placeTarget(id: string, out: WaypointTarget): boolean {
  * nearest unread probe at its live spot, then `afterProbes(badges)`), as a memo
  * per caller. afterProbes scans the table with closures, so it runs only when
  * the store hands over a new badges array (it replaces, never mutates it); the
- * rest is a loop over three probes. Writes `out.id` even when the id has no
+ * rest is a loop over the probes (six at most). Writes `out.id` even when the id has no
  * position (WaypointDriver still compares it with the active zone); returns
  * whether it has one.
  */

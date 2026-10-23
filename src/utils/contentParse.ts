@@ -16,6 +16,8 @@ import { isBodyId } from "../data/bodyIds";
  * content before it is settled. tests/contentParse.test.ts keeps them equal.
  */
 export const DESTINATION_IDS: readonly string[] = ["career", "shipyard", "contact"];
+/** The logbook's badge ids (utils/logbook.ts): a project's dossier entry shares their id space. Kept equal by the same test. */
+export const BADGE_IDS: readonly string[] = ["slingshot", "comet", "ring", "ore", "convoy", "shards"];
 
 /** A probe id: it keys localStorage, scannables and the HUD row, so a short slug. */
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -45,7 +47,7 @@ function techList(v: unknown): string[] | null {
 function projectProblem(r: Row, seen: ReadonlySet<string>): string | null {
   if (typeof r.id !== "string" || !ID_RE.test(r.id)) return "id must be a lower-case slug (a-z, 0-9, - or _)";
   if (seen.has(r.id)) return "a project with this id came earlier";
-  if (DESTINATION_IDS.includes(r.id) || isBodyId(r.id)) return "id is taken by a destination or a planet";
+  if (DESTINATION_IDS.includes(r.id) || BADGE_IDS.includes(r.id) || isBodyId(r.id)) return "id is taken by a destination, a logbook badge or a planet";
   for (const f of ["title", "role", "duration", "short", "description"] as const) if (!text(r[f])) return `${f} must be non-empty text`;
   if (typeof r.color !== "string" || !COLOUR_RE.test(r.color)) return "color must be #rrggbb";
   if (!techList(r.tech)) return "tech must be a JSON array of non-empty strings, e.g. [\"React\",\"TypeScript\"]";

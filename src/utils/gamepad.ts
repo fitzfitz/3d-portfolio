@@ -74,14 +74,17 @@ export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook
 
 /**
  * Jumps by destination id, never by table index, so a new destination row
- * cannot silently remap a button. D-pad clockwise from up: the three probes,
- * then the career station (keys 1–4). Menu: the contact portal. View: the
- * shipyard.
+ * cannot silently remap a button. D-pad clockwise from up: the first three
+ * probes, then the career station. Menu: the contact portal. View: the
+ * shipyard. With fewer than three probes the missing directions do nothing;
+ * probes 4-6 have no button (spec 2026-10-23-dynamic-content, build ruling R12).
  */
-export const PAD_JUMPS: readonly (readonly [number, string])[] = [
-  [DPAD_UP, PROBE_IDS[0]], [DPAD_RIGHT, PROBE_IDS[1]], [DPAD_DOWN, PROBE_IDS[2]], [DPAD_LEFT, "career"],
-  [MENU, "contact"], [VIEW, "shipyard"],
-];
+export function padJumps(probeIds: readonly string[]): (readonly [number, string])[] {
+  const probes = [DPAD_UP, DPAD_RIGHT, DPAD_DOWN].flatMap((b, i) => (probeIds[i] ? [[b, probeIds[i]] as const] : []));
+  return [...probes, [DPAD_LEFT, "career"], [MENU, "contact"], [VIEW, "shipyard"]];
+}
+
+export const PAD_JUMPS: readonly (readonly [number, string])[] = padJumps(PROBE_IDS);
 
 /** One-shot actions, fired on the press edge only so a held button acts once. */
 export function padActions(prev: readonly boolean[], next: readonly boolean[]): PadAction[] {
