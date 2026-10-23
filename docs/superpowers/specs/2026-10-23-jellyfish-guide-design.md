@@ -68,8 +68,8 @@ startled moods. It swims bell first along the loop (see posture).
   matching the ship's speed, warp included (glow streak while warping).
 - **Never behind** (owner, 2026-10-23, after #54; this replaces the old
   "Waiting" rule, which let the pilot pass it): it holds ~20 u in front of
-  the ship's nose. Flying within 30° of the target, the station is on the
-  route, as above. Otherwise it is the nose turned 30° toward the target
+  the ship's nose. Flying within 20° of the target, the station is on the
+  route, as above. Otherwise it is the nose turned 20° toward the target
   (`GUIDE_LEAD_MAX_ANGLE`), so it stays in view and still points the way.
   Wherever the pilot flies, it keeps up, warp included.
 - While guiding, boosting does not startle it, and it keeps clear of every
@@ -160,7 +160,7 @@ wrong about the code. Code comments cite them as "spec, build ruling Rn".
   target than that radius: 16.7 u, the widest docking orbit (10) plus the
   ship's half length and the creature's reach, so it clears a docked ship.
 - **Owner feedback 2026-10-23 (after #54):** the guide never falls behind; it
-  holds ~20 u in front of the nose, leaning ≤ 30° toward the target; offers
+  holds ~20 u in front of the nose, leaning ≤ 20° toward the target; offers
   withdraw after 6 s of flying away. Guide radio lines play the guide chime
   (`soundManager.guideChime`, gain 0.08, under `chime()`'s 0.1), because the
   typewriter's tick alone was near inaudible ("I don't hear any radio sound").

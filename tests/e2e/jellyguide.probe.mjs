@@ -145,7 +145,7 @@ async function guiding(page, checks) {
   // it's behind". Fly for real (W held) 135 degrees off the target: the guide
   // must stay in front of the nose, ahead = (guide - ship) . nose, as the
   // repro measured it (the old rule fell from -2 to -47 u in 8 s). Read every
-  // frame after 1.5 s, once the turn's swing (~32 u) has closed.
+  // frame after 1.5 s, once the turn's swing (~34 u) has closed.
   await aim(page, target, (135 * Math.PI) / 180);
   await page.evaluate(() => {
     const r = window.__ahead = { min: Infinity, n: 0, onScreen: 0, speed: 0, on: true, t0: performance.now() };

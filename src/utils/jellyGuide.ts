@@ -128,18 +128,26 @@ export const GUIDE_COME_SECONDS = 2;
 export const GUIDE_LEAD_DIST = 20;
 /**
  * The most the station leans off the ship's nose toward the target (radians,
- * 30 degrees). Owner feedback 2026-10-23 (after #54): the guide must never fall
+ * 20 degrees). Owner feedback 2026-10-23 (after #54): the guide must never fall
  * behind, so it holds GUIDE_LEAD_DIST in front of the nose, on the route when
- * the route is within this of the nose, else this far round toward it. The
- * owner's figure: the station sits 17.3 u ahead and 10 u aside, and from the
- * chase camera (chaseCam.ts: 4.6-5.2 u behind, 1.8 u up, looking 1.5 u past
- * the ship; 58-64 degree vertical fov, Spaceship.tsx) a sideways lean is ~24.5
- * degrees off the view axis, inside the ~42 degree horizontal half-fov of a
- * 16:10 screen, and a downward one ~14 degrees. A lean straight up is the
- * edge case: ~33-35 degrees above the axis, just past the 29-32 degree
- * vertical half-fov (docs/FOLLOW-UPS.md).
+ * the route is within this of the nose, else this far round toward it.
+ *
+ * The largest lean that stays on a landscape screen in every direction. The
+ * chase camera (chaseCam.ts) sits d behind the ship and 1.8 u up, looking at
+ * 1.5 u past it and 0.2 u up, so its axis dips atan(1.6 / (1.5 + d)) below the
+ * nose. Seen from the camera, a station leaned up by a sits atan((20 sin a - 1.8)
+ * / (20 cos a + d)) above the nose line. The worst case is a hovering ship (d =
+ * 4.6, vertical fov 58, Spaceship.tsx): the axis dips 14.7 degrees. At 20
+ * degrees the station is 12.2 above the nose, 26.9 above the axis, inside the 29
+ * degree half-fov with 2.1 to spare. At cruise (d = 5.2, fov 64) it is 25.3 of
+ * 32, and at warp (6.8 u back, 2.8 up, fov 86) 26.4 of 43. The owner's first
+ * figure, 30 degrees, put it 35.2 above the axis at a hover, off the top, and 25
+ * still 31.0. Sideways and downward leans sit nearer the axis: ~16-19 degrees
+ * aside, inside the ~42 degree horizontal half-fov of a 16:10 screen, and under
+ * 6 below. A portrait phone's ~14 degree horizontal half-fov still loses a
+ * sideways lean (docs/FOLLOW-UPS.md).
  */
-export const GUIDE_LEAD_MAX_ANGLE = Math.PI / 6;
+export const GUIDE_LEAD_MAX_ANGLE = (20 * Math.PI) / 180;
 const LEAN_COS = Math.cos(GUIDE_LEAD_MAX_ANGLE);
 const LEAN_SIN = Math.sin(GUIDE_LEAD_MAX_ANGLE);
 /**
@@ -191,7 +199,7 @@ const PRESENT_HALF_LIFE = 0.3;
 /**
  * Reduced motion has no streak (spec): a gap larger than this (u), e.g. after
  * a number-key jump, is closed by re-appearing at the station. A turn swings
- * the station at most 2 * 20 * sin(75 degrees) = 38.6 u round the ship, under
+ * the station at most 2 * 20 * sin(80 degrees) = 39.4 u round the ship, under
  * this, so a turn is swum, not snapped.
  */
 export const GUIDE_REDUCED_SNAP_DIST = 40;

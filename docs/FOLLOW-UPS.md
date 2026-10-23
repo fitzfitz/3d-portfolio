@@ -79,14 +79,13 @@ Delete an entry when it is fixed.
     runs in 6 over, median ~142 KB, measured while building the guide and
     not caused by it. Find the remaining per-frame garbage or re-measure the
     ceiling on a quiet machine.
-  - The 30° lean toward the target (`GUIDE_LEAD_MAX_ANGLE`, the owner's
-    figure, added after #54) is on screen sideways on a landscape screen
-    (~24.5° off the view axis; the e2e probe saw it on every frame flying
-    135° off) and when it leans down (~14°). A lean straight up sits ~33-35°
-    above the axis, just past the 29-32° vertical half-fov. On a portrait
-    phone the horizontal half-fov is only ~14°, so a sideways lean is off
-    screen too. If either matters, cap the lean by the camera's fov and
-    aspect, or lean less upward. Within ~37 u of its target (20 u plus the
+  - The guide's lean toward the target (`GUIDE_LEAD_MAX_ANGLE`, added after
+    #54) is 20°, the largest that keeps it on a landscape screen in every
+    direction. A lean straight up from a hovering ship sits 26.9° above the
+    view axis, inside the 29° vertical half-fov; the derivation is in the
+    constant's comment. That is an accepted limitation: on a portrait phone
+    the horizontal half-fov is only ~14°, so a sideways lean (~16° off the
+    axis) is still off screen. Within ~37 u of its target (20 u plus the
     16.7 u presenting radius) the station is beside the target, wherever the
     nose points, so a reduced-motion call made there can still appear out
     of view.

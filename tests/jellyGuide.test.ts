@@ -262,8 +262,8 @@ describe("leading", () => {
 
   it("flying at the target, the station is exactly route x 20 (unchanged by the lean)", () => {
     const target = v(800, 120, -500);
-    const { s, inp } = led({ target });
     const r = v(target.x, target.y, target.z), rl = len(r);
+    const { s, inp } = led({ target, shipNose: v(r.x / rl, r.y / rl, r.z / rl) });
     inp.shipVel.x = r.x / rl * CRUISE; inp.shipVel.y = r.y / rl * CRUISE; inp.shipVel.z = r.z / rl * CRUISE;
     run(s, inp, 1);
     run(s, inp, 5, (g) => {
@@ -357,7 +357,7 @@ describe("leading", () => {
     const warp = SHIP_WARP_SPEED * CRUISE_MAX_FACTOR;
     const { s, inp } = led({ target: v(1e5, 0, 0) });
     inp.shipVel = v(heading(135).x * warp, 0, heading(135).z * warp); inp.warping = true;
-    // The turn swings the station ~32 u round the ship; at warp the catch-up
+    // The turn swings the station ~34 u round the ship; at warp the catch-up
     // trails it along the velocity and closes it in ~1.1 s.
     run(s, inp, 2);
     let minAhead = Infinity, maxOff = 0;
