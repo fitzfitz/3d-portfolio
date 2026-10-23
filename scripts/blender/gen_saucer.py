@@ -14,6 +14,13 @@
 #     ball and a pupil looking along +Z);
 #   - Alien_TentacleL / R raised up inside the dome, tips curled;
 #     Alien_ArmL / R resting on the rim;
+#   - (revision v2, scarier: furry and slimy) Alien_Fur_Crown and
+#     Alien_Fur_TentacleL / R / ArmL / R: wet clumps (a coarse proxy for the
+#     shell-fur envelope) over the crown and back of the head and down the
+#     tentacles' backs, the face and undersides bare; Alien_Brows: heavy
+#     angry lids and brow rolls over all three eyes; the teeth are sharp
+#     crooked fangs with Alien_Goo strings between the jaws; Alien_Drips off
+#     the fur; Saucer_Slime smeared over the rim and down the hull;
 #   - Saucer_Hull: a deep bowl, dark inside; Saucer_Rim: the raised lip the
 #     dome sits on; Saucer_Portholes: 16 round portholes (frame + lens) in a
 #     ring, number 0 dead ahead; Saucer_Spikes: 4 conical spikes on the
@@ -24,7 +31,7 @@
 #
 # glTF space: +Y up, the face and the cannon's rest aim +Z, scale 1, origin
 # at the centre of mass (uniform density). Longest extent 2.4-3.6 (the
-# player's ship is ~2.4). Seeded (the teeth's unevenness): re-running
+# player's ship is ~2.4). Seeded (teeth, fur, drips): re-running
 # reproduces saucer.glb byte for byte. No add-ons: bmesh and one boolean.
 import math
 import os

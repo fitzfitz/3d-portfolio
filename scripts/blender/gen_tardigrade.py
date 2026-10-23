@@ -15,12 +15,18 @@
 #   - Tardigrade_Mouth: the round tube mouth at +Z (its beam weapon), a
 #     rolled lip around a dark bore;
 #   - Tardigrade_Eyes: two tiny dark eyes on the head;
-#   - Tardigrade_Crystals: five crystals along the back (they glow, later).
+#   - Tardigrade_Crystals: five crystals along the back (they glow, later);
+#   - (revision v2, scarier: furry and slimy) Tardigrade_Fur: a matted coat
+#     (a closed slab plus wet clumps, a coarse proxy for the shell-fur
+#     envelope) over the back and sides, the crystals poking through; the
+#     belly, legs, claws and mouth tube stay bare; Tardigrade_Teeth: two
+#     rings of raked teeth inside the (wider) mouth tube; Tardigrade_Drool;
+#     Tardigrade_Brows: scowling lids and brows over the eyes.
 # (Stage "final", Task 4, sculpts, bakes and adds the zones and motion data.)
 #
 # glTF space: +Y up, the mouth +Z, scale 1, origin at the centre of mass
 # (uniform density). Longest extent 6.5-7.5 (the player's ship is ~2.4).
-# Seeded (the crystals' sizes and tilts): re-running reproduces
+# Seeded (crystals, teeth, fur): re-running reproduces
 # tardigrade.glb byte for byte. No add-ons: bmesh only.
 import math
 import os
