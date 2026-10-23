@@ -67,7 +67,7 @@ export const JELLY_FLEE_DIST = 30;
 export const JELLY_LEASH = 80;
 export const JELLY_STARTLE_SECONDS = 2;
 /** A path step longer than this in one frame is a jump (the J summon), not drift. */
-const PATH_JUMP = 20;
+export const PATH_JUMP = 20;
 
 /** Spec: dart ~1s, follow gently, ease home ~6s (as half-lives). */
 const HALF_LIFE: Record<JellyMood, number> = { startled: 0.25, curious: 0.8, calm: 1.5 };

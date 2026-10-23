@@ -13,6 +13,7 @@ import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
 import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, JELLY_SCALE, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
+import { createPostureState, stepPosture, stepVelocity } from "../../utils/jellyPosture";
 import { fitzDebug } from "../../debug/bridge";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
@@ -104,11 +105,22 @@ function pulseCycle(t: number): number {
   return up * down;
 }
 
+/** Frame-loop scratch for the idle wobble (module scope: the loop allocates nothing). */
+const wobbleEuler = new THREE.Euler();
+const wobbleQuat = new THREE.Quaternion();
+const postureQuat = new THREE.Quaternion();
+
 export default function SpaceJellyfish() {
   const { scene } = useModel(assetUrl("/models/creature.glb"));
   const groupRef = useRef<THREE.Group>(null);
   const tOffset = useRef(0);
   const jelly = useMemo(createJellyState, []);
+  /**
+   * Swim posture (spec 2026-10-23-jellyfish-guide). `posture.swim` is the 0..1
+   * swim factor, updated every frame: the shader's `uSwim` (tentacle ripple,
+   * pulse strength) reads it from here, not by re-deriving the speed.
+   */
+  const posture = useMemo(createPostureState, []);
   const pathPos = useMemo(() => new THREE.Vector3(), []);
   /** The path point before surge and bob (jellyMood measures drift from it). */
   const basePos = useMemo(() => new THREE.Vector3(), []);
@@ -239,11 +251,19 @@ export default function SpaceJellyfish() {
       stepJelly(jelly, jellyInput);
     }
     groupRef.current.position.set(pathPos.x + jelly.offset.x, pathPos.y + jelly.offset.y, pathPos.z + jelly.offset.z);
-    groupRef.current.rotation.set(
-      tangent.z * 0.12 + Math.sin(time * 0.31) * 0.06,
-      Math.sin(time * 0.23) * 0.25,
-      -tangent.x * 0.12 + Math.cos(time * 0.27) * 0.06
-    );
+    // Posture follows the real frame-to-frame motion (surge, bob and mood offset
+    // included), smoothed; raw delta, not the 0.05 s-capped dt, so a long frame
+    // does not inflate the speed. Jumps (J summon, loop phase) count as no sample.
+    const g = groupRef.current;
+    stepVelocity(posture, g.position.x, g.position.y, g.position.z, Math.min(delta, 0.25));
+    stepPosture(posture, posture.vel, dt, postureQuat);
+    // The old slow idle wobble rides on top while standing and fades out as it
+    // swims (a steady heading reads as purposeful); the old lean toward the path
+    // tangent is superseded by the posture.
+    const stand = 1 - posture.swim;
+    wobbleEuler.set(Math.sin(time * 0.31) * 0.06 * stand, Math.sin(time * 0.23) * 0.25 * stand, Math.cos(time * 0.27) * 0.06 * stand);
+    wobbleQuat.setFromEuler(wobbleEuler);
+    g.quaternion.copy(postureQuat).multiply(wobbleQuat);
     setScannable("jellyfish", groupRef.current.position.x, groupRef.current.position.y, groupRef.current.position.z, "UNKNOWN_LIFEFORM");
   });
 
