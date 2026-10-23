@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS projects (
   tech        TEXT NOT NULL          -- JSON array of strings, e.g. ["React","TypeScript"]
               CHECK (json_valid(tech) AND json_type(tech) = 'array'),
   color       TEXT NOT NULL          -- #rrggbb: the probe's tint
-              CHECK (length(color) = 7 AND color GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]'),
+              CHECK (length(color) = 7 AND color GLOB '#*' AND NOT substr(color, 2) GLOB '*[^0-9A-Fa-f]*'),
   repo        TEXT                   -- https:// URL, or NULL
 );
 

@@ -35,6 +35,20 @@ describe("beacon-api/content-seed.sql", () => {
     expect(sql).not.toMatch(/\bDELETE\b|\bDROP\b|\bUPDATE\b/);
   });
 
+  // A real answer: content.sql and content-seed.sql applied with `wrangler d1
+  // execute --local`, served by `wrangler dev --local` (2026-10-23). It pins
+  // the wire shape (every column, tech as JSON text, NULLs), not the data.
+  it("matches what wrangler dev --local served from the seeded tables: every column, nothing dropped", () => {
+    const wire = JSON.parse(readFileSync("tests/fixtures/content-wrangler-local.json", "utf8"));
+    for (const r of wire.projects) expect(Object.keys(r)).toEqual([...PROJECT_COLUMNS]);
+    for (const r of wire.career) expect(Object.keys(r)).toEqual([...CAREER_COLUMNS]);
+    expect(typeof wire.projects[0].tech).toBe("string");
+    expect(wire.career.some((r: { end: unknown }) => r.end === null)).toBe(true);
+    const parsed = parseContent(wire, () => { throw new Error("a served row was dropped"); });
+    expect(parsed.projects).toHaveLength(wire.projects.length);
+    expect(parsed.career).toHaveLength(wire.career.length);
+  });
+
   it("quotes text for SQL: an apostrophe is doubled, end is quoted", () => {
     const sql = contentSeedSql([{ ...projectsJson[0], title: "Fitz's \"best\"" }], [{ ...BUNDLED_CAREER[1] }]);
     expect(sql).toContain("'Fitz''s \"best\"'");
