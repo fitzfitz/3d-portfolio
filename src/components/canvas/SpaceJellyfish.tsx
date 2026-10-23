@@ -197,7 +197,7 @@ export default function SpaceJellyfish() {
   /** Reused every frame: the frame step's input, so the loop allocates nothing. */
   const frameIn = useMemo<JellyFrameInput>(() => ({
     pathPos, basePos, ship: flight, shipVel: { x: 0, y: 0, z: 0 }, shipNose: { x: 0, y: 0, z: 1 }, shipSpeed: 0, warping: false,
-    target: null, targetRadius: 0, progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut,
+    target: null, targetId: "", targetRadius: 0, progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut,
   }), [pathPos, basePos, keepOut]);
   /** Last frame's ship position, for its velocity (the guide matches it, warp included). */
   const lastShip = useMemo(() => ({ x: 0, y: 0, z: 0, has: false }), []);
@@ -379,6 +379,7 @@ export default function SpaceJellyfish() {
     progress.badges = store.badges;
     const has = guideTarget(flight, progress, store.charted, bodies, target);
     fi.target = has ? target : null;
+    fi.targetId = has ? target.id : "";
     fi.targetRadius = has ? target.radius : 0;
 
     // Progress signature: every count only grows, so their sum changes on any
@@ -412,7 +413,7 @@ export default function SpaceJellyfish() {
     }
 
     const ev = frame.guide.event;
-    const line = radio.update(ev, frame.guide.offered, now / 1000, radioBusy);
+    const line = radio.update(ev, frame.guide.offered, now / 1000, radioBusy, frame.guide.targetId);
     // The guide's own call with each line it sends: the typewriter's tick alone
     // was near inaudible (owner, after #54: "I don't hear any radio sound").
     if (line) { store.sendBroadcast(line); soundManager.guideChime(); }

@@ -29,6 +29,8 @@ export interface JellyFrameInput {
   warping: boolean;
   /** The guide's target (waypointTarget.ts makeGuideTarget), or null when all is done. */
   target: Vec3 | null;
+  /** The target's id (jellyGuide.ts GuideInput.targetId), "" with no target. */
+  targetId: string;
   targetRadius: number;
   /** Progress signature (jellyGuide.ts GuideInput.progress). */
   progress: number;
@@ -82,7 +84,7 @@ export function createJellyFrame(): JellyFrame {
     moodIn: { pathPos, basePos, player: { x: 0, y: 0, z: 0 }, playerSpeed: 0, boosting: false, keepOut: [], dt: 0 },
     guideIn: {
       jelly: roam, ship: { x: 0, y: 0, z: 0 }, shipVel: { x: 0, y: 0, z: 0 }, shipNose: { x: 0, y: 0, z: 1 },
-      warping: false, target: null, targetRadius: 0,
+      warping: false, target: null, targetId: "", targetRadius: 0,
       progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut: [],
     },
   };
@@ -142,7 +144,7 @@ export function stepJellyFrame(f: JellyFrame, inp: JellyFrameInput, dt: number):
 
   const g = f.guideIn;
   copy(g.ship, inp.ship); copy(g.shipVel, inp.shipVel); copy(g.shipNose, inp.shipNose);
-  g.warping = inp.warping; g.target = inp.target; g.targetRadius = inp.targetRadius;
+  g.warping = inp.warping; g.target = inp.target; g.targetId = inp.targetId; g.targetRadius = inp.targetRadius;
   g.progress = inp.progress; g.blocked = inp.blocked; g.reducedMotion = inp.reducedMotion;
   g.toggle = inp.toggle; g.keepOut = inp.keepOut;
   stepGuide(f.guide, g, dt);

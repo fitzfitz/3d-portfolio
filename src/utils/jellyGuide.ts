@@ -12,8 +12,16 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
  * caller reuses, every output is written into the state.
  *
  *   roaming --J / offer--> coming --~2 s--> leading --ship in radius--> presenting
- *      ^                     |                 |                         | one turn
- *      +---------------- J, or target null (nothing left) ----------------+
+ *      ^                     |                 ^  ^                      | one turn
+ *      |                     |                 |  +- target id changed --+ (onward)
+ *      |                     |                 |  |                      v
+ *      |                     |                 |  +--- id changed ---- attending
+ *      |                     |                 +-- pilot left undone ---+
+ *      +---------- J, or target null (nothing left), from any state -----+
+ *
+ * Owner, 2026-10-23 ("After I reach my stop, what will the jellyfish do?"):
+ * after the circle it attends, holding beside the stop while the pilot does
+ * the step, then carries on to the next one until J or nothing is left.
  *
  * While roaming the component owns the position (loop + moods) and the guide
  * only passes it through and runs the lost timer. In every other state `pos` is
@@ -21,7 +29,7 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
  * and skips the moods (`guiding`: never startled while guiding).
  */
 
-export type GuideName = "roaming" | "coming" | "leading" | "presenting";
+export type GuideName = "roaming" | "coming" | "leading" | "presenting" | "attending";
 
 /**
  * One per step at most, in `GuideState.event`, reset to null every step.
@@ -31,11 +39,13 @@ export type GuideName = "roaming" | "coming" | "leading" | "presenting";
  * - `met`: it reached the ship (spec: "streaks to the ship, pulses"); leading begins.
  * - `arrived`: the ship entered the target's radius (the HUD's own lock-on
  *   radius; no lock action exists, spec build ruling R9); it presents.
+ * - `onward`: the step it presented was done (the target id changed while it
+ *   presented or attended); it leads to the next one.
  * - `dismissed`: J while active; it roams again.
- * - `allDone`: no target left (J with nothing to do, the target went null
- *   mid-guide, or the last step was just presented); it roams.
+ * - `allDone`: no target left (J with nothing to do, or the target went null
+ *   while it guided: the last step was done); it roams.
  */
-export type GuideEvent = "called" | "offered" | "met" | "arrived" | "dismissed" | "allDone";
+export type GuideEvent = "called" | "offered" | "met" | "arrived" | "onward" | "dismissed" | "allDone";
 
 export interface GuideInput {
   /** The creature's roaming position this frame (loop + mood offset), as the component computes it. */
@@ -53,6 +63,12 @@ export interface GuideInput {
   warping: boolean;
   /** World position of the logbook's NEXT place (spec, build ruling R1), or null when all is done. */
   target: Vec3 | null;
+  /**
+   * The target's identity (waypointTarget.ts WaypointTarget.id), "" with no
+   * target. A changed id is a step done (when it has arrived) or a re-pick
+   * (while it leads); a position is not, since probes relocate and worlds orbit.
+   */
+  targetId: string;
   /** The target's dock or scan radius: the ship inside it has arrived. */
   targetRadius: number;
   /**
@@ -114,6 +130,10 @@ export interface GuideState {
   turned: number;
   /** Presenting: the nearest it may come to the circle's axis (u), min(radius, where it started). */
   floor: number;
+  /** The id of the target it leads to, presents or attends (GuideInput.targetId); the radio names it. */
+  targetId: string;
+  /** Attending: its offset from the target, held as the target moves. */
+  hold: Vec3;
 }
 
 /** Spec: "after 45 s with no progress". */
@@ -178,6 +198,14 @@ export const GUIDE_PRESENT_MIN_R =
  * in view. A target inside a solid (an uncharted world) widens it to clear that body.
  */
 export const GUIDE_PRESENT_MAX_R = 30;
+/**
+ * Attending: the pilot has left without doing the step once the ship is this
+ * far (u) past the target's arrival radius; it leads back. The gap keeps a
+ * pilot drifting at the edge of the radius from flickering it between
+ * attending and arriving again, and clears a docked ship's orbit (10 u round
+ * the career station, whose radius is 8.5).
+ */
+export const GUIDE_ATTEND_LEAVE_MARGIN = 15;
 /** Half-life (s) of easing onto the circle, so the arrival point blends in. */
 const PRESENT_HALF_LIFE = 0.3;
 /**
@@ -202,6 +230,7 @@ export function createGuideState(): GuideState {
     lostFor: 0, cooldown: 0, progress: NaN,
     comeT: 0, from: { x: 0, y: 0, z: 0 },
     center: { x: 0, y: 0, z: 0 }, radius: 0, angle: 0, turned: 0, floor: 0,
+    targetId: "", hold: { x: 0, y: 0, z: 0 },
   };
 }
 
@@ -297,6 +326,7 @@ function keepClear(p: Vec3, target: Vec3, keepOut: readonly JellyKeepOut[]) {
 function startComing(s: GuideState, inp: GuideInput, offered: boolean) {
   s.name = "coming";
   s.offered = offered;
+  s.targetId = inp.targetId;
   s.comeT = 0;
   s.lostFor = 0;
   copy(s.from, inp.jelly);
@@ -310,6 +340,7 @@ function toRoaming(s: GuideState) {
 }
 
 function stepComing(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  s.targetId = inp.targetId;
   setStation(inp, target);
   s.comeT += dt;
   if (inp.reducedMotion) {
@@ -354,6 +385,9 @@ function startPresenting(s: GuideState, inp: GuideInput, target: Vec3) {
 }
 
 function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  // A changed id while it leads is a re-pick (a nearer unread probe), not a
+  // step done: it follows silently.
+  s.targetId = inp.targetId;
   // Arrival is the ship's, not the creature's (spec "Arriving": "the HUD's
   // target locks on", the pilot's arrival). The creature rides ~20 u ahead and
   // would cross the radius long before the pilot it is guiding.
@@ -401,10 +435,43 @@ function stepPresenting(s: GuideState, inp: GuideInput, dt: number) {
   }
   pushOutOfSolids(s.pos, inp.keepOut);
   if (s.turned >= TURN) {
-    // Spec "Arriving": "Then it returns to roaming, or leads to the next step if called again".
-    toRoaming(s);
-    if (!inp.target) s.event = "allDone";
+    // Spec "Arriving" (owner, 2026-10-23): after the one turn it carries on,
+    // never home: on to the next step if this one was done while it circled,
+    // else it attends here. Nothing left goes to roaming.
+    const target = inp.target;
+    if (!target) { toRoaming(s); s.event = "allDone"; }
+    else if (inp.targetId !== s.targetId) goOnward(s, inp);
+    else {
+      s.name = "attending";
+      s.hold.x = s.pos.x - target.x; s.hold.y = s.pos.y - target.y; s.hold.z = s.pos.z - target.z;
+    }
   }
+}
+
+/** The step was done: lead on to the next target, saying so (the radio names it by `targetId`). */
+function goOnward(s: GuideState, inp: GuideInput) {
+  s.name = "leading";
+  s.targetId = inp.targetId;
+  s.event = "onward";
+}
+
+/**
+ * Attending: it holds beside the stop, where its circle ended, while the
+ * pilot does the step. Still relative to the target (a world orbits, a probe
+ * is pulled by the beam), so the posture stands it upright. The step done
+ * changes the target's id; the pilot leaving undone sends it back to leading
+ * the same target. A docking panel freezes the frame loop, so it simply
+ * attends until the panel closes and the id has changed.
+ */
+function stepAttending(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  if (inp.targetId !== s.targetId) { goOnward(s, inp); return; }
+  if (dist(inp.ship, target) > inp.targetRadius + GUIDE_ATTEND_LEAVE_MARGIN) {
+    s.name = "leading";
+    stepLeading(s, inp, target, dt);
+    return;
+  }
+  s.pos.x = target.x + s.hold.x; s.pos.y = target.y + s.hold.y; s.pos.z = target.z + s.hold.z;
+  pushOutOfSolids(s.pos, inp.keepOut);
 }
 
 /**
@@ -454,6 +521,7 @@ export function stepGuide(s: GuideState, inp: GuideInput, dt: number): GuideStat
     if (!target && s.name !== "presenting") { toRoaming(s); s.event = "allDone"; }
     else if (s.name === "coming") stepComing(s, inp, target!, dt);
     else if (s.name === "leading") stepLeading(s, inp, target!, dt);
+    else if (s.name === "attending") stepAttending(s, inp, target!, dt);
     else stepPresenting(s, inp, dt);
   }
 

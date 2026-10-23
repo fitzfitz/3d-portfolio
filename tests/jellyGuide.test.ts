@@ -3,7 +3,7 @@ import {
   createGuideState, stepGuide, type GuideInput, type GuideState, type GuideEvent,
   GUIDE_LOST_SECONDS, GUIDE_OFFER_COOLDOWN, GUIDE_COME_SECONDS, GUIDE_LEAD_DIST,
   GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R, GUIDE_LEAD_MAX_ANGLE,
-  GUIDE_REDUCED_SNAP_DIST,
+  GUIDE_ATTEND_LEAVE_MARGIN, GUIDE_REDUCED_SNAP_DIST,
 } from "../src/utils/jellyGuide";
 import { pushOutOfSolids, JELLY_RADIUS, type JellyKeepOut } from "../src/utils/jellyMood";
 import { SHIP_WARP_SPEED, PORTAL_ZONE_R } from "../src/constants";
@@ -32,7 +32,7 @@ const offNose = (s: GuideState, inp: GuideInput) =>
 /** One reusable input, as the frame loop will keep it (spec: frame loop allocates nothing). */
 const input = (over: Partial<GuideInput> = {}): GuideInput => ({
   jelly: v(0, 0, 300), ship: v(), shipVel: v(), shipNose: v(1, 0, 0), warping: false,
-  target: v(1000, 0, 0), targetRadius: 15, progress: 0, blocked: false,
+  target: v(1000, 0, 0), targetId: "t1", targetRadius: 15, progress: 0, blocked: false,
   reducedMotion: false, toggle: false, keepOut: [], ...over,
 });
 
@@ -405,7 +405,7 @@ describe("leading", () => {
 });
 
 describe("arriving", () => {
-  it("arrives when the ship enters the target's radius, circles it once, then roams", () => {
+  it("arrives when the ship enters the target's radius, circles it once, then leads on to the next step", () => {
     const s = createGuideState(), inp = input({ target: v(200, 0, 0), targetRadius: 15 });
     press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
     inp.shipVel.x = CRUISE;
@@ -416,11 +416,12 @@ describe("arriving", () => {
     expect(s.name).toBe("presenting");
     inp.shipVel.x = 0;
     const center = { ...inp.target! };
-    // The next goal takes over the input while it presents; it still circles this one.
-    inp.target = v(-5000, 0, 0);
+    // The step is done while it presents (the next goal takes over the input):
+    // it still circles this one, then goes on.
+    inp.target = v(-5000, 0, 0); inp.targetId = "t2";
     let swept = 0, last = Math.atan2(s.pos.z - center.z, s.pos.x - center.x);
     let maxR = 0;
-    run(s, inp, GUIDE_PRESENT_SECONDS + 1, (g) => {
+    const after = run(s, inp, GUIDE_PRESENT_SECONDS + 1, (g) => {
       count(g);
       if (g.name !== "presenting") return;
       const a = Math.atan2(g.pos.z - center.z, g.pos.x - center.x);
@@ -428,7 +429,8 @@ describe("arriving", () => {
       swept += d; last = a;
       maxR = Math.max(maxR, dist(g.pos, center));
     });
-    expect(s.name).toBe("roaming");
+    expect(after).toEqual(["onward"]);
+    expect(s.name).toBe("leading");
     expect(presented).toBeGreaterThan(GUIDE_PRESENT_SECONDS - 0.1);
     expect(presented).toBeLessThan(GUIDE_PRESENT_SECONDS + 0.1);
     expect(maxR).toBeLessThan(40);
@@ -461,7 +463,7 @@ describe("arriving", () => {
         const s = createGuideState();
         const inp = input({ jelly: v(target.x + 600, target.y, target.z + 600), ship, target, targetRadius: radius });
         press(s, inp);
-        let closest = Infinity, closestShip = Infinity, arrived = false, orbit = 0;
+        let closest = Infinity, closestShip = Infinity, arrived = false, orbit = 0, attended = 0;
         for (let i = 0; i < 60 * 60; i++) {
           if (!arrived) {
             // Fly straight in at cruise and stop on the target (as a dock does).
@@ -482,11 +484,11 @@ describe("arriving", () => {
           inp.toggle = false;
           if (s.event === "arrived") arrived = true;
           if (s.name !== "roaming") closest = Math.min(closest, dist(s.pos, target));
-          if (s.name === "presenting") closestShip = Math.min(closestShip, dist(s.pos, inp.ship));
-          if (s.name === "roaming") break;
+          if (s.name === "presenting" || s.name === "attending") closestShip = Math.min(closestShip, dist(s.pos, inp.ship));
+          if (s.name === "attending" && ++attended > 5 * 60) break;
         }
         expect(arrived).toBe(true);
-        expect(s.name).toBe("roaming"); // presented once round, then let go
+        expect(s.name).toBe("attending"); // presented once round, then holds by the docked ship
         expect(closest).toBeGreaterThanOrEqual(GUIDE_PRESENT_MIN_R - 1e-6);
         expect(closestShip).toBeGreaterThan(JELLY_RADIUS + SHIP_HALF_LENGTH);
       });
@@ -522,6 +524,103 @@ describe("arriving", () => {
     const events = run(s, inp, 40, (g) => { if (g.name === "presenting") worst = Math.min(worst, dist(g.pos, planet) - planet.body); });
     expect(events).toContain("arrived");
     expect(worst).toBeGreaterThanOrEqual(-1e-9);
+  });
+});
+
+// Owner, 2026-10-23: "After I reach my stop, what will the jellyfish do?" It
+// stays by the stop while the pilot does it, then carries on to the next one.
+describe("attending, then on to the next step", () => {
+  /** Called next to a near target (the ship is already inside its radius): it arrives and presents at once. */
+  const attending = (over: Partial<GuideInput> = {}) => {
+    const s = createGuideState(), inp = input({ target: v(10, 0, 0), targetRadius: 15, ...over });
+    press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
+    expect(s.name).toBe("presenting");
+    run(s, inp, GUIDE_PRESENT_SECONDS + 0.5);
+    expect(s.name).toBe("attending");
+    return { s, inp };
+  };
+
+  it("holds still beside the target after the circle, outside the present radius, while the pilot does the step", () => {
+    const { s, inp } = attending();
+    const at = { ...s.pos };
+    expect(run(s, inp, 10)).toEqual([]);
+    expect(s.name).toBe("attending");
+    expect(s.guiding).toBe(true);
+    expect(dist(s.pos, at)).toBeLessThan(1e-9);
+    expect(len(s.vel)).toBeLessThan(1e-9); // still, so the posture stands it upright
+    expect(dist(s.pos, inp.target!)).toBeGreaterThanOrEqual(GUIDE_PRESENT_MIN_R - 1e-6);
+  });
+
+  it("stays beside a target that moves (a world on its orbit, a probe being pulled)", () => {
+    const { s, inp } = attending();
+    const off = v(s.pos.x - inp.target!.x, s.pos.y - inp.target!.y, s.pos.z - inp.target!.z);
+    run(s, inp, 2, () => { inp.target!.z += 3 * DT; });
+    expect(s.name).toBe("attending");
+    expect(s.pos.x - inp.target!.x).toBeCloseTo(off.x, 9);
+    // One frame behind: the step read the target before `each` moved it on.
+    expect(Math.abs(s.pos.z - inp.target!.z - off.z)).toBeLessThanOrEqual(3 * DT + 1e-9);
+  });
+
+  it("leads back to the same target if the pilot leaves without doing the step", () => {
+    const { s, inp } = attending();
+    inp.shipVel.x = -CRUISE;
+    let left = 0;
+    const events = run(s, inp, 6, (g) => { if (!left && g.name === "leading") left = dist(inp.ship, inp.target!); });
+    expect(events).toEqual([]);
+    expect(s.name).toBe("leading");
+    expect(left).toBeGreaterThan(inp.targetRadius + GUIDE_ATTEND_LEAVE_MARGIN);
+    expect(left).toBeLessThan(inp.targetRadius + GUIDE_ATTEND_LEAVE_MARGIN + 1);
+    // Back in: it arrives again.
+    inp.shipVel.x = CRUISE;
+    expect(run(s, inp, 6)).toContain("arrived");
+  });
+
+  it("goes straight on to the next step when the target id changes (the step is done), saying onward", () => {
+    const { s, inp } = attending();
+    inp.targetId = "t2"; inp.target = v(0, 0, -800);
+    expect(run(s, inp, DT)).toEqual(["onward"]);
+    expect(s.name).toBe("leading");
+    expect(s.targetId).toBe("t2");
+    inp.shipNose = v(0, 0, -1);
+    run(s, inp, 4);
+    expect(s.pos.z - inp.ship.z).toBeCloseTo(-GUIDE_LEAD_DIST, 0);
+  });
+
+  it("goes on by id, not position: a target that relocates under the same id is still the same step", () => {
+    const { s, inp } = attending();
+    inp.target!.x += 0.5;
+    expect(run(s, inp, 1)).toEqual([]);
+    expect(s.name).toBe("attending");
+  });
+
+  it("says all done and roams when the last step is done (target null)", () => {
+    const { s, inp } = attending();
+    inp.target = null; inp.targetId = "";
+    expect(run(s, inp, DT)).toEqual(["allDone"]);
+    expect(s.name).toBe("roaming");
+  });
+
+  it("is dismissed by J while attending", () => {
+    const { s, inp } = attending();
+    expect(press(s, inp)).toEqual(["dismissed"]);
+    expect(s.name).toBe("roaming");
+  });
+
+  it("an offered run carries on the same way (an offer behaves as a call)", () => {
+    const s = createGuideState(), inp = input({ target: v(10, 0, 0), targetRadius: 15 });
+    run(s, inp, GUIDE_LOST_SECONDS + 0.1 + GUIDE_COME_SECONDS + 0.5 + GUIDE_PRESENT_SECONDS + 0.5);
+    expect(s.offered).toBe(true);
+    expect(s.name).toBe("attending");
+    inp.targetId = "t2"; inp.target = v(0, 0, -800);
+    expect(run(s, inp, DT)).toEqual(["onward"]);
+  });
+
+  it("a target that changes while it leads is followed silently (a nearer probe, not a step done)", () => {
+    const s = createGuideState(), inp = input();
+    press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
+    inp.targetId = "t2"; inp.target = v(0, 0, 1000);
+    expect(run(s, inp, 1)).toEqual([]);
+    expect(s.targetId).toBe("t2");
   });
 });
 
