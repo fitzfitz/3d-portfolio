@@ -8,7 +8,7 @@ import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { SHARDS } from "../src/data/shards";
 import { DESTINATIONS } from "../src/data/destinations";
 import { GATE_POS, GATE_KEEP_OUT } from "../src/data/dormantGate";
-import { BUOYS, BUOY_CARD_R } from "../src/data/careerTrail";
+import { BUOY_CARD_R, possibleBuoyPositions } from "../src/data/careerTrail";
 import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import { CRYSTAL_PICKUP_RADIUS } from "../src/utils/crystalField";
 import { PROBES, PROBE_IDS, PROBE_RADIUS } from "../src/data/probes";
@@ -221,7 +221,7 @@ describe("project probes clear the other fixed things they could touch (orbits: 
       for (const d of DESTINATIONS) expect(d3(s.pos, d.pos), `${s.name} vs ${d.id}`).toBeGreaterThan(d.zoneR + PROBE_RADIUS + MARGIN);
       expect(d3(s.pos, GATE_POS), `${s.name} vs gate`).toBeGreaterThan(GATE_KEEP_OUT + PROBE_RADIUS);
       SHARDS.forEach((sh, i) => expect(d3(s.pos, sh.pos), `${s.name} vs shard ${i}`).toBeGreaterThan(CRYSTAL_PICKUP_RADIUS + PROBE_RADIUS + MARGIN));
-      for (const b of BUOYS) expect(d3(s.pos, b.pos), `${s.name} vs ${b.id}`).toBeGreaterThan(BUOY_CARD_R + PROBE_RADIUS + MARGIN);
+      possibleBuoyPositions().forEach((b, i) => expect(d3(s.pos, b), `${s.name} vs buoy spot ${i}`).toBeGreaterThan(BUOY_CARD_R + PROBE_RADIUS + MARGIN));
       RING_GATES.forEach((g, i) => expect(d3(s.pos, g), `${s.name} vs ring ${i}`).toBeGreaterThan(RING_RADIUS + PROBE_RADIUS + MARGIN));
       for (const a of ASTEROID_COLLIDERS) expect(d3(s.pos, [a.x, a.y, a.z]), `${s.name} vs ${a.id}`).toBeGreaterThan(a.r + PROBE_RADIUS + 2);
     }

@@ -18,7 +18,7 @@ interface Project {
 interface ExperienceProps {
   activeIndex: number;
   setActiveIndex: (index: number) => void;
-  projects: Project[];
+  projects: readonly Project[];
 }
 
 export default function Experience({

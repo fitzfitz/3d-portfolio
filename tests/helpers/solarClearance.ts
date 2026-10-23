@@ -5,7 +5,7 @@ import { orbitShape, eclipticToWorld } from "../../src/utils/ephemeris";
 import { ORRERY_TEST_JD } from "../../src/utils/orreryClock";
 import { PLANET_WELL_RADIUS_FACTOR } from "../../src/utils/gravityWell";
 import { PORTAL_POS, PORTAL_ZONE_R } from "../../src/constants";
-import { STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_START, TRAIL_BEND, TRAIL_END } from "../../src/data/careerTrail";
+import { STATION_POS, STATION_RADII, BUOY_CARD_R, TRAIL_START, TRAIL_BEND, TRAIL_END, possibleBuoyPositions } from "../../src/data/careerTrail";
 import { SHIPYARD_POS, SHIPYARD_RADII } from "../../src/data/shipyard";
 import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { RING_GATES, RING_RADIUS } from "../../src/data/ringCourse";
@@ -112,7 +112,8 @@ export const LANDMARKS: Landmark[] = [
   { name: "trail start", pos: TRAIL_START, radius: BUOY_CARD_R },
   { name: "trail bend", pos: TRAIL_BEND, radius: BUOY_CARD_R },
   { name: "trail end", pos: TRAIL_END, radius: BUOY_CARD_R },
-  ...BUOYS.map((b) => ({ name: `buoy ${b.id}`, pos: b.pos, radius: BUOY_CARD_R })),
+  // Every spot a buoy can take for 1 to MAX_BUOYS jobs, not just this list's (the list comes from D1).
+  ...possibleBuoyPositions().map((p, i) => ({ name: `buoy spot ${i}`, pos: p, radius: BUOY_CARD_R })),
   { name: "shipyard", pos: SHIPYARD_POS, radius: SHIPYARD_RADII.zoneR },
   { name: "dormant gate", pos: GATE_POS, radius: GATE_KEEP_OUT },
   // The portal's proximity zone is PORTAL_ZONE_R (2.2 u, the zone itself, not a scaled planet zone); a body's own zone (1.8 x size) lies inside its 3.5 x size well.
