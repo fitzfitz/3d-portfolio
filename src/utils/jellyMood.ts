@@ -32,14 +32,37 @@ export interface JellyInput {
   dt: number;
 }
 
-/** Body radius: creature.glb spans ±1, drawn at scale 6, sway-padded 1.5x. */
-export const JELLY_RADIUS = 9;
-export const JELLY_CURIOUS_RADIUS = 60;
+/**
+ * The creature's drawn scale: the model is 1.94 x 4.92 x 1.96, so ~3.9 u tall
+ * in game, 1.6x the ship (spec 2026-10-23-jellyfish-guide, Size). Was 6 (~30 u).
+ */
+export const JELLY_SCALE = 0.8;
+/**
+ * Farthest the creature reaches from its group origin, in model units. Measured
+ * from creature.glb: the origin sits near the bell's crown (node y -1.74, bell
+ * top +0.72), the tentacle tips hang to y -4.20, and the shader sways them
+ * ~0.2 per unit of depth sideways (0.86 at the tips): hypot(4.20, 0.86) = 4.29.
+ */
+const JELLY_REACH = 4.3;
+/**
+ * Body radius for keep-outs and clearance: reach from the origin (the point the
+ * path and the keep-outs act on) times the scale = 3.44 u. The old "±1 at scale
+ * 6, 1.5x" = 9 under-counted a creature whose tips hang 25 u below its origin.
+ */
+export const JELLY_RADIUS = JELLY_REACH * JELLY_SCALE;
+/**
+ * Behaviour-feel distances, re-fitted to a ship-sized creature (was 60/18/40/40,
+ * tuned to a 30 u one). It notices a slow ship within ~10 body heights; it
+ * rests ~2 body heights (~3 ship lengths) off, close enough to look and clear
+ * of the hull; a boost startles it inside ~5 body heights; the flee carries
+ * it ~8 body heights, a clear dart without leaving the leash.
+ */
+export const JELLY_CURIOUS_RADIUS = 40;
 /** Cruise max is 10.8; under this the player reads as hovering. */
 export const JELLY_CURIOUS_MAX_SPEED = 4;
-export const JELLY_REST_DIST = 18;
-export const JELLY_STARTLE_RADIUS = 40;
-export const JELLY_FLEE_DIST = 40;
+export const JELLY_REST_DIST = 8;
+export const JELLY_STARTLE_RADIUS = 20;
+export const JELLY_FLEE_DIST = 30;
 /** Never more than this from where the path puts it: keeps the rare-sighting rhythm. */
 export const JELLY_LEASH = 80;
 export const JELLY_STARTLE_SECONDS = 2;

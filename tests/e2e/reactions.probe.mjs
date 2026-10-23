@@ -80,13 +80,13 @@ async function reacting(page, checks) {
     return { mood: window.__fitz.jelly.mood, dist: Math.hypot(p.x - f.x, p.y - f.y, p.z - f.z), p: [p.x, p.y, p.z] };
   });
   const j0 = await jelly();
-  await teleport(page, [j0.p[0] + 30, j0.p[1], j0.p[2]]);
+  await teleport(page, [j0.p[0] + 24, j0.p[1], j0.p[2]]);
   await settle(page, 300);
   const start = (await jelly()).dist;
   // pollUntil resolves to { ok, value }, never the bare value.
   const curious = (await pollUntil(async () => {
     const j = await jelly();
-    return j.mood === "curious" && j.dist < start - 5 ? j : null;
+    return j.mood === "curious" && j.dist < start - 8 ? j : null;
   }, { timeoutMs: 8000 })).value;
   checks.check("the jellyfish turns curious and drifts toward a hovering ship", !!curious,
     curious ? `dist ${start.toFixed(1)} -> ${curious.dist.toFixed(1)}` : `start=${start.toFixed(1)}`);

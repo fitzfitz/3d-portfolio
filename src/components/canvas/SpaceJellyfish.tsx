@@ -12,7 +12,7 @@ import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
-import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
+import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, JELLY_SCALE, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
 import { fitzDebug } from "../../debug/bridge";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
@@ -161,9 +161,10 @@ export default function SpaceJellyfish() {
     // can't silently rescale the creature.
     // Float-safe: the quantized GLB stores positions in [-1, 1] (see util).
     const g = bakeNodeTransform(src);
-    // The vertex shader sways tentacles a little past the authored mesh, so
-    // pad the bound rather than disabling culling: at 65k additive,
-    // double-sided triangles it used to draw every frame wherever it was.
+    // The vertex shader sways tentacles a little past the authored mesh (0.86 of a
+    // 2.64 model-unit bound), so pad the bound by a ratio rather than disabling
+    // culling; the ratio is in model units, so it holds at any JELLY_SCALE. At
+    // 65k additive, double-sided triangles it used to draw every frame wherever it was.
     g.computeBoundingSphere();
     if (g.boundingSphere) g.boundingSphere.radius *= 1.5;
     return g;
@@ -247,7 +248,7 @@ export default function SpaceJellyfish() {
   });
 
   return (
-    <group ref={groupRef} name="SpaceJellyfish" scale={6}>
+    <group ref={groupRef} name="SpaceJellyfish" scale={JELLY_SCALE}>
       <mesh geometry={geometry} material={material} />
     </group>
   );
