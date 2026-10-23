@@ -13,6 +13,7 @@ import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
 import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, JELLY_SCALE, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
+import { pulseRateTarget } from "../../utils/jellyPulse";
 import { createPostureState, stepPosture, stepVelocity } from "../../utils/jellyPosture";
 import { fitzDebug } from "../../debug/bridge";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
@@ -28,6 +29,9 @@ const PULSE_GLSL = /* glsl */ `
 
 const vertexShader = /* glsl */ `
   uniform float uTime;
+  // 0..1 swim factor (spec 2026-10-23-jellyfish-guide). Every swim term below is
+  // weighted by it, so at 0 they vanish and this is the standing shader exactly.
+  uniform float uSwim;
   varying float vY;
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -43,14 +47,23 @@ const vertexShader = /* glsl */ `
 
     // Bell stroke: contract radially, stretch upward — a real swimming beat
     float contract = pulseCycle(uTime);
-    p.xz *= 1.0 - bell * contract * 0.28;
-    p.y += bell * contract * 0.35 * max(p.y, 0.0);
+    // Swimming deepens the stroke (propulsion): up to 1.6x at uSwim 1.
+    float stroke = 1.0 + 0.6 * uSwim;
+    p.xz *= 1.0 - bell * contract * 0.28 * stroke;
+    p.y += bell * contract * 0.35 * stroke * max(p.y, 0.0);
 
     // Tentacles: waves TRAVEL down the length (phase moves with -uTime),
     // amplitude grows toward the tips; secondary ripple adds organic detail
-    p.x += tent * sin(p.y * 2.6 - uTime * 2.2) * 0.16 * depth;
-    p.z += tent * cos(p.y * 1.7 - uTime * 1.5 + 1.3) * 0.16 * depth;
+    // Swimming streams them straight back: less lateral curl (down to 0.3x),
+    // stretched along -y, with a lateral ripple travelling down their length.
+    float curl = 1.0 - 0.7 * uSwim;
+    p.x += tent * sin(p.y * 2.6 - uTime * 2.2) * 0.16 * depth * curl;
+    p.z += tent * cos(p.y * 1.7 - uTime * 1.5 + 1.3) * 0.16 * depth * curl;
     p.x += tent * sin(p.y * 6.0 - uTime * 4.0) * 0.035 * depth;
+    p.y -= tent * uSwim * 0.18 * depth;
+    float ripple = tent * uSwim * 0.07 * depth * sin(p.y * 3.4 + uTime * 5.0);
+    p.x += ripple;
+    p.z += ripple * 0.6;
     // Contraction draws the tentacles inward, trailing the bell
     p.xz *= 1.0 - tent * pulseCycle(uTime - 0.35) * 0.14;
 
@@ -133,8 +146,9 @@ export default function SpaceJellyfish() {
     [pathPos, basePos, keepOut],
   );
   // The pulse runs on its own accumulated clock so its rate can follow the
-  // mood without jumping the phase. It advances on ambient time, so it still
-  // freezes under reduced motion.
+  // mood and speed without jumping the phase. It advances on ambient time,
+  // except under reduced motion (which freezes that), where it runs slow on
+  // frame time.
   const pulseClock = useRef(0);
   const pulseRate = useRef(1);
   const lastAmbient = useRef<number | null>(null);
@@ -150,7 +164,7 @@ export default function SpaceJellyfish() {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, uSwim: { value: 0 } },
         vertexShader,
         fragmentShader,
         transparent: true,
@@ -222,10 +236,15 @@ export default function SpaceJellyfish() {
     const dt = Math.min(delta, 0.05);
     const step = lastAmbient.current === null ? 0 : time - lastAmbient.current;
     lastAmbient.current = time;
-    pulseRate.current = damp(pulseRate.current, JELLY_PULSE_RATE[jelly.mood], 0.5, dt);
-    pulseClock.current += step * pulseRate.current;
+    // Reduced motion freezes ambient time, but the spec still wants a slow
+    // pulse, so that case steps the clock on frame time instead.
+    const reduced = useSpaceStore.getState().reducedMotion;
+    pulseRate.current = damp(pulseRate.current, pulseRateTarget(JELLY_PULSE_RATE[jelly.mood], posture.swim, reduced), 0.5, dt);
+    pulseClock.current += (reduced ? dt : step) * pulseRate.current;
     const pulseTime = pulseClock.current + 4 * Math.sin(time * 0.045);
     material.uniforms.uTime.value = pulseTime;
+    // No tentacle ripple or stretch under reduced motion (posture still follows).
+    material.uniforms.uSwim.value = reduced ? 0 : posture.swim;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
     JELLY_PATH.getPointAt(t, pathPos);
     basePos.copy(pathPos);
