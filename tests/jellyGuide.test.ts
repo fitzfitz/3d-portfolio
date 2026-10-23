@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createGuideState, stepGuide, type GuideInput, type GuideState, type GuideEvent,
   GUIDE_LOST_SECONDS, GUIDE_OFFER_COOLDOWN, GUIDE_COME_SECONDS, GUIDE_LEAD_DIST,
-  GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R, GUIDE_LEAD_MAX_ANGLE, GUIDE_DECLINE_SECONDS,
+  GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R, GUIDE_LEAD_MAX_ANGLE,
   GUIDE_REDUCED_SNAP_DIST,
 } from "../src/utils/jellyGuide";
 import { pushOutOfSolids, JELLY_RADIUS, type JellyKeepOut } from "../src/utils/jellyMood";
@@ -191,46 +191,21 @@ describe("offering itself (lost timer)", () => {
     expect(run(s, inp, 300)).toEqual([]);
   });
 
-  // Spec "Offering itself": "If the pilot flies away from the offer, it goes
-  // back to roaming". The guide now keeps up wherever the pilot flies, so
-  // distance cannot say it; GUIDE_DECLINE_SECONDS of flying away does.
-  it("withdraws an offer after 6 s of flying away from the target", () => {
+  // Owner, 2026-10-23 (after #54): "I never get any offer when I flew away".
+  // A lost pilot flies anywhere, so a fly-away withdrawal ate every offer six
+  // seconds in. An offer now behaves as a call: it stays until arrival or J.
+  it("keeps an offered guide leading, in front of the nose, while the pilot flies away for 30 s", () => {
     const s = createGuideState(), inp = input();
     run(s, inp, GUIDE_LOST_SECONDS + 0.1);
     expect(s.name).toBe("coming");
-    inp.shipVel.x = -CRUISE; // away from the target at +x
-    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 0.1)).toEqual(["met"]);
+    expect(s.offered).toBe(true);
+    inp.shipVel.x = -CRUISE; // straight away from the target at +x
+    expect(run(s, inp, 30)).toEqual(["met"]);
     expect(s.name).toBe("leading");
-    expect(run(s, inp, 0.2)).toEqual(["declined"]);
-    expect(s.name).toBe("roaming");
+    expect(ahead(s, inp)).toBeGreaterThan(15);
   });
 
-  it("withdraws an offer at warp too: flying across the route is flying away", () => {
-    const s = createGuideState(), inp = input({ jelly: v(0, 0, 400) });
-    run(s, inp, GUIDE_LOST_SECONDS + 0.1);
-    inp.shipVel.z = -SHIP_WARP_SPEED * CRUISE_MAX_FACTOR; // across the route: not following
-    const events = run(s, inp, GUIDE_DECLINE_SECONDS + 0.1);
-    expect(events).toEqual(["met", "declined"]);
-    expect(s.name).toBe("roaming");
-  });
-
-  it("restarts the decline clock whenever the pilot stops flying away", () => {
-    const s = createGuideState(), inp = input();
-    run(s, inp, GUIDE_LOST_SECONDS + 0.1 + GUIDE_COME_SECONDS + 0.5);
-    expect(s.name).toBe("leading");
-    inp.shipVel.x = -CRUISE;
-    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 1)).toEqual([]);
-    inp.shipVel.x = CRUISE; // turns back toward the target for a moment
-    run(s, inp, 0.5);
-    inp.shipVel.x = 0; // hovering is not flying away either
-    run(s, inp, 0.5);
-    inp.shipVel.x = -CRUISE;
-    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 1)).toEqual([]);
-    expect(s.name).toBe("leading");
-    expect(run(s, inp, 1.1)).toEqual(["declined"]);
-  });
-
-  it("never withdraws a called guide when the pilot flies away (only offers withdraw)", () => {
+  it("keeps a called guide leading when the pilot flies away", () => {
     const s = createGuideState(), inp = input();
     press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
     inp.shipVel.x = -CRUISE;

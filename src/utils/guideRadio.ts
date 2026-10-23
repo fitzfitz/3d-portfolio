@@ -59,7 +59,7 @@ export class GuideRadio {
       : null;
     if (kind) { this.pending = kind; this.pendingAt = now; }
     // The guide it was about has gone back to roaming: the line would be wrong.
-    else if (event === "dismissed" || event === "declined") this.pending = null;
+    else if (event === "dismissed") this.pending = null;
     if (this.pending === null) return null;
     if (now - this.pendingAt > GUIDE_LINE_WAIT_S) { this.pending = null; return null; }
     if (busy) return null;

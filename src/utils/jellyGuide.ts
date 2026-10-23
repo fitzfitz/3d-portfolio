@@ -13,7 +13,7 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
  *
  *   roaming --J / offer--> coming --~2 s--> leading --ship in radius--> presenting
  *      ^                     |                 |                         | one turn
- *      +- J, target null, or (offer only) 6 s of flying away from it ---+
+ *      +---------------- J, or target null (nothing left) ----------------+
  *
  * While roaming the component owns the position (loop + moods) and the guide
  * only passes it through and runs the lost timer. In every other state `pos` is
@@ -32,11 +32,10 @@ export type GuideName = "roaming" | "coming" | "leading" | "presenting";
  * - `arrived`: the ship entered the target's radius (the HUD's own lock-on
  *   radius; no lock action exists, spec build ruling R9); it presents.
  * - `dismissed`: J while active; it roams again.
- * - `declined`: the pilot flew away from an offer for GUIDE_DECLINE_SECONDS; it roams again.
  * - `allDone`: no target left (J with nothing to do, the target went null
  *   mid-guide, or the last step was just presented); it roams.
  */
-export type GuideEvent = "called" | "offered" | "met" | "arrived" | "dismissed" | "declined" | "allDone";
+export type GuideEvent = "called" | "offered" | "met" | "arrived" | "dismissed" | "allDone";
 
 export interface GuideInput {
   /** The creature's roaming position this frame (loop + mood offset), as the component computes it. */
@@ -93,10 +92,12 @@ export interface GuideState {
   guiding: boolean;
   /** OUTPUT: draw the glow streak (fast travel; never under reduced motion). */
   streak: boolean;
-  /** This run began as an offer, so flying away from it withdraws it. */
+  /**
+   * This run began as an offer, whose radio line went out when it started, so
+   * meeting the ship says nothing more (guideRadio.ts). Otherwise an offer
+   * behaves as a call: it stays until the pilot arrives or presses J.
+   */
   offered: boolean;
-  /** Seconds an offered run has been flown away from, without a break (GUIDE_DECLINE_SECONDS). */
-  awayFor: number;
   /** Seconds lost (no progress, no blocker) while roaming. */
   lostFor: number;
   /** Seconds until another offer is allowed. */
@@ -157,23 +158,6 @@ const LEAN_SIN = Math.sin(GUIDE_LEAD_MAX_ANGLE);
  * station round the ship, a jump, a keep-out detour), halving it every ~0.46 s.
  */
 export const GUIDE_CATCHUP_GAIN = 1.5;
-/** Below this the ship is hovering, neither following nor flying away (u/s). */
-export const GUIDE_MOVING_SPEED = 1;
-/**
- * Flying away: the ship's velocity is more than ~78 degrees off the route
- * (along the route under 0.2 of its speed). Flying across the route is not
- * following.
- */
-export const GUIDE_AWAY_COS = 0.2;
-/**
- * Spec "Offering itself": "If the pilot flies away from the offer, it goes back
- * to roaming". The guide keeps up wherever the pilot flies, so the gap never
- * says it; this long (s) of flying away without a break does. Long enough
- * that a pilot swinging round to follow is not refused (a 180 degree turn at
- * cruise takes a few seconds), short enough that an unwanted offer leaves
- * soon. A called guide (J) is never withdrawn this way.
- */
-export const GUIDE_DECLINE_SECONDS = 6;
 /** Spec: "It circles the target once". One unhurried turn. */
 export const GUIDE_PRESENT_SECONDS = 8;
 /** Margin (u) between the creature's reach and whatever it circles or keeps off. */
@@ -214,7 +198,7 @@ export function createGuideState(): GuideState {
   return {
     name: "roaming", event: null,
     pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
-    guiding: false, streak: false, offered: false, awayFor: 0,
+    guiding: false, streak: false, offered: false,
     lostFor: 0, cooldown: 0, progress: NaN,
     comeT: 0, from: { x: 0, y: 0, z: 0 },
     center: { x: 0, y: 0, z: 0 }, radius: 0, angle: 0, turned: 0, floor: 0,
@@ -313,7 +297,6 @@ function keepClear(p: Vec3, target: Vec3, keepOut: readonly JellyKeepOut[]) {
 function startComing(s: GuideState, inp: GuideInput, offered: boolean) {
   s.name = "coming";
   s.offered = offered;
-  s.awayFor = 0;
   s.comeT = 0;
   s.lostFor = 0;
   copy(s.from, inp.jelly);
@@ -472,17 +455,6 @@ export function stepGuide(s: GuideState, inp: GuideInput, dt: number): GuideStat
     else if (s.name === "coming") stepComing(s, inp, target!, dt);
     else if (s.name === "leading") stepLeading(s, inp, target!, dt);
     else stepPresenting(s, inp, dt);
-
-    // Spec "Offering itself": "If the pilot flies away from the offer, it goes
-    // back to roaming": GUIDE_DECLINE_SECONDS of moving with the velocity off
-    // the route (GUIDE_AWAY_COS), unbroken. Hovering or turning back restarts it.
-    if (s.offered && (s.name === "coming" || s.name === "leading")) {
-      awayFrom(route, inp.ship, target!);
-      const v = inp.shipVel, sp = Math.hypot(v.x, v.y, v.z);
-      const along = v.x * route.x + v.y * route.y + v.z * route.z;
-      s.awayFor = sp > GUIDE_MOVING_SPEED && along < GUIDE_AWAY_COS * sp ? s.awayFor + dt : 0;
-      if (s.awayFor >= GUIDE_DECLINE_SECONDS && s.event === null) { toRoaming(s); s.event = "declined"; }
-    }
   }
 
   // Roaming passes the component's position through, except on the step it

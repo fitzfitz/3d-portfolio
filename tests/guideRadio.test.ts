@@ -21,10 +21,10 @@ describe("GuideRadio (the guide's radio lines, spec \"Calling it\")", () => {
     expect(r.update("arrived", false, 0, false)).toBe("a1");
     expect(r.update("allDone", false, 9, false)).toBe("d1");
   });
-  it("dismissing or declining says nothing", () => {
+  it("dismissing says nothing", () => {
     const r = radio();
     expect(r.update("dismissed", false, 0, false)).toBeNull();
-    expect(r.update("declined", true, 1, false)).toBeNull();
+    expect(r.update("dismissed", true, 1, false)).toBeNull();
   });
   it("never talks over a busy radio: the line waits, then goes out when it frees", () => {
     const r = radio();
