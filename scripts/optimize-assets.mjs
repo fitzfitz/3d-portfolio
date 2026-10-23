@@ -53,18 +53,17 @@ const TEXTURE_OPTS = {
   deimos: { quality: 85 },
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
-  probe: { quality: 88 },
-};
 // The space monsters (saucer, tardigrade) are viewed close up but sit in the
 // lab folder until a game stage uses them, so they get the probe's q88.
+  saucer: { quality: 88 },
+  tardigrade: { quality: 88 },
+};
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
 const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe"];
 // Dormant space monsters: output goes to public/models-lab/, never to the packs.
 const LAB_MODELS = ["saucer", "tardigrade"];
-TEXTURE_OPTS.saucer = { quality: 88 };
-TEXTURE_OPTS.tardigrade = { quality: 88 };
 for (const k of [...MODELS, ...LAB_MODELS]) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }

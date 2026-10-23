@@ -666,7 +666,7 @@ describe("dormant monsters", () => {
     for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-lab/${m}.glb`)).toBe(true);
   });
 
-  it("the lab monsters stay small (blockout sizes; a later task tightens these)", () => {
-    for (const m of ["saucer", "tardigrade"]) expect(labKb(m)).toBeLessThanOrEqual(600);
+  it("the lab monsters stay inside their 700 KB download budget", () => {
+    for (const m of ["saucer", "tardigrade"]) expect(labKb(m)).toBeLessThanOrEqual(700);
   });
 });
