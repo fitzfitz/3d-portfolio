@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS, nearestLoopT } from "../src/data/jellyfishPath";
 import { SPAWN } from "../src/data/spawn";
-import { BUOYS, STATION_POS } from "../src/data/careerTrail";
-import { PROBES } from "../src/data/probes";
+import { STATION_POS, possibleBuoyPositions } from "../src/data/careerTrail";
+import { PROBE_SLOTS } from "../src/data/probes";
 import { SHIPYARD_POS } from "../src/data/shipyard";
 import { GATE_POS } from "../src/data/dormantGate";
 import { PORTAL_POS } from "../src/constants";
@@ -54,9 +54,9 @@ describe("jellyfish path", () => {
   });
   it("keeps clear of the career trail, the station and the places pilots fly to", () => {
     const keep = [
-      ...BUOYS.map((b) => ({ name: b.id, p: v(b.pos), r: 30 })),
+      ...possibleBuoyPositions().map((b, i) => ({ name: `buoy spot ${i}`, p: v(b), r: 30 })),
       { name: "station", p: v(STATION_POS), r: 35 },
-      ...PROBES.map((pr) => ({ name: `${pr.id} home`, p: v(pr.home), r: 20 })),
+      ...PROBE_SLOTS.map((pr, i) => ({ name: `probe slot ${i + 1} home`, p: v(pr.home), r: 20 })),
       { name: "shipyard", p: v(SHIPYARD_POS), r: 25 },
       { name: "gate", p: v(GATE_POS), r: 35 },
       { name: "portal", p: v(PORTAL_POS), r: 30 },

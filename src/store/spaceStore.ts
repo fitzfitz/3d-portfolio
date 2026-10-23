@@ -17,6 +17,8 @@ import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
+import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
+import { setLowPerfSource } from "../utils/hiResMaps";
 import { CHANGELOG } from "../data/changelog";
 import { SHARDS } from "../data/shards";
 import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
@@ -104,32 +106,6 @@ function safeGetReducedMotionQueryMatches(): boolean {
 }
 
 /**
- * Whether this browser can create a WebGL context at all. Without one the 3D
- * scene cannot run, so the visitor starts on the classic résumé instead of a
- * blank page. Never throws: a blocked or broken canvas counts as "no".
- */
-export function hasWebGL(doc: Document | undefined = typeof document !== "undefined" ? document : undefined): boolean {
-  try {
-    if (!doc) return false;
-    const c = doc.createElement("canvas");
-    return !!(c.getContext("webgl2") || c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-/**
- * True when the URL asks for the résumé directly (`?cv`, `?resume`, `#cv`,
- * `#resume`) — a link a visitor can be sent that skips the flight entirely.
- */
-export function wantsResume(loc: { search: string; hash: string } | undefined =
-  typeof window !== "undefined" ? window.location : undefined): boolean {
-  if (!loc) return false;
-  const q = new URLSearchParams(loc.search);
-  return q.has("cv") || q.has("resume") || /^#(cv|resume)$/i.test(loc.hash);
-}
-
-/**
  * Read dossiers from storage, keeping only current project ids: ids from an
  * older content set (e.g. "saas") must not count toward n/3, and a value that
  * isn't an array (hand-edited storage) must not crash the store at import.
@@ -179,8 +155,7 @@ export function loadShards(raw: unknown): number[] {
   return out;
 }
 
-/** Probed once at import: each probe creates a throwaway WebGL context. */
-export const WEBGL_AVAILABLE = hasWebGL();
+export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
 
 function safeGetJSON<T>(key: string, fallback: T): T {
   try {
@@ -782,6 +757,9 @@ export const useSpaceStore = create<SpaceState>()(
     },
   }))
 );
+
+// hiResMaps reads low-perf from here from now on (it cannot import the store; see there).
+setLowPerfSource(() => useSpaceStore.getState().isLowPerf);
 
 /**
  * True when an opaque modal covers the scene and rendering it is wasted work.

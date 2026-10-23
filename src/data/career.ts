@@ -3,6 +3,11 @@
  * LinkedIn profile (2026-10-10). Keep in sync with LinkedIn: recruiters
  * cross-check, and a mismatch reads worse than an omission.
  *
+ * The bundled snapshot: the live list comes from beacon-api's D1 `career`
+ * table when it answers (src/data/content.ts, beacon-api/README.md "Editing
+ * the content"), and this is the fallback. beacon-api/content-seed.sql is
+ * generated from it (npm run content:seed; tests/contentSeed.test.ts).
+ *
  * Projects (src/data/projects.json) are personal work and live separately.
  */
 export interface CareerEntry {
@@ -18,7 +23,7 @@ export interface CareerEntry {
   summary: string;
 }
 
-export const career: CareerEntry[] = [
+export const BUNDLED_CAREER: readonly CareerEntry[] = [
   {
     role: "Front End Developer",
     company: "Hubexo",

@@ -1,20 +1,7 @@
 import { keplerGM, keplerOmega } from "./utils/kepler";
-import projectsData from "./data/projects.json";
+import { activeContent, type Project } from "./data/content";
 
-export interface Project {
-  /**
-   * Stable identity: the project's probe id only (data/probes.ts), the
-   * store's `openDossier`/`probeNear` value and its logbook essential. No
-   * body keys on it any more: the planets are the real Solar System's, with
-   * their own ids (data/bodyIds.ts). Changing it renames the probe and breaks
-   * any saved reference to it.
-   */
-  id: string;
-  title: string; role: string; duration: string; short: string;
-  description: string; tech: string[]; color: string;
-  /** Public repo URL. Falls back to the profile when a project has none. */
-  repo?: string;
-}
+export type { Project };
 /**
  * The playable system: past this radius a return burn pushes the ship back
  * (utils/edgeHaze.ts). 31.3 AU: Neptune's aphelion (3,488) plus its well and
@@ -59,11 +46,12 @@ export const PORTAL_RETAIN_R = 3.4;
 export const PORTAL_ORBIT_R = 2.6;
 
 /**
- * Project content lives in `src/data/projects.json` so it can be edited as data.
- * JSON gets no compile-time checking against `Project`, so `tests/projects.test.ts`
- * is that check — required fields, hex colours, unique non-reserved ids.
+ * The projects for this visit, in their `sort` order: beacon-api's D1
+ * `projects` table when it answered, else the bundled `src/data/projects.json`
+ * (src/data/content.ts). Rows from D1 are validated on the way in
+ * (src/utils/contentParse.ts); `tests/projects.test.ts` checks the bundled file.
  */
-export const projects: Project[] = projectsData;
+export const projects: readonly Project[] = activeContent().projects;
 
 /**
  * The sun's pull, GM (docs/UNIVERSE-RULES.md L7). Every orbit around the sun

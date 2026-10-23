@@ -1,17 +1,19 @@
 import { motion } from "framer-motion";
 import { Briefcase, MapPin } from "lucide-react";
-import { career } from "../../data/career";
+import { activeContent } from "../../data/content";
 
 /**
  * The work-history timeline, newest first. Rendered by the résumé's Career
  * section and by the career station's dossier, so the two can never drift.
+ * The list is the settled content's (src/data/content.ts), in its own order.
  */
 export default function CareerList() {
+  const career = activeContent().career;
   return (
     <ol className="relative border-l border-white/10 ml-2">
       {career.map((c, i) => (
         <motion.li
-          key={`${c.company}-${c.start}`}
+          key={`${i}-${c.company}-${c.start}`}
           initial={{ opacity: 0, x: -12 }}
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, margin: "-60px" }}

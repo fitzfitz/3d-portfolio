@@ -1,10 +1,13 @@
-import { career, type CareerEntry } from "./career";
+import type { CareerEntry } from "./career";
+import { activeContent } from "./content";
 
 /**
  * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1):
- * the station you dock at for the Career dossier, and five buoys, one per job,
- * oldest first, on a trail that climbs from the spawn pad up to it. The scene and
- * tests/careerTrail.test.ts read these same numbers.
+ * the station you dock at for the Career dossier, and a buoy per job (five in
+ * the bundled list), oldest first, on a trail that climbs from the spawn pad up
+ * to it. The buoys derive from the settled career list (src/data/content.ts,
+ * 1 to MAX_BUOYS entries). The scene and tests/careerTrail.test.ts read these
+ * same numbers.
  */
 export type Vec3 = readonly [number, number, number];
 
@@ -37,7 +40,8 @@ export const BUOY_CARD_R = 6;
  * TRAIL_END: a rising ramp out of the ecliptic. It starts about 40 units
  * ahead of the spawn pad, in the opening view, climbs from ~14° to ~33° as it
  * passes over the sun (never nearer than 60), and the station sits 20 on along
- * the same curve. The buoys sit at equal angles along it, 43 apart. The whole
+ * the same curve. Five buoys sit at equal angles along it, 43 apart (buildBuoys
+ * for other counts). The whole
  * flight stays above every swept well and rock orbit, with no waivers
  * (tests/careerTrail.test.ts, tests/solarClearance.test.ts).
  */
@@ -96,14 +100,47 @@ export const TRAIL_ARC: Arc = arcThrough(TRAIL_START, TRAIL_BEND, TRAIL_END);
 
 export interface Buoy { id: string; label: string; pos: Vec3; entry: CareerEntry }
 
-/** One buoy per job, oldest first, at equal steps along the trail arc. */
-export const BUOYS: readonly Buoy[] = [...career]
-  .sort((a, b) => startKey(a) - startKey(b))
-  .map((entry, i, all) => ({
+/** Buoys the trail holds: twelve jobs put them ~15.6 u apart, still clear of each other's 6 u cards. */
+export const MAX_BUOYS = 12;
+/**
+ * The fewest steps the arc is cut into. Five jobs fill it at today's 43 u
+ * (a buoy reads from the next one there, CareerTrail BUOY_SCALE); fewer keep
+ * that step and stop short of the arc's end, the dashed guide still running
+ * on to the station, instead of spreading past the 50 u the trail allows.
+ */
+export const MIN_TRAIL_STEPS = 4;
+
+/** Where along the arc (0..1) buoy i of n sits (spec 2026-10-23-dynamic-content, build ruling R7). */
+export function buoyFraction(i: number, n: number): number {
+  return n > 1 ? i / Math.max(n - 1, MIN_TRAIL_STEPS) : 0;
+}
+
+/**
+ * One buoy per job, oldest first, at equal steps along the trail arc. Past
+ * MAX_BUOYS the newest MAX_BUOYS get buoys (the résumé still lists them all).
+ */
+export function buildBuoys(career: readonly CareerEntry[], warn: (msg: string) => void = console.warn): Buoy[] {
+  const sorted = [...career].sort((a, b) => startKey(a) - startKey(b));
+  if (sorted.length > MAX_BUOYS) {
+    warn(`careerTrail: ${sorted.length} career entries, the trail holds ${MAX_BUOYS}; the oldest ${sorted.length - MAX_BUOYS} get no buoy (the résumé still lists them)`);
+  }
+  const kept = sorted.slice(-MAX_BUOYS);
+  return kept.map((entry, i) => ({
     id: `career_${i}`,
     label: `CAREER_${entry.start.slice(-4)}`,
-    pos: arcPoint(TRAIL_ARC, all.length > 1 ? i / (all.length - 1) : 0),
+    pos: arcPoint(TRAIL_ARC, buoyFraction(i, kept.length)),
     entry,
   }));
+}
+
+/** Every position a buoy can take for 1 to MAX_BUOYS jobs: what the clearance tests hold to. */
+export function possibleBuoyPositions(): Vec3[] {
+  const fractions = new Set<number>();
+  for (let n = 1; n <= MAX_BUOYS; n++) for (let i = 0; i < n; i++) fractions.add(buoyFraction(i, n));
+  return [...fractions].sort((a, b) => a - b).map((t) => arcPoint(TRAIL_ARC, t));
+}
+
+/** This visit's buoys, from the settled career list. */
+export const BUOYS: readonly Buoy[] = buildBuoys(activeContent().career);
 
 export const BUOY_POSITIONS: readonly Vec3[] = BUOYS.map((b) => b.pos);

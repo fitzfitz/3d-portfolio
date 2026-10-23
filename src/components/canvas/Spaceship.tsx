@@ -26,7 +26,7 @@ import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
 import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
-import { CRYSTAL_LANDMARKS } from "../../utils/crystalField";
+import { WARP_LANDMARKS } from "../../utils/crystalField";
 import {
   stepGravity, gravityMode, SlingshotWatch, wellAt, SUN_WELL_ID, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,
@@ -63,7 +63,7 @@ const MOON_REACH = SOLAR_MOONS.map(moonReach);
  * landmarks, probes.
  */
 const CRUISE_SPHERES: { x: number; y: number; z: number; r: number }[] = Array.from(
-  { length: BODY_REACH.length + 1 + SOLAR_MOONS.length + CRYSTAL_LANDMARKS.length + PROBES.length },
+  { length: BODY_REACH.length + 1 + SOLAR_MOONS.length + WARP_LANDMARKS.length + PROBES.length },
   () => ({ x: 0, y: 0, z: 0, r: 0 }),
 );
 const BRAKE = 0.92;         // per-frame decay basis
@@ -632,8 +632,8 @@ export default function Spaceship() {
         const q = moonPositions[SOLAR_MOONS[i].id], c = CRUISE_SPHERES[n++];
         c.x = q.x; c.y = q.y; c.z = q.z; c.r = MOON_REACH[i];
       }
-      for (let i = 0; i < CRYSTAL_LANDMARKS.length; i++) {
-        const l = CRYSTAL_LANDMARKS[i], c = CRUISE_SPHERES[n++];
+      for (let i = 0; i < WARP_LANDMARKS.length; i++) {
+        const l = WARP_LANDMARKS[i], c = CRUISE_SPHERES[n++];
         c.x = l[0]; c.y = l[1]; c.z = l[2]; c.r = LANDMARK_CRUISE_R;
       }
       for (let i = 0; i < PROBES.length; i++) {

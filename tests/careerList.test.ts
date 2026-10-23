@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import CareerList from "../src/components/sections/CareerList";
 import Career from "../src/components/sections/Career";
 import CareerDossier from "../src/components/layout/CareerDossier";
-import { career } from "../src/data/career";
+import { BUNDLED_CAREER as career } from "../src/data/career";
 
 /** React escapes these in markup. */
 const escapeHtml = (s: string) => s

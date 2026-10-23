@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PROBES } from "../src/data/probes";
+import { PROBE_SLOTS } from "../src/data/probes";
 import {
   LANDMARKS, JELLY_POINTS, JELLY_KEEP_RADIUS, landmarkMargin, worstRule, deepSpaceGap, sweptOrbit, DEEP_SPACE_MIN, clearanceReport, type Vec3,
 } from "./helpers/solarClearance";
@@ -35,10 +35,10 @@ describe("fixed landmarks clear the real orbits, belt, Trojans and comets", () =
     expect(Math.hypot(...DEEP_SPACE_POINT)).toBeLessThan(HAZE_START);
   });
 
-  it("keeps every probe spot within r 480", () => {
-    for (const p of PROBES) for (const s of [p.home, ...p.remote]) {
-      expect(Math.hypot(...s), p.id).toBeLessThanOrEqual(480);
-    }
+  it("keeps every probe slot's spots within r 480", () => {
+    PROBE_SLOTS.forEach((p, i) => { for (const s of [p.home, ...p.remote]) {
+      expect(Math.hypot(...s), `slot ${i + 1}`).toBeLessThanOrEqual(480);
+    } });
   });
 
   it("keeps the deep-space point 60 u from any swept orbit", () => {

@@ -1,6 +1,24 @@
 import type { ChatterPools } from "../utils/chatterScheduler";
 import type { GuideLines } from "../utils/guideRadio";
 import type { BodyId } from "./bodyIds";
+import { PROBE_IDS } from "./probes";
+import { projectById } from "../constants";
+
+/**
+ * The one radio line a probe gets when nobody wrote it a pool (a project added
+ * in D1; spec 2026-10-23-dynamic-content, build ruling R10): its id, as every
+ * written pool opens, then the project's short line.
+ */
+export function probeZoneLines(id: string, short: string): string[] {
+  return [`${id.toUpperCase()} PROBE IN RANGE // ${short.trim().replace(/[.!]+$/, "").toUpperCase()}`];
+}
+
+/** The written zone pools, plus a derived one for each probe in play that has none. */
+function withProbePools(zones: Record<string, string[]>): Record<string, string[]> {
+  const out = { ...zones };
+  for (const id of PROBE_IDS) out[id] ??= probeZoneLines(id, projectById(id)?.short ?? "");
+  return out;
+}
 
 /** All radio-chatter copy lives here — edit freely, one line per entry. */
 export const chatterPools: ChatterPools = {
@@ -19,7 +37,7 @@ export const chatterPools: ChatterPools = {
   // Keyed by zone: a project's pool fires when its probe comes in range
   // (store `probeNear`), a destination's when the ship enters its zone
   // (`activeZone`); RadioChatter subscribes to both.
-  zones: {
+  zones: withProbePools({
     ruangrapi: [
       "RUANGRAPI PROBE IN RANGE // RENT LEDGERS IN STABLE ORBIT",
       "KOS AND KONTRAKAN UNITS DETECTED. OCCUPANCY: TRACKED",
@@ -48,7 +66,7 @@ export const chatterPools: ChatterPools = {
       "HABITAT RING SPINNING. THE PILOT'S WORK HISTORY IS ABOARD",
       "DOCK TO READ THE FULL CAREER LOG",
     ],
-  },
+  }),
   warp: [
     "WARP CORE ENGAGED. HOLD ONTO YOUR RESUME",
     "RELATIVISTIC EFFECTS DETECTED IN CSS ANIMATIONS",

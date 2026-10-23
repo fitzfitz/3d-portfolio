@@ -29,6 +29,27 @@ export function spotPos(def: ProbeDef, spot: number): Vec3T {
   return spot <= 0 ? def.home : def.remote[spot - 1];
 }
 
+/**
+ * How many of the probes in play (`probeIds`) have had their dossier read.
+ * `visited` may hold a project that has no probe this visit (D1 dropped it, or
+ * it is past the slot cap), which must not count toward "ALL N DOSSIERS READ".
+ */
+export function probeDossiersRead(visited: readonly string[], probeIds: readonly string[]): number {
+  let n = 0;
+  for (const id of probeIds) if (visited.includes(id)) n++;
+  return n;
+}
+
+const NUMBER_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
+
+/** The spawn card's first line for n probes (it said "Three probes carry three projects."). */
+export function probeIntro(n: number): string {
+  const w = NUMBER_WORDS[n] ?? String(n);
+  return n === 1
+    ? "One probe carries one project. Grab it with the tractor beam to open it."
+    : `${w} probes carry ${w.toLowerCase()} projects. Grab one with the tractor beam to open it.`;
+}
+
 /** Seconds a closed probe's burn lasts before it vanishes. */
 export const RELOCATE_S = 2.5;
 /**

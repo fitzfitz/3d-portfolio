@@ -44,17 +44,17 @@ export interface Destination {
 }
 
 export const DESTINATIONS: readonly Destination[] = [
-  // Key 4. Radii in careerTrail.ts, next to the placement they were tested with.
+  // The key after the probes' (4 with the bundled three). Radii in careerTrail.ts, next to the placement they were tested with.
   {
     id: "career", label: "CAREER STATION", jumpLabel: "Career", scanLabel: "STATION_CAREER", pos: STATION_POS,
     color: CAREER_AMBER, waypoint: true, ...STATION_RADII,
   },
-  // Key 5. Docking opens the Hangar (App.tsx).
+  // Next key (5 with three probes). Docking opens the Hangar (App.tsx).
   {
     id: "shipyard", label: "SHIPYARD", jumpLabel: "Shipyard", scanLabel: "DRYDOCK_01", pos: SHIPYARD_POS,
     color: SHIPYARD_BLUE, waypoint: false, ...SHIPYARD_RADII,
   },
-  // Key 6.
+  // Last key (6 with three probes).
   {
     id: "contact", label: "CONTACT PORTAL", jumpLabel: "Contact", scanLabel: "PORTAL_SUN", pos: PORTAL_POS, color: "#ec4899",
     waypoint: true,

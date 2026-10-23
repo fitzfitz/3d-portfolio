@@ -1,11 +1,12 @@
 import { handleRequest, withListCache, type BeaconStore, type RequestLimiter, type StoredBeacon } from "./handler";
+import { handleContent, withContentCache, CONTENT_CACHE_MS, type ContentStore } from "./content";
 import { refuseLive, skyRequest, visitorKey, VISITOR_HEADER } from "./liveRoute";
 import { newRoom, onJoin, onLeave, onMessage, onTrailing, randomPilotId, type Outgoing, type Pilot } from "./sky";
 import { publicCountry } from "../../src/utils/liveSkyProtocol";
 
 /**
- * Cloudflare Worker entry: binds the beacon handler to D1, and GET /live to
- * the Sky room. Deploy steps are in beacon-api/README.md.
+ * Cloudflare Worker entry: binds the beacon handler and GET /content to D1,
+ * and GET /live to the Sky room. Deploy steps are in beacon-api/README.md.
  */
 
 // The slice of the D1 API used here, declared locally so the repo needs no
@@ -76,8 +77,30 @@ function d1Store(db: D1Database): BeaconStore {
   };
 }
 
+/**
+ * The content tables (beacon-api/content.sql), with an explicit column list:
+ * it is the wire contract src/utils/contentParse.ts validates. Missing tables
+ * throw, which handleContent turns into a 503 and the site into its bundled
+ * content.
+ */
+function d1Content(db: D1Database): ContentStore {
+  return {
+    async read() {
+      const [projects, career] = await Promise.all([
+        db.prepare("SELECT id, sort, title, role, duration, short, description, tech, color, repo FROM projects ORDER BY sort, id")
+          .all<Record<string, unknown>>(),
+        db.prepare('SELECT id, sort, role, company, note, start, "end", employment, location, summary FROM career ORDER BY sort, id')
+          .all<Record<string, unknown>>(),
+      ]);
+      return { projects: projects.results, career: career.results };
+    },
+  };
+}
+
 /** Per isolate: survives across requests, so repeat GETs skip D1 for 30s. */
 let store: BeaconStore | null = null;
+/** Per isolate, like `store`: repeat GET /content skips D1 for CONTENT_CACHE_MS. */
+let content: ContentStore | null = null;
 
 const origins = (env: Env) => env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -88,6 +111,10 @@ export default {
       if (refusal) return refusal;
       const visitor = await visitorKey(req.headers.get("CF-Connecting-IP") ?? "unknown", env.IP_SALT ?? "");
       return env.SKY.getByName("sky").fetch(skyRequest(req, visitor));
+    }
+    if (new URL(req.url).pathname === "/content") {
+      content ??= withContentCache(d1Content(env.DB), CONTENT_CACHE_MS, Date.now);
+      return handleContent(req, { store: content, limiter: env.LIMITER, allowedOrigins: origins(env) });
     }
     store ??= withListCache(d1Store(env.DB), 30_000, Date.now);
     return handleRequest(req, {
