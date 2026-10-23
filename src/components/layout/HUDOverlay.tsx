@@ -68,6 +68,9 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const probeTip = useSpaceStore((s) => s.probeTip);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const pad = useSpaceStore((s) => s.padConnected);
+  // Buttons with a shortcut carry it in their label (the top card no longer
+  // lists them). A touch screen has no keys to show, unless a pad is in.
+  const keyHint = (key: string) => (isCoarse && !pad ? "" : ` (${key})`);
   const probeTipLine = probeTipText(probeTip, pad, isCoarse);
   const changelogSeen = useSpaceStore((s) => s.changelogSeen);
   const logbookOpen = useSpaceStore((s) => s.logbookOpen);
@@ -300,25 +303,6 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
               <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">{pad ? "Y" : "P"}</span>
             </div>
-            <div className="w-[1px] bg-white/5" />
-            <div className="flex flex-col">
-              <span className="text-white/45">LOGBOOK</span>
-              <span className="text-white">{pad ? "X" : "L"}</span>
-            </div>
-            <div className="w-[1px] bg-white/5" />
-            <div className="flex flex-col">
-              <span className="text-white/45">PATCH_NOTES</span>
-              <span className="text-white">N</span>
-            </div>
-            {beaconsEnabled && (
-              <>
-                <div className="w-[1px] bg-white/5" />
-                <div className="flex flex-col">
-                  <span className="text-white/45">BEACON</span>
-                  <span className="text-white">B</span>
-                </div>
-              </>
-            )}
           </>
         )}
       </div>
@@ -329,13 +313,13 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
           aria-label="Pilot logbook" aria-expanded={logbookOpen}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <BookOpen className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">LOGBOOK</span>
+          <span className="hidden sm:inline">LOGBOOK{keyHint(pad ? "X" : "L")}</span>
         </button>}
         {!modalOpen && <button data-testid="changelog-button" onClick={() => { const s = useSpaceStore.getState(); s.setChangelogOpen(!s.changelogOpen); }}
           aria-label={notesUnseen ? "Patch notes, new updates" : "Patch notes"} aria-expanded={changelogOpen}
           className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-primary hover:border-primary/20 transition-all duration-300">
           <ScrollText className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">PATCH_NOTES</span>
+          <span className="hidden sm:inline">PATCH_NOTES{keyHint("N")}</span>
           {notesUnseen && (
             <span data-testid="changelog-dot" aria-hidden="true" className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary" />
           )}
@@ -345,7 +329,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             aria-label="Drop a beacon"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-[#00ff87] hover:border-[#00ff87]/20 transition-all duration-300">
             <RadioTower className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">BEACON</span>
+            <span className="hidden sm:inline">BEACON{keyHint("B")}</span>
           </button>
         )}
         <button onClick={() => setLowPerf(!isLowPerf, true)}
