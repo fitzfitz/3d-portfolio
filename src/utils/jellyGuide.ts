@@ -370,7 +370,14 @@ function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
   } else {
     // Brake from last step's velocity toward a slow swim back to the ship,
     // holding GUIDE_WAIT_DIST off. Easing the velocity (not the position) is
-    // what makes it slow first and then turn round.
+    // what makes it slow first and then turn round. That velocity is last
+    // step's displacement over dt, which a reduced-motion re-appearance
+    // (> 40 u in a frame: >= 2400 u/s) or a catch-up from far off
+    // (sp + 1.5 * gap: ~790 u/s from 500 u) spikes; braking from that coasts
+    // ~0.36 v on, hundreds to thousands of u past the ship. So it brakes from
+    // no faster than the ship flies, or its own waiting swim.
+    const cap = Math.max(sp, GUIDE_WAIT_MAX_SPEED), vl = Math.hypot(s.vel.x, s.vel.y, s.vel.z);
+    if (vl > cap) { const c = cap / vl; s.vel.x *= c; s.vel.y *= c; s.vel.z *= c; }
     const tx = inp.ship.x - s.pos.x, ty = inp.ship.y - s.pos.y, tz = inp.ship.z - s.pos.z;
     const d = Math.hypot(tx, ty, tz);
     const want = d > GUIDE_WAIT_DIST ? Math.min(GUIDE_WAIT_MAX_SPEED, WAIT_GAIN * (d - GUIDE_WAIT_DIST)) / d : 0;

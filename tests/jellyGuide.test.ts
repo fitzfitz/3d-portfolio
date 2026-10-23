@@ -3,6 +3,7 @@ import {
   createGuideState, stepGuide, type GuideInput, type GuideState, type GuideEvent,
   GUIDE_LOST_SECONDS, GUIDE_OFFER_COOLDOWN, GUIDE_COME_SECONDS, GUIDE_LEAD_DIST,
   GUIDE_WAIT_MAX_SPEED, GUIDE_OFFER_LEAVE_DIST, GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R,
+  GUIDE_FALL_BEHIND_DIST, GUIDE_WAIT_DIST,
 } from "../src/utils/jellyGuide";
 import { pushOutOfSolids, JELLY_RADIUS, type JellyKeepOut } from "../src/utils/jellyMood";
 import { SHIP_WARP_SPEED, PORTAL_ZONE_R } from "../src/constants";
@@ -267,6 +268,48 @@ describe("leading", () => {
     expect(s.pos.x - inp.ship.x).toBeCloseTo(GUIDE_LEAD_DIST, 0);
   });
 
+  it("waits when the pilot has fallen behind and hovers (a jump away), holding beside the ship", () => {
+    const { s, inp } = led();
+    run(s, inp, 1);
+    // A number-key jump: the ship is suddenly 300 u off to the side, at rest.
+    inp.ship.z += 300;
+    run(s, inp, DT);
+    expect(dist(s.pos, inp.ship)).toBeGreaterThan(GUIDE_FALL_BEHIND_DIST);
+    expect(s.waiting).toBe(true);
+    // It swims back toward the ship, slowly (it slows, it does not chase).
+    run(s, inp, 3);
+    expect(len(s.vel)).toBeLessThanOrEqual(GUIDE_WAIT_MAX_SPEED + 1e-6);
+    const toShip = v(inp.ship.x - s.pos.x, inp.ship.y - s.pos.y, inp.ship.z - s.pos.z);
+    expect((s.vel.x * toShip.x + s.vel.y * toShip.y + s.vel.z * toShip.z) / (len(s.vel) * len(toShip))).toBeGreaterThan(0.99);
+    // It reaches the ship and holds off it, still waiting while the ship hovers.
+    run(s, inp, 80);
+    expect(s.waiting).toBe(true);
+    expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_WAIT_DIST, 0);
+    // The pilot heads for the target: it leads again from its station.
+    inp.shipVel.x = CRUISE;
+    run(s, inp, 4);
+    expect(s.waiting).toBe(false);
+    expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_LEAD_DIST, 1);
+  });
+
+  it("brakes from a catch-up without coasting on: a 500 u catch-up, then the pilot turns away", () => {
+    const { s, inp } = led();
+    inp.shipVel.x = -SHIP_WARP_SPEED; // away from the target (+x): it waits, left behind
+    for (let i = 0; i < 60 * 60 && dist(s.pos, inp.ship) < 500; i++) run(s, inp, DT);
+    expect(dist(s.pos, inp.ship)).toBeGreaterThanOrEqual(500);
+    inp.shipVel.x = CRUISE; // toward: one frame of catch-up at ~sp + 1.5 * gap
+    run(s, inp, DT);
+    expect(s.waiting).toBe(false);
+    expect(len(s.vel)).toBeGreaterThan(500);
+    inp.shipVel.x = -CRUISE; // and away again on the very next frame
+    const at = { ...s.pos };
+    run(s, inp, 1);
+    expect(s.waiting).toBe(true);
+    // Braking from no faster than the ship (10.8 u/s) moves it under ~11 u in a
+    // second; from the catch-up's ~790 u/s it would coast ~270 u on.
+    expect(dist(s.pos, at)).toBeLessThan(15);
+  });
+
   it("is never startled while guiding: the component skips moods on `guiding`", () => {
     const s = createGuideState(), inp = input();
     expect(s.guiding).toBe(false);
@@ -451,6 +494,23 @@ describe("reduced motion", () => {
     expect(run(s, inp, GUIDE_LOST_SECONDS + 0.05)).toContain("offered");
     expect(dist(s.pos, inp.ship)).toBeLessThanOrEqual(25);
     expect(s.streak).toBe(false);
+  });
+
+  it("stays with the ship when the pilot turns away right after a re-appearance", () => {
+    const s = createGuideState(), inp = input({ reducedMotion: true });
+    press(s, inp); run(s, inp, 0.1);
+    inp.shipVel.x = -SHIP_WARP_SPEED; // away; it waits, far behind
+    run(s, inp, 3);
+    expect(s.waiting).toBe(true);
+    inp.shipVel.x = CRUISE; // toward: it re-appears at its station (a > 40 u snap)
+    run(s, inp, DT);
+    expect(s.waiting).toBe(false);
+    expect(len(s.vel)).toBeGreaterThan(2400); // the snap, as last step's displacement over dt
+    inp.shipVel.x = -CRUISE; // away on the very next frame
+    let worst = 0;
+    run(s, inp, 3, (g) => { worst = Math.max(worst, dist(g.pos, inp.ship)); });
+    expect(s.waiting).toBe(true);
+    expect(worst).toBeLessThan(60);
   });
 
   it("re-appears at its station rather than streaking back after waiting", () => {
