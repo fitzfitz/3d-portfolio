@@ -1,17 +1,12 @@
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { projectById } from "../../constants";
-import { DESTINATIONS, destinationById } from "../../data/destinations";
-import { probePos } from "../../store/probeState";
+import { destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
-import { recruiterWaypoint } from "../../utils/recruiterWaypoint";
+import { createWaypointTarget, recruiterTarget } from "../../utils/waypointTarget";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
 
-/** Destinations are fixed points; built once so the frame loop allocates nothing. */
-const DESTINATION_POINTS = new Map<string, { x: number; y: number; z: number }>(
-  DESTINATIONS.map((d) => [d.id, { x: d.pos[0], y: d.pos[1], z: d.pos[2] }]),
-);
 const MARGIN = 0.88; // NDC fraction treated as "on screen"
 /**
  * Off-screen targets get an arrow on an ellipse around the screen centre (in
@@ -22,6 +17,8 @@ const MARGIN = 0.88; // NDC fraction treated as "on screen"
 const RING_X = 0.6;
 const RING_Y = 0.5;
 const v = new THREE.Vector3();
+/** The waypoint's id and point, written each frame (utils/waypointTarget.ts: the helper the jellyfish guide shares). */
+const wp = createWaypointTarget();
 
 /** Headless: projects the next unread dossier (then the next destination) to the screen — or, mid-lap, the next time-trial ring. */
 export default function WaypointDriver() {
@@ -29,11 +26,12 @@ export default function WaypointDriver() {
     const s = useSpaceStore.getState();
     // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
     const race = s.race.phase === "running" ? s.race : null;
-    const id = race ? "" : recruiterWaypoint(flight, s.visitedDossiers, s.badges);
+    const placed = !race && recruiterTarget(flight, s.visitedDossiers, s.badges, wp);
+    const id = race ? "" : wp.id;
     // Nothing to point at while docked at a destination or inside its zone
     // (only destinations have one; a probe never sets activeZone).
     if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
-    const t = race ? RACE_GATES[race.next].c : DESTINATION_POINTS.get(id) ?? probePos[id];
+    const t = race ? RACE_GATES[race.next].c : placed ? wp : undefined;
     if (!t) { waypointState.active = false; return; }
 
     v.set(t.x, t.y, t.z).project(camera);
