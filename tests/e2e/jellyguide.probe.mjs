@@ -52,13 +52,16 @@ async function guiding(page, checks) {
     return Math.hypot(p.x - f.x, p.y - f.y, p.z - f.z);
   });
 
+  checks.check("the guide starts far from the ship (so arriving means J did something)", away > 100, `${away.toFixed(0)} u away`);
+
   // Record posture every frame from the call on: while it swims, bell leads;
   // the streak-in is the fastest swim there is.
   await page.evaluate(() => {
-    const r = window.__post = { n: 0, good: 0, cruiseN: 0, cruiseMin: 1, bad: [], on: true };
+    const r = window.__post = { streakMax: 0, n: 0, good: 0, cruiseN: 0, cruiseMin: 1, bad: [], on: true };
     const tick = () => {
       if (!r.on) return;
       const g = window.__fitz.jellyGuide;
+      r.streakMax = Math.max(r.streakMax, g.streak);
       const m = Math.hypot(g.vel.x, g.vel.y, g.vel.z);
       if (g.swim > 0.9 && m >= 2.37) {
         const d = (g.vel.x * g.up.x + g.vel.y * g.up.y + g.vel.z * g.up.z) / m;
@@ -110,6 +113,11 @@ async function guiding(page, checks) {
   checks.check("swimming at speed: bell leads the way (body +y . velocity > 0.8)", post.cruiseN > 20 && post.cruiseMin > 0.8,
     `${post.cruiseN} frames at >= 9 u/s, min ${post.cruiseMin.toFixed(3)}; over all ${post.n} swimming frames ${post.good} are > 0.8 (setting off from rest takes ~0.5 s to turn the body)`);
 
+  checks.check("swimming, setting off and turning: at least 85% of frames bell first", post.n > 50 && post.good / post.n >= 0.85,
+    `${post.good}/${post.n} frames`);
+  checks.check("the glow streak shows during the streak-in (so reduced motion's 0 means something)", post.streakMax > 0.5,
+    `peak streak ${post.streakMax.toFixed(2)}`);
+
   // Ship at rest: the guide holds its station and stands up (~1 s half-life).
   await settle(page, 4000);
   const stand = await page.evaluate(() => ({ ...window.__fitz.jellyGuide.up, state: window.__fitz.jellyGuide.state, swim: window.__fitz.jellyGuide.swim }));
@@ -129,9 +137,12 @@ async function guiding(page, checks) {
 async function reducedMotion(page, checks) {
   await teleport(page, DEEP_SPACE_POINT);
   await settle(page, 2000);
+  const away = await gap(page);
+  checks.check("reduced motion: the guide starts far from the ship", away > 100, `${away.toFixed(0)} u away`);
   const secs = await callGuide(page, 3000);
-  checks.check("reduced motion: the guide appears beside the ship at once", secs !== null && secs < 1,
-    secs === null ? "never" : `${secs.toFixed(2)} s, ${(await gap(page)).toFixed(1)} u`);
+  const near = await gap(page);
+  checks.check("reduced motion: the guide appears beside the ship at once", secs !== null && secs < 1 && near < 30,
+    secs === null ? "never" : `${secs.toFixed(2)} s, ${near.toFixed(1)} u`);
   const g = await page.evaluate(() => window.__fitz.jellyGuide);
   checks.check("reduced motion: no glow streak", g.streak === 0, `streak=${g.streak}`);
   await settle(page, 1500);
