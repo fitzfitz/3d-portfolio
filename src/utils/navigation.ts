@@ -24,7 +24,8 @@ export function jumpPoint(ship: Vec3, target: Vec3, standoff: number): JumpPoint
 
 /**
  * The nearest of `names` (at `bodies`) not yet in `visited`, then `fallback`
- * once all are. recruiterWaypoint.ts is the HUD's use of it.
+ * once all are. recruiterWaypoint.ts is the HUD's use of it (waypointTarget.ts
+ * makeRecruiterTarget, the same mapping memoised for the frame loops).
  */
 export function nextWaypoint(
   ship: Vec3,

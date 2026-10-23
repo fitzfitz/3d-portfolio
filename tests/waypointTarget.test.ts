@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  createWaypointTarget, placeTarget, recruiterTarget, makeGuideTarget, type WaypointTarget,
+  createWaypointTarget, placeTarget, makeRecruiterTarget, makeGuideTarget, type WaypointTarget,
 } from "../src/utils/waypointTarget";
 import { recruiterWaypoint } from "../src/utils/recruiterWaypoint";
 import { probePos } from "../src/store/probeState";
@@ -61,7 +61,11 @@ describe("placeTarget (a waypoint id to a world position and an arrival radius)"
   });
 });
 
-describe("recruiterTarget (WaypointDriver: the HUD waypoint)", () => {
+/** A fresh memo per call: the plain mapping, for comparisons. */
+const recruiterTarget = (s: V, visited: readonly string[], badges: readonly BadgeRecord[], out: WaypointTarget) =>
+  makeRecruiterTarget()(s, visited, badges, out);
+
+describe("makeRecruiterTarget (WaypointDriver: the HUD waypoint)", () => {
   it("is recruiterWaypoint's id at placeTarget's position", () => {
     const cases: [readonly string[], BadgeRecord[]][] = [
       [[], []], [PROBE_IDS.slice(0, 2), []], [[...PROBE_IDS], []], [[...PROBE_IDS], [badge("career")]],
@@ -79,6 +83,23 @@ describe("recruiterTarget (WaypointDriver: the HUD waypoint)", () => {
     out.id = "stale";
     recruiterTarget(ship, [], [], out);
     expect(out.id).toBe(recruiterWaypoint(ship, [], []));
+  });
+  it("one memo follows the store's new badge arrays and the moving ship, as recruiterWaypoint does", () => {
+    const hud = makeRecruiterTarget(), out = createWaypointTarget();
+    const visited = [...PROBE_IDS];
+    let badges: BadgeRecord[] = [];
+    hud(ship, visited, badges, out);
+    expect(out.id).toBe("career");
+    badges = [...badges, badge("career")];
+    hud(ship, visited, badges, out);
+    expect(out.id).toBe(recruiterWaypoint(ship, visited, badges));
+    expect(out.id).toBe("contact");
+    // Probes: the nearest unread one, wherever the ship is now.
+    for (const id of PROBE_IDS) {
+      const p = probePos[id], at = { x: p.x + 1, y: p.y, z: p.z };
+      hud(at, [], badges, out);
+      expect(out.id).toBe(recruiterWaypoint(at, [], badges));
+    }
   });
 });
 
@@ -126,8 +147,16 @@ describe("makeGuideTarget (controller ruling R1: the guide's target)", () => {
   it("is null once every body is charted", () => {
     expect(makeGuideTarget()(ship, ESSENTIALS, BODY_IDS.map(chart), bodies, createWaypointTarget())).toBe(false);
   });
-  it("is null when the logbook has no next goal, even with worlds left to chart", () => {
-    expect(makeGuideTarget()(ship, EVERYTHING, [], bodies, createWaypointTarget())).toBe(false);
+  // Ruling R12: the logbook has no CARTOGRAPHER entry, so a full logbook with
+  // worlds left to chart is reachable; only an empty chart list ends the lead.
+  it("a full logbook with worlds left to chart still leads to the nearest uncharted body (R12)", () => {
+    const out = createWaypointTarget();
+    expect(makeGuideTarget()(ship, EVERYTHING, [chart("mercury")], bodies, out)).toBe(true);
+    expect(out.id).toBe("venus");
+    expect(out.radius).toBe(size("venus") + SCAN_RANGE);
+  });
+  it("a full logbook and a full chart: null", () => {
+    expect(makeGuideTarget()(ship, EVERYTHING, BODY_IDS.map(chart), bodies, createWaypointTarget())).toBe(false);
   });
   it("follows new progress through the same memo (new arrays, as the store makes them)", () => {
     const guide = makeGuideTarget(), out = createWaypointTarget();

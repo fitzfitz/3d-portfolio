@@ -1,12 +1,11 @@
-import { DESTINATIONS } from "../data/destinations";
-import { PROBE_IN_RANGE } from "../data/probes";
+import { DESTINATIONS, afterProbes } from "../data/destinations";
+import { PROBE_IDS, PROBE_IN_RANGE } from "../data/probes";
 import { SOLAR_BODIES } from "../data/solarSystem";
 import { BODY_IDS } from "../data/bodyIds";
 import { probePos } from "../store/probeState";
 import type { ChartRecord } from "./charting";
-import { essentialsDone, nextGoal, type LogbookProgress } from "./logbook";
+import { essentialsDone, type LogbookProgress } from "./logbook";
 import { nextWaypoint } from "./navigation";
-import { recruiterWaypoint } from "./recruiterWaypoint";
 import { SCAN_RANGE } from "./scannables";
 
 interface Vec3 { x: number; y: number; z: number }
@@ -54,45 +53,54 @@ export function placeTarget(id: string, out: WaypointTarget): boolean {
 }
 
 /**
- * The HUD waypoint outside a race: recruiterWaypoint's id, placed. Writes
- * `out.id` even when the id has no position (WaypointDriver still compares it
- * with the active zone); returns whether it has one.
+ * The HUD waypoint outside a race, placed: recruiterWaypoint's mapping (the
+ * nearest unread probe at its live spot, then `afterProbes(badges)`), as a memo
+ * per caller. afterProbes scans the table with closures, so it runs only when
+ * the store hands over a new badges array (it replaces, never mutates it); the
+ * rest is a loop over three probes. Writes `out.id` even when the id has no
+ * position (WaypointDriver still compares it with the active zone); returns
+ * whether it has one.
  */
-export function recruiterTarget(ship: Vec3, visited: readonly string[], badges: readonly { id: string }[], out: WaypointTarget): boolean {
-  out.id = recruiterWaypoint(ship, visited, badges);
-  return placeTarget(out.id, out);
+export function makeRecruiterTarget(): (
+  ship: Vec3, visited: readonly string[], badges: readonly { id: string }[], out: WaypointTarget,
+) => boolean {
+  let lastBadges: readonly { id: string }[] | null = null;
+  let fallback = "";
+  return (ship, visited, badges, out) => {
+    if (badges !== lastBadges) { lastBadges = badges; fallback = afterProbes(badges); }
+    out.id = nextWaypoint(ship, PROBE_IDS, probePos, visited, fallback);
+    return placeTarget(out.id, out);
+  };
 }
 
 /**
- * The guide's target (ruling R1). Until the essentials are done it is the HUD
- * waypoint, exactly. Then the logbook's next goals are badges (a slingshot, a
- * comet), which are activities, not places, so it leads to the nearest
+ * The guide's target (rulings R1, R12). Until the essentials are done it is the
+ * HUD waypoint, exactly. Then the logbook's next goals are badges (a slingshot,
+ * a comet), which are activities, not places, so it leads to the nearest
  * uncharted body instead (CARTOGRAPHER), with the charted bodies as visited.
- * False (null: it roams) when the logbook has no next goal or every body is
- * charted.
+ * The logbook has no charting entry, so a full logbook still leads on while
+ * worlds are left (R12). False (null: it roams) once every body is charted.
  *
- * A memo per caller: essentialsDone, nextGoal and the charted id list are
- * recomputed only when the store hands over a new array, so a steady frame
- * does no logbook scan and allocates nothing (the store replaces, never
- * mutates, these arrays).
+ * A memo per caller: essentialsDone, afterProbes and the charted id list are
+ * recomputed only when the store hands over a new array, so a steady frame does
+ * no logbook scan and builds no closure.
  */
 export function makeGuideTarget(): (
   ship: Vec3, progress: LogbookProgress, charted: readonly ChartRecord[], bodies: Readonly<Record<string, Vec3>>, out: WaypointTarget,
 ) => boolean {
+  const hud = makeRecruiterTarget();
   let lastVisited: readonly string[] | null = null;
   let lastShards: readonly number[] | null = null;
   let lastBadges: readonly { id: string }[] | null = null;
-  let essentials = false, goalLeft = true;
+  let essentials = false;
   let lastCharted: readonly ChartRecord[] | null = null;
   let chartedIds: readonly string[] = [];
   return (ship, progress, charted, bodies, out) => {
     if (progress.visitedDossiers !== lastVisited || progress.shardsCollected !== lastShards || progress.badges !== lastBadges) {
       lastVisited = progress.visitedDossiers; lastShards = progress.shardsCollected; lastBadges = progress.badges;
       essentials = essentialsDone(progress);
-      goalLeft = nextGoal(progress) !== null;
     }
-    if (!goalLeft) return false;
-    if (!essentials) return recruiterTarget(ship, progress.visitedDossiers, progress.badges, out);
+    if (!essentials) return hud(ship, progress.visitedDossiers, progress.badges, out);
     if (charted !== lastCharted) { lastCharted = charted; chartedIds = charted.map((c) => c.id); }
     const id = nextWaypoint(ship, BODY_IDS, bodies, chartedIds, "");
     const b = id ? bodies[id] : undefined;

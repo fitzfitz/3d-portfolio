@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { projectById } from "../../constants";
 import { destinationById } from "../../data/destinations";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
-import { createWaypointTarget, recruiterTarget } from "../../utils/waypointTarget";
+import { createWaypointTarget, makeRecruiterTarget } from "../../utils/waypointTarget";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
 
@@ -19,6 +19,8 @@ const RING_Y = 0.5;
 const v = new THREE.Vector3();
 /** The waypoint's id and point, written each frame (utils/waypointTarget.ts: the helper the jellyfish guide shares). */
 const wp = createWaypointTarget();
+/** recruiterWaypoint's mapping, memoised on the badges array so a frame builds no closure. */
+const recruiterTarget = makeRecruiterTarget();
 
 /** Headless: projects the next unread dossier (then the next destination) to the screen — or, mid-lap, the next time-trial ring. */
 export default function WaypointDriver() {
