@@ -30,9 +30,15 @@ export default function EdgeHaze() {
     const burnGate = new ReturnBurnLineGate();
     const clock = new EdgeRadioClock();
     let raf = 0;
+    let shown = false;
     const tick = () => {
       const depth = edgeDepth(flight.x, flight.y, flight.z);
-      if (ref.current) ref.current.style.opacity = (HAZE_MAX_OPACITY * depth).toFixed(3);
+      if (ref.current) {
+        ref.current.style.opacity = (HAZE_MAX_OPACITY * depth).toFixed(3);
+        // Out of display when clear: at opacity 0 it was still a full-window
+        // composited layer over the canvas (~20 MB of tiles at 2×), all flight long.
+        if ((depth > 0) !== shown) { shown = depth > 0; ref.current.style.display = shown ? "" : "none"; }
+      }
       const s = useSpaceStore.getState();
       const now = performance.now() / 1000;
       clock.observe(s.broadcast?.id ?? 0, now, isEdgeLine);
@@ -55,6 +61,7 @@ export default function EdgeHaze() {
       className="pointer-events-none fixed inset-0 z-[35]"
       style={{
         opacity: 0,
+        display: "none",
         background:
           "radial-gradient(ellipse at center, rgba(88,52,160,0.82) 0%, rgba(30,104,128,0.92) 55%, rgba(10,6,24,1) 100%)",
       }} />

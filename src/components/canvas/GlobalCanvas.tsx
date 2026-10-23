@@ -500,6 +500,7 @@ function GlobalCanvas() {
   const isLowPerf = useSpaceStore((s) => s.isLowPerf);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const photoMode = useSpaceStore((s) => s.photoMode);
+  const sceneReady = useSpaceStore((s) => s.sceneReady);
   // A dossier freezes the loop; so does the shader warm-up (ShaderWarmup).
   const sceneFrozen = useSpaceStore((s) => selectSceneFrozen(s) || s.warmingUp);
   const anomaliesRef = useRef<AnomaliesRef>(null);
@@ -532,7 +533,10 @@ function GlobalCanvas() {
   const photoTarget = useMemo(() => new THREE.Vector3(flight.x, flight.y, flight.z), [photoMode]);
 
   return (
-    <div className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-[#020108]">
+    // The dark fill shows only while the scene loads: once it draws, the
+    // opaque sky covers every pixel, and a painted wrapper under it still
+    // cost a full-window layer (~60 MB of the GPU process at 2×).
+    <div className={`fixed inset-0 w-full h-full pointer-events-none z-0 ${sceneReady ? "" : "bg-[#020108]"}`}>
       <Canvas
         dpr={budgetDpr(window.innerWidth, window.innerHeight, window.devicePixelRatio)}
         // Relies on this Canvas never mounting with sceneFrozen already true
