@@ -89,6 +89,28 @@ function setTarget(s: JellyState, x: number, y: number, z: number) {
 }
 
 /**
+ * The keep-out law, shared by the moods and the guide (spec 2026-10-23
+ * jellyfish-guide: "keeps clear of every solid, as the keep-out law does
+ * today"): a point inside any `body` moves out to that body's surface, away
+ * from its centre (straight up from the exact centre, which has no away).
+ * Bodies are taken in order, as the moods always did. Mutates `p`; returns
+ * whether it moved, so a caller can leave an untouched value bit-exact.
+ */
+export function pushOutOfSolids(p: Vec3, keepOut: readonly JellyKeepOut[]): boolean {
+  let moved = false;
+  for (const k of keepOut) {
+    const px = p.x - k.x, py = p.y - k.y, pz = p.z - k.z;
+    const d = Math.hypot(px, py, pz);
+    if (d >= k.body) continue;
+    const push = k.body - d;
+    moved = true;
+    if (d < 1e-6) { p.y += push; continue; }
+    p.x += (px / d) * push; p.y += (py / d) * push; p.z += (pz / d) * push;
+  }
+  return moved;
+}
+
+/**
  * One frame of the jellyfish's mood (spec table). A boost within the startle
  * radius beats everything; a startle runs its course; otherwise a slow player
  * close by makes it curious, unless its resting spot would break the leash or
@@ -142,14 +164,10 @@ export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   // side, and the eased transit to a rest point can cut a chord through one.
   // Hold the creature's centre on the planet's surface instead. The path
   // itself always clears `body` (tests/planetClearance.test.ts), so a calm
-  // jellyfish on its path is never touched.
-  for (const k of inp.keepOut) {
-    const px = pathPos.x + s.offset.x - k.x, py = pathPos.y + s.offset.y - k.y, pz = pathPos.z + s.offset.z - k.z;
-    const d = Math.hypot(px, py, pz);
-    if (d >= k.body) continue;
-    const push = k.body - d;
-    if (d < 1e-6) { s.offset.y += push; continue; }
-    s.offset.x += (px / d) * push; s.offset.y += (py / d) * push; s.offset.z += (pz / d) * push;
+  // jellyfish on its path is never touched (and its offset stays bit-exact).
+  jelly.x = pathPos.x + s.offset.x; jelly.y = pathPos.y + s.offset.y; jelly.z = pathPos.z + s.offset.z;
+  if (pushOutOfSolids(jelly, inp.keepOut)) {
+    s.offset.x = jelly.x - pathPos.x; s.offset.y = jelly.y - pathPos.y; s.offset.z = jelly.z - pathPos.z;
   }
   const l = Math.hypot(s.offset.x, s.offset.y, s.offset.z);
   if (l > JELLY_LEASH) {
