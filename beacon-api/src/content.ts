@@ -26,7 +26,7 @@ export interface ContentDeps {
   allowedOrigins: readonly string[];
 }
 
-/** Browsers and Cloudflare's edge may reuse an answer this long: an edit shows within about five minutes. */
+/** Browsers and Cloudflare's edge may reuse an answer this long: with the 60 s isolate cache, an edit shows within about six minutes. */
 export const CONTENT_MAX_AGE_S = 300;
 /** Per-isolate memory cache: Cache-Control alone does not cache a Worker's own responses (handler.ts withListCache). */
 export const CONTENT_CACHE_MS = 60_000;

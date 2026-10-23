@@ -154,9 +154,22 @@ admin page and no write endpoint: edit the rows in the Cloudflare dashboard,
 under **Storage & Databases → D1 → fitz-beacons → Console** (or the table
 browser next to it), or with `wrangler d1 execute --remote --command`.
 
-Visitors see an edit on their next visit, within about five minutes. The
+Visitors see an edit on their next visit, after up to about six minutes: the
 response is publicly cacheable for 300 s, and each Worker isolate keeps it for
-60 s. A visit never changes mid-flight.
+60 s on top. A visit never changes mid-flight.
+
+**Verify your edit.** Ask the Worker what it serves now (it may be up to a
+minute behind, the isolate cache):
+
+```bash
+curl -s -H "Origin: https://porto.fitzgeral.my.id" https://fitz-beacons.fitzgeralmedia.workers.dev/content
+```
+
+Every row of both tables should be in the answer. The site then checks each
+row again: a row that is in the answer but missing on the site broke one of the
+rules below, and the browser console (DevTools → Console) has a
+`content: dropped project row …` or `content: dropped career row …` warning
+naming the row and the rule.
 
 ### Columns
 
@@ -184,8 +197,11 @@ six by `sort` get one.
 | `"end"` | `Mon YYYY`, or NULL for the current role. Quote it in SQL: `end` is a keyword. |
 | `employment` | `Full-time` or `Contract`. |
 
-The schema refuses a bad `color`, `tech` or `employment` value outright. The
-site also checks every row as it loads: a row that breaks a rule is dropped,
+The schema refuses most bad values outright: blank required text, a bad `id`,
+`color`, `tech` (an empty array too), `repo`, `start`, `end` or `employment`.
+A blank `repo`, `note` or `end` counts as NULL. The site also checks every row
+as it loads, including what the schema cannot (an `id` taken by a destination,
+a planet, a moon or another scannable, and blank `tech` entries): a row that breaks a rule is dropped,
 with a `console.warn` in the browser console naming the row and the rule. If
 no row of a table is valid, the site uses its bundled copy of that table.
 Twelve jobs fit the career trail; past that, the oldest have no buoy but still

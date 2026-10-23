@@ -73,14 +73,32 @@ describe("boot order (main.tsx)", () => {
     expect(packGraph).not.toContain("src/store/spaceStore.ts");
   });
 
-  it("evaluates no store when the asset pack module loads (checked at run time)", async () => {
+  // With a real pack set, so the pack start picks its tier (packLoader tier()
+  // → hiResChoice → prefersHiResMaps) exactly as main.tsx's call does in a build.
+  it("starts a real pack load, tier choice included, without evaluating the store (checked at run time)", async () => {
     vi.resetModules();
     let storeLoaded = false;
     vi.doMock("../src/store/spaceStore", () => { storeLoaded = true; return {}; });
-    const pack = await import("../src/utils/assetPack");
-    await pack.loadAssetPack();
-    expect(storeLoaded).toBe(false);
-    vi.doUnmock("../src/store/spaceStore");
+    const pack = (file: string) => ({ file, size: 10 });
+    vi.stubEnv("VITE_ASSET_PACKS", JSON.stringify({ common: pack("world-common.x.pack"), hd: pack("world-hd.x.pack"), sd: pack("world-sd.x.pack") }));
+    const matchMedia = vi.fn(() => ({ matches: true }));
+    vi.stubGlobal("window", { matchMedia });
+    vi.stubGlobal("location", { href: "http://localhost/" });
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => { fetched.push(String(url)); return new Response(null, { status: 404 }); }));
+    try {
+      const m = await import("../src/utils/assetPack");
+      expect(m.HAS_ASSET_PACK).toBe(true);
+      await m.loadAssetPack(); // never rejects: a 404 falls back to the loose files
+      expect(matchMedia).toHaveBeenCalledWith("(pointer: fine)");
+      expect(fetched.some((u) => u.endsWith("world-hd.x.pack")), JSON.stringify(fetched)).toBe(true);
+      expect(storeLoaded).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      vi.doUnmock("../src/store/spaceStore");
+      vi.resetModules();
+    }
   });
 
   it("leaves App and the debug bridge to dynamic imports", () => {

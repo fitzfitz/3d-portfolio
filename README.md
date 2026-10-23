@@ -30,12 +30,12 @@ Tailwind, on Vite.
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
 | `6` | Jump to the contact portal |
+| `Esc` | Close the open dossier, hangar or contact form |
 
 The keys above are for the three projects the site has today. The probes come
 first, one key each, then the three destinations, so with more projects every
 destination key moves up by one (six projects: career `7`, shipyard `8`,
 contact `9`).
-| `Esc` | Close the open dossier, hangar or contact form |
 
 No flying required: the spawn card has jump buttons for each project, the
 sector list (bottom right) jumps on click, and a waypoint marks the next unread

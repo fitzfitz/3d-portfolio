@@ -65,7 +65,8 @@ export const PROBE_SLOTS: readonly ProbeSlot[] = [
       [-209, 259, 237],
       [-314, 277, 5],
     ],
-  },  {
+  },
+  {
     home: [-23, 89, 143],
     remote: [
       [-149, 283, -42],

@@ -152,9 +152,15 @@ describe("career trail over the supported range (1 to MAX_BUOYS entries)", () =>
     expect(MAX_BUOYS).toBe(12);
   });
 
+  // main's five buoy positions before the trail was derived from D1 (2026-10-23), literal.
+  const MAIN_BUOYS: Vec3[] = [
+    [-37, 71, 32], [-14.5606, 81.6988, -3.0575], [8.6381, 96.9181, -35.8785], [32.2692, 116.4435, -66.0007], [56, 140, -93],
+  ];
   it("lays five entries out exactly as the bundled trail always was", () => {
-    expect(BUOYS.map((b) => b.pos)).toEqual([0, 1, 2, 3, 4].map((i) => arcPoint(TRAIL_ARC, i / 4)));
-    expect(buildBuoys(jobs(5)).map((b) => b.pos)).toEqual(BUOYS.map((b) => b.pos));
+    for (const layout of [BUOYS.map((b) => b.pos), buildBuoys(jobs(5)).map((b) => b.pos)]) {
+      expect(layout).toHaveLength(5);
+      layout.forEach((p, i) => p.forEach((v, k) => expect(v, `buoy ${i} axis ${k}`).toBeCloseTo(MAIN_BUOYS[i][k], 3)));
+    }
   });
 
   it.each(SIZES)("%i entries: one buoy each, oldest first, on the arc from its start, 15 to 50 apart", (n) => {

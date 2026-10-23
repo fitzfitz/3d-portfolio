@@ -43,11 +43,13 @@ describe("probe table", () => {
   });
 
   // spec 2026-10-23-dynamic-content, decision 6: today's three projects stay exactly where they were.
+  // main's three probes (ruangrapi, portfolio, fuxx) before slots existed, literal: every home and remote spot.
   it("keeps slots 1-3 where the three probes always were", () => {
-    expect(PROBE_SLOTS.slice(0, 3).map((s) => s.home)).toEqual([[-30, 80, 48], [-111, 60, 100], [-67, 102, -7]]);
-    expect(PROBE_SLOTS[0].remote[0]).toEqual([-37, 413, -7]);
-    expect(PROBE_SLOTS[1].remote[6]).toEqual([-322, 9, 114]);
-    expect(PROBE_SLOTS[2].remote[3]).toEqual([169, -67, 121]);
+    expect(PROBE_SLOTS.slice(0, 3).map((s) => ({ home: [...s.home], remote: s.remote.map((r) => [...r]) }))).toEqual([
+      { home: [-30, 80, 48], remote: [[-37, 413, -7], [-160, -53, -298], [60, -202, -236], [217, 354, -56], [261, 83, 190], [24, 31, 321], [-242, -251, 228]] },
+      { home: [-111, 60, 100], remote: [[-292, 24, -134], [-112, 312, -235], [10, -342, -15], [338, 126, -9], [126, -289, 216], [-177, -12, 273], [-322, 9, 114]] },
+      { home: [-67, 102, -7], remote: [[-204, -268, -138], [75, 76, -307], [287, -119, -88], [169, -67, 121], [27, 327, 259], [-209, 259, 237], [-314, 277, 5]] },
+    ]);
   });
 
   it("holds six probes: with the three destinations, the number keys 1-9 reach them all", () => {

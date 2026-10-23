@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { Terminal, Cpu, Eye, EyeOff, RotateCcw, Volume2, VolumeX, Zap, ZapOff, RadioTower, BookOpen, ScrollText } from "lucide-react";
 import { speedKmS, distanceAU, lightFractionLabel } from "../../utils/realUnits";
 import { bodiesGameSeconds } from "../../utils/bodyPositions";
@@ -24,7 +24,6 @@ import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 import { setText, setStyle } from "../../utils/domWrite";
-
 
 /**
  * Module-level, NOT a ref: App.tsx conditionally unmounts HUDOverlay for
@@ -382,8 +381,9 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         {PROBES.map((def, i) => (
           <button key={def.id} onClick={() => requestJump(def.id)}
             title={`Jump to the ${projectById(def.id)?.title ?? def.id} probe [${i + 1}]`}
-            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? "" : "text-white/40"}`}
-            style={probeNear === def.id ? { color: projectById(def.id)?.color } : undefined}>
+            // The project colour through a variable, not an inline color, so hover still turns the row white.
+            className={`pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white ${probeNear === def.id ? "text-[color:var(--probe-color)]" : "text-white/40"}`}
+            style={{ "--probe-color": projectById(def.id)?.color } as CSSProperties}>
             <span className="text-white/30">[{i + 1}]</span>
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projectById(def.id)?.color }} />
             <span ref={(el) => { probeRowRefs.current[def.id] = el; }}>
