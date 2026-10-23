@@ -12,8 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer, stopServer } from "./harness.mjs";
+import { ALL } from "./probeList.mjs";
 
-const ALL = ["startup", "smoke", "audio", "perf", "transition", "sky", "flight", "gameplay", "touch", "gamepad", "race", "beacons", "assets", "contact", "career", "careerphone", "shipyard", "reducedmotion", "fuel", "reactions", "events", "mechanics", "logbook", "livesky", "programs", "probes", "basepath", "memory"];
 /** Run first, in this order, alone on the machine. */
 const SERIAL = ["startup", "transition"];
 /** Measured seconds per job (2026-10-23, PR 48), for longest-first scheduling; unknown jobs go first. */

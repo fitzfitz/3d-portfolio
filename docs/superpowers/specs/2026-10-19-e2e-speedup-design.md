@@ -44,6 +44,9 @@ Both GPU failures were one probe-side race. `teleport()` moved the ship but `fli
    - events (~170 s, the longest probe and phase 2's critical path) could split its two pages into separate jobs and replace its 55 s reduced-motion negative poll.
    - The probe trims rejected in the audit stay rejected.
 
+5. **Affected runs: PR 49 (2026-10-23).** `npm run test:e2e:affected` (tests/e2e/affected.mjs) runs only the probes a change touches since main, from a table in the file; a file no rule covers, the harness and the app's shell run the full suite, docs run nothing. The full suite still runs before a merge.
+6. **A warm shader cache: measured, dropped (2026-10-23).** Fresh profiles with Chrome's GPU caches shared, and with its V8 code cache too, loaded in 1.78 s, the same as with nothing shared; only the suite's very first page is slower (2.27 s), from Vite transforming modules, which every page after it shares already. Shaders link in parallel (KHR_parallel_shader_compile) and macOS keeps its own Metal cache.
+
 ## Not in scope (→ docs/FOLLOW-UPS.md)
 
 The audit found pre-existing checks that cannot fail as written:
