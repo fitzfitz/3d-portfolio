@@ -72,14 +72,15 @@ async function reacting(page, checks) {
     `broadcast=${b?.text}`);
 
   // ---- jellyfish: curious, then startled ----
-  await page.keyboard.press("KeyJ");
-  await settle(page, 800);
+  // J now calls the guide, which suspends the moods, so the creature is left
+  // roaming and the ship goes to it (its position is on the debug bridge).
   const jelly = () => page.evaluate(() => {
     const p = window.__fitz.scene.getObjectByName("SpaceJellyfish").position;
     const f = window.__fitz.flight;
     return { mood: window.__fitz.jelly.mood, dist: Math.hypot(p.x - f.x, p.y - f.y, p.z - f.z), p: [p.x, p.y, p.z] };
   });
   const j0 = await jelly();
+  checks.check("the jellyfish roams (no guide called)", (await page.evaluate(() => window.__fitz.jellyGuide?.state)) === "roaming");
   await teleport(page, [j0.p[0] + 24, j0.p[1], j0.p[2]]);
   await settle(page, 300);
   const start = (await jelly()).dist;

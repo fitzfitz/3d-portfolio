@@ -44,13 +44,6 @@ Delete an entry when it is fixed.
     the JSX, so behaviour tests would be e2e (the sky probe already reads the
     fill, the star shells and the ring budgets in a browser). The
     codec-fidelity guard skips in CI (no `assets-src`).
-- **J summons the jellyfish to the spawn pad, not to you.** The key jumps
-  its loop to `JELLY_NEAR_T`, the pass nearest the sun just ahead of the pad
-  (PR #45), so from anywhere else it lands up to ~300 u away. Jumping to the
-  loop phase nearest the ship instead is a few lines in `SpaceJellyfish`
-  (sample the path, take the closest t); the reactions probe would then
-  stop depending on the pad. Left alone because the QA checklist and the
-  probe both use J from the pad today.
 - **The real star catalogue.** The background is still the painted Milky Way
   and three random star shells (L24). An astronomy fan who flies to Earth
   expects the real sky: the constellations from a catalogue (e.g. Hipparcos
