@@ -3,7 +3,8 @@
 An interactive CV you fly through, set in the real Solar System: the eight
 planets, Ceres and the nine major moons, each where NASA/JPL puts it on the
 date the HUD shows (`docs/UNIVERSE-RULES.md` lists every law it keeps and
-every convention it discloses). Three probes are three projects; fly close
+every convention it discloses). Each project is a probe (three today, up to
+six; see "Content" below); fly close
 and hold `F` to reel one in with the tractor beam and open its dossier. There is a classic
 resume view too, for people who would rather read than fly.
 
@@ -29,6 +30,11 @@ Tailwind, on Vite.
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
 | `6` | Jump to the contact portal |
+
+The keys above are for the three projects the site has today. The probes come
+first, one key each, then the three destinations, so with more projects every
+destination key moves up by one (six projects: career `7`, shipyard `8`,
+contact `9`).
 | `Esc` | Close the open dossier, hangar or contact form |
 
 No flying required: the spawn card has jump buttons for each project, the
@@ -168,6 +174,39 @@ GLB itself is untouched and the hero asteroids still use it.)
 repository, backed up to the private `fitzfitz/3d-portfolio-assets-src`, with a
 provenance manifest in `assets-src/MANIFEST.md`. `tests/assetProvenance.test.ts`
 fails if a shipped file has no generator, so an unowned asset can't slip in.
+
+## Content
+
+The projects and the career history live in two tables of the beacon API's D1
+database, `projects` and `career`, and the owner edits them in the Cloudflare
+D1 console. The steps, the columns and the rules are in
+[`beacon-api/README.md`](beacon-api/README.md) ("Editing the content").
+
+- **The bundled copy.** [`src/data/projects.json`](src/data/projects.json) and
+  [`src/data/career.ts`](src/data/career.ts) are the snapshot that ships with
+  the site. The site uses them offline, when the API is slow, failing or empty,
+  against a Worker without `/content`, and in dev and e2e (no
+  `VITE_BEACON_API`). `beacon-api/content-seed.sql` is generated from them
+  (`npm run content:seed`), and `tests/contentSeed.test.ts` fails when the
+  two drift.
+- **Loading.** While the game loads, `src/main.tsx` fetches `GET /content`
+  fresh, alongside the asset packs. It waits at most 4 s, then falls back to
+  the last good copy in localStorage, then to the bundled copy. The INITIALIZING
+  overlay shows this as a step. Each row is validated
+  (`src/utils/contentParse.ts`), and a bad row is dropped with a
+  `console.warn`. The content settles before the app's modules load, and it
+  never changes during a visit.
+- **Placement.** Positions are never stored. Projects take the vetted probe
+  slots in `src/data/probes.ts` in their `sort` order: six slots, the first
+  three where the probes always were. A seventh project shows in the résumé
+  but gets no probe (and a `console.warn`). The career buoys are spread along
+  the trail for 1 to 12 jobs (`src/data/careerTrail.ts`); past 12, the newest
+  twelve get buoys.
+- **Not dynamic.** `index.html`'s `<noscript>` summary and JSON-LD are kept by
+  hand, for crawlers (`tests/indexHtml.test.ts` checks them against the
+  bundled copy). So are the hand-written radio lines per project
+  (`src/data/chatterLines.ts`); a project without them gets one line made from
+  its `short`.
 
 ## Architecture
 

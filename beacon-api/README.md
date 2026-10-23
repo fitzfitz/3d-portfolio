@@ -5,7 +5,11 @@ where their ship is. Each beacon carries one phrase from a fixed list, and later
 visitors see it in space and can scan it.
 
 The site works without this API. With `VITE_BEACON_API` empty, the beacon
-feature does not render at all.
+feature does not render at all, and the projects and career come from the
+bundled files.
+
+The same Worker serves the portfolio's projects and career history from D1
+(`GET /content`, read-only; see "Editing the content" below).
 
 ## Design
 
@@ -108,8 +112,10 @@ Run these from the repo root. Wrangler is not a dependency of this repo, so
 # 1. Create the database, and paste its id into beacon-api/wrangler.toml
 npx wrangler d1 create fitz-beacons
 
-# 2. Create the table
+# 2. Create the tables: beacons, then the content tables and their first rows
 npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/schema.sql
+npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content.sql
+npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content-seed.sql
 
 # 3. Set ALLOWED_ORIGINS in wrangler.toml to every host that serves the site
 #    (comma-separated), then deploy. Drops fail closed until step 4.
@@ -138,6 +144,105 @@ committed [`.env.production`](../.env.production). Every production build
 reads that file, so both hosts (GitHub Pages and the Cloudflare copy) pick it
 up on the next deploy, with no per-host settings. For `npm run dev`, set it in
 `.env`.
+
+## Editing the content
+
+`GET /content` serves the portfolio's projects and career history from two D1
+tables, `projects` and `career` (schema: [`content.sql`](content.sql); spec:
+`docs/superpowers/specs/2026-10-23-dynamic-content-design.md`). There is no
+admin page and no write endpoint: edit the rows in the Cloudflare dashboard,
+under **Storage & Databases → D1 → fitz-beacons → Console** (or the table
+browser next to it), or with `wrangler d1 execute --remote --command`.
+
+Visitors see an edit on their next visit, within about five minutes. The
+response is publicly cacheable for 300 s, and each Worker isolate keeps it for
+60 s. A visit never changes mid-flight.
+
+### Columns
+
+`projects`: one row per project. Each project becomes a probe, and the first
+six by `sort` get one.
+
+| Column | What it holds |
+| --- | --- |
+| `id` | The probe id: lower-case letters, digits, `-` or `_`, up to 32. Not `career`, `shipyard`, `contact`, a planet (`earth` …) or a logbook badge (`ring` …). Changing it loses visitors' "read" mark for that dossier. |
+| `sort` | Order: probe slot 1 is the lowest. The seed uses steps of 10. |
+| `title`, `role`, `duration`, `short`, `description` | Non-empty text. |
+| `tech` | A JSON array of strings: `["React","TypeScript"]`. |
+| `color` | `#rrggbb`: the probe's tint, its HUD row and its jump button. |
+| `repo` | An `https://` URL, or NULL. |
+
+`career`: one row per job.
+
+| Column | What it holds |
+| --- | --- |
+| `id` | Any unique integer. |
+| `sort` | Order in the résumé list (newest first today). The trail's buoys are always ordered by `start`. |
+| `role`, `company`, `location`, `summary` | Non-empty text. |
+| `note` | Shown after the company, e.g. `formerly BCI Central`, or NULL. |
+| `start` | `Mon YYYY`, e.g. `Nov 2020`. |
+| `"end"` | `Mon YYYY`, or NULL for the current role. Quote it in SQL: `end` is a keyword. |
+| `employment` | `Full-time` or `Contract`. |
+
+The schema refuses a bad `color`, `tech` or `employment` value outright. The
+site also checks every row as it loads: a row that breaks a rule is dropped,
+with a `console.warn` in the browser console naming the row and the rule. If
+no row of a table is valid, the site uses its bundled copy of that table.
+Twelve jobs fit the career trail; past that, the oldest have no buoy but still
+show in the résumé. Past six projects, the rest have no probe but still show in
+the résumé.
+
+### Examples
+
+```sql
+-- Fix a typo
+UPDATE projects SET short = 'Rental operations SaaS for Indonesian landlords.' WHERE id = 'ruangrapi';
+
+-- Add a project as the fourth probe (slot 4)
+INSERT INTO projects (id, sort, title, role, duration, short, description, tech, color, repo)
+VALUES ('atlas', 40, 'Atlas', 'Personal project', '2027', 'One line for the card.',
+        'The dossier''s longer description.', '["Go","SQLite"]', '#ff8800', 'https://github.com/fitzfitz/atlas');
+
+-- Reorder: put fuxx first (it takes probe slot 1)
+UPDATE projects SET sort = 5 WHERE id = 'fuxx';
+
+-- A new job: the current one gets an end date, the new one has none
+UPDATE career SET "end" = 'Dec 2026' WHERE company = 'Hubexo';
+INSERT INTO career (id, sort, role, company, note, start, "end", employment, location, summary)
+VALUES (6, 5, 'Staff Engineer', 'Acme', NULL, 'Jan 2027', NULL, 'Full-time', 'Jakarta, Indonesia', 'What the role is.');
+
+-- Remove a project
+DELETE FROM projects WHERE id = 'atlas';
+```
+
+From a terminal, the same with `--remote`, from the repo root:
+
+```bash
+npx wrangler d1 execute fitz-beacons --remote \
+  --command "SELECT id, sort, title, color FROM projects ORDER BY sort"
+```
+
+### Creating the tables and the first rows
+
+Once, before the site that reads `/content` is released (both are safe to run
+again):
+
+```bash
+# The two tables
+npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content.sql
+# The first rows, identical to the bundled data. INSERT OR IGNORE: running it
+# again never overwrites an edit.
+npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content-seed.sql
+```
+
+`content-seed.sql` is generated from `src/data/projects.json` and
+`src/data/career.ts` (`npm run content:seed`); `tests/contentSeed.test.ts` fails
+when it drifts from them. To reset D1 to the bundled copy, empty the tables first
+(`DELETE FROM projects; DELETE FROM career;`), then run the seed again.
+
+The bundled files stay the site's fallback: keep them roughly in step with D1
+when it matters (offline visitors and a broken database see them), and
+`index.html`'s `<noscript>` summary is kept by hand.
 
 ## Moderating
 
