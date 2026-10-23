@@ -69,7 +69,7 @@ function smoothstep(lo: number, hi: number, x: number): number {
 /**
  * Feed this frame's world position. Velocity is the position delta over dt,
  * eased. A first sample, dt = 0, or a jump longer than the mood module's
- * PATH_JUMP (the J summon, a loop-phase jump, a teleport) is "no sample": the
+ * PATH_JUMP (a reduced-motion appearance, a loop-phase jump, a teleport) is "no sample": the
  * velocity holds and the next frame measures from the new spot, so a jump can't
  * read as a 2000 u/s dash and yank the posture.
  */

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { requestGuideToggle } from "../../utils/guideToggle";
 
 const RADIUS = 56; // px travel of the joystick knob
 
@@ -192,6 +193,18 @@ export default function TouchControls() {
         }}
       >
         BEAM
+      </button>
+
+      {/* Guide: a tap calls the jellyfish guide or sends it back, as J does
+          (spec 2026-10-23-jellyfish-guide, "Calling it"). A toggle, not a
+          hold, so nothing to release. Beside ▲ PITCH, above BEAM, clear of BOOST.
+          Hidden with the rest under a modal, as J is ignored there. */}
+      <button
+        className="fixed bottom-64 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
+        data-testid="touch-guide"
+        onPointerDown={() => requestGuideToggle()}
+      >
+        GUIDE
       </button>
 
       {/* Scan button — only shown while a scannable target is in range */}

@@ -665,7 +665,7 @@ function GlobalCanvas() {
             {/* Warp tunnel around the ship during boost */}
             {!isLowPerf && !reducedMotion && <WarpTunnel />}
 
-            {/* Rare drifting space jellyfish with undulation shader (J to summon) */}
+            {/* Rare drifting space jellyfish with undulation shader; J calls it as a guide */}
             <SpaceJellyfish />
 
             {/* Comets with anti-sunward tails */}

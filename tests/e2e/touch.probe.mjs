@@ -1,4 +1,4 @@
-import { withPage, tap, settle, nextFrames, readStore, PLANET_STANDOFF } from "./harness.mjs";
+import { withPage, tap, settle, nextFrames, readStore, pollUntil, PLANET_STANDOFF } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const readInput = (page) => page.evaluate(() => ({ ...window.__fitz.flight.input }));
@@ -18,7 +18,7 @@ export default async function run() {
     // The flight buttons are thumbed mid-flight without looking: every pair
     // needs a real gap, or reaching for BOOST lands on BEAM.
     const gaps = await page.evaluate(() => {
-      const ids = ["touch-rise", "touch-dive", "touch-beam", "touch-boost"];
+      const ids = ["touch-rise", "touch-dive", "touch-beam", "touch-boost", "touch-guide"];
       const r = Object.fromEntries(ids.map((id) => [id, document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect()]));
       const gap = (a, b) => Math.max(b.left - a.right, a.left - b.right, b.top - a.bottom, a.top - b.bottom);
       const out = [];
@@ -29,7 +29,7 @@ export default async function run() {
       return out;
     });
     const tight = gaps.filter((g) => g.gap < 8);
-    checks.check("touch flight buttons keep at least 8px between them", gaps.length === 6 && tight.length === 0,
+    checks.check("touch flight buttons keep at least 8px between them", gaps.length === 10 && tight.length === 0,
       tight.map((g) => `${g.pair}=${g.gap}px`).join(" ") || `${gaps.length} pairs checked`);
 
     // Joystick: drag right-and-up from the middle of the left half.
@@ -137,6 +137,16 @@ export default async function run() {
     const beamReleased = await readInput(page);
     checks.check("BEAM sets the beam input while held", beaming.beam === true);
     checks.check("releasing BEAM clears the beam input", beamReleased.beam === false);
+
+    // GUIDE calls the jellyfish guide and sends it back, as J does (a fresh
+    // profile has unread dossiers, so it has somewhere to lead).
+    const guideState = () => page.evaluate(() => window.__fitz.jellyGuide?.state ?? null);
+    await tap(page, "touch-guide", 300);
+    const called = (await pollUntil(async () => ((await guideState()) !== "roaming" ? true : null), { timeoutMs: 3000 })).ok;
+    checks.check("GUIDE calls the jellyfish guide", called, `state=${await guideState()}`);
+    await tap(page, "touch-guide", 300);
+    const sent = (await pollUntil(async () => ((await guideState()) === "roaming" ? true : null), { timeoutMs: 3000 })).ok;
+    checks.check("GUIDE again sends it back to roaming", sent, `state=${await guideState()}`);
 
     // SCAN only exists while a scannable is in range — put one there.
     const name = await page.evaluate(async (standoff) => {

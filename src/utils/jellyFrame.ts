@@ -19,8 +19,10 @@ export interface JellyFrameInput {
   /** The loop point before surge and bob (the moods measure drift from it). */
   basePos: Vec3;
   ship: Vec3;
-  /** Ship velocity (u/s, warp included). */
+  /** Ship velocity (u/s, warp included): the guide matches it. */
   shipVel: Vec3;
+  /** The ship's speed as the flight model reports it (flight.speed): the moods read this, as they always did. */
+  shipSpeed: number;
   /** Warp held: startles a roaming creature, draws the guide's streak. */
   warping: boolean;
   /** The guide's target (waypointTarget.ts makeGuideTarget), or null when all is done. */
@@ -110,7 +112,7 @@ export function stepJellyFrame(f: JellyFrame, inp: JellyFrameInput, dt: number):
     const m = f.moodIn;
     copy(m.pathPos, inp.pathPos); copy(m.player, inp.ship);
     if (m.basePos) copy(m.basePos, inp.basePos);
-    m.playerSpeed = Math.hypot(inp.shipVel.x, inp.shipVel.y, inp.shipVel.z);
+    m.playerSpeed = inp.shipSpeed;
     m.boosting = inp.warping;
     m.keepOut = inp.keepOut;
     m.dt = Math.min(dt, MOOD_MAX_DT);

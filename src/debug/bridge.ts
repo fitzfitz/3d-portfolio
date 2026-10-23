@@ -5,6 +5,7 @@ import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
 import { raceClock } from "../utils/raceClock";
 import type { JellyState } from "../utils/jellyMood";
+import type { GuideName, GuideState } from "../utils/jellyGuide";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { LiveSkyConnection } from "../utils/liveSkyConnection";
 import { liveRadar } from "../utils/liveSky";
@@ -16,6 +17,28 @@ import { orreryEpochJd, setOrreryEpochJd } from "../utils/orreryClock";
  * The window handle is assigned in main.tsx under an import.meta.env.DEV guard
  * so the string `__fitz` is dead-code-eliminated from production builds.
  */
+/**
+ * The jellyfish guide as SpaceJellyfish writes it each frame (spec
+ * 2026-10-23-jellyfish-guide; ruling R6), for the guide's e2e probe.
+ */
+export interface JellyGuideDebug {
+  state: GuideName;
+  /** The creature's world position. */
+  pos: { x: number; y: number; z: number };
+  /** The posture's smoothed velocity (u/s), live (jellyPosture.ts PostureState.vel). */
+  vel: { x: number; y: number; z: number };
+  /** The body's +y (the bell axis) in world space, unit length. */
+  up: { x: number; y: number; z: number };
+  /** The 0..1 swim factor (uSwim before reduced motion zeroes it). */
+  swim: number;
+  /** The glow streak's length, 0..1 (uStreak). */
+  streak: number;
+  /** Swimming home after a hand-back. */
+  returning: boolean;
+  /** The guide state machine itself, live (event, timers, waiting). */
+  guide: GuideState;
+}
+
 export interface FitzDebug {
   store: typeof useSpaceStore;
   flight: typeof flight;
@@ -67,6 +90,8 @@ export interface FitzDebug {
   cargoSwerve: { x: number; y: number; z: number }[] | null;
   /** Live jellyfish mood and offset, registered by SpaceJellyfish in dev. */
   jelly: JellyState | null;
+  /** Live jellyfish guide (controller ruling R6), registered by SpaceJellyfish in dev. */
+  jellyGuide: JellyGuideDebug | null;
   /** Live mining state (AsteroidBelt, dev only). */
   mining: typeof import("../utils/mining").miningState | null;
   /** The live sky connection (Ghosts, dev only): peers, ghosts, sent count. */
@@ -138,6 +163,7 @@ export const fitzDebug: FitzDebug = {
   anomalies: null,
   cargoSwerve: null,
   jelly: null,
+  jellyGuide: null,
   triggerEvent: null,
   eventDirector: null,
   gravity: null,

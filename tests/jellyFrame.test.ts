@@ -15,7 +15,7 @@ const DT = 1 / 60;
 /** One reusable input, as the frame loop keeps it. The loop point is still unless a test moves it. */
 const input = (over: Partial<JellyFrameInput> = {}): JellyFrameInput => ({
   pathPos: v(0, 80, 0), basePos: v(0, 80, 0),
-  ship: v(0, 80, 200), shipVel: v(), warping: false,
+  ship: v(0, 80, 200), shipVel: v(), shipSpeed: 0, warping: false,
   target: v(2000, 80, 200), targetRadius: 45, progress: 0, blocked: true,
   reducedMotion: false, toggle: false, keepOut: [], ...over,
 });
