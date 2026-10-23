@@ -1,4 +1,8 @@
-name: Deploy to GitHub Pages
+# Staging: every merge to main publishes to GitHub Pages
+# (fitzfitz.github.io/3d-portfolio). Production is the Cloudflare Worker
+# (porto.fitzgeral.my.id and its workers.dev address), and only a release tag
+# reaches it; see release.yml.
+name: Deploy staging (GitHub Pages)
 
 on:
   push:

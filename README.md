@@ -7,7 +7,7 @@ every convention it discloses). Three probes are three projects; fly close
 and hold `F` to reel one in with the tractor beam and open its dossier. There is a classic
 resume view too, for people who would rather read than fly.
 
-**Live:** https://fitzfitz.github.io/3d-portfolio/
+**Live:** https://porto.fitzgeral.my.id (staging: https://fitzfitz.github.io/3d-portfolio/)
 
 Built with React 19, TypeScript, `@react-three/fiber` / `three`, `zustand`, and
 Tailwind, on Vite.
@@ -192,16 +192,36 @@ without standing up a scene.
 
 ## Deploying
 
-Pushing to `main` triggers `.github/workflows/deploy.yml`, which runs the unit
-tests, builds with `BASE_PATH=/3d-portfolio/`, and publishes to GitHub Pages.
+Two stages, each with its own workflow:
+
+- **Staging.** Merging to `main` triggers `.github/workflows/staging.yml`, which
+  runs the unit tests, builds with `BASE_PATH=/3d-portfolio/`, and publishes to
+  GitHub Pages (https://fitzfitz.github.io/3d-portfolio/).
+- **Production.** Pushing a version tag triggers
+  `.github/workflows/release.yml`, which refuses a tag that is not on `main`,
+  runs the unit tests, builds for the domain root, and deploys the Cloudflare
+  Worker `3d-portfolio` (https://porto.fitzgeral.my.id and
+  https://3d-portfolio.fitzgeralmedia.workers.dev). Check the commit on staging
+  first, then:
+
+  ```bash
+  gh release create v1.2.0 --target main --generate-notes
+  ```
+
+  To roll back, re-run the release run of the previous tag, or
+  `npx wrangler rollback`. The workflow needs the `CLOUDFLARE_API_TOKEN` and
+  `CLOUDFLARE_ACCOUNT_ID` repository secrets, and Workers Builds must stay
+  disconnected in the Cloudflare dashboard, or merges would deploy production
+  directly again.
+
+`beacon-api/` is not part of either: deploy it by hand (below).
 
 The base path matters: assets are resolved through `src/utils/assetUrl.ts`
 rather than by hardcoded absolute paths, because Vite rewrites `<link>`/`<img>`
 attributes at build time but not URLs constructed in JavaScript. The social
 image URLs in `index.html` are deliberately absolute — scrapers do not reliably
 resolve relative `og:image`, and Vite's HTML rewriting covers `og:image` but not
-`twitter:image`. A custom domain later means updating `og:url`, `canonical`,
-`og:image` and `twitter:image` by hand.
+`twitter:image`. They name production, porto.fitzgeral.my.id, on every host.
 
 ### The service worker
 
