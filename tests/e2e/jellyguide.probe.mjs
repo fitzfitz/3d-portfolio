@@ -184,6 +184,30 @@ async function guiding(page, checks) {
   await teleport(page, [target.x + 20, target.y + 10, target.z]);
   const presenting = (await pollUntil(async () => ((await guideState(page)) === "presenting" ? true : null), { timeoutMs: 10000, intervalMs: 100 })).ok;
   checks.check("at the target it presents", presenting, `state=${await guideState(page)}`);
+  // Owner, 2026-10-23: "Will it inform me of what to do?" The arrival line is
+  // the step's own instruction (the probe's: grab it, HOLD F).
+  const told = (await pollUntil(async () => { const t = await chatterText(page); return /YOU'RE HERE/.test(t) ? t : null; }, { timeoutMs: 12000, intervalMs: 250 })).value;
+  checks.check("arriving, the radio says what to do here", !!told, told ?? `radio: ${await chatterText(page)}`);
+
+  // After its one turn (8 s) it attends: it holds still beside the stop and
+  // stands up. The circle ends at a swim; standing takes ~3-4 s, as from the
+  // station above (velocity half-life 0.5 s, then upright 1 s: jellyPosture.ts).
+  const attending = (await pollUntil(async () => ((await guideState(page)) === "attending" ? true : null), { timeoutMs: 12000, intervalMs: 200 })).ok;
+  checks.check("after the circle it attends the stop (not home)", attending, `state=${await guideState(page)}`);
+  await settle(page, 4000);
+  const att = await page.evaluate(() => ({ up: window.__fitz.jellyGuide.up.y, state: window.__fitz.jellyGuide.state }));
+  checks.check("attending, it stands upright (body +y . up > 0.95)", att.state === "attending" && att.up > 0.95,
+    `state=${att.state} up.y=${att.up.toFixed(3)}`);
+
+  // Do the step for real: the dossier opens (the frame loop freezes under it,
+  // so it just attends), then closes; the target moves on to the next probe.
+  await page.evaluate((id) => window.__fitz.store.getState().openProjectDossier(id, "probe"), target.id);
+  await settle(page, 1000);
+  await page.evaluate(() => window.__fitz.store.getState().closeDossier());
+  const onward = (await pollUntil(async () => ((await guideState(page)) === "leading" ? true : null), { timeoutMs: 5000, intervalMs: 100 })).ok;
+  checks.check("the step done, it leads on to the next one", onward, `state=${await guideState(page)}`);
+  const next = (await pollUntil(async () => { const t = await chatterText(page); return /ONWARD/.test(t) ? t : null; }, { timeoutMs: 15000, intervalMs: 250 })).value;
+  checks.check("the radio says onward, naming the next step", !!next, next ?? `radio: ${await chatterText(page)}`);
 
   await page.keyboard.press("KeyJ");
   const back = (await pollUntil(async () => ((await guideState(page)) === "roaming" ? true : null), { timeoutMs: 3000, intervalMs: 100 })).ok;
