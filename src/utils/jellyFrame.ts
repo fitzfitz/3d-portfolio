@@ -21,6 +21,8 @@ export interface JellyFrameInput {
   ship: Vec3;
   /** Ship velocity (u/s, warp included): the guide matches it. */
   shipVel: Vec3;
+  /** The ship's nose, unit (jellyGuide.ts GuideInput.shipNose): the guide stays in front of it. */
+  shipNose: Vec3;
   /** The ship's speed as the flight model reports it (flight.speed): the moods read this, as they always did. */
   shipSpeed: number;
   /** Warp held: startles a roaming creature, draws the guide's streak. */
@@ -79,7 +81,8 @@ export function createJellyFrame(): JellyFrame {
     pos: { x: 0, y: 0, z: 0 }, handBack: false, roam,
     moodIn: { pathPos, basePos, player: { x: 0, y: 0, z: 0 }, playerSpeed: 0, boosting: false, keepOut: [], dt: 0 },
     guideIn: {
-      jelly: roam, ship: { x: 0, y: 0, z: 0 }, shipVel: { x: 0, y: 0, z: 0 }, warping: false, target: null, targetRadius: 0,
+      jelly: roam, ship: { x: 0, y: 0, z: 0 }, shipVel: { x: 0, y: 0, z: 0 }, shipNose: { x: 0, y: 0, z: 1 },
+      warping: false, target: null, targetRadius: 0,
       progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut: [],
     },
   };
@@ -138,7 +141,7 @@ export function stepJellyFrame(f: JellyFrame, inp: JellyFrameInput, dt: number):
   if (f.returning) pushOutOfSolids(r, inp.keepOut);
 
   const g = f.guideIn;
-  copy(g.ship, inp.ship); copy(g.shipVel, inp.shipVel);
+  copy(g.ship, inp.ship); copy(g.shipVel, inp.shipVel); copy(g.shipNose, inp.shipNose);
   g.warping = inp.warping; g.target = inp.target; g.targetRadius = inp.targetRadius;
   g.progress = inp.progress; g.blocked = inp.blocked; g.reducedMotion = inp.reducedMotion;
   g.toggle = inp.toggle; g.keepOut = inp.keepOut;
@@ -182,8 +185,8 @@ export function beginReturn(f: JellyFrame, pathPos: Vec3, reducedMotion: boolean
 
 /**
  * Whether the scanner may take it (UNKNOWN_LIFEFORM): only while it roams.
- * Guiding, its station (20 u), its wait (12 u) and its presenting circle
- * (10-30 u) sit inside SCAN_RANGE (22 u), so it would take the scanner from
+ * Guiding, its station (20 u) and its presenting circle (10-30 u) sit
+ * inside SCAN_RANGE (22 u), so it would take the scanner from
  * the very thing it led the pilot to, and reset that world's scan. Not while
  * it swims home either, nor on the hand-back step.
  */

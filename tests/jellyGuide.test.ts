@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   createGuideState, stepGuide, type GuideInput, type GuideState, type GuideEvent,
   GUIDE_LOST_SECONDS, GUIDE_OFFER_COOLDOWN, GUIDE_COME_SECONDS, GUIDE_LEAD_DIST,
-  GUIDE_WAIT_MAX_SPEED, GUIDE_OFFER_LEAVE_DIST, GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R,
-  GUIDE_FALL_BEHIND_DIST, GUIDE_WAIT_DIST,
+  GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R, GUIDE_LEAD_MAX_ANGLE, GUIDE_DECLINE_SECONDS,
+  GUIDE_REDUCED_SNAP_DIST,
 } from "../src/utils/jellyGuide";
 import { pushOutOfSolids, JELLY_RADIUS, type JellyKeepOut } from "../src/utils/jellyMood";
 import { SHIP_WARP_SPEED, PORTAL_ZONE_R } from "../src/constants";
@@ -19,23 +19,39 @@ const dist = (a: V, b: V) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const len = (a: V) => Math.hypot(a.x, a.y, a.z);
 const DT = 1 / 60;
 const CRUISE = 10.8;
+const DEG = Math.PI / 180;
+/** Level heading `deg` degrees off +x (toward +z): unit vector. */
+const heading = (deg: number): V => v(Math.cos(deg * DEG), 0, Math.sin(deg * DEG));
+/** How far the guide is in front of the ship's nose (u): (pos - ship) . nose. */
+const ahead = (s: GuideState, inp: GuideInput) =>
+  (s.pos.x - inp.ship.x) * inp.shipNose.x + (s.pos.y - inp.ship.y) * inp.shipNose.y + (s.pos.z - inp.ship.z) * inp.shipNose.z;
+/** Angle (degrees) between (pos - ship) and the nose. */
+const offNose = (s: GuideState, inp: GuideInput) =>
+  Math.acos(Math.min(1, ahead(s, inp) / dist(s.pos, inp.ship))) / DEG;
 
 /** One reusable input, as the frame loop will keep it (spec: frame loop allocates nothing). */
 const input = (over: Partial<GuideInput> = {}): GuideInput => ({
-  jelly: v(0, 0, 300), ship: v(), shipVel: v(), warping: false,
+  jelly: v(0, 0, 300), ship: v(), shipVel: v(), shipNose: v(1, 0, 0), warping: false,
   target: v(1000, 0, 0), targetRadius: 15, progress: 0, blocked: false,
   reducedMotion: false, toggle: false, keepOut: [], ...over,
 });
 
+/** A moving ship points its nose where it flies; a hovering one keeps its last nose. */
+function noseAlongVel(inp: GuideInput) {
+  const sp = len(inp.shipVel);
+  if (sp > 0) { inp.shipNose.x = inp.shipVel.x / sp; inp.shipNose.y = inp.shipVel.y / sp; inp.shipNose.z = inp.shipVel.z / sp; }
+}
+
 /**
- * Step for `seconds`, flying the ship by its velocity. Collects every event.
- * `toggle` is an edge: it is cleared after the first step.
+ * Step for `seconds`, flying the ship by its velocity, nose along it. Collects
+ * every event. `toggle` is an edge: it is cleared after the first step.
  */
 function run(s: GuideState, inp: GuideInput, seconds: number, each?: (s: GuideState) => void): GuideEvent[] {
   const events: GuideEvent[] = [];
   const n = Math.round(seconds / DT);
   for (let i = 0; i < n; i++) {
     inp.ship.x += inp.shipVel.x * DT; inp.ship.y += inp.shipVel.y * DT; inp.ship.z += inp.shipVel.z * DT;
+    noseAlongVel(inp);
     stepGuide(s, inp, DT);
     inp.toggle = false;
     if (s.event) events.push(s.event);
@@ -175,37 +191,52 @@ describe("offering itself (lost timer)", () => {
     expect(run(s, inp, 300)).toEqual([]);
   });
 
-  it("goes back to roaming when the pilot flies away from the offer while it comes", () => {
-    const s = createGuideState(), inp = input({ jelly: v(0, 0, 400) });
+  // Spec "Offering itself": "If the pilot flies away from the offer, it goes
+  // back to roaming". The guide now keeps up wherever the pilot flies, so
+  // distance cannot say it; GUIDE_DECLINE_SECONDS of flying away does.
+  it("withdraws an offer after 6 s of flying away from the target", () => {
+    const s = createGuideState(), inp = input();
     run(s, inp, GUIDE_LOST_SECONDS + 0.1);
     expect(s.name).toBe("coming");
-    // Warp straight away from it.
-    inp.shipVel.z = -SHIP_WARP_SPEED * CRUISE_MAX_FACTOR;
-    expect(run(s, inp, GUIDE_COME_SECONDS)).toContain("declined");
+    inp.shipVel.x = -CRUISE; // away from the target at +x
+    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 0.1)).toEqual(["met"]);
+    expect(s.name).toBe("leading");
+    expect(run(s, inp, 0.2)).toEqual(["declined"]);
     expect(s.name).toBe("roaming");
   });
 
-  it("goes back to roaming when the pilot flies away from the offer while it leads", () => {
+  it("withdraws an offer at warp too: flying across the route is flying away", () => {
+    const s = createGuideState(), inp = input({ jelly: v(0, 0, 400) });
+    run(s, inp, GUIDE_LOST_SECONDS + 0.1);
+    inp.shipVel.z = -SHIP_WARP_SPEED * CRUISE_MAX_FACTOR; // across the route: not following
+    const events = run(s, inp, GUIDE_DECLINE_SECONDS + 0.1);
+    expect(events).toEqual(["met", "declined"]);
+    expect(s.name).toBe("roaming");
+  });
+
+  it("restarts the decline clock whenever the pilot stops flying away", () => {
     const s = createGuideState(), inp = input();
     run(s, inp, GUIDE_LOST_SECONDS + 0.1 + GUIDE_COME_SECONDS + 0.5);
     expect(s.name).toBe("leading");
-    inp.shipVel.x = -CRUISE; // away from the target at +x
-    let gapAtDecline = 0;
-    const events = run(s, inp, 30, (g) => { if (g.event === "declined") gapAtDecline = dist(g.pos, inp.ship); });
-    expect(events).toEqual(["declined"]);
-    expect(s.name).toBe("roaming");
-    // "Flies away" = the gap grew GUIDE_OFFER_LEAVE_DIST past the closest (~20 u at station).
-    expect(gapAtDecline).toBeGreaterThan(GUIDE_OFFER_LEAVE_DIST);
-    expect(gapAtDecline).toBeLessThan(GUIDE_OFFER_LEAVE_DIST + GUIDE_LEAD_DIST + 1);
+    inp.shipVel.x = -CRUISE;
+    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 1)).toEqual([]);
+    inp.shipVel.x = CRUISE; // turns back toward the target for a moment
+    run(s, inp, 0.5);
+    inp.shipVel.x = 0; // hovering is not flying away either
+    run(s, inp, 0.5);
+    inp.shipVel.x = -CRUISE;
+    expect(run(s, inp, GUIDE_DECLINE_SECONDS - 1)).toEqual([]);
+    expect(s.name).toBe("leading");
+    expect(run(s, inp, 1.1)).toEqual(["declined"]);
   });
 
-  it("keeps a called guide waiting when the pilot flies away (only offers withdraw)", () => {
+  it("never withdraws a called guide when the pilot flies away (only offers withdraw)", () => {
     const s = createGuideState(), inp = input();
     press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
     inp.shipVel.x = -CRUISE;
     expect(run(s, inp, 30)).toEqual([]);
     expect(s.name).toBe("leading");
-    expect(s.waiting).toBe(true);
+    expect(ahead(s, inp)).toBeGreaterThan(15);
   });
 });
 
@@ -221,13 +252,25 @@ describe("leading", () => {
     const { s, inp } = led({ target: v(600, 0, 600) });
     inp.shipVel.x = CRUISE * Math.SQRT1_2; inp.shipVel.z = CRUISE * Math.SQRT1_2;
     run(s, inp, 5);
-    expect(s.waiting).toBe(false);
     expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_LEAD_DIST, 1);
     // Ahead along ship -> target.
     const tx = inp.target!.x - inp.ship.x, tz = inp.target!.z - inp.ship.z, tl = Math.hypot(tx, tz);
     const ax = (s.pos.x - inp.ship.x) / GUIDE_LEAD_DIST, az = (s.pos.z - inp.ship.z) / GUIDE_LEAD_DIST;
     expect(ax * tx / tl + az * tz / tl).toBeGreaterThan(0.999);
     expect(len(s.vel)).toBeCloseTo(CRUISE, 0);
+  });
+
+  it("flying at the target, the station is exactly route x 20 (unchanged by the lean)", () => {
+    const target = v(800, 120, -500);
+    const { s, inp } = led({ target });
+    const r = v(target.x, target.y, target.z), rl = len(r);
+    inp.shipVel.x = r.x / rl * CRUISE; inp.shipVel.y = r.y / rl * CRUISE; inp.shipVel.z = r.z / rl * CRUISE;
+    run(s, inp, 1);
+    run(s, inp, 5, (g) => {
+      expect(g.pos.x - inp.ship.x).toBeCloseTo(r.x / rl * GUIDE_LEAD_DIST, 6);
+      expect(g.pos.y - inp.ship.y).toBeCloseTo(r.y / rl * GUIDE_LEAD_DIST, 6);
+      expect(g.pos.z - inp.ship.z).toBeCloseTo(r.z / rl * GUIDE_LEAD_DIST, 6);
+    });
   });
 
   it("keeps the station at warp speed (speed matched, warp included)", () => {
@@ -244,70 +287,97 @@ describe("leading", () => {
   it("holds its station, pointing the way, while the ship hovers", () => {
     const { s, inp } = led();
     run(s, inp, 5);
-    expect(s.waiting).toBe(false);
     expect(s.pos.x - inp.ship.x).toBeCloseTo(GUIDE_LEAD_DIST, 1);
     expect(len(s.vel)).toBeLessThan(0.01);
   });
 
-  it("waits when the ship turns away: slows, turns back toward the ship, then leads again", () => {
+  // Owner feedback 2026-10-23 (after #54): "I'm able to pass the jellyfish;
+  // it's behind". Flown 135 degrees off the target, the old rule (slow down and
+  // swim back to the ship at 6 u/s) let it fall from -2 to -47 u ahead of the
+  // nose in 8 s. It never falls behind now.
+  for (const deg of [90, 135]) {
+    it(`flying ${deg} degrees off the target, it stays in front of the nose, leaning toward the target`, () => {
+      const s = createGuideState(), inp = input();
+      inp.shipVel = v(heading(deg).x * CRUISE, 0, heading(deg).z * CRUISE);
+      press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
+      expect(s.name).toBe("leading");
+      let minAhead = Infinity, maxOff = 0, minLean = Infinity;
+      run(s, inp, 10, (g) => {
+        minAhead = Math.min(minAhead, ahead(g, inp));
+        maxOff = Math.max(maxOff, offNose(g, inp));
+        // Leaning toward the target: closer to the route than the nose is.
+        const rl = dist(inp.target!, inp.ship);
+        const toward = ((g.pos.x - inp.ship.x) * (inp.target!.x - inp.ship.x) + (g.pos.z - inp.ship.z) * (inp.target!.z - inp.ship.z)) / (rl * GUIDE_LEAD_DIST);
+        const noseToward = (inp.shipNose.x * (inp.target!.x - inp.ship.x) + inp.shipNose.z * (inp.target!.z - inp.ship.z)) / rl;
+        minLean = Math.min(minLean, toward - noseToward);
+      });
+      expect(minAhead).toBeGreaterThan(15);
+      expect(maxOff).toBeLessThanOrEqual(GUIDE_LEAD_MAX_ANGLE / DEG + 0.5);
+      expect(minLean).toBeGreaterThan(0);
+      expect(s.name).toBe("leading");
+    });
+  }
+
+  it("swings back in front of the nose within 2 s of a hard turn away", () => {
     const { s, inp } = led();
     inp.shipVel.x = CRUISE;
-    run(s, inp, 3);
-    inp.shipVel.x = -CRUISE; // turn away from the target (+x)
-    run(s, inp, 0.1);
-    expect(s.waiting).toBe(true);
-    run(s, inp, 3);
-    // Slow, and swimming back toward the ship.
-    expect(len(s.vel)).toBeLessThanOrEqual(GUIDE_WAIT_MAX_SPEED + 1e-6);
-    const toShip = v(inp.ship.x - s.pos.x, inp.ship.y - s.pos.y, inp.ship.z - s.pos.z);
-    expect((s.vel.x * toShip.x + s.vel.y * toShip.y + s.vel.z * toShip.z) / (len(s.vel) * len(toShip))).toBeGreaterThan(0.9);
-    // The pilot follows again: it retakes its station ahead.
-    inp.shipVel.x = CRUISE;
-    run(s, inp, 4);
-    expect(s.waiting).toBe(false);
-    expect(s.pos.x - inp.ship.x).toBeCloseTo(GUIDE_LEAD_DIST, 0);
+    run(s, inp, 2);
+    inp.shipVel = v(heading(135).x * CRUISE, 0, heading(135).z * CRUISE);
+    run(s, inp, 2);
+    let minAhead = Infinity;
+    run(s, inp, 8, (g) => { minAhead = Math.min(minAhead, ahead(g, inp)); });
+    expect(minAhead).toBeGreaterThan(15);
+    expect(offNose(s, inp)).toBeLessThanOrEqual(GUIDE_LEAD_MAX_ANGLE / DEG + 0.5);
   });
 
-  it("waits when the pilot has fallen behind and hovers (a jump away), holding beside the ship", () => {
+  it("flying straight away from the target (antiparallel), it stays in front, never NaN", () => {
+    const { s, inp } = led();
+    inp.shipVel.x = -CRUISE; // nose exactly -x, route exactly +x
+    let minAhead = Infinity, finite = true;
+    run(s, inp, 2);
+    run(s, inp, 10, (g) => {
+      minAhead = Math.min(minAhead, ahead(g, inp));
+      finite &&= Number.isFinite(g.pos.x) && Number.isFinite(g.pos.y) && Number.isFinite(g.pos.z);
+    });
+    expect(finite).toBe(true);
+    expect(minAhead).toBeGreaterThan(15);
+    expect(offNose(s, inp)).toBeCloseTo(GUIDE_LEAD_MAX_ANGLE / DEG, 1);
+  });
+
+  it("antiparallel with a vertical nose (diving away from a target straight above), never NaN", () => {
+    const { s, inp } = led({ target: v(0, 1000, 0) });
+    inp.shipVel.y = -CRUISE;
+    run(s, inp, 2);
+    run(s, inp, 5);
+    expect(Number.isFinite(s.pos.x + s.pos.y + s.pos.z)).toBe(true);
+    expect(ahead(s, inp)).toBeGreaterThan(15);
+  });
+
+  it("keeps up off-axis at warp speed", () => {
+    const warp = SHIP_WARP_SPEED * CRUISE_MAX_FACTOR;
+    const { s, inp } = led({ target: v(1e5, 0, 0) });
+    inp.shipVel = v(heading(135).x * warp, 0, heading(135).z * warp); inp.warping = true;
+    // The turn swings the station ~32 u round the ship; at warp the catch-up
+    // trails it along the velocity and closes it in ~1.1 s.
+    run(s, inp, 2);
+    let minAhead = Infinity, maxOff = 0;
+    run(s, inp, 3, (g) => { minAhead = Math.min(minAhead, ahead(g, inp)); maxOff = Math.max(maxOff, offNose(g, inp)); });
+    expect(minAhead).toBeGreaterThan(15);
+    expect(maxOff).toBeLessThanOrEqual(GUIDE_LEAD_MAX_ANGLE / DEG + 0.5);
+    expect(len(s.vel)).toBeCloseTo(warp, -1);
+  });
+
+  it("catches up after a jump: a 300 u jump, then the ship hovers", () => {
     const { s, inp } = led();
     run(s, inp, 1);
     // A number-key jump: the ship is suddenly 300 u off to the side, at rest.
     inp.ship.z += 300;
-    run(s, inp, DT);
-    expect(dist(s.pos, inp.ship)).toBeGreaterThan(GUIDE_FALL_BEHIND_DIST);
-    expect(s.waiting).toBe(true);
-    // It swims back toward the ship, slowly (it slows, it does not chase).
-    run(s, inp, 3);
-    expect(len(s.vel)).toBeLessThanOrEqual(GUIDE_WAIT_MAX_SPEED + 1e-6);
-    const toShip = v(inp.ship.x - s.pos.x, inp.ship.y - s.pos.y, inp.ship.z - s.pos.z);
-    expect((s.vel.x * toShip.x + s.vel.y * toShip.y + s.vel.z * toShip.z) / (len(s.vel) * len(toShip))).toBeGreaterThan(0.99);
-    // It reaches the ship and holds off it, still waiting while the ship hovers.
-    run(s, inp, 80);
-    expect(s.waiting).toBe(true);
-    expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_WAIT_DIST, 0);
-    // The pilot heads for the target: it leads again from its station.
-    inp.shipVel.x = CRUISE;
-    run(s, inp, 4);
-    expect(s.waiting).toBe(false);
-    expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_LEAD_DIST, 1);
-  });
-
-  it("brakes from a catch-up without coasting on: a 500 u catch-up, then the pilot turns away", () => {
-    const { s, inp } = led();
-    inp.shipVel.x = -SHIP_WARP_SPEED; // away from the target (+x): it waits, left behind
-    for (let i = 0; i < 60 * 60 && dist(s.pos, inp.ship) < 500; i++) run(s, inp, DT);
-    expect(dist(s.pos, inp.ship)).toBeGreaterThanOrEqual(500);
-    inp.shipVel.x = CRUISE; // toward: one frame of catch-up at ~sp + 1.5 * gap
-    run(s, inp, DT);
-    expect(s.waiting).toBe(false);
-    expect(len(s.vel)).toBeGreaterThan(500);
-    inp.shipVel.x = -CRUISE; // and away again on the very next frame
-    const at = { ...s.pos };
-    run(s, inp, 1);
-    expect(s.waiting).toBe(true);
-    // Braking from no faster than the ship (10.8 u/s) moves it under ~11 u in a
-    // second; from the catch-up's ~790 u/s it would coast ~270 u on.
-    expect(dist(s.pos, at)).toBeLessThan(15);
+    run(s, inp, 5);
+    // Back on its station: on the new route (17 degrees off the nose, within the lean).
+    const r = dist(inp.target!, inp.ship);
+    expect(dist(s.pos, inp.ship)).toBeCloseTo(GUIDE_LEAD_DIST, 0);
+    expect(s.pos.x - inp.ship.x).toBeCloseTo((inp.target!.x - inp.ship.x) / r * GUIDE_LEAD_DIST, 0);
+    expect(s.pos.z - inp.ship.z).toBeCloseTo((inp.target!.z - inp.ship.z) / r * GUIDE_LEAD_DIST, 0);
   });
 
   it("is never startled while guiding: the component skips moods on `guiding`", () => {
@@ -346,6 +416,7 @@ describe("leading", () => {
   it("follows a target that moves on (progress made elsewhere)", () => {
     const { s, inp } = led();
     inp.target = v(0, 0, -800);
+    inp.shipNose = v(0, 0, -1); // the pilot turns to it
     run(s, inp, 3);
     expect(s.pos.z - inp.ship.z).toBeCloseTo(-GUIDE_LEAD_DIST, 0);
   });
@@ -422,6 +493,7 @@ describe("arriving", () => {
             const d = dist(inp.ship, target);
             const k = d > CRUISE * DT ? CRUISE / d : 0;
             inp.shipVel.x = (target.x - inp.ship.x) * k; inp.shipVel.y = (target.y - inp.ship.y) * k; inp.shipVel.z = (target.z - inp.ship.z) * k;
+            noseAlongVel(inp);
             if (k === 0) copyV(inp.ship, target);
           } else {
             // Docked: the ship orbits at the station's orbitR, 0.25 rad/s (Spaceship.tsx).
@@ -496,32 +568,30 @@ describe("reduced motion", () => {
     expect(s.streak).toBe(false);
   });
 
-  it("stays with the ship when the pilot turns away right after a re-appearance", () => {
+  it("re-appears at its station after a jump rather than streaking back", () => {
     const s = createGuideState(), inp = input({ reducedMotion: true });
     press(s, inp); run(s, inp, 0.1);
-    inp.shipVel.x = -SHIP_WARP_SPEED; // away; it waits, far behind
-    run(s, inp, 3);
-    expect(s.waiting).toBe(true);
-    inp.shipVel.x = CRUISE; // toward: it re-appears at its station (a > 40 u snap)
+    inp.ship.z += 300; // a number-key jump
     run(s, inp, DT);
-    expect(s.waiting).toBe(false);
-    expect(len(s.vel)).toBeGreaterThan(2400); // the snap, as last step's displacement over dt
-    inp.shipVel.x = -CRUISE; // away on the very next frame
-    let worst = 0;
-    run(s, inp, 3, (g) => { worst = Math.max(worst, dist(g.pos, inp.ship)); });
-    expect(s.waiting).toBe(true);
-    expect(worst).toBeLessThan(60);
+    const r = dist(inp.target!, inp.ship);
+    expect(s.pos.x - inp.ship.x).toBeCloseTo((inp.target!.x - inp.ship.x) / r * GUIDE_LEAD_DIST, 6);
+    expect(s.pos.z - inp.ship.z).toBeCloseTo((inp.target!.z - inp.ship.z) / r * GUIDE_LEAD_DIST, 6);
+    expect(s.streak).toBe(false);
   });
 
-  it("re-appears at its station rather than streaking back after waiting", () => {
+  it("stays in front of the nose through a hard turn, swimming (no snap) since the swing is under the snap distance", () => {
     const s = createGuideState(), inp = input({ reducedMotion: true });
     press(s, inp); run(s, inp, 0.1);
-    inp.shipVel.x = -SHIP_WARP_SPEED; // away; it waits behind
-    run(s, inp, 3);
-    expect(s.waiting).toBe(true);
     inp.shipVel.x = CRUISE;
-    run(s, inp, 0.1);
-    expect(s.pos.x - inp.ship.x).toBeCloseTo(GUIDE_LEAD_DIST, 0);
+    run(s, inp, 1);
+    inp.shipVel = v(heading(180).x * CRUISE, 0, heading(180).z * CRUISE);
+    let worstStep = 0, last = { ...s.pos };
+    run(s, inp, 3, (g) => { worstStep = Math.max(worstStep, dist(g.pos, last) - CRUISE * DT); last = { ...g.pos }; });
+    // The swing is a ~39 u chord, under GUIDE_REDUCED_SNAP_DIST: it swims it
+    // (~1 u a frame) rather than re-appearing.
+    expect(GUIDE_REDUCED_SNAP_DIST).toBeGreaterThan(2 * GUIDE_LEAD_DIST * Math.sin((Math.PI - GUIDE_LEAD_MAX_ANGLE) / 2));
+    expect(worstStep).toBeLessThan(5);
+    expect(ahead(s, inp)).toBeGreaterThan(15);
     expect(s.streak).toBe(false);
   });
 });

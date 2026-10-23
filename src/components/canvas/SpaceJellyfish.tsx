@@ -195,7 +195,7 @@ export default function SpaceJellyfish() {
     () => ({ visitedDossiers: [], shardsCollected: [], badges: [] }), []);
   /** Reused every frame: the frame step's input, so the loop allocates nothing. */
   const frameIn = useMemo<JellyFrameInput>(() => ({
-    pathPos, basePos, ship: flight, shipVel: { x: 0, y: 0, z: 0 }, shipSpeed: 0, warping: false,
+    pathPos, basePos, ship: flight, shipVel: { x: 0, y: 0, z: 0 }, shipNose: { x: 0, y: 0, z: 1 }, shipSpeed: 0, warping: false,
     target: null, targetRadius: 0, progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut,
   }), [pathPos, basePos, keepOut]);
   /** Last frame's ship position, for its velocity (the guide matches it, warp included). */
@@ -361,6 +361,12 @@ export default function SpaceJellyfish() {
       fi.shipVel.z = (flight.z - lastShip.z) / frameDt;
     }
     lastShip.x = flight.x; lastShip.y = flight.y; lastShip.z = flight.z; lastShip.has = true;
+    // The nose, as pitchFlight.ts noseDirection has it, written in place (that
+    // helper returns a new object): the guide holds its station in front of it.
+    const cp = Math.cos(flight.pitch);
+    fi.shipNose.x = Math.sin(flight.heading) * cp;
+    fi.shipNose.y = Math.sin(flight.pitch);
+    fi.shipNose.z = Math.cos(flight.heading) * cp;
     fi.shipSpeed = flight.speed;
     fi.warping = store.isWarping;
     fi.reducedMotion = reduced;

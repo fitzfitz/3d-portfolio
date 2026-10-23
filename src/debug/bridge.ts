@@ -35,7 +35,7 @@ export interface JellyGuideDebug {
   streak: number;
   /** Swimming home after a hand-back. */
   returning: boolean;
-  /** The guide state machine itself, live (event, timers, waiting). */
+  /** The guide state machine itself, live (event, timers, the offer's decline clock). */
   guide: GuideState;
 }
 
