@@ -115,18 +115,19 @@ def smooth_profile(pts, n=6):
 
 
 # ----------------------------------------------------------- primitives ---
-def lathe(bm, prof, segs, M=None, mi=GREY, mats=None, closed=False):
-    """Revolve (r, y) points about local +Y (angle 0 at local +Z). r == 0 makes a
-    pole. mats[i] is the material of the band between points i and i+1.
-    closed=True also joins the last point back to the first (a ring)."""
+def lathe(bm, prof, segs, M=None, mi=GREY, mats=None, closed=False, phase=0.0):
+    """Revolve (r, y) points about local +Y (angle 0 at local +Z, or `phase`
+    radians round from it). r == 0 makes a pole. mats[i] is the material of
+    the band between points i and i+1. closed=True also joins the last point
+    back to the first (a ring)."""
     M = M or Matrix.Identity(4)
     rings = []
     for r, y in prof:
         if r < 1e-6:
             rings.append([bm.verts.new(M @ Vector((0, y, 0)))])
         else:
-            rings.append([bm.verts.new(M @ Vector((r * math.sin(2 * math.pi * k / segs), y,
-                                                   r * math.cos(2 * math.pi * k / segs))))
+            rings.append([bm.verts.new(M @ Vector((r * math.sin(phase + 2 * math.pi * k / segs), y,
+                                                   r * math.cos(phase + 2 * math.pi * k / segs))))
                           for k in range(segs)])
     pairs = [(i, i + 1) for i in range(len(rings) - 1)]
     if closed:
@@ -151,11 +152,13 @@ def lathe(bm, prof, segs, M=None, mi=GREY, mats=None, closed=False):
     return faces
 
 
-def ellipsoid(bm, centre, radii, segs=24, rings=14, mi=GREY, R=None):
-    """Ellipsoid with the given semi-axes (local x, y, z), rotated by R (a 4x4)."""
+def ellipsoid(bm, centre, radii, segs=24, rings=14, mi=GREY, R=None, phase=0.0):
+    """Ellipsoid with the given semi-axes (local x, y, z), rotated by R (a 4x4).
+    `phase` turns its meridians round its axis before it is scaled (the shape
+    stays put; only where its vertices fall changes)."""
     prof = [(math.sin(math.pi * i / rings), -math.cos(math.pi * i / rings)) for i in range(rings + 1)]
     M = Matrix.Translation(Vector(centre)) @ (R or Matrix.Identity(4)) @ Matrix.Diagonal((*radii, 1))
-    return lathe(bm, prof, segs, M, mi)
+    return lathe(bm, prof, segs, M, mi, phase=phase)
 
 
 def rounded_box(bm, size, M, mi=GREY, bevel=0.2):

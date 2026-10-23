@@ -87,15 +87,18 @@
 #     shows the base whole; the game raises it per shell), double-sided (the
 #     cards), baseColor (1024 x 512) + normal (512 x 256), one atlas:
 #       - the left half (rig furAtlas.shells) is the shells' tiling strand
-#         mask: alpha the strand height, RGB the strand colour root (dark)
-#         to tip, one repeat per 0.34 u (4 x 4 clumps of ~0.085). The fur
+#         mask: alpha the strand height (floored at 0.015, just over the
+#         cutoff, so a stock viewer shows the base whole), RGB the strand
+#         colour root (dark) to tip, one repeat per 0.34 u (4 x 4 clumps of
+#         ~0.085). The fur
 #         base's TEXCOORD_0 is unbounded (tiling) coordinates: the shells and
 #         the base sample (fract(u) x 0.5, fract(v)) (take the gradients from
 #         the unwrapped uv, so the mips do not seam);
 #       - the right half (rig furAtlas.locks) holds 4 lock variants side by
 #         side (v 0 root -> 1 tip): a card's TEXCOORD_0 points into it as is.
-#         Outside a lock alpha is 0.02 (over the cutoff, so a stock viewer's
-#         base never holes; the game's card test starts at 0.04).
+#         Outside a lock alpha is 0, so even a stock viewer cuts a card to
+#         its lock (where a stock viewer's base tiles over this half it
+#         shows the locks' coverage).
 #   COLOR_0 is a zone mask, never a colour (a stock glTF viewer multiplies it
 #   into the base colour, as the spec says; the game's material must not,
 #   like ProjectProbes.tsx; turntable_monsters.py routes it out). Each
@@ -112,7 +115,8 @@
 #         strings, then the slime by host (R12): 9 static on the rim (its
 #         smears, y = 0: they do not sway, and the drips off their ends),
 #         10 drips on a tentacle, 11 drips on the body's fur (each hangs
-#         where its lock is still solid, 0.72 of the way along it);
+#         where its lock is still solid, 0.72 of the way along it; LOD1 has
+#         no locks, so it has no part 10 or 11 drips);
 #     y = weight: tentacle (and its fur and spots) base 0 -> tip 1; body base
 #         0 -> crown 1 (by height); jaw: its influence, 1 on the lower teeth
 #         and tongue, easing to 0 where the chin meets the body (rotate the
@@ -149,8 +153,10 @@
 #   so it stays closed and the stencil keeps its borders; it shares LOD0's
 #   maps. The body's skin carries the sculpt's smooth analytic normals
 #   (custom normals), so its shading does not depend on the game mesh's
-#   triangulation. Lock-card vertices carry the skin's normal turned out
-#   across the lock (custom normals), so each lock shades round.
+#   triangulation (and its mouth cutter's meridians start half a segment
+#   round, so the exact boolean never meets coplanar edges at x = 0).
+#   Lock-card vertices carry the skin's normal (custom normals); the
+#   ribbon's are turned out across its width, so each lock shades round.
 #   Blender 5.1's glTF importer mis-orders meshes with two custom attributes
 #   (_MOTION and _FUR) by hash seed; turntable_monsters.py reads them itself.
 #
@@ -227,7 +233,7 @@ BLOCK = dict(final=False, hi=True, hull=64, rim=64, port=24, spike=24, mount=40,
 HIGH = dict(BLOCK, final=True, fang=(16, False))
 LOW = dict(final=True, hi=False, hull=48, rim=48, port=12, lens=6, spike=10, mount=16, turret=20, barrel=10,
            dome=48, body=24, body_n=2, cutter=(20, 12), eye=(16, 9), tube=(11, 2, 3), fang=(6, True),
-           goo=(6, 2, 2), drip=(6, 1, 2), lid=(14, 3, 7, 1), smear=(4, 1, 2), tongue=(10, 6))
+           goo=(6, 2, 2), drip=(6, 1, 2), lid=(12, 3, 7, 1), smear=(4, 1, 2), tongue=(8, 5))
 
 # The fur (R7): shell length per zone (glTF units) and the suggested layer count.
 FUR_MAX = 0.24
@@ -308,9 +314,15 @@ def smear_decal(bm, pts, cols, per_seg, rnd):
         q, n = hull_surface(c)
         tan = (C[min(i + 1, len(C) - 1)] - C[max(i - 1, 0)]).normalized()
         side = tan.cross(n).normalized()
-        w = 0.095 * (0.8 + 0.25 * math.sin(9 * t + wob[0]) + 0.15 * math.sin(23 * t + wob[1])) * \
-            (1 + 0.9 * smoothstep(0.72, 1.0, t)) * (0.55 + 0.45 * smoothstep(0.0, 0.08, t))
-        th = 0.016 * (0.8 + 0.3 * math.sin(13 * t + wob[2])) * (1 + 0.8 * smoothstep(0.7, 1.0, t))
+        # width: a slow, smooth swell and pinch (round 3: a fast wobble aliased
+        # into zigzags at the game mesh's rows), fattening toward the drip,
+        # both ends rounded off (a bulb into the drip, not a flag)
+        swell = 0.85 + 0.18 * math.sin(4.0 * t + wob[0]) + 0.08 * math.sin(7.5 * t + wob[1])
+        end = math.sqrt(max(0.0, 1 - ((t - 0.86) / 0.14) ** 2)) if t > 0.86 else 1.0
+        start = math.sqrt(max(0.0, 1 - ((0.07 - t) / 0.07) ** 2)) if t < 0.07 else 1.0
+        w = 0.092 * swell * (1 + 0.55 * smoothstep(0.55, 0.9, t)) * max(end, 0.12) * max(start, 0.25)
+        th = 0.016 * (0.85 + 0.2 * math.sin(5.0 * t + wob[2])) * (1 + 0.7 * smoothstep(0.6, 0.92, t)) * \
+            max(end, 0.3)
         row = []
         for k in range(cols):
             e = -1 + 2 * k / (cols - 1)
@@ -863,12 +875,14 @@ def build(R, S):
     zf = front(0, MOUTH_Y)[0].z
     MOUTH_C = Vector((0, MOUTH_Y, zf + 0.07))
     cutter_bm = S.obj("MouthCutter") if S.final and hi else bmesh.new()
-    # (final: the cutter turned half a segment, so none of its meridians lies
-    # in the x = 0 plane with the body's: round 2's seam above the mouth was
-    # the exact boolean meeting those coplanar edges, leaving degenerate
-    # n-gons whose slivers creased the shading up the centre line)
-    turn = Matrix.Rotation(math.pi / R["cutter"][0], 4, "Y") if final else None
-    ml.ellipsoid(cutter_bm, MOUTH_C, (MA, MB, MC), *R["cutter"], DARK, R=turn)
+    # (final: the cutter's meridians start half a segment round, so none of
+    # them lies in the x = 0 plane with the body's: round 2's seam above the
+    # mouth was the exact boolean meeting those coplanar edges, leaving
+    # degenerate n-gons whose slivers creased the shading up the centre line.
+    # The lathe's start angle moves, not the shape: round 2 rotated the
+    # scaled ellipsoid, which yawed the grin, round 3)
+    phase = math.pi / R["cutter"][0] if final else 0.0
+    ml.ellipsoid(cutter_bm, MOUTH_C, (MA, MB, MC), *R["cutter"], DARK, phase=phase)
     for v in cutter_bm.verts:
         if v.co.y > MOUTH_Y:
             v.co.y = MOUTH_Y + (v.co.y - MOUTH_Y) * TOP_SQUASH
@@ -1242,7 +1256,7 @@ def build(R, S):
             with S.piece(bm, name="smear", part=P_HULL, bake={SLIME: "slime"}):
                 ml.strand(bm, pts, 0.05, 0.034, SLIME, ring=ring, per_seg=per, cap=cap)
         else:              # a raised, blobby zone-0 decal; static (part 9, y = 0: it does not sway)
-            cols, rps = (9, 8) if hi else (4, 1)
+            cols, rps = (9, 8) if hi else (4, 2)
             with S.piece(bm, name="smear", part=P_DRIP, bake={SLIME: "slime"}, wgt=0.0, hostw=0.0) as info:
                 info["C"] = smear_decal(bm, pts, cols, rps, rx)
         length = rng.uniform(0.08, 0.2)
@@ -2072,8 +2086,8 @@ def add_cards(ob, cards, drip_tips, rng_):
     outline comes back from any side. The mask runs along the lock (its
     strands stretched 2.5x down its length) and the alpha test rises toward
     the tip (lock_x), so a lock frays into its strands. Normals are the
-    skin's turned out across the lock's width, so each lock shades round. Every clump a drip hangs
-    from is a lock, so no drip floats."""
+    skin's (the ribbon's turned out across its width, so it shades round).
+    Every clump a drip hangs from is a lock, so no drip floats."""
     me = ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -2135,9 +2149,11 @@ def add_cards(ob, cards, drip_tips, rng_):
                     v[V["wgt"]] = c["wgt"]
                     v[V["cardf"]] = lock_x(rows_t[i])
                     v[V["wet"]] = c["wet"]
-                    # the skin's normal, turned out across the lock: each lock
-                    # shades round, like the blockout's tufts, not flat
-                    normals[v] = (n + across * (0.75 * e)).normalized()
+                    # the skin's normal; the ribbon's turned out across its
+                    # width, so it shades round like the blockout's tufts (the
+                    # fin's width axis is nearly the normal itself: round 3
+                    # left it on the skin's normal)
+                    normals[v] = n if layer == 0 else (n + across * (0.75 * e)).normalized()
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
@@ -2152,13 +2168,15 @@ def add_cards(ob, cards, drip_tips, rng_):
     return len(pick)
 
 
-def protect_group(ob):
+def protect_group(ob, near_slime=None):
     """A vertex group "keep" (weight 1) on every vertex the decimation must
     not move: open-boundary vertices (where the body meets its fur base, a
     part's open rim) and material edges, so LOD1 stays closed (round 2:
     cutting the UV seams first let both sides drift apart and tore it), and
     on the band the UV-seam vertices too, so its stencil keeps its island
-    borders. Decimated with invert on, these stay exactly where they are."""
+    borders, and every vertex within 0.1 of the rim's slime (so the rim and
+    wall it lies on keep their LOD0 shape and it never sinks in). Decimated
+    with invert on, these stay exactly where they are."""
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     uvl = bm.loops.layers.uv["UVMap"]
@@ -2178,6 +2196,13 @@ def protect_group(ob):
         b1, b0 = lb[uvl].uv, lb.link_loop_next[uvl].uv
         if (a0 - b0).length > 1e-6 or (a1 - b1).length > 1e-6:
             keep.update(v.index for v in e.verts)
+    if near_slime is not None:
+        lpart = bm.faces.layers.int["part"]
+        for v in bm.verts:
+            if any(f[lpart] == P_DRIP for f in v.link_faces):
+                continue
+            if near_slime.find(v.co)[2] is not None and near_slime.find(v.co)[2] < 0.1:
+                keep.add(v.index)
     bm.free()
     vg = ob.vertex_groups.new(name="keep")
     if keep:
@@ -2197,9 +2222,23 @@ def lod1_from(lod0):
     card = attr_np(me, "card", len(me.polygons), dtype=np.int32)
     bm = bmesh.new()
     bm.from_mesh(me)
+    part = attr_np(me, "part", len(me.polygons), dtype=np.int32)
     bm.faces.ensure_lookup_table()
-    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in np.nonzero(card)[0]], context="FACES")
+    # no cards on LOD1, so the drips hanging from them would float (round 3)
+    gone = np.nonzero(card | np.isin(part, (P_DRIP_T, P_DRIP_B)))[0]
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in gone], context="FACES")
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    # the rim's slime rides a little proud (the rim under it is coarser here)
+    lp = bm.faces.layers.int["part"]
+    slime_v = {v for f in bm.faces if f[lp] == P_DRIP for v in f.verts}
+    bm.normal_update()
+    for v in slime_v:
+        v.co += v.normal * 0.004
+    from mathutils.kdtree import KDTree
+    kd = KDTree(max(1, len(slime_v)))
+    for i, v in enumerate(slime_v):
+        kd.insert(v.co, i)
+    kd.balance()
     bm.to_mesh(me)
     bm.free()
     grp = attr_np(me, "grp", len(me.polygons), dtype=np.int32)
@@ -2219,7 +2258,7 @@ def lod1_from(lod0):
     for name, part in parts:
         r = LOD1_RATIO.get(name, 0.4)
         if r < 1.0:
-            protect_group(part)
+            protect_group(part, kd)
             mod = part.modifiers.new("dec", "DECIMATE")
             mod.decimate_type = "COLLAPSE"
             mod.ratio = r
@@ -2499,7 +2538,7 @@ def final_stage():
     img_em = mb.to_image("saucer_emissive", em)
     img_nrm = mb.to_image("saucer_normal", nrm, noncolor=True)
     shell = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=30000,
-                                  taper=0.2, base=0.25, flyaway=0.25, root=(0.045, 0.12, 0.028),
+                                  taper=0.2, base=0.25, flyaway=0.25, root=(0.045, 0.12, 0.028), floor=0.015,
                                   tip=(0.105, 0.235, 0.050), tip_hi=(0.17, 0.32, 0.075))
     locks, lock_n = mb.fur_lock_atlas(FUR_TEX, FUR_TEX, LOCK_VARIANTS, SEED + 8)
     fur_rgba = np.concatenate([shell, locks], 1)                  # (rows, 2 x FUR_TEX, 4)

@@ -314,7 +314,7 @@ def to_image(name, rgba, noncolor=False, alpha=False):
 
 # --------------------------------------------------------------- shell fur ---
 def fur_strand_texture(size, seed, clump_cells=8, strands=90000, r_px=(1.1, 2.1), flyaway=0.06, clump=0.78,
-                       taper=0.5, base=0.5,
+                       taper=0.5, base=0.5, floor=0.0,
                        root=(0.008, 0.024, 0.007), tip=(0.10, 0.20, 0.045), tip_hi=(0.19, 0.30, 0.085)):
     """A tiling (torus) strand/clump mask for shell fur, size x size RGBA, linear.
 
@@ -381,27 +381,31 @@ def fur_strand_texture(size, seed, clump_cells=8, strands=90000, r_px=(1.1, 2.1)
     root, tip, tip_hi = (np.array(c, np.float32) for c in (root, tip, tip_hi))
     tipc = tip + (tip_hi - tip) * tone[..., None]
     rgb = root + (tipc - root) * np.clip(a, 0, 1) ** 0.75
+    alpha = np.maximum(alpha, floor)        # (an undercoat just over a stock viewer's cutoff)
     cover = {h: round(float((alpha >= h).mean()), 3) for h in (0.02, 0.1, 0.25, 0.4, 0.55, 0.75, 0.9)}
     print("fur mask coverage by shell height", cover)
-    return np.concatenate([rgb, a], -1).astype(np.float32)
+    return np.concatenate([rgb, alpha[..., None]], -1).astype(np.float32)
 
 
 def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.27, 0.065),
-                   wet=(0.21, 0.37, 0.12), background=0.02):
+                   wet=(0.21, 0.37, 0.12), background=0.0):
     """Hair-lock cards' texture, `variants` locks side by side (each w /
     variants wide, h tall; v 0 at the root, 1 at the tip), RGBA linear, and
     its tangent-space normal map (u across, v along).
 
     Each lock is solid at its root, splits at a third of its length into
     3-6 clumps that drift apart and taper to points at different lengths,
-    and frays past them into single strands. Inside it is fine parallel
+    and frays past them into single strands; its root edge fades in (it is
+    buried in the coat, and never shows as a straight card edge). Inside it
+    is fine parallel
     strands: each strand its own shade (colour) and a round cross-section
     (normal), every clump shaded round across its width. Colour runs from
     dark roots to lighter, wetter tips. Variant 0 keeps a long solid centre
     clump (a drip hangs from it). Outside the locks alpha is `background`
     (just above the material's 0.01 cutoff, so a stock viewer never punches
     holes in the fur base that tiles over this half; the game's card test
-    starts higher)."""
+    starts higher). (Round 3: 0, so a stock viewer cuts the cards to their
+    locks too; the shell half carries a floor instead, see fur_strand_texture.)"""
     rng = np.random.default_rng(seed)
     vw = w // variants
     x = (np.arange(vw) + 0.5) / vw
@@ -449,6 +453,7 @@ def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.
             line = np.clip(1 - np.abs(X - xsi) * vw / 0.9, 0, 1) * (V < Ls) * (V > Ls - 0.22)
             fray = np.maximum(fray, line * 0.65 * np.clip((Ls - V) / 0.08, 0, 1))
         a = np.maximum(alpha * (0.82 + 0.18 * strand_profile), fray * (alpha < 0.5))
+        a = a * np.clip(V / 0.07, 0, 1) ** 0.6           # the root edge fades in
         a = np.where(a > 0.03, a, background)
         t = np.clip(V, 0, 1)[..., None]
         col = root + (tip - root) * t ** 0.8
