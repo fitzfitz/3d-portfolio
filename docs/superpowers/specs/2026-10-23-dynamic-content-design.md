@@ -28,6 +28,7 @@ the content moves there, and the bundled files stay as the fallback snapshot.
 | Is the content dynamic? | **Yes**: projects and career come from D1 |
 | How is it edited? | **In the Cloudflare D1 console.** No admin page, no write endpoint |
 | Schema | **Today's fields, one column each** |
+| Loading | **"Can we make the data fetching as part of the game loading?"** Then, of three options: **C** (below, "Loading") |
 
 ### Controller (stated to the owner, 2026-10-23)
 
@@ -44,9 +45,9 @@ the content moves there, and the bundled files stay as the fallback snapshot.
 3. **The bundled data is the fallback**: offline, an empty or failing API, an
    old Worker without `/content`, and dev and e2e without `VITE_BEACON_API`.
 4. **The data settles before the scene is built, and never changes during a
-   visit.** A payload cached from an earlier visit is used at once, and a fresh
-   one is fetched in the background for the next visit. With no cache, the
-   page waits for `/content` up to 1.5 s, then uses the bundled data.
+   visit.** *Replaced by the owner's loading call (option C, "Loading"
+   below).* The first version used a cached payload at once and refreshed it
+   in the background, and waited up to 1.5 s with no cache.
 5. **The client validates every row** (types, `#rrggbb` colours, non-empty
    required strings, `tech` a string array). Bad rows are dropped with a
    `console.warn`; a list with no valid row falls back to the bundled list.
@@ -80,16 +81,44 @@ exactly as it read the static imports before. Reading the content freezes it:
 a later `settleContent` is refused with a warning, which is the "never moves
 during a visit" guarantee in code.
 
-### Loading order (`src/utils/contentLoader.ts`)
+### Loading (owner, 2026-10-23: option C)
 
-1. No API configured: the bundled data, no request.
-2. A cached payload (localStorage `fitz-content`, guarded) that still yields at
-   least one valid list: used at once. A fetch runs in the background and, if
-   it succeeds, replaces the cache for the next visit.
-3. No usable cache: wait for `/content` up to 1.5 s. A response in time is used
-   and cached. A late response is still cached, for the next visit. A timeout,
-   a network error or a non-200 (an old Worker answers 404) gives the bundled
-   data.
+The owner asked for the fetch to be part of the game's loading. Three options
+were put to them:
+
+- **A**, the fetch inside the canvas's loading readout as a
+  `THREE.DefaultLoadingManager` item. **Declined:** the store, `App`, the HUD,
+  the logbook, the destinations table and most scene components build their
+  constants from the content when their modules load. Gating only the scene
+  would mean about 25 files of module-load refactor, including the store's
+  initial state, with real regression risk.
+- **B**, keep the gate before `App` loads and only change the fetch policy.
+- **C (chosen)**, B, plus the asset packs start in `main.tsx` beside the
+  fetch, so the biggest download no longer waits for the content.
+
+So (`src/main.tsx`, `src/utils/contentLoader.ts`, `src/utils/bootStep.ts`):
+
+1. `main.tsx` starts the asset packs (`loadAssetPack()`) when the canvas will
+   mount on the first render (WebGL, no résumé link), exactly the visits that
+   downloaded them before. The packs never wait for the content, and the
+   content never waits for the packs. Without packs (dev, e2e,
+   `ASSET_PACK=0`) the call is the same settled no-op as before. To make this
+   possible, `utils/hiResMaps.ts` no longer imports the store: the store
+   registers its `isLowPerf` reader when it is created, and until then the
+   answer is the store's own starting value (false), so the tier choice is
+   unchanged. The WebGL and résumé checks moved from the store to
+   `utils/flightGate.ts`.
+2. Every visit fetches `/content` fresh, bounded by **4 s**. Fallback order:
+   a fresh answer with at least one valid list → the last good payload
+   (localStorage `fitz-content`, guarded) → the bundled data. A slow, failing
+   (network, 404 from an old Worker, 503) or invalid answer falls back; a good
+   answer is kept as the last good payload, even when it arrives after the
+   timeout. `loadContent` never rejects.
+3. The step shows on index.html's INITIALIZING overlay: "SYNCING MISSION
+   DATA...", then "MISSION DATA: LIVE", "… LAST KNOWN" or "… ONBOARD". It
+   always reaches a final line, and with no API configured it shows nothing.
+4. The content settles, then `App` is imported, and its canvas shows the
+   existing `LoadProgress` readout for the rest of the load, unchanged.
 
 ### Validation (`src/utils/contentParse.ts`)
 
@@ -136,8 +165,9 @@ implementer's calls.
 
 - **R1, freeze on read.** `activeContent()` freezes the content the first time
   anything reads it; `settleContent` after that returns false and warns.
-- **R2, a cache stores the raw response**, not the parsed rows, so a later
-  client with different rules re-validates it.
+- **R2, the last good payload is the raw response**, not the parsed rows, so a
+  later client with different rules re-validates it. Only an answer with at
+  least one valid list is kept.
 - **R3, the seed is non-destructive.** `INSERT OR IGNORE`, so re-running it
   never overwrites the owner's edits. Resetting to the bundled snapshot is a
   documented `DELETE` first.

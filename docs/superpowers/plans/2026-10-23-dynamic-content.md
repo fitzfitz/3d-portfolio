@@ -35,8 +35,11 @@
    bundled data passes untouched; each rule drops its row with a warning; an
    empty or invalid list falls back; D1 NULLs and JSON-text `tech` parse.
 3. **Loader.** `src/utils/contentLoader.ts` `loadContent(deps)` with injected
-   fetch, storage and timer. Tests: no API, cached, fresh in time, late
-   (cached for next visit), timeout, 404, network error, junk cache.
+   fetch, storage and timer. After the owner's loading call (option C): fresh
+   first (4 s), then the last good payload, then bundled; the overlay step
+   (`bootStep.ts`) always ends; the asset packs start in `main.tsx` (hiResMaps
+   decoupled from the store). Tests: each failure path in that order, the step
+   always resolving, the pack module graph store-free.
 4. **main.tsx boot order.** Settle first, then `import("./App")` and the debug
    bridge. Test: the static import graph of `main.tsx` never reaches a module
    that reads the content.
