@@ -25,7 +25,7 @@ const COST = { sky: 80, gameplay: 69, "events#0": 65, fuel: 39, "logbook#0": 37,
  * (events alone was 170 s of a 370 s run). Each exports `parts`; run-one.mjs
  * fails a part if the probe's count no longer matches this one.
  */
-const PARTS = { mechanics: 6, probes: 6, logbook: 3, programs: 2, reactions: 2, jellyguide: 2, memory: 2, events: 2 };
+const PARTS = { mechanics: 6, probes: 6, content: 3, logbook: 3, programs: 2, reactions: 2, jellyguide: 2, memory: 2, events: 2 };
 
 const PROBES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const JOBS = Number(process.env.E2E_JOBS ?? 4);
