@@ -62,6 +62,34 @@ Delete an entry when it is fixed.
   still hard to find by hand. Revisit with F2 (Newtonian ship gravity), which
   replaces the well law; do not retune G alone, since 4,000 already brings a
   surface touch.
+- **Jellyfish guide, left for later** (spec
+  docs/superpowers/specs/2026-10-23-jellyfish-guide-design.md, PR #54):
+  - No gamepad button calls the guide (build ruling R2). The spec assumed J
+    already had one; nothing maps to it in `utils/gamepad.ts`, and inventing
+    one risked clashing with the layout: every face, shoulder and d-pad
+    button is taken; only the stick clicks (buttons 10 and 11) are free. Pick
+    one with the owner and have it call `requestGuideToggle()`, as the touch
+    GUIDE button does.
+  - Arriving does not lock the HUD's target (build ruling R9). The spec says
+    "the HUD's target locks on", but no store action locks a target; the
+    guide only arrives at the radius where the HUD's own target line locks
+    on. Wants a lock flourish action the guide can call on `arrived`.
+  - The memory probe's idle allocation ceiling (`ALLOC_KB_PER_FRAME`, 160 KB
+    a frame in `tests/e2e/memory.probe.mjs`) is flaky at baseline: about 2
+    runs in 6 over, median ~142 KB, measured while building the guide and
+    not caused by it. Find the remaining per-frame garbage or re-measure the
+    ceiling on a quiet machine.
+  - Under reduced motion the guide appears at its station, 20 u ahead along
+    the route to the target, which can be behind the camera when the ship
+    faces away from the target, so "it appears beside the ship" may go
+    unseen. Make it appear in view instead: past the ship's nose, then
+    lead from there.
+  - The keep-out list holds the planets only (SolarBodies). The guide keeps
+    its own target's radius clear (the station or portal it leads to), but
+    not a station it only passes (the shipyard, or the career station on the
+    way to a probe), nor the moons. Add the destinations (career station
+    5.2 u, shipyard 4.8 u, portal frame 7.0 u from their centres) and the
+    moons (moving, like the planets) to the list.
 - **SwiftShader start-up rose with the real Solar System.** The start-up
   probe's best of three read 13.0 s and 15.4 s in two full runs on PR #40's
   branch, against 10.1–12.1 s for New Worlds: inside the 20 s ceiling, not
