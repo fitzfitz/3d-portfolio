@@ -667,8 +667,9 @@ describe("dormant monsters", () => {
     for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-lab/${m}.glb`)).toBe(true);
   });
 
-  it("the lab monsters stay inside their 700 KB download budget", () => {
-    for (const m of ["saucer", "tardigrade"]) expect(labKb(m)).toBeLessThanOrEqual(700);
+  it("the lab monsters stay inside their download budgets (saucer 1,600 KB by R11, tardigrade 700 KB)", () => {
+    expect(labKb("saucer")).toBeLessThanOrEqual(1600);
+    expect(labKb("tardigrade")).toBeLessThanOrEqual(700);
   });
 });
 
@@ -681,7 +682,9 @@ describe("saucer (saucer.glb)", () => {
   const lab = () => load("saucer", "public/models-lab");
   const rig = () => JSON.parse(readFileSync("src/data/saucerRig.json", "utf8"));
   const MATS = ["SaucerBaked", "SaucerDome", "SaucerFur"];
-  const PART_IDS = 10; // 0 hull, 1 body, 2 tentacle, 3 eye L, 4 eye R, 5 eye top, 6 jaw, 7 cannon, 8 goo, 9 drips
+  // 0 hull, 1 body, 2 tentacle, 3 eye L, 4 eye R, 5 eye top, 6 jaw, 7 cannon, 8 goo, then the drips by
+  // host (R12): 9 on the rim, 10 on a tentacle, 11 on the body's fur
+  const PART_IDS = 12;
   const slot = (id: number) => (id + 0.5) / 16;
   const partOf = (x: number) => {
     const id = Math.round(x * 16 - 0.5);
@@ -719,9 +722,9 @@ describe("saucer (saucer.glb)", () => {
     expect(nodeNames(doc).filter((n) => n.startsWith("Saucer_LOD"))).toEqual(["Saucer_LOD0", "Saucer_LOD1"]);
   });
 
-  it("stays inside its triangle budget: LOD0 <= 8000, LOD1 <= 2500", async () => {
-    expect(tris(await lod(0))).toBeLessThanOrEqual(8000);
-    expect(tris(await lod(1))).toBeLessThanOrEqual(2500);
+  it("stays inside its triangle budget: LOD0 <= 14000, LOD1 <= 4000 (R10)", async () => {
+    expect(tris(await lod(0))).toBeLessThanOrEqual(14000);
+    expect(tris(await lod(1))).toBeLessThanOrEqual(4000);
   });
 
   it("is ship-sized: longest extent 2.4–3.6", async () => {
@@ -737,6 +740,8 @@ describe("saucer (saucer.glb)", () => {
     for (const m of MATS) expect(textureSet(doc, m).extensions, m).toEqual([]);
     expect(textureSet(doc, "SaucerDome").alpha).toBe("BLEND");
     expect(textureSet(doc, "SaucerFur").alpha).toBe("MASK");
+    // R14: a stock viewer shows the fur base whole; the game raises the cutoff per shell
+    expect(doc.getRoot().listMaterials().find((m) => m.getName() === "SaucerFur")!.getAlphaCutoff()).toBeCloseTo(0.01, 3);
     const baked = textureSet(doc, "SaucerBaked");
     expect([baked.base, baked.metalRough, baked.normal]).toEqual([true, true, true]);
     const dome = textureSet(doc, "SaucerDome");
@@ -758,7 +763,7 @@ describe("saucer (saucer.glb)", () => {
     }
   });
 
-  it("_MOTION.x is a part slot on every vertex, and LOD0 has every alien and goo part", async () => {
+  it("_MOTION.x is a part slot on every vertex, and LOD0 has every alien, goo and drip part", async () => {
     const seen = new Set<number>();
     for (const k of [0, 1] as const) {
       for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
@@ -776,15 +781,25 @@ describe("saucer (saucer.glb)", () => {
     for (let id = 1; id < PART_IDS; id++) expect(seen.has(id), `part ${id}`).toBe(true);
   });
 
-  it("_MOTION.z ramps the portholes: exactly rig.portholes non-zero values, (k + 0.5) / N", async () => {
+  it("_MOTION.z ramps the portholes on the hull: exactly rig.portholes non-zero values, (k + 0.5) / N", async () => {
     const n = rig().portholes;
     expect(rig().portholeOrder).toBe("+Z toward +X");
     for (const k of [0, 1] as const) {
       const zs = new Set<number>();
       for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
-        for (const e of elements(p, "_MOTION")) if (e[2] > 0.001) zs.add(Math.round(e[2] * n - 0.5));
+        for (const e of elements(p, "_MOTION")) if (partOf(e[0]) === 0 && e[2] > 0.001) zs.add(Math.round(e[2] * n - 0.5));
       }
       expect([...zs].sort((a, b) => a - b), `LOD${k}`).toEqual([...Array(n).keys()]);
+    }
+  });
+
+  it("drips carry their host's weight in _MOTION.z (R12): > 0 on tentacle and body drips, 0 on the rim's", async () => {
+    const e = elements(prim(await lod(0), "SaucerBaked"), "_MOTION");
+    const z = (id: number) => e.filter((v) => partOf(v[0]) === id).map((v) => v[2]);
+    expect(Math.max(...z(9))).toBeLessThan(0.001);
+    for (const id of [10, 11]) {
+      expect(z(id).length, `part ${id}`).toBeGreaterThan(0);
+      expect(Math.min(...z(id)), `part ${id}`).toBeGreaterThan(0);
     }
   });
 
@@ -826,6 +841,9 @@ describe("saucer (saucer.glb)", () => {
     expect(r.furShells).toBeGreaterThanOrEqual(8);
     expect(r.furShells).toBeLessThanOrEqual(24);
     expect(r.lod1Distance).toBeGreaterThan(0);
+    // R13: the glTF y range the body weight is linear over
+    expect(r.bodySpan).toHaveLength(2);
+    expect(r.bodySpan[1]).toBeGreaterThan(r.bodySpan[0]);
   });
 
   it("the fur carries _FUR in [0,1]; cards (COLOR_0 R) on LOD0 only", async () => {
@@ -844,7 +862,7 @@ describe("saucer (saucer.glb)", () => {
     }
   });
 
-  it("stays inside its 700 KB download budget", () => {
-    expect(labKb("saucer")).toBeLessThanOrEqual(700);
+  it("stays inside its 1,600 KB download budget (R11)", () => {
+    expect(labKb("saucer")).toBeLessThanOrEqual(1600);
   });
 });

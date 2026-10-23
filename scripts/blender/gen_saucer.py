@@ -35,29 +35,38 @@
 # from its own high part only (an exploded bake: every part pair moved apart
 # first), so no ray hits a neighbour. Repeated parts share one UV island (the
 # 16 portholes, the 4 spikes, the 11 fangs, the 3 eyes, the goo strings, the
-# drips, the spots). The look, all procedural (monster_bake.py materials):
+# drips, the spots); the body's skin has its own cylindrical unwrap with its
+# seam down the back. The look, all procedural (monster_bake.py materials):
 #   - skin: wet green, mottled, speckled, pored and finely wrinkled, glossy
 #     with a wetter film in patches; the undersides paler;
 #   - spots: recessed wet pink cups on the tentacles' undersides (a decal
 #     each, its own vertices, so the G zone can tint them), tiny pores in
 #     them and a darker wet rim;
-#   - teeth: crooked, bent, blade-flat fangs, enamel streaked and hairline
-#     cracked, yellowing to the root, gum-red at the root; the lips gum-red
-#     shading into a dark mouth; a pink papillate tongue with a centre groove;
-#   - eyes: glossy whites with faint veins, an amber iris and a black pupil;
+#   - teeth: crooked, bent, blade-flat fangs (the lower row taller, so it
+#     reads over the lip), enamel streaked and hairline cracked, yellowing to
+#     the root, gum-red at the root; the lips gum-red shading into a dark
+#     mouth; a pink papillate tongue with a centre groove;
+#   - eyes: glossy clear-coat whites with faint veins, an amber iris and a
+#     black pupil;
 #   - hull: brushed gunmetal (concentric lathe grain), 8 panels with seams
 #     (clear of the portholes) and chunky rivet rows, scratches, grime packed in the seams and soot round the
 #     portholes, wet green stains run down below each slime smear;
 #   - rim: the painted band, satin, chipped to the dark primer at its edges,
-#     with a ring of stencilled dashes; the porthole frames bolted; amber
+#     with a ring of 12 bold stencilled dashes; the six slime smears over the
+#     lip and down the wall are painted into the rim's and hull's maps
+#     (raised, mirror-wet), not modelled; the porthole frames bolted; amber
 #     glass lenses that glow (the emissive map); scorched spike tips; a
 #     panelled turret and a ringed, soot-tipped barrel;
-#   - slime and goo: lime, glossy, bubbled; drips on the tentacles, the fur
-#     and the rim; goo strings between the jaws.
+#   - slime and goo: lime, near-mirror wet, bubbled, paler and clearer where
+#     thin (a drip's neck, a goo string's middle); drips on the tentacles,
+#     the fur and the rim; goo strings sagging between the upper fangs and
+#     the lower lip, thin in the middle, beaded.
 # The fur is shell fur (spec Revision; R7): a fur-base primitive the game
-# draws N times outward, alpha-testing a tiling strand/clump mask, plus hair
-# cards (LOD0 only) along the clumps of the approved blockout. The shells
-# are not in the file. Raw-material provenance: every map is generated here
+# draws N times outward, alpha-testing a tiling strand/clump mask, plus lock
+# cards (LOD0 only): every clump of the approved blockout's shaggy outline
+# (its v3 tuft spines, ~220 of them on the crown, the tentacles' backs and
+# the arms) as a crossed pair of pointed, drooping cards. The shells are not
+# in the file. Raw-material provenance: every map is generated here
 # (Cycles bakes of the node fields below, and the numpy strand mask in
 # monster_bake.fur_strand_texture); no image, scan or add-on is used.
 #
@@ -67,14 +76,15 @@
 # the blockout). Longest extent 2.4-3.6 (the player's ship is ~2.4).
 #   Nodes "Saucer_LOD0" and "Saucer_LOD1" (no parent), each one mesh of three
 #   primitives, no extensions, no tangents:
-#   - "SaucerBaked": baseColor (x AO, 1024) + metallicRoughness (512) +
-#     normal (1024) + emissive (512: the porthole lenses, warm amber).
+#   - "SaucerBaked": baseColor (x AO, 2048) + metallicRoughness (512) +
+#     normal (2048) + emissive (512: the porthole lenses, warm amber) (R11).
 #   - "SaucerDome": alphaMode BLEND, no maps (clear glass), the outer shell
 #     only (draw FrontSide).
-#   - "SaucerFur": alphaMode MASK, double-sided (the cards), baseColor (256,
-#     tiling, REPEAT, one repeat per 0.17 u) whose alpha is the strand
-#     height mask and whose RGB is the strand colour root (dark) to tip; no
-#     other map. The cards (LOD0 only) are on the crown, along its hem first.
+#   - "SaucerFur": alphaMode MASK, alphaCutoff 0.01 (R14: a stock viewer
+#     shows the base whole; the game raises it per shell), double-sided (the
+#     cards), baseColor (512, tiling, REPEAT, one repeat per 0.34 u, 4 x 4
+#     clumps of ~0.085) whose alpha is the strand height mask and whose RGB
+#     is the strand colour root (dark) to tip; no other map.
 #   COLOR_0 is a zone mask, never a colour (a stock glTF viewer multiplies it
 #   into the base colour, as the spec says; the game's material must not,
 #   like ProjectProbes.tsx; turntable_monsters.py routes it out). Each
@@ -84,40 +94,47 @@
 #     SaucerFur R = 1 on card vertices, 0 on the fur base; G = B = 0.
 #     Absent on the dome.
 #   _MOTION (vec4, every channel in [0, 1]), on every primitive:
-#     x = part slot (id + 0.5) / 16: 0 hull (and its slime smears and the
-#         cannon mount), 1 body (skin, lids and brows, upper teeth, the
-#         crown fur), 2 tentacle (the four arms, their spots and fur),
-#         3 eye L, 4 eye R, 5 eye top, 6 jaw (lower teeth, tongue, the lower
-#         mouth and chin), 7 cannon, 8 goo strings, 9 drips;
+#     x = part slot (id + 0.5) / 16: 0 hull (and the cannon mount), 1 body
+#         (skin, lids and brows, upper teeth, the crown fur), 2 tentacle (the
+#         four arms, their spots and fur), 3 eye L, 4 eye R, 5 eye top, 6 jaw
+#         (lower teeth, tongue, the lower mouth and chin), 7 cannon, 8 goo
+#         strings, then the drips by host (R12): 9 on the rim (static),
+#         10 on a tentacle, 11 on the body's fur;
 #     y = weight: tentacle (and its fur and spots) base 0 -> tip 1; body base
 #         0 -> crown 1 (by height); jaw: its influence, 1 on the lower teeth
 #         and tongue, easing to 0 where the chin meets the body (rotate the
 #         jaw by angle x y about the jaw pivot); cannon 0 on the turret (yaw
 #         only), 1 on the barrel (yaw and pitch); goo 0 at the upper teeth ->
 #         1 at the lower (stretch between gooTop and gooBottom with the jaw);
-#         drips 0 at the root -> 1 at the tip; 0 elsewhere;
-#     z = porthole ramp: 0 off a porthole lens, else (k + 0.5) / 16 for lens
-#         k, counted from +Z with the angle increasing toward +X (R8);
+#         drips 0 at the root -> 1 at the tip (their own); 0 elsewhere;
+#     z = on the hull (part 0) the porthole ramp: 0 off a porthole lens, else
+#         (k + 0.5) / 16 for lens k, counted from +Z with the angle
+#         increasing toward +X (R8); on a drip (9-11) the host's weight at
+#         the drip's root (the tentacle's base->tip weight, the body's
+#         height weight; 0 on the rim), so it moves with its host (R12);
+#         0 elsewhere;
 #     w = thinness for the translucent skin term, 0 thick -> 1 thin (metal
 #         and eyes 0; tentacle tips, lids, teeth, goo and drips thin).
 #     The dome carries x = hull, y = z = w = 0.
 #   _FUR (vec2, [0, 1]), on SaucerFur only:
 #     x on the fur base = the fur's length there / furMaxLength (0 at the
-#         fur's edges, so the shells close onto the skin); on a card vertex =
-#         how far out along the fur it sits, in fur lengths: 0.3 at its root
-#         (a card stands for the coat's outer part, above the dense
-#         undercoat) -> 1 at its tip, so a card alpha-tests exactly like a
-#         shell at that height;
+#         fur's edges, so the shells close onto the skin; longest, 0.24, at
+#         the hem and over the brows; the arms' undercoat is short, their
+#         locks carry them); on a lock card vertex = the alpha-test height
+#         along the lock (lock_x: 0.04 at its root, nearly solid, rising to
+#         0.9 at its tip, where it frays into its strands);
 #     y = wetness / matting, 0 dry and fluffy -> 1 wet and clumped.
 #   src/data/saucerRig.json: pivots (body, jaw, eyeL, eyeR, eyeTop, cannon,
 #     gooTop, gooBottom; glTF, origin-relative), muzzle, portholes (16),
-#     portholeOrder "+Z toward +X", eyeRadius, jawAxis, furMaxLength,
+#     portholeOrder "+Z toward +X", eyeRadius, bodySpan (R13: the glTF y range
+#     the body weight is linear over), jawAxis, furMaxLength,
 #     furShells, lod1Distance (where LOD1's 90th-percentile geometric error
 #     projects to one pixel at the game's resting view, sphereLod.ts's 58 deg
 #     on 802 px).
-#   LOD1 is LOD0 decimated part by part (no cards), sharing LOD0's maps.
-#   Card vertices carry the skin's normal (custom normals), so a card lights
-#   like the coat round it rather than like a flat fin.
+#   LOD1 is LOD0 decimated part by part (no cards), each part first cut along
+#   its UV seams so no island's texels are dragged across (the stencil),
+#   sharing LOD0's maps. Lock-card vertices carry the skin's normal turned out
+#   across the lock (custom normals), so each lock shades round.
 #   Blender 5.1's glTF importer mis-orders meshes with two custom attributes
 #   (_MOTION and _FUR) by hash seed; turntable_monsters.py reads them itself.
 #
@@ -178,8 +195,8 @@ _o2 = ml.smooth_profile(OUTER_CTRL, 2)
 OUTER_L = [_o2[i] for i in (0, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12)]
 INNER_L = [INNER_CTRL[i] for i in (0, 2, 3, 4)]
 RIM_L = [RIM[i] for i in (0, 1, 2, 3, 4, 5, 7)]
-FRAME_L = [(0.084, -0.012), (0.066, 0.034), (0.046, 0.012)]
-LENS_L = [(0.0, 0.026), (0.052, 0.012)]
+FRAME_L = [(0.086, -0.012), (0.050, 0.031)]      # one band: the frame's bolted face is the normal map's
+LENS_L = [(0.0, 0.026), (0.055, 0.012)]
 SPIKE_L = [(0.15, -0.10), (0.13, 0.12), (0.07, 0.38), (0.0, 0.63)]
 MOUNT_L = MOUNT[1:]
 TURRET_L = [(0.225, -0.80)] + [(0.225 * math.cos(math.radians(p)), -0.82 - 0.20 * math.sin(math.radians(p)))
@@ -192,18 +209,19 @@ BLOCK = dict(final=False, hi=True, hull=64, rim=64, port=24, spike=24, mount=40,
              body=48, body_n=6, cutter=(40, 24), eye=(32, 18), tube=(18, 8, 4), fang=(6, False),
              goo=(8, 5, 2), drip=(8, 4, 3), lid=(32, 10, 12, 4), smear=(8, 5, 2), tongue=(32, 16))
 HIGH = dict(BLOCK, final=True, fang=(16, False))
-LOW = dict(final=True, hi=False, hull=32, rim=32, port=8, spike=8, mount=16, turret=16, barrel=8, dome=32,
-           body=20, body_n=2, cutter=(16, 10), eye=(12, 7), tube=(7, 2, 3), fang=(5, True),
-           goo=(4, 2, 2), drip=(4, 1, 2), lid=(10, 2, 4, 1), smear=(4, 1, 2), tongue=(8, 5))
+LOW = dict(final=True, hi=False, hull=48, rim=48, port=12, lens=6, spike=10, mount=16, turret=20, barrel=10,
+           dome=48, body=24, body_n=2, cutter=(20, 12), eye=(18, 10), tube=(11, 2, 3), fang=(6, True),
+           goo=(6, 2, 2), drip=(6, 1, 2), lid=(14, 3, 7, 1), smear=(4, 1, 2), tongue=(10, 6))
 
 # The fur (R7): shell length per zone (glTF units) and the suggested layer count.
-FUR_MAX = 0.13
+FUR_MAX = 0.24
+FUR_CUTOFF = 0.01      # SaucerFur's alphaCutoff (R14)
 FUR_SHELLS = 16
-CARD_X0 = 0.3          # a card stands for the coat's outer part: it alpha-tests from 0.3 fur lengths out
-FUR_TILE = 0.17        # world units per repeat of the strand mask (4 x 4 clumps of ~0.043)
+FUR_TILE = 0.34        # world units per repeat of the strand mask (4 x 4 clumps of ~0.085)
 TAU = 2 * math.pi
-PARTS = ("hull", "body", "tentacle", "eyeL", "eyeR", "eyeTop", "jaw", "cannon", "goo", "drips")
-P_HULL, P_BODY, P_TENT, P_EYEL, P_EYER, P_EYETOP, P_JAW, P_CANNON, P_GOO, P_DRIP = range(10)
+PARTS = ("hull", "body", "tentacle", "eyeL", "eyeR", "eyeTop", "jaw", "cannon", "goo", "drips", "dripsTentacle",
+         "dripsBody")
+P_HULL, P_BODY, P_TENT, P_EYEL, P_EYER, P_EYETOP, P_JAW, P_CANNON, P_GOO, P_DRIP, P_DRIP_T, P_DRIP_B = range(12)
 
 
 def profile_at(prof, y):
@@ -235,28 +253,6 @@ def profile_r(prof, r):
 def in_dome(p, margin=0.03):
     a, b = DOME_A - DOME_T - margin, DOME_B - DOME_T - margin
     return (p.x / a) ** 2 + ((p.y - DOME_Y) / b) ** 2 + (p.z / a) ** 2
-
-
-def hull_normal(p):
-    """Outward normal of the saucer's outside (the rim's lip, the bowl's wall)
-    nearest p: the (r, y) profile segment closest to it, revolved."""
-    r, y = math.hypot(p.x, p.z), p.y
-    radial = Vector((p.x, 0, p.z)).normalized()
-    best, bn = 1e9, Vector((0, 1, 0))
-    prof = OUTER + RIM[1:6]
-    for (r0, y0), (r1, y1) in zip(prof, prof[1:]):
-        a, b = Vector((r0, y0)), Vector((r1, y1))
-        ab = b - a
-        if ab.length < 1e-6:
-            continue
-        u = max(0.0, min(1.0, (Vector((r, y)) - a).dot(ab) / ab.length_squared))
-        d = (a + ab * u - Vector((r, y))).length
-        if d < best:
-            n2 = Vector((ab.y, -ab.x)).normalized()
-            if n2.dot(Vector((r, y)) - (a + ab * u)) < 0:
-                n2 = -n2
-            best, bn = d, radial * n2.x + Vector((0, n2.y, 0))
-    return bn.normalized()
 
 
 def smoothstep(a, b, x):
@@ -446,7 +442,7 @@ class LowSink:
         bm = self.bm = bmesh.new()
         for k in ("bk", "part", "zone", "shg", "shi", "shk", "por", "prim", "grp", "card"):
             bm.faces.layers.int.new(k)
-        for k in ("wgt", "flen", "wet", "cardf", "thin"):
+        for k in ("wgt", "flen", "wet", "cardf", "thin", "hostw"):
             bm.verts.layers.float.new(k)
         for k in ("vpart", "vpor", "vgrp"):
             bm.verts.layers.int.new(k)
@@ -502,6 +498,7 @@ class LowSink:
         for v in span.verts():
             v[VI["vpart"]] = info["part"]
             v[VI["vgrp"]] = g
+            v[V["hostw"]] = info.get("hostw", 0.0)
             if v in lens_verts:
                 v[VI["vpor"]] = por[0]
             if callable(wf):
@@ -550,11 +547,11 @@ class LowSink:
 
 # -------------------------------------------------------------- bake mats ---
 BAKES = ("hull", "hull_in", "band", "frame", "lens", "spike", "turret", "barrel", "bore", "skin", "mouth",
-         "tooth", "tongue", "slime", "eye", "pupil", "spot", "dome", "fur")
+         "tooth", "tongue", "slime", "goo", "eye", "pupil", "spot", "dome", "fur")
 BAKE_IDS = {k: i for i, k in enumerate(BAKES)}
 # texel density relative to smart-project's uniform one: the face, the teeth,
 # the eyes and the spots get the texels; the bowl's inside and the bore almost none
-UV_DENSITY = {"hull": 0.85, "hull_in": 0.22, "band": 0.7, "frame": 1.8, "lens": 2.2, "spike": 0.9, "turret": 1.0,
+UV_DENSITY = {"hull": 0.85, "hull_in": 0.22, "band": 1.3, "goo": 1.6, "frame": 1.8, "lens": 2.2, "spike": 0.9, "turret": 1.0,
               "barrel": 1.3, "bore": 0.2, "skin": 1.75, "mouth": 1.3, "tooth": 2.6, "tongue": 0.9, "slime": 1.3,
               "eye": 2.4, "spot": 3.0}
 
@@ -656,7 +653,7 @@ def build(R, S):
                 ml.ellipsoid(bm, M @ Vector((0, 0.012, 0)), (0.052, 0.012, 0.052), 20, 6, DARK, R=ml.rot_to(nrm))
             else:
                 ml.lathe(bm, FRAME_L, R["port"], M, mi=LIGHT)
-                ml.lathe(bm, LENS_L, R["port"], M, mi=DARK)
+                ml.lathe(bm, LENS_L, R["lens"], M, mi=DARK)
     S.done("Saucer_Portholes", bm)
 
     # four spikes on the diagonals, outward and down
@@ -787,8 +784,9 @@ def build(R, S):
             d_hem = p.y - hem
             d_top = (p - tc).length - (tr + 0.06)
             d_eye = min((p - c).length - (r + 0.12) for c, r, _ in meta["eyes"][:2])
-            ramp = smoothstep(-0.01, 0.10, d_hem) * smoothstep(-0.01, 0.08, d_top) * smoothstep(-0.01, 0.06, d_eye)
-            v[V["flen"]] = 0.12 * (1 - 0.35 * max(n.z, 0.0)) * ramp
+            ramp = smoothstep(-0.01, 0.05, d_hem) * smoothstep(-0.01, 0.06, d_top) * smoothstep(-0.01, 0.05, d_eye)
+            # longest at the hem and over the brows (the v3 locks hung there)
+            v[V["flen"]] = (0.16 + 0.04 * max(n.z, 0.0) + 0.04 * (1 - smoothstep(0.0, 0.3, d_hem))) * ramp
             v[V["wet"]] = 0.2 + 0.6 * (1 - smoothstep(0.0, 0.22, d_hem))
 
     meta["MOUTH_C"], meta["zf"], meta["jaw_influence"] = MOUTH_C, zf, jaw_influence
@@ -832,12 +830,19 @@ def build(R, S):
         yb = lip(x, False)
         p, n = front(x, yb - 0.03)
         d = Vector((rng.uniform(-0.3, 0.3) + 0.25 * x, 1, rng.uniform(0.05, 0.3))).normalized()
-        fang(Vector((x, yb - 0.025, p.z - 0.06)), d, 0.04 * rng.uniform(0.9, 1.15), h * rng.uniform(0.9, 1.1), False)
+        w_, h_ = 0.04 * rng.uniform(0.9, 1.15), h * rng.uniform(0.9, 1.1)
+        if final:          # the lower row reads over the lip: taller, a little forward
+            fang(Vector((x, yb - 0.025, p.z - 0.045)), d, w_ * 1.1, h_ * 1.55, False)
+        else:
+            fang(Vector((x, yb - 0.025, p.z - 0.06)), d, w_, h_, False)
     S.done("Alien_Teeth", bm)
 
     bm = S.obj("Alien_Tongue")
     with S.piece(bm, name="tongue", part=P_JAW, bake={GREY: "tongue"}, wgt=1.0):
-        ml.ellipsoid(bm, (0.05, MOUTH_Y - 0.15, zf - 0.13), (0.25, 0.08, 0.15), *R["tongue"], GREY)
+        if final:          # a little lower and slimmer, so the lower fangs show
+            ml.ellipsoid(bm, (0.05, MOUTH_Y - 0.175, zf - 0.15), (0.24, 0.065, 0.15), *R["tongue"], GREY)
+        else:
+            ml.ellipsoid(bm, (0.05, MOUTH_Y - 0.15, zf - 0.13), (0.25, 0.08, 0.15), *R["tongue"], GREY)
     S.done("Alien_Tongue", bm)
 
     # goo strings from the top jaw to the bottom one, bowed and beaded
@@ -850,11 +855,24 @@ def build(R, S):
         sway = rng.uniform(-0.03, 0.03)
         pts = [Vector((x, yt + 0.01, zt - 0.07)), Vector((x + sway, yt * 0.6 + yb * 0.4, zt - 0.06 + bow)),
                Vector((x + sway * 0.6, yt * 0.3 + yb * 0.7, zb - 0.06 + bow * 0.8)), Vector((x, yb - 0.005, zb - 0.08))]
+        r_end, r_mid = 0.016, 0.007
+        if final:
+            # a sagging string: from the upper fangs' roots down to the lower
+            # lip in front of the tongue, bellying forward and down (a
+            # catenary), thin in the middle, one or two beads
+            yb2 = yb + 0.03
+            top = Vector((x, yt + 0.005, front(x, yt + 0.02)[0].z - 0.04))
+            bot = Vector((x + sway * 0.5, yb2, front(x, yb2)[0].z - 0.022))
+            sag = 0.055 + 0.6 * bow + rx.uniform(0.0, 0.02)
+            pts = [top.lerp(bot, u) + Vector((sway * math.sin(math.pi * u), -0.35 * sag * math.sin(math.pi * u),
+                                              sag * math.sin(math.pi * u))) for u in (0.0, 0.3, 0.55, 0.8, 1.0)]
+            beads = beads or ((rx.uniform(0.35, 0.65), rx.uniform(0.008, 0.012)),)
+            r_end, r_mid = 0.013, 0.0042
         goo_top.append(pts[0])
         goo_bot.append(pts[-1])
-        with S.piece(bm, name="goo", part=P_GOO, bake={SLIME: "slime"}, share="goo", wgt="C",
+        with S.piece(bm, name="goo", part=P_GOO, bake={SLIME: "goo"}, share="goo", wgt="C",
                      C=ml.catmull(pts, 8)):
-            ml.strand(bm, pts, 0.016, 0.007, SLIME, beads, ring=ring, per_seg=per, cap=cap)
+            ml.strand(bm, pts, r_end, r_mid, SLIME, beads, ring=ring, per_seg=per, cap=cap)
     S.done("Alien_Goo", bm)
     meta["gooTop"] = sum(goo_top, Vector()) / len(goo_top)
     meta["gooBottom"] = sum(goo_bot, Vector()) / len(goo_bot)
@@ -955,7 +973,8 @@ def build(R, S):
                 dirn = ml.perp(v.co - C[i], tan).normalized()
                 edge = smoothstep(math.cos(math.radians(95)), math.cos(math.radians(55)), dirn.dot(back))
                 taper = smoothstep(0.08, 0.2, t) * (1 - smoothstep(0.8, 0.92, t))
-                v[V["flen"]] = 0.07 * (1.15 - 0.45 * t) * edge * taper
+                # a short undercoat: the arms' look is their locks (round 1)
+                v[V["flen"]] = 0.06 * (1.15 - 0.45 * t) * edge * taper
                 v[V["wet"]] = 0.35 + 0.5 * t
 
         with S.piece(bm, name=name, part=P_TENT, bake={SKIN: "skin"}, zone=(1, 0, 0), wgt="C", C=C,
@@ -989,14 +1008,15 @@ def build(R, S):
                     spine = tuft_spine(base, nrm, length, radius, flow)
                     meta["cards"].append(dict(spine=spine, n=nrm, radius=radius, part=P_TENT, wgt=t,
                                               wet=0.35 + 0.5 * t, zone=name))
-                    tips.append(spine[-1])
+                    tips.append((spine[-1], t))
                 else:
-                    tips.append(ml.tuft(fb, base, nrm, length, radius, flow))
+                    tips.append((ml.tuft(fb, base, nrm, length, radius, flow), t))
             row += 1
         if not (S.final and not hi):
             fit(name + " fur", sp.verts())
             S.done(name.replace("Alien_", "Alien_Fur_"), fb)
-        DRIPS.append((min(tips, key=lambda p: p.y), name))
+        tip, t_tip = min(tips, key=lambda q: q[0].y)
+        DRIPS.append((tip, P_DRIP_T, t_tip))
 
     def spots_on(name, C, T, rad, fur_back):
         """4-6 recessed pink cups along the bare underside (seeded, rx)."""
@@ -1054,23 +1074,25 @@ def build(R, S):
             meta["cards"].append(dict(spine=spine, n=n, radius=radius, part=P_BODY, wgt=body_weight(p),
                                       wet=0.2 + 0.6 * (1 - smoothstep(0.0, 0.22, p.y - hem)), zone="crown",
                                       hem_d=p.y - hem))
-            tips.append(spine[-1])
+            tips.append((spine[-1], 0.0))
         else:
-            tips.append(ml.tuft(crown, p, n, length, radius, flow))
+            tips.append((ml.tuft(crown, p, n, length, radius, flow), 0.0))
     if not (S.final and not hi):
         fit("Alien_Fur_Crown", sp.verts())
         S.done("Alien_Fur_Crown", crown)
-    crown_drips = sorted(tips, key=lambda p: p.y)[:3:2]
-    DRIPS += [(p, "crown") for p in crown_drips]
+    crown_drips = [q[0] for q in sorted(tips, key=lambda q: q[0].y)[:3:2]]
+    DRIPS += [(p, P_DRIP_B, body_weight(p)) for p in crown_drips]
+    meta["drip_tips"] = [p for p, _, _ in DRIPS]       # their clumps become cards, so no drip floats
 
     # drips off the fur's lowest clumps
     bm = S.obj("Alien_Drips")
     ring, per, cap = R["drip"]
     sp = Span(bm)
-    for p, _ in DRIPS:
+    for p, host, hw in DRIPS:
         top = p - Vector((0, 0.01, 0))
         length = rng.uniform(0.12, 0.2)
-        with S.piece(bm, name="drip", part=P_DRIP, bake={SLIME: "slime"}, share="drip", wgt="C",
+        with S.piece(bm, name="drip", part=host if final else P_DRIP, hostw=hw, bake={SLIME: "slime"}, share="drip",
+                     wgt="C",
                      C=[top + ml.G * length * k for k in (0.0, 0.5, 1.0)]):
             ml.drip(bm, top, length, 0.022, SLIME, ring=ring, per_seg=per, cap=cap)
     fit("Alien_Drips", sp.verts())
@@ -1090,25 +1112,15 @@ def build(R, S):
                 pts.append(out * (profile_at(OUTER, y)[0] + 0.012) + Vector((0, y, 0)))
         pts.append(out * (profile_at(OUTER, y_end)[0] + 0.012) + Vector((0, y_end, 0)))
         ring, per, cap = R["smear"]
-        Cs = ml.catmull(pts, 4)
-        with S.piece(bm, name="smear", part=P_HULL, bake={SLIME: "slime"}, C=Cs):
-            sp = Span(bm)
-            ml.strand(bm, pts, 0.05, 0.034, SLIME, ring=ring, per_seg=per, cap=cap)
-            if final:      # smeared: pressed flat onto the lip and the wall, a little wider
-                for v in sp.verts():
-                    i = min(range(len(Cs)), key=lambda q: (Cs[q] - v.co).length_squared)
-                    c = Cs[i]
-                    tan = (Cs[min(i + 1, len(Cs) - 1)] - Cs[max(i - 1, 0)]).normalized()
-                    nrm = ml.perp(hull_normal(c), tan).normalized()
-                    o = v.co - c
-                    on = o.dot(nrm)
-                    side = ml.perp(o - nrm * on, tan)
-                    v.co = c + (o - nrm * on - side) + side * 1.25 + nrm * (on * 0.42 - 0.012)
+        if not final:      # (the final stage paints the smears into the hull's and rim's maps)
+            with S.piece(bm, name="smear", part=P_HULL, bake={SLIME: "slime"}):
+                ml.strand(bm, pts, 0.05, 0.034, SLIME, ring=ring, per_seg=per, cap=cap)
         length = rng.uniform(0.08, 0.2)
         ring, per, cap = R["drip"]
+        top = pts[-1] - out * 0.009 if final else pts[-1]     # (on the wall: the final's smear is painted)
         with S.piece(bm, name="drip", part=P_DRIP, bake={SLIME: "slime"}, share="drip", wgt="C",
-                     C=[pts[-1] + ml.G * length * k for k in (0.0, 0.5, 1.0)]):
-            ml.drip(bm, pts[-1], length, 0.03, SLIME, ring=ring, per_seg=per, cap=cap)
+                     C=[top + ml.G * length * k for k in (0.0, 0.5, 1.0)]):
+            ml.drip(bm, top, length, 0.03, SLIME, ring=ring, per_seg=per, cap=cap)
         meta["smears"].append((a, y_end, length))
     S.done("Saucer_Slime", bm)
 
@@ -1170,6 +1182,37 @@ def scratches(N, co, w=40.0):
     s = lines(N, co, (0.3, 1.1, 0.2), 7.0, 0.006, 0.52, w)
     s = N.m("MAXIMUM", s, lines(N, co, (1.2, 0.2, 2.1), 9.0, 0.005, 0.55, w + 7))
     return N.m("MAXIMUM", s, lines(N, co, (2.4, 1.7, 0.9), 5.0, 0.007, 0.58, w + 13))
+
+
+def smear_fields(N, th, r, y, on_rim):
+    """The rim slime, painted (round 1: it was geometry): a wavy lime streak
+    over the lip and down the wall to each smear's end, raised a little,
+    with a wetter rim at its edge. Returns (mask, edge)."""
+    mask = None
+    for k, (a_k, y_end, drip) in enumerate(SMEARS):
+        dk = N.m("ABSOLUTE", N.mul(wrap(N, N.sub(th, a_k)), r))
+        wav = N.noise(N.vec(y, r, k * 2.3), 7.0, 3.0, 0.55, w=171.0)
+        width = N.add(0.028, N.mul(wav, 0.03))
+        across = N.mapr(N.m("DIVIDE", dk, width), 1.0, 0.75, 0.0, 1.0, smooth=True)
+        if on_rim:
+            along = N.mapr(r, 1.33, 1.37, 0.0, 1.0, smooth=True)
+        else:
+            along = N.mul(N.mapr(y, y_end - 0.005, y_end + 0.03, 0.0, 1.0, smooth=True), N.mapr(y, 0.2, 0.16))
+        sk = N.mul(across, along)
+        mask = sk if mask is None else N.m("MAXIMUM", mask, sk)
+    edge = N.mul(N.mapr(mask, 0.0, 0.5), N.mapr(mask, 1.0, 0.5))
+    return mask, edge
+
+
+def slime_paint(N, alb, rough, metal, height, mask, edge):
+    """Lay the painted slime over a surface's albedo, roughness, metal and height."""
+    gp = N.gp()
+    n = N.noise(gp, 14.0, 3.0, 0.5, w=172.0)
+    col = N.mix(n, (0.22, 0.55, 0.03), (0.42, 0.74, 0.09))
+    alb = N.mix(mask, alb, col)
+    alb = N.mix(N.mul(edge, 0.5), alb, (0.10, 0.25, 0.02))
+    return (alb, N.mixf(mask, rough, 0.03), N.mixf(mask, metal, 0.0),
+            N.add(height, N.mul(mask, 0.0022), N.mul(n, N.mul(mask, 0.0006))))
 
 
 def hull_recipe(N):
@@ -1241,10 +1284,12 @@ def hull_recipe(N):
     rough = N.add(0.27, N.mul(grain2, 0.12), N.mul(grain, 0.06), N.mul(grime, 0.38), N.mul(soot, 0.2),
                   N.mul(sc, -0.1))
     rough = N.mixf(stain, rough, 0.10)
+    mask, edge = smear_fields(N, th, r, y, False)
     # (the lathe grain is albedo and roughness only: in the normal map it is
     # sub-texel noise that aliases and costs the WebP its bytes)
     height = N.add(N.mul(groove, -0.0016), N.mul(N.m("SQRT", rivet), 0.0026), N.mul(grain2, 0.00008),
                    N.mul(sc, -0.00025), N.mul(stain, 0.0004))
+    alb, rough, metal, height = slime_paint(N, alb, rough, metal, height, mask, edge)
     return dict(albedo=alb, rough=rough, metal=metal, height=height)
 
 
@@ -1268,19 +1313,23 @@ def band_recipe(N):
     chip = N.m("MAXIMUM", wear, scuff)
     mott = N.noise(gp, 10.0, 4.0, 0.6, w=23.0)
     paint = N.scale((0.70, 0.70, 0.69), N.add(0.92, N.mul(mott, 0.12)))
-    # a ring of stencilled dashes on the lip's outer face, long and short
-    seg = N.m("FRACT", N.m("DIVIDE", th, TAU / 24))
-    long_ = N.mul(N.mapr(seg, 0.18, 0.2), N.mapr(seg, 0.62, 0.6))
-    short = N.mul(N.mapr(seg, 0.74, 0.76), N.mapr(seg, 0.86, 0.84))
-    band_y = N.mul(N.mapr(y, 0.188, 0.193), N.mapr(y, 0.226, 0.221), N.mapr(r, 1.50, 1.515))
-    stencil = N.mul(N.m("MAXIMUM", long_, short), band_y, N.mapr(N.noise(gp, 60.0, 3.0, 0.6, w=24.0), 0.25, 0.4))
+    # a ring of 12 bold stencilled dashes on the lip's outer face, long and
+    # short, clean-edged (round 1: the small noisy ones smeared at a distance)
+    seg = N.m("FRACT", N.m("DIVIDE", th, TAU / 12))
+    long_ = N.mul(N.mapr(seg, 0.10, 0.115), N.mapr(seg, 0.56, 0.545))
+    short = N.mul(N.mapr(seg, 0.66, 0.675), N.mapr(seg, 0.84, 0.825))
+    band_y = N.mul(N.mapr(y, 0.186, 0.192), N.mapr(y, 0.232, 0.226), N.mapr(r, 1.50, 1.515))
+    stencil = N.mul(N.m("MAXIMUM", long_, short), band_y)
     grime = N.mul(N.add(N.mapr(y, 0.17, 0.152), N.mapr(r, 1.10, 1.03)),
                   N.mapr(N.noise(gp, 14.0, 4.0, 0.6, w=25.0), 0.3, 0.7))
     alb = N.mix(stencil, paint, (0.035, 0.035, 0.038))
     alb = N.mix(N.mul(grime, 0.7), alb, (0.20, 0.19, 0.17))
     alb = N.mix(chip, alb, (0.12, 0.12, 0.12))
     rough = N.add(0.36, N.mul(mott, 0.1), N.mul(chip, 0.26), N.mul(grime, 0.2))
-    return dict(albedo=alb, rough=rough, metal=0.0, height=N.add(N.mul(chip, -0.0008), N.mul(stencil, 0.00012)))
+    mask, edge = smear_fields(N, th, r, y, True)
+    alb, rough, metal, height = slime_paint(N, alb, rough, N.val(0.0), N.add(N.mul(chip, -0.0008),
+                                            N.mul(stencil, 0.00012)), mask, edge)
+    return dict(albedo=alb, rough=rough, metal=metal, height=height)
 
 
 def frame_recipe(N):
@@ -1471,20 +1520,24 @@ def mouth_recipe(N):
 def tongue_recipe(N):
     gp = N.gp()
     x, y, z = N.xyz(gp)
-    pv = N.vor(gp, 120.0, "F1")
-    pap = N.mapr(pv.outputs["Distance"], 0.32, 0.12, 0.0, 1.0, smooth=True)
-    groove = N.mapr(N.m("ABSOLUTE", N.sub(x, 0.05)), 0.028, 0.004, 0.0, 1.0, smooth=True)
+    pv = N.vor(gp, 75.0, "F1")
+    pap = N.mapr(pv.outputs["Distance"], 0.36, 0.14, 0.0, 1.0, smooth=True)
+    groove = N.mapr(N.m("ABSOLUTE", N.sub(x, 0.05)), 0.04, 0.006, 0.0, 1.0, smooth=True)
     back = N.mapr(z, 0.45, 0.32)
     n = N.noise(gp, 18.0, 3.0, 0.5, w=141.0)
     col = N.scale((0.62, 0.17, 0.21), N.add(0.86, N.mul(n, 0.22)))
-    col = N.mix(N.mul(pap, 0.45), col, (0.78, 0.30, 0.33))
-    col = N.mix(N.mul(groove, 0.5), col, (0.36, 0.06, 0.09))
+    col = N.mix(N.mul(pap, 0.7), col, (0.86, 0.38, 0.40))
+    col = N.mix(N.mul(groove, 0.8), col, (0.28, 0.04, 0.07))
     col = N.mix(N.mul(back, 0.6), col, (0.25, 0.04, 0.06))
     return dict(albedo=col, rough=N.add(0.13, N.mul(pap, 0.18)), metal=0.0,
                 height=N.add(N.mul(pap, 0.0010), N.mul(groove, -0.003)))
 
 
-def slime_recipe(N):
+def slime_recipe(N, goo=False):
+    """Wet lime slime: a strong, near-mirror specular, paler and clearer
+    where it is thin (a drip's neck, a goo string's middle: ft along it) and
+    deeper, more saturated in its bulbs; bubbles inside. The game adds the
+    translucency from _MOTION.w."""
     gp = N.gp()
     t = N.ft()
     n = N.noise(gp, 9.0, 4.0, 0.55, w=151.0)
@@ -1493,13 +1546,18 @@ def slime_recipe(N):
                 N.mapr(N.chan(bv.outputs["Color"], 0), 0.45, 0.5))
     tv = N.vor(N.v("ADD", gp, (2.0, 5.0, 1.0)), 130.0, "F1")
     tiny = N.mapr(tv.outputs["Distance"], 0.22, 0.12)
-    flow = N.noise(N.vec(N.mul(t, 14.0), N.mul(n, 2.0), 0.0), 2.0, 2.0, 0.5, w=152.0)
-    col = N.mix(n, (0.20, 0.52, 0.012), (0.42, 0.76, 0.05))
-    col = N.scale(col, N.add(0.85, N.mul(flow, 0.3)))
-    col = N.mix(N.mul(bub, 0.6), col, (0.52, 0.86, 0.20))
-    col = N.mix(N.mul(tiny, 0.4), col, (0.6, 0.9, 0.3))
-    return dict(albedo=col, rough=N.add(0.03, N.mul(n, 0.04)), metal=0.0,
-                height=N.add(N.mul(bub, 0.0016), N.mul(tiny, 0.0004), N.mul(flow, 0.0004)))
+    if goo:            # thin in the middle of the string
+        thin = N.sub(1.0, N.m("ABSOLUTE", N.sub(N.mul(t, 2.0), 1.0)))
+        deep, pale = (0.30, 0.62, 0.05), (0.70, 0.90, 0.40)
+    else:              # a drip: thin neck, round bulb at the tip
+        thin = N.mul(N.mapr(t, 0.05, 0.3), N.mapr(t, 0.85, 0.62))
+        deep, pale = (0.20, 0.52, 0.02), (0.58, 0.86, 0.26)
+    col = N.mix(N.mul(thin, 0.85), deep, pale)
+    col = N.scale(col, N.add(0.9, N.mul(n, 0.2)))
+    col = N.mix(N.mul(bub, 0.5), col, (0.75, 0.95, 0.45))
+    col = N.mix(N.mul(tiny, 0.35), col, (0.85, 0.97, 0.6))
+    return dict(albedo=col, rough=N.add(0.02, N.mul(n, 0.025)), metal=0.0,
+                height=N.add(N.mul(bub, 0.0014), N.mul(tiny, 0.0003)))
 
 
 def eye_recipe(N):
@@ -1515,12 +1573,12 @@ def eye_recipe(N):
     iris = N.mul(N.mapr(c, 0.818, 0.832), N.mapr(c, 0.935, 0.925))
     fib = N.noise(N.vec(N.mul(ang, 6.0), N.mul(c, 40.0), 0.0), 3.0, 3.0, 0.6, w=162.0)
     limbal = N.m("EXPONENT", N.mul(-1.0, N.m("POWER", N.m("DIVIDE", N.sub(c, 0.826), 0.007), 2.0)))
-    white = N.mix(N.mapr(c, 0.3, -0.4), (0.80, 0.79, 0.71), (0.62, 0.55, 0.42))
+    white = N.mix(N.mapr(c, 0.25, -0.5), (0.88, 0.87, 0.81), (0.70, 0.64, 0.52))
     col = N.mix(vein, white, (0.58, 0.09, 0.07))
     irisc = N.scale((0.86, 0.50, 0.045), N.add(0.62, N.mul(fib, 0.6)))
     col = N.mix(iris, col, irisc)
     col = N.mix(N.mul(limbal, 0.8), col, (0.10, 0.04, 0.005))
-    return dict(albedo=col, rough=0.045, metal=0.0, height=N.mul(fib, N.mul(iris, 0.0003)))
+    return dict(albedo=col, rough=0.018, metal=0.0, height=N.mul(fib, N.mul(iris, 0.0003)))
 
 
 def pupil_recipe(N):
@@ -1533,21 +1591,23 @@ def make_bake_materials():
                          ("turret", turret_recipe), ("barrel", barrel_recipe),
                          ("bore", lambda N: dict(albedo=(0.008, 0.008, 0.009), rough=0.7, metal=0.3)),
                          ("skin", skin_recipe), ("mouth", mouth_recipe), ("tooth", tooth_recipe),
-                         ("tongue", tongue_recipe), ("slime", slime_recipe), ("eye", eye_recipe),
+                         ("tongue", tongue_recipe), ("slime", slime_recipe),
+                         ("goo", lambda N: slime_recipe(N, goo=True)), ("eye", eye_recipe),
                          ("pupil", pupil_recipe), ("spot", spot_recipe)):
         mb.bake_material(name, recipe)
 
 # ---- the final stage's sizes --------------------------------------------
-TEX = 1024             # shipped albedo
-NTEX = 1024            # shipped normal map
-MR_TEX = 512           # metal/roughness
+TEX = 2048             # shipped albedo (R11)
+NTEX = 2048            # shipped normal map (R11)
+MR_TEX = 512           # metal/roughness (1024 cost the size cap its margin)
 EM_TEX = 512           # emissive (the lenses)
-FUR_TEX = 256          # the tiling strand mask (its alpha is noise: 512 cost 268 KB)
+AO_TEX = 2048          # the AO bake (multiplied into the albedo; low frequency: not supersampled)
+FUR_TEX = 512          # the tiling strand mask
 BAKE, NBAKE = 2 * TEX, 2 * NTEX     # supersampled bakes, box-filtered down
 EXPLODE = 7.0          # each bake group moved this far apart along Blender X
 FOCAL_PX = 802 / 2 / math.tan(math.radians(58) / 2)    # sphereLod.ts's reference view
-LOD1_RATIO = {"hull": 0.2, "hull_in": 0.2, "band": 0.28, "frame": 0.45, "lens": 1.0, "spike": 0.5, "turret": 0.35,
-              "barrel": 0.45, "bore": 1.0, "skin": 0.26, "mouth": 0.26, "tooth": 0.5, "tongue": 0.4, "slime": 0.4,
+LOD1_RATIO = {"hull": 0.2, "hull_in": 0.2, "band": 0.28, "frame": 1.0, "lens": 1.0, "spike": 0.5, "turret": 0.35,
+              "barrel": 0.45, "bore": 1.0, "skin": 0.26, "mouth": 0.26, "tooth": 0.5, "tongue": 0.4, "slime": 0.4, "goo": 0.5,
               "eye": 0.36, "spot": 1.0, "dome": 0.3, "fur": 0.3}
 GL2BL = ml.GL2BL
 
@@ -1682,10 +1742,14 @@ def write_motion(ob, mouth_jaw=None):
     wgt = attr_np(me, "wgt", nv)
     vpor = attr_np(me, "vpor", nv, dtype=np.int32)
     thin = attr_np(me, "thin", nv)
+    hostw = attr_np(me, "hostw", nv)
     mo = np.zeros((nv, 4), np.float32)
     mo[:, 0] = (vpart + 0.5) / 16.0
     mo[:, 1] = np.clip(wgt, 0, 1)
-    mo[:, 2] = np.where(vpor > 0, (vpor - 1 + 0.5) / N_PORTHOLES, 0.0)
+    # z: the porthole ramp on the hull (part 0), the host's weight at the root on a drip (R12)
+    drip = np.isin(vpart, (P_DRIP, P_DRIP_T, P_DRIP_B))
+    mo[:, 2] = np.where(drip, np.clip(hostw, 0, 1), np.where((vpart == P_HULL) & (vpor > 0),
+                                                              (vpor - 1 + 0.5) / N_PORTHOLES, 0.0))
     mo[:, 3] = np.clip(thin, 0, 1)
     if "_MOTION" in me.attributes:
         me.attributes.remove(me.attributes["_MOTION"])
@@ -1736,7 +1800,24 @@ def separate(ob, sel, name):
     return new
 
 
-def unwrap_baked(ob):
+def body_uv(co_gl):
+    """The body skin's own unwrap: cylindrical about its axis, the seam down
+    the back (round 1: smart-project put one down the front of the face),
+    u = angle x 0.62 (its mean radius), v = arc length up the profile."""
+    th = math.atan2(co_gl.x, co_gl.z)
+    y = max(BODY_Y0, min(BODY_Y1, co_gl.y))
+    ys, ss = BODY_ARC
+    k = max(0, min(len(ys) - 2, int(np.searchsorted(ys, y)) - 1))
+    v = ss[k] + (ss[k + 1] - ss[k]) * (y - ys[k]) / max(ys[k + 1] - ys[k], 1e-9)
+    return th * 0.62, v
+
+
+_bp = ml.smooth_profile(BODY_CTRL, 6)
+BODY_ARC = (np.array([y for _, y in _bp]), np.concatenate([[0.0], np.cumsum(
+    [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(_bp, _bp[1:])])]))
+
+
+def unwrap_baked(ob, body_grp):
     """Smart-project, scale islands by their part's texel density, pack only
     the master of each shared group, then copy its UVs onto the others."""
     me = ob.data
@@ -1764,6 +1845,25 @@ def unwrap_baked(ob):
         for f in island:
             for lp in f.loops:
                 lp[uvl].uv = c + (lp[uvl].uv - c) * k
+    # the body's skin: replaced by its cylindrical unwrap, at the skin's density
+    fg = attr_np(me, "grp", len(me.polygons), dtype=np.int32)
+    s0 = []
+    for f in ubm.faces:
+        if fg[f.index] == body_grp:
+            continue
+        pts = [lp[uvl].uv for lp in f.loops]
+        a2 = sum(abs((pts[i] - pts[0]).cross(pts[i + 1] - pts[0])) / 2 for i in range(1, len(pts) - 1))
+        if f.calc_area() > 1e-6 and BAKES[bk[f.index]] == "skin":
+            s0.append(math.sqrt(a2 / f.calc_area()))
+    k_skin = float(np.median(s0))
+    for f in ubm.faces:
+        if not (fg[f.index] == body_grp and BAKES[bk[f.index]] == "skin"):
+            continue
+        uvs = [body_uv(gl(lp.vert.co)) for lp in f.loops]
+        if max(u for u, _ in uvs) - min(u for u, _ in uvs) > math.pi * 0.62:     # across the back seam
+            uvs = [(u + TAU * 0.62 if u < 0 else u, v) for u, v in uvs]
+        for lp, (u, v) in zip(f.loops, uvs):
+            lp[uvl].uv = (u * k_skin, v * k_skin)
     ubm.to_mesh(me)
     ubm.free()
     shared = np.nonzero((shg > 0) & (shi > 0))[0]
@@ -1827,12 +1927,22 @@ def unwrap_fur(ob, rng_):
     ubm.free()
 
 
-def add_cards(ob, cards, rng_):
-    """Hair cards (fins) along the blockout's clumps: each a 2-wide, 4-row
-    strip rooted in the skin along the clump's flow, rising and bending as
-    the clump did, narrowing to its tip; normals are the skin's, so a card
-    lights like the coat round it. Its UVs sample a thin strip of the tiling
-    mask stretched along the card, so the mask's strands become the card's."""
+def lock_x(t):
+    """_FUR.x along a lock card (fur lengths out): nearly solid at its root,
+    fraying through its last third to the clump cores at its tip."""
+    return 0.04 + 0.86 * t ** 2.0
+
+
+def add_cards(ob, cards, drip_tips, rng_):
+    """Lock cards along the approved blockout's clumps (its v3 tuft spines):
+    each clump becomes a crossed pair of 4-row cards (a fin standing on the
+    skin and a ribbon across it) that rises, slumps and droops exactly as the
+    tuft did, wide at the root and pointed at the tip, so the shaggy v3
+    outline comes back from any side. The mask runs along the lock (its
+    strands stretched 2.5x down its length) and the alpha test rises toward
+    the tip (lock_x), so a lock frays into its strands. Normals are the
+    skin's turned out across the lock's width, so each lock shades round. Every clump a drip hangs
+    from is a lock, so no drip floats."""
     me = ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -1841,54 +1951,98 @@ def add_cards(ob, cards, rng_):
     VI = bm.verts.layers.int
     uvl = bm.loops.layers.uv["UVMap"]
     normals = {}
-    # the hem first (its locks hang over the hairline), then the crown, then the arms
-    hem = ml.scatter([(c["spine"][0], c) for c in cards if c["zone"] == "crown" and c["hem_d"] < 0.12], 0.075, rng_)
-    taken = [p for p, _ in hem]
-    rest = [(c["spine"][0], c) for c in cards if c["zone"] == "crown" and c["hem_d"] >= 0.12
-            and all((c["spine"][0] - q).length >= 0.11 for q in taken)]
-    pick = hem + ml.scatter(rest, 0.14, rng_)       # (the arms' fur is short: no cards there)
+    forced = [(c["spine"][0], c) for c in cards if any((c["spine"][-1] - q).length < 1e-6 for q in drip_tips)]
+    taken = [p for p, _ in forced]
+
+    def pick_from(sel, spacing, gap):
+        cand = [(c["spine"][0], c) for c in cards if sel(c) and all((c["spine"][0] - q).length >= gap for q in taken)]
+        got = ml.scatter(cand, spacing, rng_)
+        taken.extend(p for p, _ in got)
+        return got
+
+    pick = forced + pick_from(lambda c: c["zone"] == "crown" and c["hem_d"] < 0.14, 0.06, 0.04)
+    pick += pick_from(lambda c: c["zone"] == "crown", 0.072, 0.05)
+    pick += pick_from(lambda c: c["zone"] != "crown", 0.032, 0.03)
     for _, c in pick:
-        spine = [bl(p) for p in c["spine"]]
         n = (GL2BL.to_3x3() @ c["n"]).normalized()
-        spine[0] = bl(c["spine"][0] + (c["spine"][1] - c["spine"][0]) * 0.55) - n * 0.012
-        T = arc_t(spine)
-        width = c["radius"] * 0.72
-        u0, v0 = rng_.uniform(0, 1), rng_.uniform(0, 1)
-        spin = math.radians(rng_.uniform(-30, 30))
-        rows = []
-        for i, p in enumerate(spine):
-            tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
-            side = tan.cross(n)
-            side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
-            wdir = Matrix.Rotation(spin, 3, tan) @ tan.cross(side).normalized()
-            w = width * (1.0 - 0.62 * T[i]) * 0.5
-            rows.append([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)])
-        for i in range(3):
-            f = bm.faces.new((rows[i][0], rows[i][1], rows[i + 1][1], rows[i + 1][0]))
-            f.smooth = True
-            f[F["prim"]], f[F["card"]], f[F["part"]], f[F["bk"]] = 2, 1, c["part"], BAKE_IDS["fur"]
-            span_u = width / FUR_TILE
-            for lp in f.loops:
-                ri = next(k for k in range(4) if lp.vert in rows[k])
-                ci = rows[ri].index(lp.vert)
-                lp[uvl].uv = (u0 + ci * span_u * (1.0 - 0.62 * T[ri]), v0 + 0.012 * T[ri])
-        for i, (a, b) in enumerate(rows):
-            for v in (a, b):
-                v[VI["vpart"]] = c["part"]
-                v[V["wgt"]] = c["wgt"]
-                v[V["cardf"]] = CARD_X0 + (1 - CARD_X0) * T[i]
-                v[V["wet"]] = c["wet"]
-                normals[v] = n
+        sp_gl = list(c["spine"])
+        sp_gl[0] = c["spine"][0] + (c["spine"][1] - c["spine"][0]) * 0.55 - c["n"].normalized() * 0.014
+        dense = [bl(p) for p in ml.catmull(sp_gl, 6)]
+        Td = arc_t(dense)
+        length = sum((dense[i + 1] - dense[i]).length for i in range(len(dense) - 1))
+        rows_t = (0.0, 0.36, 0.7, 1.0)
+        spine = []
+        for t in rows_t:
+            j = min(range(len(Td)), key=lambda q: abs(Td[q] - t))
+            spine.append(dense[j])
+        width = c["radius"] * 2.1
+        spin = math.radians(rng_.uniform(-20, 20))
+        for layer in range(2):              # 0: the fin, 1: the ribbon across it
+            u0, v0 = rng_.uniform(0, 1), rng_.uniform(0, 1)
+            rows = []
+            for i, p in enumerate(spine):
+                tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
+                side = tan.cross(n)
+                side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
+                fin = tan.cross(side).normalized()
+                wdir = Matrix.Rotation(spin, 3, tan) @ (fin if layer == 0 else side)
+                w = width * (0.08 + 0.92 * (1.0 - rows_t[i]) ** 0.85) * 0.5
+                rows.append(([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, side))
+            for i in range(3):
+                (a0, a1), _, _ = rows[i]
+                (b0, b1), _, _ = rows[i + 1]
+                f = bm.faces.new((a0, a1, b1, b0))
+                f.smooth = True
+                f[F["prim"]], f[F["card"]], f[F["part"]], f[F["bk"]] = 2, 1, c["part"], BAKE_IDS["fur"]
+                for lp in f.loops:
+                    ri = next(k for k in range(4) if lp.vert in rows[k][0])
+                    ci = rows[ri][0].index(lp.vert)
+                    lp[uvl].uv = (u0 + (ci - 0.5) * 2 * rows[ri][1] / FUR_TILE,
+                                  v0 + rows_t[ri] * length / FUR_TILE / 2.5)
+            for i, (vs, _, side) in enumerate(rows):
+                for e, v in zip((-1, 1), vs):
+                    v[VI["vpart"]] = c["part"]
+                    v[V["wgt"]] = c["wgt"]
+                    v[V["cardf"]] = lock_x(rows_t[i])
+                    v[V["wet"]] = c["wet"]
+                    # the skin's normal, turned out across the lock: each lock
+                    # shades round, like the blockout's tufts, not flat
+                    normals[v] = (n + side * (0.75 * e)).normalized()
     bm.verts.index_update()
-    vn = {v.index: n for v, n in normals.items()}
+    vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
     bm.free()
     me.normals_split_custom_set_from_vertices([tuple(vn.get(i, v.normal)) for i, v in enumerate(me.vertices)])
+    print("saucer: lock cards: %d clumps (%d hold a drip), crown %d, arms %d" % (
+        len(pick), len(forced), sum(c["zone"] == "crown" for _, c in pick), sum(c["zone"] != "crown" for _, c in pick)))
     return len(pick)
 
 
+def split_uv_seams(ob):
+    """Cut the mesh along its UV seams (edges whose two faces disagree on
+    the UVs), so a collapse decimation keeps every island's border instead
+    of dragging texels across it (the band's stencil smeared, round 1)."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    uvl = bm.loops.layers.uv["UVMap"]
+    seams = []
+    for e in bm.edges:
+        if len(e.link_loops) != 2:
+            continue
+        la, lb = e.link_loops
+        # la runs v0 -> v1; lb runs the other way round its face
+        a0, a1 = la[uvl].uv, la.link_loop_next[uvl].uv
+        b1, b0 = lb[uvl].uv, lb.link_loop_next[uvl].uv
+        if (a0 - b0).length > 1e-6 or (a1 - b1).length > 1e-6:
+            seams.append(e)
+    bmesh.ops.split_edges(bm, edges=seams)
+    bm.to_mesh(ob.data)
+    bm.free()
+
+
 def lod1_from(lod0):
-    """LOD1: LOD0 without its cards, each part class decimated on its own."""
+    """LOD1: LOD0 without its cards, each piece decimated on its own, cut
+    along its UV seams first so the islands keep their borders."""
     mb.activate(lod0)
     bpy.ops.object.duplicate()
     ob = bpy.context.object
@@ -1919,6 +2073,7 @@ def lod1_from(lod0):
     for name, part in parts:
         r = LOD1_RATIO.get(name, 0.4)
         if r < 1.0:
+            split_uv_seams(part)
             mod = part.modifiers.new("dec", "DECIMATE")
             mod.decimate_type = "COLLAPSE"
             mod.ratio = r
@@ -2001,10 +2156,17 @@ def final_material_fur(img_fur):
     t = nt.nodes.new("ShaderNodeTexImage")
     t.image = img_fur
     nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
-    rnd = nt.nodes.new("ShaderNodeMath")
-    rnd.operation = "ROUND"                  # alpha clip at 0.5: alphaMode MASK
-    nt.links.new(t.outputs["Alpha"], rnd.inputs[0])
-    nt.links.new(rnd.outputs[0], b.inputs["Alpha"])
+    # alphaMode MASK at cutoff 0.01 (R14): 1 - (alpha < 0.01). A stock viewer
+    # then shows the fur base whole; the game raises the cutoff per shell
+    lt = nt.nodes.new("ShaderNodeMath")
+    lt.operation = "LESS_THAN"
+    nt.links.new(t.outputs["Alpha"], lt.inputs[0])
+    lt.inputs[1].default_value = FUR_CUTOFF
+    one = nt.nodes.new("ShaderNodeMath")
+    one.operation = "SUBTRACT"
+    one.inputs[0].default_value = 1.0
+    nt.links.new(lt.outputs[0], one.inputs[1])
+    nt.links.new(one.outputs[0], b.inputs["Alpha"])
     b.inputs["Roughness"].default_value = 0.62
     b.inputs["Metallic"].default_value = 0.0
     m.surface_render_method = "DITHERED"
@@ -2081,7 +2243,7 @@ def final_stage():
     sm = bmesh.new()                # organic parts: smooth across their own edges, whatever the angle
     sm.from_mesh(low.data)
     lbk = sm.faces.layers.int["bk"]
-    organic = {BAKE_IDS[k] for k in ("skin", "tooth", "tongue", "slime", "eye", "spot")}
+    organic = {BAKE_IDS[k] for k in ("skin", "tooth", "tongue", "slime", "goo", "eye", "spot")}
     for e in sm.edges:
         ks = {f[lbk] for f in e.link_faces}
         if len(ks) == 1 and ks <= organic:
@@ -2102,7 +2264,7 @@ def final_stage():
     tgt.use_nodes = True
     low.data.materials.clear()
     low.data.materials.append(tgt)
-    unwrap_baked(low)
+    unwrap_baked(low, body_grp)
     if "UVMap" not in fur.data.uv_layers:
         fur.data.uv_layers.new(name="UVMap")
     unwrap_fur(fur, random.Random(SEED + 4))
@@ -2143,14 +2305,15 @@ def final_stage():
     world = bpy.data.worlds.new("bake_world")
     sc.world = world
     world.light_settings.distance = 0.14
-    imgs["ao"] = mb.new_img("saucer_ao_raw", BAKE)
+    imgs["ao"] = mb.new_img("saucer_ao_raw", AO_TEX)
     mb.bake(low, None, "AO", imgs["ao"], 64, 8)
     print("saucer: baked ao")
 
     alb = mb.down(mb.pixels(imgs["albedo"]), TEX)
     mr = mb.down(mb.pixels(imgs["mr"]), TEX)
     em = mb.down(mb.pixels(imgs["emit"]), EM_TEX)
-    ao = mb.down(mb.pixels(imgs["ao"]), TEX)
+    ao = mb.pixels(imgs["ao"])
+    ao = ao if AO_TEX == TEX else mb.down(ao, TEX)
     nrm = mb.down(mb.pixels(imgs["normal"]) * 2 - 1, NTEX)
     nrm[..., :3] /= np.maximum(np.linalg.norm(nrm[..., :3], axis=-1, keepdims=True), 1e-6)
     nrm = nrm * 0.5 + 0.5
@@ -2166,7 +2329,7 @@ def final_stage():
     img_mr = mb.to_image("saucer_metal_rough", mb.down(mr, MR_TEX), noncolor=True)
     img_em = mb.to_image("saucer_emissive", em)
     img_nrm = mb.to_image("saucer_normal", nrm, noncolor=True)
-    fur_rgba = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=7500,
+    fur_rgba = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=30000,
                                      taper=0.2, base=0.25, flyaway=0.25,
                                      root=(0.045, 0.12, 0.028),
                                      tip=(0.105, 0.235, 0.050), tip_hi=(0.17, 0.32, 0.075))
@@ -2180,7 +2343,7 @@ def final_stage():
         bpy.data.meshes.remove(me)
 
     # ------------------------------------------------------ the fur cards ---
-    n_cards = add_cards(fur, lm["cards"], random.Random(SEED + 6))
+    n_cards = add_cards(fur, lm["cards"], lm["drip_tips"], random.Random(SEED + 6))
     write_motion(fur)
     print("saucer: %d hair cards" % n_cards)
 
@@ -2269,6 +2432,7 @@ def final_stage():
         "portholes": N_PORTHOLES,
         "portholeOrder": "+Z toward +X",
         "eyeRadius": EYE_R,
+        "bodySpan": [round(BODY_Y0 - com.y, 4), round(BODY_Y1 - com.y, 4)],
         "jawAxis": [1, 0, 0],
         "furMaxLength": FUR_MAX,
         "furShells": FUR_SHELLS,
