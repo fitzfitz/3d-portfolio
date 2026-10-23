@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
 /**
  * main.tsx settles the content before App's modules load (spec
- * 2026-10-23-dynamic-content, decision 4): App and the debug bridge are
+ * 2026-10-23-dynamic-content, the owner's loading call): App and the debug bridge are
  * imported dynamically, after settleContent. If any module main.tsx imports
  * statically read the content, it would freeze the bundled snapshot first and
  * the D1 content would be refused. This walks main.tsx's static imports.
@@ -57,6 +57,30 @@ describe("boot order (main.tsx)", () => {
       if (f === "src/data/content.ts") continue;
       expect(readFileSync(join(ROOT, f), "utf8"), f).not.toMatch(/\b(activeContent|contentSource)\(/);
     }
+  });
+
+  it("starts the asset packs and the overlay step from main.tsx, alongside the content fetch", () => {
+    for (const f of ["src/utils/assetPack.ts", "src/utils/flightGate.ts", "src/utils/bootStep.ts"]) expect(loaded, f).toContain(f);
+    const main = readFileSync(join(ROOT, "src/main.tsx"), "utf8");
+    // The pack starts before the content is awaited, so neither waits for the other.
+    expect(main.indexOf("loadAssetPack()")).toBeGreaterThan(0);
+    expect(main.indexOf("loadAssetPack()")).toBeLessThan(main.indexOf("await withBootStep"));
+  });
+
+  it("keeps the asset pack's module graph clear of the store", () => {
+    const packGraph = [...graph(join(ROOT, "src/utils/assetPack.ts"))].map((f) => relative(ROOT, f));
+    expect(packGraph).toContain("src/utils/hiResMaps.ts");
+    expect(packGraph).not.toContain("src/store/spaceStore.ts");
+  });
+
+  it("evaluates no store when the asset pack module loads (checked at run time)", async () => {
+    vi.resetModules();
+    let storeLoaded = false;
+    vi.doMock("../src/store/spaceStore", () => { storeLoaded = true; return {}; });
+    const pack = await import("../src/utils/assetPack");
+    await pack.loadAssetPack();
+    expect(storeLoaded).toBe(false);
+    vi.doUnmock("../src/store/spaceStore");
   });
 
   it("leaves App and the debug bridge to dynamic imports", () => {
