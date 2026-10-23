@@ -12,12 +12,12 @@
 
 ## Global Constraints
 
-- Pixar-film style: friendly exaggerated shapes, real materials; not scary, no gore.
+- Pixar-film style, real materials, **revised 2026-10-23: scarier, fluffy and slimy, both monsters** (spec "Revision"); still no blood, no gore.
 - The saucer is an original made after `docs/superpowers/specs/assets/2026-10-23-saucer-alien-reference.png`, not a trace.
 - Glb up is +Y, forward (the face, the cannon's rest aim, the tardigrade's mouth) is +Z, drawn at scale 1, origin at the model's centre of mass.
 - Saucer longest extent 2.4–3.6 u; tardigrade longest extent 6.5–7.5 u (the ship is ~2.4 u).
 - Triangle caps: LOD0 ≤ 8,000 and LOD1 ≤ 2,500 per monster (all primitives counted).
-- Materials: saucer `SaucerBaked` (opaque) + `SaucerDome` (glass); tardigrade `TardigradeBaked` only. No `KHR_materials_*` extensions (three builds `MeshStandardMaterial`).
+- Materials: saucer `SaucerBaked` (opaque) + `SaucerDome` (glass) + `SaucerFur` (shell fur + silhouette cards); tardigrade `TardigradeBaked` + `TardigradeFur`. No `KHR_materials_*` extensions (three builds `MeshStandardMaterial`). Draw calls per group: saucers 3, tardigrades 2 (spec "Revision"). Tasks 3–5's interfaces gain the fur primitive; the controller updates their briefs before dispatch.
 - Every motion plays per instance in the vertex shader. No skinned meshes or animation clips ship.
 - Generators are seeded and byte-reproducible. No add-ons unless a trusted one is needed; then its source is named in the MANIFEST row.
 - Blender: `/Users/fitzgeral/Applications/Blender.app/Contents/MacOS/Blender`.

@@ -19,7 +19,7 @@ first, before any gameplay depends on them. The probe went the same way
 | Question | Decision |
 |---|---|
 | How many monsters | **Two types** |
-| Look | **Pixar-film style**: the same friendly, exaggerated shapes, made with real materials. Not scary, not horror. |
+| Look | **Pixar-film style**, made with real materials; **revised: scarier, fluffy and slimy, both monsters** (see Revision). No gore. |
 | Monster 1 | **The saucer alien** from the owner's reference image (below) |
 | Monster 2 | **A tardigrade** (water bear), chosen over a space anglerfish |
 | Monster 2's attack | **It shoots a beam at the pilot** |
@@ -28,6 +28,42 @@ first, before any gameplay depends on them. The probe went the same way
 
 The owner agreed to every "my call" below as played back in conversation
 ("all good"), but they remain calls the builder may revisit with reason.
+
+## Revision (owner, 2026-10-23, after the first blockout)
+
+The owner saw the first blockouts and asked: **"make it scarier, fluffy,
+slimy"**, and for **both monsters at once**. This revision overrides the
+"friendly, not scary" look wherever the two disagree.
+
+- **Scarier, still a Pixar-style cartoon** (my guess, not corrected by the
+  owner: Monsters, Inc. scary, like Sulley's fur and Randall's slime). Still
+  no blood, no gore.
+- **Both monsters are furry and slimy together** (my call on how): wet,
+  matted, clumped fur in some zones and bare glistening skin in others, so
+  both read at once.
+  - **Saucer alien:** a shaggy crown on the head and fur down the backs of
+    the tentacles, clumped and dripping. The face and the tentacle undersides
+    are bare and slimy, and the pink spots become wet glistening pores.
+    Sharper, crooked teeth with **goo strings** between them that stretch
+    when it grins. Heavy angry brows over all three eyes. The saucer stays
+    metal, with slime smeared down its rim.
+  - **Tardigrade:** a shaggy, matted coat over the back and sides, with the
+    crystals poking through it. The belly, legs, claws and mouth tube are
+    bare and slimy. **Rings of small teeth** inside the mouth tube; it
+    **drools** while charging the beam; meaner eyes.
+- **How fur is made (my call):** shell fur, a stack of offset copies of the
+  fur zones with a strand pattern that thins outward, plus hair strips
+  (cards) around the silhouette to hide the layering at grazing angles.
+  Short-to-medium shaggy fur, not long flowing hair. Fur sways with the body
+  and the outer shells lag slightly. All shells of a monster type draw in
+  **one extra instanced draw call**: saucers 3 calls for the group, the
+  tardigrades 2.
+- **How slime is made (my call):** a very glossy, wet skin response with
+  thickness-based translucency, plus small drip and goo-string geometry that
+  stretches and sways in the vertex shader (goo strings stretch with the
+  jaw / mouth opening).
+- **Process:** the blockouts are redone (sharper teeth, brows, fur volume
+  in the silhouette, drips) and shown to the owner again before detail work.
 
 ## Monster 1: the saucer alien
 
