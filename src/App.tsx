@@ -196,18 +196,18 @@ export default function App() {
           and HUD. Kept in photo mode, where the ship can sit in it. */}
       {!showClassicCV && <EdgeHaze />}
 
-      {/* Dynamic scanline overlay visual */}
-      <div className="pointer-events-none fixed inset-0 z-40 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,3px_100%] opacity-[0.12]" />
-
       {import.meta.env.DEV && <PerfOverlay />}
 
       {/* -------------------- HUD + DYNAMIC SPACE INTERACTION MODALS -------------------- */}
-      {/* One wrapper for both: over the canvas, each full-window box was a
-          full-window composited layer of its own (~20 MB of tiles at 2×);
-          inside one they paint into one. The order inside is unchanged: the
-          cards (z-45) under the HUD (z-50), both over the joystick (z-40). */}
-      {!photoMode && !showClassicCV && (
-        <div className="pointer-events-none fixed inset-0 z-50">
+      {/* One wrapper for the scanlines, the cards and the HUD: over the canvas,
+          each full-window box was a full-window composited layer of its own
+          (~20 MB of tiles at 2× each); inside one they paint into one. Inside,
+          bottom to top: the scanlines, the cards (z-45), the HUD (z-50). The
+          scanlines are mounted always, as before (photo mode, the résumé). */}
+      <div className="pointer-events-none fixed inset-0 z-50">
+        {/* Dynamic scanline overlay visual */}
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,3px_100%] opacity-[0.12]" />
+        {!photoMode && !showClassicCV && (<>
           {/* z-45: above TouchControls' joystick zone (z-40), which covers the
               left half of the screen and otherwise swallowed taps on the cards.
               The container itself is pointer-events-none, so flight touches
@@ -338,8 +338,8 @@ export default function App() {
             </AnimatePresence>
           </div>
           <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />
-        </div>
-      )}
+        </>)}
+      </div>
 
       {/* Global Interactive Layers: after the HUD and cards, so the cursor draws over both. */}
       <CustomCursor />
