@@ -1,6 +1,8 @@
 import { SHIP_MAX_SPEED } from "../constants";
-import { pushOutOfSolids, type JellyKeepOut } from "./jellyMood";
+import { DESTINATIONS } from "../data/destinations";
+import { JELLY_RADIUS, pushOutOfSolids, type JellyKeepOut } from "./jellyMood";
 import { awayFrom, decay, type Vec3 } from "./reactions";
+import { SHIP_HALF_LENGTH } from "./worldCollide";
 
 /**
  * The jellyfish as a guide (spec 2026-10-23-jellyfish-guide: "Calling it",
@@ -103,6 +105,8 @@ export interface GuideState {
   radius: number;
   angle: number;
   turned: number;
+  /** Presenting: the nearest it may come to the circle's axis (u), min(radius, where it started). */
+  floor: number;
 }
 
 /** Spec: "after 45 s with no progress". */
@@ -166,14 +170,24 @@ const WAIT_HALF_LIFE = 0.25;
 export const GUIDE_OFFER_LEAVE_DIST = 60;
 /** Spec: "It circles the target once". One unhurried turn. */
 export const GUIDE_PRESENT_SECONDS = 8;
-/**
- * Circle radius bounds (u): clear of a probe or station model (10) and no wider
- * than a typical scan radius (30), so the turn stays in view. A target inside a
- * solid (an uncharted world) widens it to clear that body.
- */
-export const GUIDE_PRESENT_MIN_R = 10;
-export const GUIDE_PRESENT_MAX_R = 30;
+/** Margin (u) between the creature's reach and whatever it circles or keeps off. */
 const PRESENT_CLEAR = 2;
+/**
+ * Closest it comes to its target (u), and the presenting circle's smallest
+ * radius. A docked ship orbits a destination at its orbitR (10 at the career
+ * station and the shipyard, 2.6 at the portal; Spaceship.tsx), so the circle
+ * clears the widest orbit by the ship's half length (1.2), the creature's reach
+ * (JELLY_RADIUS, 3.4) and PRESENT_CLEAR: 16.7. That also clears every model it
+ * is led to: the career station reaches 5.2 u from its centre, the portal's
+ * frame 7.0 (portal_gateway.glb 8.28 at scale 0.85), a probe 1.6.
+ */
+export const GUIDE_PRESENT_MIN_R =
+  Math.max(...DESTINATIONS.map((d) => d.orbitR)) + SHIP_HALF_LENGTH + JELLY_RADIUS + PRESENT_CLEAR;
+/**
+ * Widest presenting circle (u): about a typical scan radius, so the turn stays
+ * in view. A target inside a solid (an uncharted world) widens it to clear that body.
+ */
+export const GUIDE_PRESENT_MAX_R = 30;
 /** Half-life (s) of easing onto the circle, so the arrival point blends in. */
 const PRESENT_HALF_LIFE = 0.3;
 /**
@@ -195,24 +209,65 @@ export function createGuideState(): GuideState {
     guiding: false, waiting: false, streak: false, offered: false,
     lostFor: 0, cooldown: 0, progress: NaN,
     comeT: 0, from: { x: 0, y: 0, z: 0 }, offerNear: Infinity,
-    center: { x: 0, y: 0, z: 0 }, radius: 0, angle: 0, turned: 0,
+    center: { x: 0, y: 0, z: 0 }, radius: 0, angle: 0, turned: 0, floor: 0,
   };
 }
 
 const prev = { x: 0, y: 0, z: 0 };
 const route = { x: 0, y: 0, z: 0 };
 const station = { x: 0, y: 0, z: 0 };
+/** The target as a keep-out of radius GUIDE_PRESENT_MIN_R (moved onto the target each step). */
+const targetKeep: JellyKeepOut[] = [{ x: 0, y: 0, z: 0, r: GUIDE_PRESENT_MIN_R, body: GUIDE_PRESENT_MIN_R }];
 
 function copy(o: Vec3, a: Vec3) { o.x = a.x; o.y = a.y; o.z = a.z; }
 function dist(a: Vec3, b: Vec3) { return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z); }
 
-/** The station: GUIDE_LEAD_DIST ahead of the ship toward the target, never past it. */
+/** Ship distance (u) inside which the station leaves the route for the target's side. */
+const NEAR_TARGET = GUIDE_LEAD_DIST + GUIDE_PRESENT_MIN_R;
+
+/**
+ * The station: GUIDE_LEAD_DIST ahead of the ship toward the target (spec
+ * "Leading"). Near the target that point would sit inside it: the career
+ * station is reached at 8.5 u, the portal at 2.2, both well inside the 20 u
+ * lead. So once the ship is within NEAR_TARGET, the station swings round the
+ * target at GUIDE_PRESENT_MIN_R, from the route (where the two rules meet, at
+ * exactly NEAR_TARGET: no jump) to beside it, on the route's horizontal
+ * perpendicular (by the time the ship is GUIDE_PRESENT_MIN_R out). It waits
+ * there, out of the ship's path, and presenting starts from that circle.
+ */
 function setStation(inp: GuideInput, target: Vec3) {
   awayFrom(route, inp.ship, target);
-  const lead = Math.min(GUIDE_LEAD_DIST, dist(inp.ship, target));
-  station.x = inp.ship.x + route.x * lead;
-  station.y = inp.ship.y + route.y * lead;
-  station.z = inp.ship.z + route.z * lead;
+  const d = dist(inp.ship, target);
+  if (d >= NEAR_TARGET) {
+    station.x = inp.ship.x + route.x * GUIDE_LEAD_DIST;
+    station.y = inp.ship.y + route.y * GUIDE_LEAD_DIST;
+    station.z = inp.ship.z + route.z * GUIDE_LEAD_DIST;
+    return;
+  }
+  // The side: the route's horizontal perpendicular; a vertical route has none, so +x.
+  let sx = route.z, sz = -route.x;
+  const sl = Math.hypot(sx, sz);
+  if (sl < 1e-6) { sx = 1; sz = 0; } else { sx /= sl; sz /= sl; }
+  // Bearing from the target: back along the route (toward the ship), turning to
+  // the side. The two are perpendicular, so the blend never vanishes.
+  const w = Math.min(1, (NEAR_TARGET - d) / GUIDE_LEAD_DIST);
+  const bx = -route.x * (1 - w) + sx * w, by = -route.y * (1 - w), bz = -route.z * (1 - w) + sz * w;
+  const k = GUIDE_PRESENT_MIN_R / Math.hypot(bx, by, bz);
+  station.x = target.x + bx * k;
+  station.y = target.y + by * k;
+  station.z = target.z + bz * k;
+}
+
+/**
+ * Keep it GUIDE_PRESENT_MIN_R off its target, then out of every solid (spec
+ * "Leading": "it keeps clear of every solid (planets, moons, stations)"). The
+ * station never sits closer, but the straight line to it can cut inside (a
+ * streak in, a catch-up, a swim back to a pilot waiting near the target).
+ */
+function keepClear(p: Vec3, target: Vec3, keepOut: readonly JellyKeepOut[]) {
+  copy(targetKeep[0], target);
+  pushOutOfSolids(p, targetKeep);
+  pushOutOfSolids(p, keepOut);
 }
 
 function startComing(s: GuideState, inp: GuideInput, offered: boolean) {
@@ -248,7 +303,7 @@ function stepComing(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
     s.pos.y = s.from.y + (station.y - s.from.y) * e;
     s.pos.z = s.from.z + (station.z - s.from.z) * e;
   }
-  pushOutOfSolids(s.pos, inp.keepOut);
+  keepClear(s.pos, target, inp.keepOut);
   // Reduced motion appears on the call/offer step and meets on the next, so the
   // two events never share a step.
   if (s.event === null && (s.comeT >= GUIDE_COME_SECONDS || inp.reducedMotion)) {
@@ -272,6 +327,10 @@ function startPresenting(s: GuideState, inp: GuideInput, target: Vec3) {
   s.radius = r;
   s.angle = h > 1e-6 ? Math.atan2(dz, dx) : 0;
   s.turned = 0;
+  // Arriving beside a near target (setStation) it is already on the circle, so
+  // the floor is the radius; arriving from inside it (above or below the
+  // target), it is where it started, so the floor never snaps it outward.
+  s.floor = Math.min(r, h);
 }
 
 function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
@@ -322,7 +381,7 @@ function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
     s.pos.x += s.vel.x * dt; s.pos.y += s.vel.y * dt; s.pos.z += s.vel.z * dt;
   }
   // Spec "Leading": "it keeps clear of every solid ... as the keep-out law does today".
-  pushOutOfSolids(s.pos, inp.keepOut);
+  keepClear(s.pos, target, inp.keepOut);
 }
 
 function stepPresenting(s: GuideState, inp: GuideInput, dt: number) {
@@ -333,6 +392,15 @@ function stepPresenting(s: GuideState, inp: GuideInput, dt: number) {
   s.pos.x = wx + (s.pos.x - wx) * k;
   s.pos.y = wy + (s.pos.y - wy) * k;
   s.pos.z = wz + (s.pos.z - wz) * k;
+  // The eased follow trails the moving circle point on a chord, ~5% inside the
+  // circle (a first-order lag at 0.79 rad/s, 0.43 s time constant): held out
+  // at the floor, so it never cuts in toward the target or a docked ship's orbit.
+  const fx = s.pos.x - s.center.x, fz = s.pos.z - s.center.z, fh = Math.hypot(fx, fz);
+  if (fh < s.floor && fh > 1e-9) {
+    const f = s.floor / fh;
+    s.pos.x = s.center.x + fx * f;
+    s.pos.z = s.center.z + fz * f;
+  }
   pushOutOfSolids(s.pos, inp.keepOut);
   if (s.turned >= TURN) {
     // Spec "Arriving": "Then it returns to roaming, or leads to the next step if called again".

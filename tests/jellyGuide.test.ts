@@ -2,14 +2,18 @@ import { describe, it, expect } from "vitest";
 import {
   createGuideState, stepGuide, type GuideInput, type GuideState, type GuideEvent,
   GUIDE_LOST_SECONDS, GUIDE_OFFER_COOLDOWN, GUIDE_COME_SECONDS, GUIDE_LEAD_DIST,
-  GUIDE_WAIT_MAX_SPEED, GUIDE_OFFER_LEAVE_DIST, GUIDE_PRESENT_SECONDS,
+  GUIDE_WAIT_MAX_SPEED, GUIDE_OFFER_LEAVE_DIST, GUIDE_PRESENT_SECONDS, GUIDE_PRESENT_MIN_R,
 } from "../src/utils/jellyGuide";
-import { pushOutOfSolids, type JellyKeepOut } from "../src/utils/jellyMood";
-import { SHIP_WARP_SPEED } from "../src/constants";
+import { pushOutOfSolids, JELLY_RADIUS, type JellyKeepOut } from "../src/utils/jellyMood";
+import { SHIP_WARP_SPEED, PORTAL_ZONE_R } from "../src/constants";
 import { CRUISE_MAX_FACTOR } from "../src/utils/cruise";
+import { DESTINATIONS } from "../src/data/destinations";
+import { STATION_RADII } from "../src/data/careerTrail";
+import { SHIP_HALF_LENGTH } from "../src/utils/worldCollide";
 
 type V = { x: number; y: number; z: number };
 const v = (x = 0, y = 0, z = 0): V => ({ x, y, z });
+const copyV = (o: V, a: V) => { o.x = a.x; o.y = a.y; o.z = a.z; };
 const dist = (a: V, b: V) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 const len = (a: V) => Math.hypot(a.x, a.y, a.z);
 const DT = 1 / 60;
@@ -350,6 +354,73 @@ describe("arriving", () => {
     inp.target = null;
     expect(run(s, inp, GUIDE_PRESENT_SECONDS + 0.5)).toEqual(["allDone"]);
     expect(s.name).toBe("roaming");
+  });
+
+  // The career station (arrival 8.5, STATION_RADII.zoneR) and the contact
+  // portal (2.2, PORTAL_ZONE_R) are reached well inside the 20 u lead: it must
+  // wait beside them, not park in the station's hull or the portal's mouth.
+  it("present radius clears the docked ship's orbit at every destination", () => {
+    const widest = Math.max(...DESTINATIONS.map((d) => d.orbitR));
+    expect(GUIDE_PRESENT_MIN_R).toBeGreaterThanOrEqual(widest + SHIP_HALF_LENGTH + JELLY_RADIUS);
+  });
+
+  for (const radius of [PORTAL_ZONE_R, STATION_RADII.zoneR]) {
+    for (const [label, from] of [["level", v(-300, 0, 0)], ["climbing", v(0, -300, 0)], ["oblique", v(200, -150, 120)]] as const) {
+      it(`never comes inside the present radius of a ${radius} u target (${label} approach), even with the ship docked`, () => {
+        const target = v(500, 200, -300);
+        const ship = v(target.x + from.x, target.y + from.y, target.z + from.z);
+        const s = createGuideState();
+        const inp = input({ jelly: v(target.x + 600, target.y, target.z + 600), ship, target, targetRadius: radius });
+        press(s, inp);
+        let closest = Infinity, closestShip = Infinity, arrived = false, orbit = 0;
+        for (let i = 0; i < 60 * 60; i++) {
+          if (!arrived) {
+            // Fly straight in at cruise and stop on the target (as a dock does).
+            const d = dist(inp.ship, target);
+            const k = d > CRUISE * DT ? CRUISE / d : 0;
+            inp.shipVel.x = (target.x - inp.ship.x) * k; inp.shipVel.y = (target.y - inp.ship.y) * k; inp.shipVel.z = (target.z - inp.ship.z) * k;
+            if (k === 0) copyV(inp.ship, target);
+          } else {
+            // Docked: the ship orbits at the station's orbitR, 0.25 rad/s (Spaceship.tsx).
+            orbit += 0.25 * DT;
+            const nx = target.x + Math.sin(orbit) * STATION_RADII.orbitR, nz = target.z + Math.cos(orbit) * STATION_RADII.orbitR;
+            inp.shipVel.x = (nx - inp.ship.x) / DT; inp.shipVel.y = 0; inp.shipVel.z = (nz - inp.ship.z) / DT;
+            inp.ship.x = nx; inp.ship.y = target.y; inp.ship.z = nz;
+          }
+          if (!arrived) { inp.ship.x += inp.shipVel.x * DT; inp.ship.y += inp.shipVel.y * DT; inp.ship.z += inp.shipVel.z * DT; }
+          stepGuide(s, inp, DT);
+          inp.toggle = false;
+          if (s.event === "arrived") arrived = true;
+          if (s.name !== "roaming") closest = Math.min(closest, dist(s.pos, target));
+          if (s.name === "presenting") closestShip = Math.min(closestShip, dist(s.pos, inp.ship));
+          if (s.name === "roaming") break;
+        }
+        expect(arrived).toBe(true);
+        expect(s.name).toBe("roaming"); // presented once round, then let go
+        expect(closest).toBeGreaterThanOrEqual(GUIDE_PRESENT_MIN_R - 1e-6);
+        expect(closestShip).toBeGreaterThan(JELLY_RADIUS + SHIP_HALF_LENGTH);
+      });
+    }
+  }
+
+  it("waits beside a near target, out of the ship's path, and presents from there", () => {
+    const target = v(400, 0, 0);
+    const s = createGuideState(), inp = input({ target, targetRadius: STATION_RADII.zoneR });
+    press(s, inp); run(s, inp, GUIDE_COME_SECONDS + 0.5);
+    inp.shipVel.x = CRUISE;
+    // Fly to just outside the arrival radius, then hover there.
+    run(s, inp, (400 - STATION_RADII.zoneR - 1) / CRUISE);
+    inp.shipVel.x = 0;
+    run(s, inp, 3);
+    expect(s.name).toBe("leading");
+    expect(dist(s.pos, target)).toBeCloseTo(GUIDE_PRESENT_MIN_R, 3);
+    // Beside the approach line (+x), not on it: off to one side, level with the target.
+    expect(Math.abs(s.pos.x - target.x)).toBeLessThan(0.5);
+    expect(Math.abs(s.pos.y - target.y)).toBeLessThan(0.5);
+    // Arriving starts the circle from where it waited (radius held, no jump).
+    inp.shipVel.x = CRUISE;
+    expect(run(s, inp, 0.2)).toEqual(["arrived"]);
+    expect(Math.hypot(s.pos.x - target.x, s.pos.z - target.z)).toBeCloseTo(GUIDE_PRESENT_MIN_R, 1);
   });
 
   it("circles a planet target outside its body", () => {
