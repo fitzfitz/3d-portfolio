@@ -25,7 +25,7 @@ export interface JellyGuideDebug {
   state: GuideName;
   /** The creature's world position. */
   pos: { x: number; y: number; z: number };
-  /** The posture's smoothed velocity (u/s), live (jellyPosture.ts PostureState.vel). */
+  /** The posture's smoothed velocity (u/s), live (jellyPosture.ts PostureState.vel): read its direction; it is capped at POSTURE_V_MAX. */
   vel: { x: number; y: number; z: number };
   /** The body's +y (the bell axis) in world space, unit length. */
   up: { x: number; y: number; z: number };

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  createPostureState, stepPosture, stepVelocity, POSTURE_V_SLOW, POSTURE_V_SWIM,
+  createPostureState, stepPosture, stepVelocity, POSTURE_V_SLOW, POSTURE_V_SWIM, POSTURE_V_MAX,
   type PostureState, type Quat,
 } from "../src/utils/jellyPosture";
 
@@ -174,6 +174,42 @@ describe("stepVelocity", () => {
     stepVelocity(s, -9000, 3000, 0, 1 / 60);
     stepPosture(s, s.vel, 1 / 60, q);
     expect(angleBetween(prev, q)).toBeLessThan(0.05);
+  });
+});
+
+// The guide streaks in at ~250 u/s and stops dead on its station (spec
+// 2026-10-23-jellyfish-guide, "Calling it"); it leads at warp and stops when
+// the pilot does. Smoothed in raw u/s, that speed took ~5 s to fall under the
+// swim threshold, so a stopped guide hung sideways (measured in the browser,
+// Task 5). Spec "Swim posture": "easing back upright over ~1 s as it slows".
+describe("stepVelocity: a fast stop still reads as a stop", () => {
+  /** Dash along +x at `speed` for 2 s, then stand still; returns seconds until upright (body up · +y > 0.95). */
+  function uprightAfterStop(speed: number): number {
+    const s = createPostureState(), q = quat(), dt = 1 / 60;
+    let x = 0;
+    for (let i = 0; i < 120; i++) { x += speed * dt; stepVelocity(s, x, 0, 0, dt); stepPosture(s, s.vel, dt, q); }
+    expect(bodyUp(q).x).toBeGreaterThan(0.9); // it was swimming bell first
+    for (let i = 1; i < 600; i++) {
+      stepVelocity(s, x, 0, 0, dt); stepPosture(s, s.vel, dt, q);
+      if (bodyUp(q).y > 0.95) return i * dt;
+    }
+    return Infinity;
+  }
+  it("caps each sample at POSTURE_V_MAX, keeping its direction", () => {
+    const s = createPostureState();
+    for (let i = 0; i < 900; i++) stepVelocity(s, i * 3, i * 4, 0, 1 / 60); // 300 u/s along (3, 4, 0)
+    expect(Math.hypot(s.vel.x, s.vel.y, s.vel.z)).toBeCloseTo(POSTURE_V_MAX, 3);
+    expect(s.vel.x / s.vel.y).toBeCloseTo(3 / 4, 6);
+  });
+  it("the cap sits above cruise-like swimming and is reached within two half-lives of the swim threshold", () => {
+    expect(POSTURE_V_MAX).toBeGreaterThan(POSTURE_V_SWIM * 3);
+    expect(POSTURE_V_MAX).toBeLessThanOrEqual(POSTURE_V_SWIM * 4);
+  });
+  it("upright as soon after a 250 u/s streak stops as after a 10 u/s swim stops", () => {
+    // A 10 u/s swim's own stop (the posture's 1 s half-lives) is the bar: ~3.6 s to 0.95.
+    const fast = uprightAfterStop(250), slow = uprightAfterStop(10);
+    expect(fast).toBeLessThan(4);
+    expect(fast - slow).toBeLessThan(0.1);
   });
 });
 

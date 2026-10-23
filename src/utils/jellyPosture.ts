@@ -40,6 +40,18 @@ export interface PostureState {
  */
 export const POSTURE_V_SLOW = 0.6;
 export const POSTURE_V_SWIM = 2.37;
+/**
+ * Each velocity sample is capped at this speed (u/s), direction kept. The
+ * posture reads speed only against the two thresholds above, and saturates at
+ * POSTURE_V_SWIM, so nothing faster changes how it looks; but smoothed in raw
+ * u/s, the guide's ~250 u/s streak in took ~5 s to fall under the swim
+ * threshold, and a guide stopped dead on its station hung sideways that long
+ * (measured in the browser, jellyfish-guide Task 5). Capped at 4x the swim
+ * threshold, a stop from any speed falls below it in two half-lives (~1 s),
+ * then eases upright (spec "Swim posture": "easing back upright over ~1 s as
+ * it slows"). Above cruise (10.8) in spirit: 9.5 u/s already swims fully.
+ */
+export const POSTURE_V_MAX = 4 * POSTURE_V_SWIM;
 /** Half-lives (s): fast into a swim or a turn, slow back to upright (spec: ~1 s). */
 const HALF_LIFE_TURN = 0.3;
 const HALF_LIFE_UPRIGHT = 1;
@@ -68,7 +80,7 @@ function smoothstep(lo: number, hi: number, x: number): number {
 
 /**
  * Feed this frame's world position. Velocity is the position delta over dt,
- * eased. A first sample, dt = 0, or a jump longer than the mood module's
+ * capped at POSTURE_V_MAX and eased. A first sample, dt = 0, or a jump longer than the mood module's
  * PATH_JUMP (a reduced-motion appearance, a loop-phase jump, a teleport) is "no sample": the
  * velocity holds and the next frame measures from the new spot, so a jump can't
  * read as a 2000 u/s dash and yank the posture.
@@ -78,11 +90,14 @@ export function stepVelocity(s: PostureState, x: number, y: number, z: number, d
   const dx = x - s.last.x, dy = y - s.last.y, dz = z - s.last.z;
   s.last.x = x; s.last.y = y; s.last.z = z;
   if (!s.hasLast) { s.hasLast = true; return; }
-  if (Math.hypot(dx, dy, dz) > PATH_JUMP) return;
+  const d = Math.hypot(dx, dy, dz);
+  if (d > PATH_JUMP) return;
   const f = rate(dt, HALF_LIFE_VEL);
-  s.vel.x += (dx / dt - s.vel.x) * f;
-  s.vel.y += (dy / dt - s.vel.y) * f;
-  s.vel.z += (dz / dt - s.vel.z) * f;
+  // Sample velocity, capped at POSTURE_V_MAX (direction kept).
+  const k = d > POSTURE_V_MAX * dt ? POSTURE_V_MAX / d : 1 / dt;
+  s.vel.x += (dx * k - s.vel.x) * f;
+  s.vel.y += (dy * k - s.vel.y) * f;
+  s.vel.z += (dz * k - s.vel.z) * f;
 }
 
 /**

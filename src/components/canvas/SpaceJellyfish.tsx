@@ -201,6 +201,11 @@ export default function SpaceJellyfish() {
   /** Last frame's ship position, for its velocity (the guide matches it, warp included). */
   const lastShip = useMemo(() => ({ x: 0, y: 0, z: 0, has: false }), []);
   /**
+   * Last frame's creature position, for its true speed: the streak's length
+   * reads it (the posture's velocity is capped at POSTURE_V_MAX, ~9.5 u/s).
+   */
+  const lastJelly = useMemo(() => ({ x: 0, y: 0, z: 0, has: false }), []);
+  /**
    * Destinations reached this session, one bit each (DESTINATIONS order), and
    * how many: part of the progress signature (spec "Offering itself": "no
    * newly reached destination").
@@ -420,7 +425,9 @@ export default function SpaceJellyfish() {
     // The glow streak: the guide's fast travel, or a fast swim home; never under
     // reduced motion (spec). Its stretched tentacles outgrow the padded cull
     // bound, so culling is off while it shows (one object, a flag, no cost).
-    const speed = Math.hypot(posture.vel.x, posture.vel.y, posture.vel.z);
+    const speed = lastJelly.has && frameDt > 0
+      ? Math.hypot(g.position.x - lastJelly.x, g.position.y - lastJelly.y, g.position.z - lastJelly.z) / frameDt : 0;
+    lastJelly.x = g.position.x; lastJelly.y = g.position.y; lastJelly.z = g.position.z; lastJelly.has = true;
     const streakOn = frame.guide.streak || (frame.returning && speed > GUIDE_STREAK_SPEED);
     // Reduced motion drops it at once rather than fading it out.
     streak.current = reduced ? 0 : damp(streak.current, streakLength(streakOn, speed, false), STREAK_HALF_LIFE, dt);
