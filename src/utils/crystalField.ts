@@ -1,7 +1,7 @@
 import { LOCK_RETAIN_FACTOR } from "../constants";
 import { DESTINATIONS } from "../data/destinations";
 import { GATE_POS } from "../data/dormantGate";
-import { PROBE_SLOTS } from "../data/probes";
+import { PROBES, PROBE_SLOTS } from "../data/probes";
 
 /** A sphere spawns must stay clear of — a body, a landmark, or the ship. */
 export interface AvoidPoint { x: number; y: number; z: number; r: number }
@@ -53,6 +53,17 @@ export const LANDMARK_KEEP_OUT = 20;
  */
 export const CRYSTAL_LANDMARKS: readonly (readonly [number, number, number])[] = [
   ...DESTINATIONS.map((d) => d.pos), GATE_POS, ...PROBE_SLOTS.flatMap((p) => [p.home, ...p.remote]),
+];
+
+/**
+ * Fixed landmarks the warp leaves room for (Spaceship's cruise spheres): every
+ * destination, the gate, and the spots of the probes in play only. Unlike the
+ * crystal keep-outs, an empty slot must not throttle the warp, so with the
+ * bundled three projects this is exactly the set it always was (spec
+ * 2026-10-23-dynamic-content, build ruling R8; tests/crystalField.test.ts).
+ */
+export const WARP_LANDMARKS: readonly (readonly [number, number, number])[] = [
+  ...DESTINATIONS.map((d) => d.pos), GATE_POS, ...PROBES.flatMap((p) => [p.home, ...p.remote]),
 ];
 const SHIP_KEEP_OUT = 30;
 

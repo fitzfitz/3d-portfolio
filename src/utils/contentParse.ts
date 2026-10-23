@@ -1,6 +1,8 @@
 import type { CareerEntry } from "../data/career";
 import type { Content, Project } from "../data/content";
-import { isBodyId } from "../data/bodyIds";
+import { BODY_IDS, MOON_IDS } from "../data/bodyIds";
+import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../data/asteroids";
+import { GATE_SCAN_ID } from "../data/dormantGate";
 
 /**
  * Validates GET /content (beacon-api/src/content.ts) row by row (spec
@@ -18,6 +20,29 @@ import { isBodyId } from "../data/bodyIds";
 export const DESTINATION_IDS: readonly string[] = ["career", "shipyard", "contact"];
 /** The logbook's badge ids (utils/logbook.ts): a project's dossier entry shares their id space. Kept equal by the same test. */
 export const BADGE_IDS: readonly string[] = ["slingshot", "comet", "ring", "ore", "convoy", "shards"];
+/**
+ * The comets' scan ids (data/smallBodyField.ts COMET_SCAN_IDS), repeated
+ * because that module loads the ephemeris, which loads constants.ts. Kept
+ * equal by tests/contentParse.test.ts.
+ */
+export const COMET_IDS: readonly string[] = ["comet_2p", "comet_67p"];
+
+/**
+ * Every id a project id would collide with: a probe id keys a scannable, a
+ * radio zone pool, a jump target and a logbook entry, beside these. Derived
+ * from the import-free source constants where there are some.
+ */
+export const RESERVED_IDS: ReadonlySet<string> = new Set<string>([
+  ...DESTINATION_IDS, ...BADGE_IDS, ...BODY_IDS, ...MOON_IDS, ...COMET_IDS,
+  ...ASTEROID_COLLIDERS.map((a) => a.id), SUN_COLLIDER.id, GATE_SCAN_ID,
+  // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the ring course, the visiting comet.
+  "sun", "jellyfish", "time_trial", "comet_visitor",
+]);
+/** Families of generated scan ids: buoys (career_<n>), beacons, live-sky ghosts, comets, scenery asteroids. */
+export const RESERVED_PREFIXES: readonly string[] = ["career_", "beacon_", "ghost_", "comet_", "asteroid_"];
+
+/** True when a project may not take this id. */
+export const isReservedId = (id: string): boolean => RESERVED_IDS.has(id) || RESERVED_PREFIXES.some((p) => id.startsWith(p));
 
 /** A probe id: it keys localStorage, scannables and the HUD row, so a short slug. */
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -31,8 +56,11 @@ type Warn = (msg: string) => void;
 
 const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 const text = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
-/** D1 sends NULL for an absent optional column; the bundled files leave the key out. */
-const absent = (v: unknown) => v === null || v === undefined;
+/**
+ * D1 sends NULL for an absent optional column, the bundled files leave the key
+ * out, and the D1 console may leave a cleared cell as '' or spaces: all absent.
+ */
+const absent = (v: unknown) => v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 
 /** `tech` is JSON-array TEXT in D1 and an array in projects.json; either must give non-empty strings. */
 function techList(v: unknown): string[] | null {
@@ -47,7 +75,7 @@ function techList(v: unknown): string[] | null {
 function projectProblem(r: Row, seen: ReadonlySet<string>): string | null {
   if (typeof r.id !== "string" || !ID_RE.test(r.id)) return "id must be a lower-case slug (a-z, 0-9, - or _)";
   if (seen.has(r.id)) return "a project with this id came earlier";
-  if (DESTINATION_IDS.includes(r.id) || BADGE_IDS.includes(r.id) || isBodyId(r.id)) return "id is taken by a destination, a logbook badge or a planet";
+  if (isReservedId(r.id)) return "id is taken by a destination, a logbook badge, a planet, a moon or another scannable";
   for (const f of ["title", "role", "duration", "short", "description"] as const) if (!text(r[f])) return `${f} must be non-empty text`;
   if (typeof r.color !== "string" || !COLOUR_RE.test(r.color)) return "color must be #rrggbb";
   if (!techList(r.tech)) return "tech must be a JSON array of non-empty strings, e.g. [\"React\",\"TypeScript\"]";
@@ -60,7 +88,7 @@ function careerProblem(r: Row): string | null {
   if (typeof r.start !== "string" || !DATE_RE.test(r.start)) return "start must read like \"Nov 2020\"";
   if (!absent(r.end) && !(typeof r.end === "string" && DATE_RE.test(r.end))) return "end must be NULL (current role) or read like \"Apr 2022\"";
   if (typeof r.employment !== "string" || !EMPLOYMENT.includes(r.employment)) return "employment must be Full-time or Contract";
-  if (!absent(r.note) && !text(r.note)) return "note must be NULL or non-empty text";
+  if (!absent(r.note) && typeof r.note !== "string") return "note must be NULL or text";
   return null;
 }
 

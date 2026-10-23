@@ -1,5 +1,5 @@
 import { drawnRadius } from "../utils/sizeLaw";
-import type { BodyId } from "./bodyIds";
+import { MOON_IDS, type BodyId } from "./bodyIds";
 import { bodyById, type AtmosphereLook } from "./solarSystem";
 
 /**
@@ -17,7 +17,7 @@ import { bodyById, type AtmosphereLook } from "./solarSystem";
  * map's measured linear median (tests/bodyMaps.test.ts). Phobos and Deimos are
  * shape models (Task 14): theirs is the scene-scale albedo itself.
  */
-export const MOON_IDS = ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"] as const;
+export { MOON_IDS };
 export type MoonId = (typeof MOON_IDS)[number];
 
 /** Spins and insets run on one close-up clock: 1 s = 1.2 h. */

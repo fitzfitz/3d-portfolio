@@ -183,9 +183,13 @@ implementer's calls.
 - **R7, the buoy step** is `1 / max(n − 1, 4)` (above). Gaps are at least 15 u
   (a buoy card is 6 u across) and at most 43 u, inside the ≤ 50 u rule. The
   old "at least 20 apart" rule holds up to 9 entries.
-- **R8, everything placed around the probes uses all six slots**, whatever the
-  data: the crystal field's keep-outs and the clearance tests. The world
-  outside the probes never depends on the content.
+- **R8, two readers of the probe spots.** Crystal spawn keep-outs
+  (`CRYSTAL_LANDMARKS`) and the clearance tests use all six slots, whatever
+  the data, so the world outside the probes never depends on the content. The
+  warp limit (`WARP_LANDMARKS`, Spaceship's cruise spheres) uses only the
+  probes in play: an empty slot must not throttle the warp, and with the
+  bundled three projects the set is exactly the one it always was (whole-branch
+  review, 2026-10-23).
 - **R9, logbook wording is derived** from the project title: "Read the
   ⟨title⟩ dossier", "GRAB THE ⟨TITLE⟩ PROBE (HOLD F)", and a short hint of the
   longest tail of the title's words that fits 18 characters with " PROBE"

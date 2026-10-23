@@ -49,6 +49,22 @@ describe("beacon-api/content-seed.sql", () => {
     expect(parsed.career).toHaveLength(wire.career.length);
   });
 
+  // The console refuses what the site would drop (whole-branch review): the
+  // same rules as src/utils/contentParse.ts, applied by D1 itself. Checked
+  // against a real local D1 in the PR's report.
+  it("mirrors the site's row rules as CHECKs", () => {
+    const schema = readFileSync("beacon-api/content.sql", "utf8");
+    for (const c of ["title", "role", "duration", "short", "description", "company", "location", "summary"]) {
+      expect(schema, c).toContain(`CHECK (trim(${c}) <> '')`);
+    }
+    expect(schema).toContain("json_array_length(tech) > 0");
+    expect(schema).toContain("repo GLOB 'https://?*'");
+    expect(schema).toContain("start GLOB '[A-Z][a-z][a-z] [0-9][0-9][0-9][0-9]'");
+    expect(schema).toContain("\"end\" GLOB '[A-Z][a-z][a-z] [0-9][0-9][0-9][0-9]'");
+    expect(schema).toContain("NOT id GLOB '*[^a-z0-9_-]*'");
+    expect(schema).toContain("employment IN ('Full-time', 'Contract')");
+  });
+
   it("quotes text for SQL: an apostrophe is doubled, end is quoted", () => {
     const sql = contentSeedSql([{ ...projectsJson[0], title: "Fitz's \"best\"" }], [{ ...BUNDLED_CAREER[1] }]);
     expect(sql).toContain("'Fitz''s \"best\"'");

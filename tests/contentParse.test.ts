@@ -3,7 +3,17 @@ import projectsJson from "../src/data/projects.json";
 import { BUNDLED_CAREER } from "../src/data/career";
 import { BUNDLED_CONTENT } from "../src/data/content";
 import { RESERVED_ZONE_IDS } from "../src/data/destinations";
-import { parseContent, resolveContent, DESTINATION_IDS, BADGE_IDS } from "../src/utils/contentParse";
+import { parseContent, resolveContent, DESTINATION_IDS, BADGE_IDS, COMET_IDS, isReservedId } from "../src/utils/contentParse";
+import { COMET_SCAN_IDS } from "../src/data/smallBodyField";
+import { MOON_IDS } from "../src/data/solarMoons";
+import { BODY_IDS } from "../src/data/bodyIds";
+import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
+import { GATE_SCAN_ID } from "../src/data/dormantGate";
+import { SUN_WELL_ID } from "../src/utils/gravityWell";
+import { ghostScanId } from "../src/utils/liveSky";
+import { BUOYS } from "../src/data/careerTrail";
+import { chatterPools } from "../src/data/chatterLines";
+import { PROBE_IDS } from "../src/data/probes";
 import { LOGBOOK } from "../src/utils/logbook";
 
 /** A project as D1 returns it: every column, `tech` as JSON text, NULL for absent. */
@@ -27,6 +37,14 @@ describe("parseContent: projects", () => {
       id: "atlas", title: "Atlas", role: "Personal project", duration: "2026", short: "A short line.",
       description: "A longer description.", tech: ["Go", "SQLite"], color: "#12ab9F",
     }]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("treats a blank or whitespace repo as absent, not as a bad row", () => {
+    for (const repo of ["", "   "]) {
+      const { projects } = parseContent({ projects: [projectRow({ repo })] }, warn);
+      expect(projects?.[0], JSON.stringify(repo)).not.toHaveProperty("repo");
+    }
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -60,6 +78,15 @@ describe("parseContent: projects", () => {
     ["a destination's id", { id: "contact" }],
     ["a body's id", { id: "earth" }],
     ["a logbook badge's id", { id: "ring" }],
+    ["a moon's id (it would take Titan's radio pool)", { id: "titan" }],
+    ["the sun's id", { id: "sun" }],
+    ["a buoy's id", { id: "career_0" }],
+    ["a scenery asteroid's id", { id: "asteroid_3" }],
+    ["a comet's id", { id: "comet_2p" }],
+    ["the creature's id", { id: "jellyfish" }],
+    ["the ring course's id", { id: "time_trial" }],
+    ["the gate's id", { id: "dormant_gate" }],
+    ["a beacon-style id", { id: "beacon_x" }],
   ])("drops a row with %s, and warns", (_, over) => {
     const { projects } = parseContent({ projects: [projectRow(over), projectRow({ id: "kept" })] }, warn);
     expect(projects?.map((p) => p.id)).toEqual(["kept"]);
@@ -83,6 +110,17 @@ describe("parseContent: projects", () => {
     expect([...DESTINATION_IDS].sort()).toEqual([...RESERVED_ZONE_IDS].sort());
   });
 
+  it("reserves every scannable and radio-zone id the scene uses", () => {
+    expect([...COMET_IDS]).toEqual([...COMET_SCAN_IDS]);
+    const taken = [
+      ...BODY_IDS, ...MOON_IDS, ...COMET_SCAN_IDS, ...ASTEROID_COLLIDERS.map((a) => a.id), GATE_SCAN_ID, SUN_WELL_ID,
+      ...BUOYS.map((b) => b.id), "career_11", ghostScanId("abc"), "beacon_123", "comet_visitor", "jellyfish", "time_trial",
+      ...RESERVED_ZONE_IDS, ...Object.keys(chatterPools.zones).filter((z) => !PROBE_IDS.includes(z)),
+    ];
+    for (const id of taken) expect(isReservedId(id), id).toBe(true);
+    for (const p of projectsJson) expect(isReservedId(p.id), p.id).toBe(false);
+  });
+
   it("names the logbook's badge ids, which a project id may not take", () => {
     expect([...BADGE_IDS].sort()).toEqual(LOGBOOK.filter((e) => e.section === "badge").map((e) => e.id).sort());
   });
@@ -94,6 +132,15 @@ describe("parseContent: career", () => {
     expect(career).toEqual([{
       role: "Engineer", company: "Acme", start: "Jan 2020", employment: "Full-time", location: "Jakarta, Indonesia", summary: "Built things.",
     }]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("treats a blank or whitespace note or end as absent, not as a bad row", () => {
+    for (const blank of ["", "  "]) {
+      const { career } = parseContent({ career: [careerRow({ note: blank, end: blank })] }, warn);
+      expect(career?.[0]).not.toHaveProperty("note");
+      expect(career?.[0]).not.toHaveProperty("end");
+    }
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -116,7 +163,6 @@ describe("parseContent: career", () => {
     ["a lower-case month", { start: "jan 2020" }],
     ["an unreadable end", { end: "Present" }],
     ["another employment type", { employment: "Freelance" }],
-    ["a blank note", { note: "" }],
     ["a numeric note", { note: 3 }],
   ])("drops a row with %s, and warns", (_, over) => {
     const { career } = parseContent({ career: [careerRow(over), careerRow({ company: "Kept" })] }, warn);

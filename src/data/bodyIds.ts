@@ -7,6 +7,9 @@ export type BodyId = (typeof BODY_IDS)[number];
 
 export const isBodyId = (id: string): id is BodyId => (BODY_IDS as readonly string[]).includes(id);
 
+/** The nine major moons' ids (data/solarMoons.ts re-exports them). Here so import-free readers (the content validator) can use them. */
+export const MOON_IDS = ["moon", "phobos", "deimos", "io", "europa", "ganymede", "callisto", "titan", "triton"] as const;
+
 /** The five fictional worlds' ids (stored progress, beacons) and the real body each became. */
 export const LEGACY_WORLD_TO_BODY: Readonly<Record<"w-rock" | "w-ringed" | "w-tilted" | "w-blue" | "w-dwarf", BodyId>> = {
   "w-rock": "mercury",
