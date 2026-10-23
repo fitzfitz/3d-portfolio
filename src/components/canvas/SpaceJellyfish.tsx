@@ -25,6 +25,7 @@ import { GuideRadio } from "../../utils/guideRadio";
 import { takeGuideToggle, requestGuideToggle, setGuideActive } from "../../utils/guideToggle";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
+import { soundManager } from "../../audio/soundManager";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
@@ -412,7 +413,9 @@ export default function SpaceJellyfish() {
 
     const ev = frame.guide.event;
     const line = radio.update(ev, frame.guide.offered, now / 1000, radioBusy);
-    if (line) store.sendBroadcast(line);
+    // The guide's own call with each line it sends: the typewriter's tick alone
+    // was near inaudible (owner, after #54: "I don't hear any radio sound").
+    if (line) { store.sendBroadcast(line); soundManager.guideChime(); }
     // Spec "Calling it": "it streaks to the ship, pulses"; "Arriving": "pulses".
     // A kick to the pulse rate that eases back (the phase never jumps).
     if (!reduced && (ev === "met" || ev === "arrived")) pulseRate.current = GUIDE_PULSE_KICK;
