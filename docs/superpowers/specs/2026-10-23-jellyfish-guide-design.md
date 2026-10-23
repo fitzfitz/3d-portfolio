@@ -55,9 +55,10 @@ startled moods. It swims bell first along the loop (see posture).
 - Never while docked or orbit-locked, in a dossier, racing, in photo mode, in
   the classic résumé, or while another broadcast holds the radio.
 - At most once every few minutes (cooldown; a constant in the guide module).
-  If the pilot flies away from the offer, it goes back to roaming: 6 s of
-  unbroken flying away from the target (`GUIDE_DECLINE_SECONDS`). A guide
-  called with J is never withdrawn this way.
+  An offered guide behaves exactly like a called one: it stays until the
+  pilot arrives at the next step or presses J (owner, 2026-10-23: flying
+  away no longer withdraws it). Its radio line says what it is and that J
+  sends it off.
 
 ### Leading
 - **Target:** the world position of the logbook's NEXT step: the three probe
@@ -160,7 +161,9 @@ wrong about the code. Code comments cite them as "spec, build ruling Rn".
   target than that radius: 16.7 u, the widest docking orbit (10) plus the
   ship's half length and the creature's reach, so it clears a docked ship.
 - **Owner feedback 2026-10-23 (after #54):** the guide never falls behind; it
-  holds ~20 u in front of the nose, leaning ≤ 20° toward the target; offers
-  withdraw after 6 s of flying away. Guide radio lines play the guide chime
+  holds ~20 u in front of the nose, leaning ≤ 20° toward the target. Offers
+  stay until arrival or J ("I never get any offer when I flew away": a lost
+  pilot flies anywhere, so a fly-away withdrawal ate every offer), and the
+  offer line names the guide and [J] to send it off. Guide radio lines play the guide chime
   (`soundManager.guideChime`, gain 0.08, under `chime()`'s 0.1), because the
   typewriter's tick alone was near inaudible ("I don't hear any radio sound").
