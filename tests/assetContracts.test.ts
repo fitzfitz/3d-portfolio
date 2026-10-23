@@ -812,6 +812,48 @@ describe("saucer (saucer.glb)", () => {
     }
   });
 
+  it("slime is never band-tinted, and the rim's slime is geometry over the band (round 2)", async () => {
+    // Slime vertices are found by part id: 8 goo strings, 9 the rim's static
+    // slime (its smears, raised zone-0 decals, and their drips), 10/11 drips
+    // on a tentacle or the body. None may sit in the B (band tint) zone.
+    for (const k of [0, 1] as const) {
+      const n = await lod(k);
+      const p = prim(n, "SaucerBaked");
+      const mo = elements(p, "_MOTION"), col = elements(p, "COLOR_0"), pos = world(n, p);
+      let slime = 0;
+      for (let i = 0; i < mo.length; i++) {
+        if ([8, 9, 10, 11].includes(partOf(mo[i][0]))) {
+          slime++;
+          expect(col[i][2], `LOD${k} slime vertex ${i} in the band zone`).toBeLessThan(0.5);
+        }
+      }
+      expect(slime, `LOD${k}`).toBeGreaterThan(0);
+      // the rim's slime reaches up onto the band: part-9 vertices at the band's height
+      const bandY = pos.filter((_, i) => col[i][2] > 0.5).map((v) => v[1]);
+      const lo = Math.min(...bandY);
+      const onRim = pos.filter((v, i) => partOf(mo[i][0]) === 9 && v[1] >= lo).length;
+      expect(onRim, `LOD${k} rim slime at the band's height`).toBeGreaterThan(0);
+    }
+  });
+
+  it("lock cards sample the fur atlas's lock half; the rig says where the halves are", async () => {
+    const r = rig();
+    expect(r.furAtlas.shells).toEqual([0, 0, 0.5, 1]);
+    expect(r.furAtlas.locks).toEqual([0.5, 0, 1, 1]);
+    const p = prim(await lod(0), "SaucerFur");
+    const uv = elements(p, "TEXCOORD_0"), col = elements(p, "COLOR_0");
+    let cards = 0;
+    for (let i = 0; i < uv.length; i++) {
+      if (col[i][0] < 0.5) continue;
+      cards++;
+      expect(uv[i][0]).toBeGreaterThanOrEqual(0.5);
+      expect(uv[i][0]).toBeLessThanOrEqual(1);
+      expect(uv[i][1]).toBeGreaterThanOrEqual(0);
+      expect(uv[i][1]).toBeLessThanOrEqual(1);
+    }
+    expect(cards).toBeGreaterThan(0);
+  });
+
   it("the rig's muzzle is under the saucer, inside the bounds, at the cannon", async () => {
     const r = rig();
     const b = bounds(await lab());

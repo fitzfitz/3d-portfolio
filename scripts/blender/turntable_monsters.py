@@ -287,7 +287,10 @@ def fur_preview(objs, rig):
         if not slots or rig is None:
             continue
         fur_mat = o.material_slots[slots[0]].material
-        tex = next(n for n in fur_mat.node_tree.nodes if n.type == "TEX_IMAGE")
+        texs = [n for n in fur_mat.node_tree.nodes if n.type == "TEX_IMAGE"]
+        tex = next(n for n in texs if n.image.colorspace_settings.name != "Non-Color")
+        ntex = next((n for n in texs if n is not tex), None)
+        atlas = rig.get("furAtlas")
         n_shell = int(OPT.get("fur-shells", rig["furShells"]))
         if n_shell < 1:
             continue
@@ -314,7 +317,32 @@ def fur_preview(objs, rig):
             t = nt.nodes.new("ShaderNodeTexImage")
             t.image = tex.image
             uv = nt.nodes.new("ShaderNodeUVMap")
-            nt.links.new(uv.outputs[0], t.inputs[0])
+            src = uv.outputs[0]
+            if atlas and not use_attr:
+                # shells and the base sample the atlas's tiling half:
+                # (fract(u) x its width, fract(v)), as the game's shader does
+                sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+                nt.links.new(src, sep.inputs[0])
+                fu, fv = nt.nodes.new("ShaderNodeMath"), nt.nodes.new("ShaderNodeMath")
+                fu.operation = fv.operation = "FRACT"
+                nt.links.new(sep.outputs[0], fu.inputs[0])
+                nt.links.new(sep.outputs[1], fv.inputs[0])
+                su = nt.nodes.new("ShaderNodeMath")
+                su.operation = "MULTIPLY"
+                nt.links.new(fu.outputs[0], su.inputs[0])
+                su.inputs[1].default_value = atlas["shells"][2] - atlas["shells"][0]
+                cmb = nt.nodes.new("ShaderNodeCombineXYZ")
+                nt.links.new(su.outputs[0], cmb.inputs[0])
+                nt.links.new(fv.outputs[0], cmb.inputs[1])
+                src = cmb.outputs[0]
+            nt.links.new(src, t.inputs[0])
+            if ntex is not None:          # the fur's strand normal map, same lookup
+                tn = nt.nodes.new("ShaderNodeTexImage")
+                tn.image = ntex.image
+                nt.links.new(src, tn.inputs[0])
+                nm = nt.nodes.new("ShaderNodeNormalMap")
+                nt.links.new(tn.outputs["Color"], nm.inputs["Color"])
+                nt.links.new(nm.outputs["Normal"], b.inputs["Normal"])
             at = nt.nodes.new("ShaderNodeAttribute")
             at.attribute_name = "furx"
             wt = nt.nodes.new("ShaderNodeAttribute")

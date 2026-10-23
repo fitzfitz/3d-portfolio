@@ -292,14 +292,19 @@ def down(a, size):
     return a.reshape(size, f, size, f, a.shape[-1]).mean(axis=(1, 3))
 
 
+def down_rect(a, f):
+    """Box-filter any image down by an integer factor f."""
+    h, w = a.shape[0] // f, a.shape[1] // f
+    return a[:h * f, :w * f].reshape(h, f, w, f, a.shape[-1]).mean(axis=(1, 3))
+
+
 def to_srgb(c):
     c = np.clip(c, 0, 1)
     return np.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1 / 2.4) - 0.055)
 
 
 def to_image(name, rgba, noncolor=False, alpha=False):
-    size = rgba.shape[0]
-    img = bpy.data.images.new(name, width=size, height=size, alpha=alpha)
+    img = bpy.data.images.new(name, width=rgba.shape[1], height=rgba.shape[0], alpha=alpha)
     if noncolor:
         img.colorspace_settings.name = "Non-Color"
     img.pixels.foreach_set(rgba.astype(np.float32).ravel())
@@ -379,6 +384,92 @@ def fur_strand_texture(size, seed, clump_cells=8, strands=90000, r_px=(1.1, 2.1)
     cover = {h: round(float((alpha >= h).mean()), 3) for h in (0.02, 0.1, 0.25, 0.4, 0.55, 0.75, 0.9)}
     print("fur mask coverage by shell height", cover)
     return np.concatenate([rgb, a], -1).astype(np.float32)
+
+
+def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.27, 0.065),
+                   wet=(0.21, 0.37, 0.12), background=0.02):
+    """Hair-lock cards' texture, `variants` locks side by side (each w /
+    variants wide, h tall; v 0 at the root, 1 at the tip), RGBA linear, and
+    its tangent-space normal map (u across, v along).
+
+    Each lock is solid at its root, splits at a third of its length into
+    3-6 clumps that drift apart and taper to points at different lengths,
+    and frays past them into single strands. Inside it is fine parallel
+    strands: each strand its own shade (colour) and a round cross-section
+    (normal), every clump shaded round across its width. Colour runs from
+    dark roots to lighter, wetter tips. Variant 0 keeps a long solid centre
+    clump (a drip hangs from it). Outside the locks alpha is `background`
+    (just above the material's 0.01 cutoff, so a stock viewer never punches
+    holes in the fur base that tiles over this half; the game's card test
+    starts higher)."""
+    rng = np.random.default_rng(seed)
+    vw = w // variants
+    x = (np.arange(vw) + 0.5) / vw
+    v = (np.arange(h) + 0.5) / h
+    X, V = np.meshgrid(x, v)
+    rgba = np.zeros((h, w, 4), np.float32)
+    nrm = np.zeros((h, w, 3), np.float32)
+    root, tip, wet = (np.array(c, np.float32) for c in (root, tip, wet))
+    for k in range(variants):
+        n_cl = (3, 4, 5, 6)[k % 4]
+        split = rng.uniform(0.26, 0.36)
+        span = 0.84
+        alpha = np.zeros_like(X)
+        across = np.zeros_like(X)            # -1..1 across the clump the texel is in (for the round shading)
+        for j in range(n_cl):
+            x0 = 0.5 + span * ((j + 0.5) / n_cl - 0.5) * 0.55
+            x1 = 0.5 + span * ((j + 0.5) / n_cl - 0.5) * rng.uniform(1.0, 1.25)
+            L = rng.uniform(0.72, 0.98)
+            if k == 0 and j == n_cl // 2:
+                L, x1 = 0.99, 0.5
+            xc = x0 + (x1 - x0) * np.clip((V - split * 0.5) / (1 - split * 0.5), 0, 1) ** 1.5
+            w_root = span / n_cl * 1.35
+            taper = np.clip(1 - np.clip((V - split) / (L - split), 0, 1), 0, 1) ** 0.75
+            half = 0.5 * w_root * np.where(V < split, 1.0 + 0.25 * (split - V) / split, taper)
+            d = np.abs(X - xc) / np.maximum(half, 1e-4)
+            a = np.clip(1 - d, 0, 1) ** 0.35 * (V < L)
+            better = a > alpha
+            across = np.where(better, np.clip((X - xc) / np.maximum(half, 1e-4), -1, 1), across)
+            alpha = np.maximum(alpha, a)
+        # the root is one solid mass across the lock's width
+        # (rounded shoulders: its width eases in as it rises into the clumps)
+        body_half = 0.5 * span * 1.05 * (1 - 0.35 * np.clip(V / split, 0, 1) ** 2)
+        fade = np.clip((split - V) / (0.45 * split), 0, 1)
+        body = np.clip(1 - np.abs(X - 0.5) / body_half, 0, 1) ** 0.3 * fade
+        alpha = np.maximum(alpha, body)
+        # strands: fine parallel lines with their own shade, and fraying ends
+        n_str = 46
+        xs = np.sort(rng.uniform(0.1, 0.9, 16))
+        phase = (X * n_str * 1.0 + rng.uniform(0, 1)) % 1.0
+        strand_profile = np.sin(np.pi * phase)
+        shade_of = rng.uniform(0.75, 1.15, n_str + 1)[np.clip((X * n_str).astype(int), 0, n_str)]
+        fray = np.zeros_like(X)
+        for xsi in xs:
+            Ls = rng.uniform(0.78, 0.97)
+            line = np.clip(1 - np.abs(X - xsi) * vw / 0.9, 0, 1) * (V < Ls) * (V > Ls - 0.22)
+            fray = np.maximum(fray, line * 0.65 * np.clip((Ls - V) / 0.08, 0, 1))
+        a = np.maximum(alpha * (0.82 + 0.18 * strand_profile), fray * (alpha < 0.5))
+        a = np.where(a > 0.03, a, background)
+        t = np.clip(V, 0, 1)[..., None]
+        col = root + (tip - root) * t ** 0.8
+        col = col + (wet - col) * np.clip((V - 0.78) / 0.2, 0, 1)[..., None] * 0.7
+        col = col * (shade_of * (0.85 + 0.15 * strand_profile))[..., None] * (0.7 + 0.3 * (1 - across ** 2))[..., None]
+        sl = slice(k * vw, (k + 1) * vw)
+        rgba[:, sl, :3] = col
+        rgba[:, sl, 3] = a
+        nx = 0.55 * across * (alpha > 0.05) + 0.35 * np.cos(np.pi * phase) * (a > 0.05)
+        ny = -0.15 * (a > 0.05) * (1 - t[..., 0])
+        nz = np.sqrt(np.clip(1 - nx * nx - ny * ny, 0.05, 1))
+        nrm[:, sl] = np.stack([nx, ny, nz], -1) / np.linalg.norm(np.stack([nx, ny, nz], -1), axis=-1, keepdims=True)
+    return rgba, nrm
+
+
+def height_normal(height, strength):
+    """Tangent-space normal map from a tiling height field (wraps)."""
+    gx = (np.roll(height, -1, 1) - np.roll(height, 1, 1)) * 0.5
+    gy = (np.roll(height, -1, 0) - np.roll(height, 1, 0)) * 0.5
+    n = np.stack([-gx * strength, -gy * strength, np.ones_like(height)], -1)
+    return n / np.linalg.norm(n, axis=-1, keepdims=True)
 
 
 # ------------------------------------------------------------------- glb ---

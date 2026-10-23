@@ -52,9 +52,10 @@
 #     (clear of the portholes) and chunky rivet rows, scratches, grime packed in the seams and soot round the
 #     portholes, wet green stains run down below each slime smear;
 #   - rim: the painted band, satin, chipped to the dark primer at its edges,
-#     with a ring of 12 bold stencilled dashes; the six slime smears over the
-#     lip and down the wall are painted into the rim's and hull's maps
-#     (raised, mirror-wet), not modelled; the porthole frames bolted; amber
+#     with a ring of 12 bold stencilled dashes; the six slime smears are
+#     raised, blobby zone-0 decals over the lip and down the wall (never in
+#     the band's tint zone), with their wet stains painted on the hull below;
+#     the porthole frames bolted; amber
 #     glass lenses that glow (the emissive map); scorched spike tips; a
 #     panelled turret and a ringed, soot-tipped barrel;
 #   - slime and goo: lime, near-mirror wet, bubbled, paler and clearer where
@@ -63,10 +64,12 @@
 #     the lower lip, thin in the middle, beaded.
 # The fur is shell fur (spec Revision; R7): a fur-base primitive the game
 # draws N times outward, alpha-testing a tiling strand/clump mask, plus lock
-# cards (LOD0 only): every clump of the approved blockout's shaggy outline
-# (its v3 tuft spines, ~220 of them on the crown, the tentacles' backs and
-# the arms) as a crossed pair of pointed, drooping cards. The shells are not
-# in the file. Raw-material provenance: every map is generated here
+# cards (LOD0 only): the approved blockout's shaggy outline, ~310 of its v3
+# tuft spines (the crown, every tuft of the tentacles' backs and the arms),
+# each a crossed pair of drooping cards textured as a hair lock (a solid
+# root splitting into 3-6 tapering strand clumps, fraying at the tip, fine
+# parallel strands in its colour and normal maps). The shells are not in
+# the file. Raw-material provenance: every map is generated here
 # (Cycles bakes of the node fields below, and the numpy strand mask in
 # monster_bake.fur_strand_texture); no image, scan or add-on is used.
 #
@@ -77,14 +80,22 @@
 #   Nodes "Saucer_LOD0" and "Saucer_LOD1" (no parent), each one mesh of three
 #   primitives, no extensions, no tangents:
 #   - "SaucerBaked": baseColor (x AO, 2048) + metallicRoughness (512) +
-#     normal (2048) + emissive (512: the porthole lenses, warm amber) (R11).
+#     normal (1536) + emissive (512: the porthole lenses, warm amber) (R11).
 #   - "SaucerDome": alphaMode BLEND, no maps (clear glass), the outer shell
 #     only (draw FrontSide).
 #   - "SaucerFur": alphaMode MASK, alphaCutoff 0.01 (R14: a stock viewer
 #     shows the base whole; the game raises it per shell), double-sided (the
-#     cards), baseColor (512, tiling, REPEAT, one repeat per 0.34 u, 4 x 4
-#     clumps of ~0.085) whose alpha is the strand height mask and whose RGB
-#     is the strand colour root (dark) to tip; no other map.
+#     cards), baseColor (1024 x 512) + normal (512 x 256), one atlas:
+#       - the left half (rig furAtlas.shells) is the shells' tiling strand
+#         mask: alpha the strand height, RGB the strand colour root (dark)
+#         to tip, one repeat per 0.34 u (4 x 4 clumps of ~0.085). The fur
+#         base's TEXCOORD_0 is unbounded (tiling) coordinates: the shells and
+#         the base sample (fract(u) x 0.5, fract(v)) (take the gradients from
+#         the unwrapped uv, so the mips do not seam);
+#       - the right half (rig furAtlas.locks) holds 4 lock variants side by
+#         side (v 0 root -> 1 tip): a card's TEXCOORD_0 points into it as is.
+#         Outside a lock alpha is 0.02 (over the cutoff, so a stock viewer's
+#         base never holes; the game's card test starts at 0.04).
 #   COLOR_0 is a zone mask, never a colour (a stock glTF viewer multiplies it
 #   into the base colour, as the spec says; the game's material must not,
 #   like ProjectProbes.tsx; turntable_monsters.py routes it out). Each
@@ -98,8 +109,10 @@
 #         (skin, lids and brows, upper teeth, the crown fur), 2 tentacle (the
 #         four arms, their spots and fur), 3 eye L, 4 eye R, 5 eye top, 6 jaw
 #         (lower teeth, tongue, the lower mouth and chin), 7 cannon, 8 goo
-#         strings, then the drips by host (R12): 9 on the rim (static),
-#         10 on a tentacle, 11 on the body's fur;
+#         strings, then the slime by host (R12): 9 static on the rim (its
+#         smears, y = 0: they do not sway, and the drips off their ends),
+#         10 drips on a tentacle, 11 drips on the body's fur (each hangs
+#         where its lock is still solid, 0.72 of the way along it);
 #     y = weight: tentacle (and its fur and spots) base 0 -> tip 1; body base
 #         0 -> crown 1 (by height); jaw: its influence, 1 on the lower teeth
 #         and tongue, easing to 0 where the chin meets the body (rotate the
@@ -121,8 +134,8 @@
 #         fur's edges, so the shells close onto the skin; longest, 0.24, at
 #         the hem and over the brows; the arms' undercoat is short, their
 #         locks carry them); on a lock card vertex = the alpha-test height
-#         along the lock (lock_x: 0.04 at its root, nearly solid, rising to
-#         0.9 at its tip, where it frays into its strands);
+#         along the lock (lock_x: 0.04 at its root rising to 0.34 at its tip;
+#         the lock's own texture carries its shape);
 #     y = wetness / matting, 0 dry and fluffy -> 1 wet and clumped.
 #   src/data/saucerRig.json: pivots (body, jaw, eyeL, eyeR, eyeTop, cannon,
 #     gooTop, gooBottom; glTF, origin-relative), muzzle, portholes (16),
@@ -131,9 +144,12 @@
 #     furShells, lod1Distance (where LOD1's 90th-percentile geometric error
 #     projects to one pixel at the game's resting view, sphereLod.ts's 58 deg
 #     on 802 px).
-#   LOD1 is LOD0 decimated part by part (no cards), each part first cut along
-#   its UV seams so no island's texels are dragged across (the stencil),
-#   sharing LOD0's maps. Lock-card vertices carry the skin's normal turned out
+#   LOD1 is LOD0 decimated part by part (no cards), its open-boundary and
+#   material-edge vertices (and on the band its UV-seam vertices) held fixed,
+#   so it stays closed and the stencil keeps its borders; it shares LOD0's
+#   maps. The body's skin carries the sculpt's smooth analytic normals
+#   (custom normals), so its shading does not depend on the game mesh's
+#   triangulation. Lock-card vertices carry the skin's normal turned out
 #   across the lock (custom normals), so each lock shades round.
 #   Blender 5.1's glTF importer mis-orders meshes with two custom attributes
 #   (_MOTION and _FUR) by hash seed; turntable_monsters.py reads them itself.
@@ -210,7 +226,7 @@ BLOCK = dict(final=False, hi=True, hull=64, rim=64, port=24, spike=24, mount=40,
              goo=(8, 5, 2), drip=(8, 4, 3), lid=(32, 10, 12, 4), smear=(8, 5, 2), tongue=(32, 16))
 HIGH = dict(BLOCK, final=True, fang=(16, False))
 LOW = dict(final=True, hi=False, hull=48, rim=48, port=12, lens=6, spike=10, mount=16, turret=20, barrel=10,
-           dome=48, body=24, body_n=2, cutter=(20, 12), eye=(18, 10), tube=(11, 2, 3), fang=(6, True),
+           dome=48, body=24, body_n=2, cutter=(20, 12), eye=(16, 9), tube=(11, 2, 3), fang=(6, True),
            goo=(6, 2, 2), drip=(6, 1, 2), lid=(14, 3, 7, 1), smear=(4, 1, 2), tongue=(10, 6))
 
 # The fur (R7): shell length per zone (glTF units) and the suggested layer count.
@@ -255,9 +271,71 @@ def in_dome(p, margin=0.03):
     return (p.x / a) ** 2 + ((p.y - DOME_Y) / b) ** 2 + (p.z / a) ** 2
 
 
+def hull_surface(p):
+    """(nearest point, outward normal) on the saucer's outside to p: one
+    ordered (r, y) polyline over the rim's lip (inner top -> outer edge ->
+    under the lip) and down the bowl's wall, its outside always on the left,
+    revolved about the axis."""
+    r, y = math.hypot(p.x, p.z), p.y
+    radial = Vector((p.x, 0, p.z)).normalized()
+    prof = [Vector(q) for q in RIM[1:6][::-1]] + [Vector(q) for q in OUTER[::-1] if q[1] < 0.14]
+    best = None
+    for a, b in zip(prof, prof[1:]):
+        ab = b - a
+        if ab.length < 1e-6:
+            continue
+        u = max(0.0, min(1.0, (Vector((r, y)) - a).dot(ab) / ab.length_squared))
+        q = a + ab * u
+        d = (q - Vector((r, y))).length
+        if best is None or d < best[0]:
+            n2 = Vector((-ab.y, ab.x)).normalized()
+            best = (d, radial * q.x + Vector((0, q.y, 0)), (radial * n2.x + Vector((0, n2.y, 0))).normalized())
+    return best[1], best[2]
+
+
+def smear_decal(bm, pts, cols, per_seg, rnd):
+    """A raised slime smear laid on the rim and down the wall (round 2: zone
+    0 geometry, so the band's tint never reaches it): a strip following the
+    smear's path, `cols` vertices across, its width uneven (blobby) and
+    swelling toward the drip at its end, its cross-section a lens raised off
+    the surface, its edges flush with it."""
+    C = ml.catmull(pts, per_seg)
+    T = arc_t(C)
+    wob = [rnd.uniform(0.0, TAU) for _ in range(3)]
+    rows = []
+    for i, c in enumerate(C):
+        t = T[i]
+        q, n = hull_surface(c)
+        tan = (C[min(i + 1, len(C) - 1)] - C[max(i - 1, 0)]).normalized()
+        side = tan.cross(n).normalized()
+        w = 0.095 * (0.8 + 0.25 * math.sin(9 * t + wob[0]) + 0.15 * math.sin(23 * t + wob[1])) * \
+            (1 + 0.9 * smoothstep(0.72, 1.0, t)) * (0.55 + 0.45 * smoothstep(0.0, 0.08, t))
+        th = 0.016 * (0.8 + 0.3 * math.sin(13 * t + wob[2])) * (1 + 0.8 * smoothstep(0.7, 1.0, t))
+        row = []
+        for k in range(cols):
+            e = -1 + 2 * k / (cols - 1)
+            h = th * max(0.0, 1 - e * e) ** 0.6
+            row.append(bm.verts.new(q + side * (e * w * 0.5) + n * (0.0025 + h)))
+        rows.append(row)
+    faces = []
+    for i in range(len(rows) - 1):
+        for k in range(cols - 1):
+            f = bm.faces.new((rows[i][k], rows[i][k + 1], rows[i + 1][k + 1], rows[i + 1][k]))
+            f.material_index = SLIME
+            faces.append(f)
+    for f in faces:
+        f.normal_update()
+        if f.normal.dot(hull_surface(f.calc_center_median())[1]) < 0:
+            f.normal_flip()
+    return C
+
+
 def smoothstep(a, b, x):
     t = max(0.0, min(1.0, (x - a) / (b - a)))
     return t * t * (3 - 2 * t)
+
+
+_BODY_SM = ml.smooth_profile(BODY_CTRL, 6)
 
 
 def lip(x, upper):
@@ -279,6 +357,45 @@ def tuft_spine(base, n, length, radius, flow):
     p2 = p1 + (n * 0.3 + f).normalized() * length * 0.42
     p3 = p2 + (f + ml.G * 0.5 - n * 0.1).normalized() * length * 0.38
     return [p0, p1, p2, p3]
+
+
+def lock_curve(spine, n):
+    """A lock card's centreline: the tuft's spine with its root pulled up to
+    the skin (as add_cards lays it), densely sampled; with arc fractions."""
+    sp = list(spine)
+    sp[0] = spine[0] + (spine[1] - spine[0]) * 0.55 - Vector(n).normalized() * 0.014
+    dense = ml.catmull(sp, 6)
+    return dense, arc_t(dense)
+
+
+def lock_point(spine, n, t):
+    dense, T = lock_curve(spine, n)
+    j = min(range(len(T)), key=lambda q: abs(T[q] - t))
+    return dense[j]
+
+
+DRIP_ON_LOCK = 0.72    # a drip hangs where its lock is still solid (round 2), not off its frayed tip
+
+
+def body_normal(p):
+    """The sculpted body's smooth outward normal at glTF point p (the layout
+    lathe's surface, analytically: no facets, no triangulation creases)."""
+    b = 0.05 * max(p.y - 0.3, 0.0)
+    th = math.atan2(p.x, (p.z - b) / 0.9)
+    y = max(BODY_Y0 + 0.02, min(BODY_Y1 - 0.02, p.y))
+
+    def P(th, y):
+        r = profile_at(_BODY_SM, y)[0]
+        return Vector((r * math.sin(th), y, r * math.cos(th) * 0.9 + 0.05 * max(y - 0.3, 0.0)))
+
+    e = 1e-3
+    n = (P(th, y + e) - P(th, y - e)).cross(P(th + e, y) - P(th - e, y))
+    if n.length < 1e-9:
+        return None
+    n.normalize()
+    if n.dot(Vector((p.x, 0, p.z - b))) < 0:
+        n = -n
+    return n
 
 
 def arc_t(C):
@@ -530,6 +647,8 @@ class LowSink:
         ml.boolean_cut(body, cutter)
         tb = bmesh.new()
         tb.from_mesh(body.data)
+        bmesh.ops.remove_doubles(tb, verts=list(tb.verts), dist=1e-5)     # (no coincident cut vertices)
+        bmesh.ops.dissolve_degenerate(tb, edges=list(tb.edges), dist=1e-5)
         mats = [ml.MATS.index(m) for m in body.data.materials]
         with self.piece(self.bm, **meta) as info:
             vmap = {}
@@ -744,7 +863,12 @@ def build(R, S):
     zf = front(0, MOUTH_Y)[0].z
     MOUTH_C = Vector((0, MOUTH_Y, zf + 0.07))
     cutter_bm = S.obj("MouthCutter") if S.final and hi else bmesh.new()
-    ml.ellipsoid(cutter_bm, MOUTH_C, (MA, MB, MC), *R["cutter"], DARK)
+    # (final: the cutter turned half a segment, so none of its meridians lies
+    # in the x = 0 plane with the body's: round 2's seam above the mouth was
+    # the exact boolean meeting those coplanar edges, leaving degenerate
+    # n-gons whose slivers creased the shading up the centre line)
+    turn = Matrix.Rotation(math.pi / R["cutter"][0], 4, "Y") if final else None
+    ml.ellipsoid(cutter_bm, MOUTH_C, (MA, MB, MC), *R["cutter"], DARK, R=turn)
     for v in cutter_bm.verts:
         if v.co.y > MOUTH_Y:
             v.co.y = MOUTH_Y + (v.co.y - MOUTH_Y) * TOP_SQUASH
@@ -1008,15 +1132,16 @@ def build(R, S):
                     spine = tuft_spine(base, nrm, length, radius, flow)
                     meta["cards"].append(dict(spine=spine, n=nrm, radius=radius, part=P_TENT, wgt=t,
                                               wet=0.35 + 0.5 * t, zone=name))
-                    tips.append((spine[-1], t))
+                    tips.append((spine[-1], t, spine, nrm))
                 else:
-                    tips.append((ml.tuft(fb, base, nrm, length, radius, flow), t))
+                    tips.append((ml.tuft(fb, base, nrm, length, radius, flow), t,
+                                 tuft_spine(base, nrm, length, radius, flow), nrm))
             row += 1
         if not (S.final and not hi):
             fit(name + " fur", sp.verts())
             S.done(name.replace("Alien_", "Alien_Fur_"), fb)
-        tip, t_tip = min(tips, key=lambda q: q[0].y)
-        DRIPS.append((tip, P_DRIP_T, t_tip))
+        tip, t_tip, spine, nrm = min(tips, key=lambda q: q[0].y)
+        DRIPS.append((tip, P_DRIP_T, t_tip, lock_point(spine, nrm, DRIP_ON_LOCK) if final else tip))
 
     def spots_on(name, C, T, rad, fur_back):
         """4-6 recessed pink cups along the bare underside (seeded, rx)."""
@@ -1074,21 +1199,22 @@ def build(R, S):
             meta["cards"].append(dict(spine=spine, n=n, radius=radius, part=P_BODY, wgt=body_weight(p),
                                       wet=0.2 + 0.6 * (1 - smoothstep(0.0, 0.22, p.y - hem)), zone="crown",
                                       hem_d=p.y - hem))
-            tips.append((spine[-1], 0.0))
+            tips.append((spine[-1], 0.0, spine, n))
         else:
-            tips.append((ml.tuft(crown, p, n, length, radius, flow), 0.0))
+            tips.append((ml.tuft(crown, p, n, length, radius, flow), 0.0, tuft_spine(p, n, length, radius, flow), n))
     if not (S.final and not hi):
         fit("Alien_Fur_Crown", sp.verts())
         S.done("Alien_Fur_Crown", crown)
-    crown_drips = [q[0] for q in sorted(tips, key=lambda q: q[0].y)[:3:2]]
-    DRIPS += [(p, P_DRIP_B, body_weight(p)) for p in crown_drips]
-    meta["drip_tips"] = [p for p, _, _ in DRIPS]       # their clumps become cards, so no drip floats
+    for tip, _, spine, nrm in sorted(tips, key=lambda q: q[0].y)[:3:2]:
+        anchor = lock_point(spine, nrm, DRIP_ON_LOCK) if final else tip
+        DRIPS.append((tip, P_DRIP_B, body_weight(anchor), anchor))
+    meta["drip_tips"] = [p for p, _, _, _ in DRIPS]    # their clumps become (solid-cored) locks
 
     # drips off the fur's lowest clumps
     bm = S.obj("Alien_Drips")
     ring, per, cap = R["drip"]
     sp = Span(bm)
-    for p, host, hw in DRIPS:
+    for _, host, hw, p in DRIPS:
         top = p - Vector((0, 0.01, 0))
         length = rng.uniform(0.12, 0.2)
         with S.piece(bm, name="drip", part=host if final else P_DRIP, hostw=hw, bake={SLIME: "slime"}, share="drip",
@@ -1112,9 +1238,13 @@ def build(R, S):
                 pts.append(out * (profile_at(OUTER, y)[0] + 0.012) + Vector((0, y, 0)))
         pts.append(out * (profile_at(OUTER, y_end)[0] + 0.012) + Vector((0, y_end, 0)))
         ring, per, cap = R["smear"]
-        if not final:      # (the final stage paints the smears into the hull's and rim's maps)
+        if not final:
             with S.piece(bm, name="smear", part=P_HULL, bake={SLIME: "slime"}):
                 ml.strand(bm, pts, 0.05, 0.034, SLIME, ring=ring, per_seg=per, cap=cap)
+        else:              # a raised, blobby zone-0 decal; static (part 9, y = 0: it does not sway)
+            cols, rps = (9, 8) if hi else (4, 1)
+            with S.piece(bm, name="smear", part=P_DRIP, bake={SLIME: "slime"}, wgt=0.0, hostw=0.0) as info:
+                info["C"] = smear_decal(bm, pts, cols, rps, rx)
         length = rng.uniform(0.08, 0.2)
         ring, per, cap = R["drip"]
         top = pts[-1] - out * 0.009 if final else pts[-1]     # (on the wall: the final's smear is painted)
@@ -1326,10 +1456,8 @@ def band_recipe(N):
     alb = N.mix(N.mul(grime, 0.7), alb, (0.20, 0.19, 0.17))
     alb = N.mix(chip, alb, (0.12, 0.12, 0.12))
     rough = N.add(0.36, N.mul(mott, 0.1), N.mul(chip, 0.26), N.mul(grime, 0.2))
-    mask, edge = smear_fields(N, th, r, y, True)
-    alb, rough, metal, height = slime_paint(N, alb, rough, N.val(0.0), N.add(N.mul(chip, -0.0008),
-                                            N.mul(stencil, 0.00012)), mask, edge)
-    return dict(albedo=alb, rough=rough, metal=metal, height=height)
+    # (the rim's slime is zone-0 geometry over it, never painted into the band)
+    return dict(albedo=alb, rough=rough, metal=0.0, height=N.add(N.mul(chip, -0.0008), N.mul(stencil, 0.00012)))
 
 
 def frame_recipe(N):
@@ -1598,11 +1726,12 @@ def make_bake_materials():
 
 # ---- the final stage's sizes --------------------------------------------
 TEX = 2048             # shipped albedo (R11)
-NTEX = 2048            # shipped normal map (R11)
+NTEX = 1536            # shipped normal map (NPOT is fine on WebGL2; 2048 left no room for the lock atlas)
 MR_TEX = 512           # metal/roughness (1024 cost the size cap its margin)
 EM_TEX = 512           # emissive (the lenses)
 AO_TEX = 2048          # the AO bake (multiplied into the albedo; low frequency: not supersampled)
-FUR_TEX = 512          # the tiling strand mask
+FUR_TEX = 512          # the tiling strand mask: the fur atlas's left half (its right half: the lock cards)
+LOCK_VARIANTS = 4
 BAKE, NBAKE = 2 * TEX, 2 * NTEX     # supersampled bakes, box-filtered down
 EXPLODE = 7.0          # each bake group moved this far apart along Blender X
 FOCAL_PX = 802 / 2 / math.tan(math.radians(58) / 2)    # sphereLod.ts's reference view
@@ -1928,9 +2057,11 @@ def unwrap_fur(ob, rng_):
 
 
 def lock_x(t):
-    """_FUR.x along a lock card (fur lengths out): nearly solid at its root,
-    fraying through its last third to the clump cores at its tip."""
-    return 0.04 + 0.86 * t ** 2.0
+    """_FUR.x along a lock card: its alpha-test height, low (0.04 -> 0.34):
+    the lock's own texture carries its shape (a solid root splitting into
+    tapering strand clumps, fraying at the tip); the rise only thins the
+    frayed strands toward the tip."""
+    return 0.04 + 0.3 * t ** 2.0
 
 
 def add_cards(ob, cards, drip_tips, rng_):
@@ -1962,23 +2093,22 @@ def add_cards(ob, cards, drip_tips, rng_):
 
     pick = forced + pick_from(lambda c: c["zone"] == "crown" and c["hem_d"] < 0.14, 0.06, 0.04)
     pick += pick_from(lambda c: c["zone"] == "crown", 0.072, 0.05)
-    pick += pick_from(lambda c: c["zone"] != "crown", 0.032, 0.03)
+    pick += pick_from(lambda c: c["zone"] != "crown", 0.012, 0.01)     # every tuft of v3's arms (round 2)
     for _, c in pick:
         n = (GL2BL.to_3x3() @ c["n"]).normalized()
-        sp_gl = list(c["spine"])
-        sp_gl[0] = c["spine"][0] + (c["spine"][1] - c["spine"][0]) * 0.55 - c["n"].normalized() * 0.014
-        dense = [bl(p) for p in ml.catmull(sp_gl, 6)]
-        Td = arc_t(dense)
+        dense_gl, Td = lock_curve(c["spine"], c["n"])
+        dense = [bl(p) for p in dense_gl]
         length = sum((dense[i + 1] - dense[i]).length for i in range(len(dense) - 1))
         rows_t = (0.0, 0.36, 0.7, 1.0)
         spine = []
         for t in rows_t:
             j = min(range(len(Td)), key=lambda q: abs(Td[q] - t))
             spine.append(dense[j])
-        width = c["radius"] * 2.1
+        width = c["radius"] * (2.1 if c["zone"] == "crown" else 2.9)
         spin = math.radians(rng_.uniform(-20, 20))
+        drip_lock = any((c["spine"][-1] - q).length < 1e-6 for q in drip_tips)
         for layer in range(2):              # 0: the fin, 1: the ribbon across it
-            u0, v0 = rng_.uniform(0, 1), rng_.uniform(0, 1)
+            k_var = 0 if drip_lock else rng_.randrange(LOCK_VARIANTS)
             rows = []
             for i, p in enumerate(spine):
                 tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
@@ -1986,8 +2116,8 @@ def add_cards(ob, cards, drip_tips, rng_):
                 side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
                 fin = tan.cross(side).normalized()
                 wdir = Matrix.Rotation(spin, 3, tan) @ (fin if layer == 0 else side)
-                w = width * (0.08 + 0.92 * (1.0 - rows_t[i]) ** 0.85) * 0.5
-                rows.append(([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, side))
+                w = width * (0.55 + 0.45 * (1.0 - rows_t[i])) * 0.5    # (the texture tapers the clumps)
+                rows.append(([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, wdir))
             for i in range(3):
                 (a0, a1), _, _ = rows[i]
                 (b0, b1), _, _ = rows[i + 1]
@@ -1997,9 +2127,9 @@ def add_cards(ob, cards, drip_tips, rng_):
                 for lp in f.loops:
                     ri = next(k for k in range(4) if lp.vert in rows[k][0])
                     ci = rows[ri][0].index(lp.vert)
-                    lp[uvl].uv = (u0 + (ci - 0.5) * 2 * rows[ri][1] / FUR_TILE,
-                                  v0 + rows_t[ri] * length / FUR_TILE / 2.5)
-            for i, (vs, _, side) in enumerate(rows):
+                    # the atlas's lock half: variant k_var, across its width, root to tip
+                    lp[uvl].uv = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * rows_t[ri])
+            for i, (vs, _, across) in enumerate(rows):
                 for e, v in zip((-1, 1), vs):
                     v[VI["vpart"]] = c["part"]
                     v[V["wgt"]] = c["wgt"]
@@ -2007,42 +2137,58 @@ def add_cards(ob, cards, drip_tips, rng_):
                     v[V["wet"]] = c["wet"]
                     # the skin's normal, turned out across the lock: each lock
                     # shades round, like the blockout's tufts, not flat
-                    normals[v] = (n + side * (0.75 * e)).normalized()
+                    normals[v] = (n + across * (0.75 * e)).normalized()
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
     bm.free()
-    me.normals_split_custom_set_from_vertices([tuple(vn.get(i, v.normal)) for i, v in enumerate(me.vertices)])
+    cn = [tuple(c.vector) for c in me.corner_normals]
+    for li, lp in enumerate(me.loops):
+        if lp.vertex_index in vn:
+            cn[li] = tuple(vn[lp.vertex_index])
+    me.normals_split_custom_set(cn)
     print("saucer: lock cards: %d clumps (%d hold a drip), crown %d, arms %d" % (
         len(pick), len(forced), sum(c["zone"] == "crown" for _, c in pick), sum(c["zone"] != "crown" for _, c in pick)))
     return len(pick)
 
 
-def split_uv_seams(ob):
-    """Cut the mesh along its UV seams (edges whose two faces disagree on
-    the UVs), so a collapse decimation keeps every island's border instead
-    of dragging texels across it (the band's stencil smeared, round 1)."""
+def protect_group(ob):
+    """A vertex group "keep" (weight 1) on every vertex the decimation must
+    not move: open-boundary vertices (where the body meets its fur base, a
+    part's open rim) and material edges, so LOD1 stays closed (round 2:
+    cutting the UV seams first let both sides drift apart and tore it), and
+    on the band the UV-seam vertices too, so its stencil keeps its island
+    borders. Decimated with invert on, these stay exactly where they are."""
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     uvl = bm.loops.layers.uv["UVMap"]
-    seams = []
+    lbk = bm.faces.layers.int["bk"]
+    keep = set()
     for e in bm.edges:
         if len(e.link_loops) != 2:
+            keep.update(v.index for v in e.verts)
             continue
         la, lb = e.link_loops
-        # la runs v0 -> v1; lb runs the other way round its face
+        if la.face.material_index != lb.face.material_index:
+            keep.update(v.index for v in e.verts)
+            continue
+        if la.face[lbk] != BAKE_IDS["band"] and lb.face[lbk] != BAKE_IDS["band"]:
+            continue
         a0, a1 = la[uvl].uv, la.link_loop_next[uvl].uv
         b1, b0 = lb[uvl].uv, lb.link_loop_next[uvl].uv
         if (a0 - b0).length > 1e-6 or (a1 - b1).length > 1e-6:
-            seams.append(e)
-    bmesh.ops.split_edges(bm, edges=seams)
-    bm.to_mesh(ob.data)
+            keep.update(v.index for v in e.verts)
     bm.free()
+    vg = ob.vertex_groups.new(name="keep")
+    if keep:
+        vg.add(sorted(keep), 1.0, "REPLACE")
+    return len(keep)
 
 
 def lod1_from(lod0):
-    """LOD1: LOD0 without its cards, each piece decimated on its own, cut
-    along its UV seams first so the islands keep their borders."""
+    """LOD1: LOD0 without its cards, each piece decimated on its own, its
+    UV-seam, boundary and material-edge vertices held fixed (protect_group),
+    so the islands keep their borders and nothing opens."""
     mb.activate(lod0)
     bpy.ops.object.duplicate()
     ob = bpy.context.object
@@ -2073,10 +2219,13 @@ def lod1_from(lod0):
     for name, part in parts:
         r = LOD1_RATIO.get(name, 0.4)
         if r < 1.0:
-            split_uv_seams(part)
+            protect_group(part)
             mod = part.modifiers.new("dec", "DECIMATE")
             mod.decimate_type = "COLLAPSE"
             mod.ratio = r
+            mod.vertex_group = "keep"
+            mod.invert_vertex_group = True
+            mod.vertex_group_factor = 1000.0
             mod.use_collapse_triangulate = True
             mb.activate(part)
             bpy.ops.object.modifier_apply(modifier=mod.name)
@@ -2147,7 +2296,7 @@ def final_material_dome():
     return m
 
 
-def final_material_fur(img_fur):
+def final_material_fur(img_fur, img_fur_n):
     m = bpy.data.materials.new("SaucerFur")
     m.use_nodes = True
     m.use_backface_culling = False           # the cards are seen from both sides
@@ -2167,8 +2316,10 @@ def final_material_fur(img_fur):
     one.inputs[0].default_value = 1.0
     nt.links.new(lt.outputs[0], one.inputs[1])
     nt.links.new(one.outputs[0], b.inputs["Alpha"])
-    b.inputs["Roughness"].default_value = 0.62
+    b.inputs["Roughness"].default_value = 0.55
     b.inputs["Metallic"].default_value = 0.0
+    import bake_utils
+    bake_utils.attach_normal_map(m, img_fur_n)
     m.surface_render_method = "DITHERED"
     return m
 
@@ -2250,6 +2401,24 @@ def final_stage():
             e.smooth = True
     sm.to_mesh(low.data)
     sm.free()
+    # the body's skin takes the sculpt's smooth analytic normals (round 2: the
+    # hem-following grid left a few big skewed quads on the face whose
+    # triangulation creased the shading down the front centre line)
+    me = low.data
+    bkl_ = attr_np(me, "bk", len(me.polygons), dtype=np.int32)
+    grp_ = attr_np(me, "grp", len(me.polygons), dtype=np.int32)
+    cn = [tuple(c.vector) for c in me.corner_normals]
+    n_set = 0
+    for p in me.polygons:
+        if grp_[p.index] != body_grp or BAKES[bkl_[p.index]] != "skin":
+            continue
+        for li in range(p.loop_start, p.loop_start + p.loop_total):
+            nn = body_normal(gl(me.vertices[me.loops[li].vertex_index].co))
+            if nn is not None:
+                cn[li] = tuple(GL2BL.to_3x3() @ nn)
+                n_set += 1
+    me.normals_split_custom_set(cn)
+    print("saucer: body skin corners on the sculpt's analytic normals:", n_set)
     write_motion(low)
     prim = attr_np(low.data, "prim", len(low.data.polygons), dtype=np.int32)
     dome = separate(low, prim == 1, "SaucerDomeLow")
@@ -2329,12 +2498,18 @@ def final_stage():
     img_mr = mb.to_image("saucer_metal_rough", mb.down(mr, MR_TEX), noncolor=True)
     img_em = mb.to_image("saucer_emissive", em)
     img_nrm = mb.to_image("saucer_normal", nrm, noncolor=True)
-    fur_rgba = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=30000,
-                                     taper=0.2, base=0.25, flyaway=0.25,
-                                     root=(0.045, 0.12, 0.028),
-                                     tip=(0.105, 0.235, 0.050), tip_hi=(0.17, 0.32, 0.075))
+    shell = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=30000,
+                                  taper=0.2, base=0.25, flyaway=0.25, root=(0.045, 0.12, 0.028),
+                                  tip=(0.105, 0.235, 0.050), tip_hi=(0.17, 0.32, 0.075))
+    locks, lock_n = mb.fur_lock_atlas(FUR_TEX, FUR_TEX, LOCK_VARIANTS, SEED + 8)
+    fur_rgba = np.concatenate([shell, locks], 1)                  # (rows, 2 x FUR_TEX, 4)
     fur_rgba[..., :3] = mb.to_srgb(fur_rgba[..., :3])
+    fur_n = np.concatenate([mb.height_normal(shell[..., 3], 6.0), lock_n], 1)
+    fur_n = mb.down_rect(fur_n * 1.0, 2)
+    fur_n /= np.linalg.norm(fur_n, axis=-1, keepdims=True)
+    fur_n = np.concatenate([fur_n * 0.5 + 0.5, np.ones_like(fur_n[..., :1])], -1)
     img_fur = mb.to_image("saucer_fur", fur_rgba, alpha=True)
+    img_fur_n = mb.to_image("saucer_fur_normal", fur_n, noncolor=True)
     for img in imgs.values():
         bpy.data.images.remove(img)
     for o in highs:
@@ -2349,7 +2524,7 @@ def final_stage():
 
     # ------------------------------------------------------- LOD0, LOD1 ---
     m_baked = final_material_baked(img_alb, img_mr, img_nrm, img_em)
-    m_dome, m_fur = final_material_dome(), final_material_fur(img_fur)
+    m_dome, m_fur = final_material_dome(), final_material_fur(img_fur, img_fur_n)
     for o, m in ((low, m_baked), (dome, m_dome), (fur, m_fur)):
         o.data.materials.clear()
         o.data.materials.append(m)
@@ -2366,6 +2541,7 @@ def final_stage():
     assert order == [0, 1, 2], order
     lod1 = lod1_from(lod0)
     fix_parts(lod1, lm["jaw_influence"], body_grp)
+    lod1.vertex_groups.clear()
     write_motion(lod1)
     for o in (lod0, lod1):         # the dome: the hull's slot and nothing else
         me = o.data
@@ -2435,6 +2611,7 @@ def final_stage():
         "bodySpan": [round(BODY_Y0 - com.y, 4), round(BODY_Y1 - com.y, 4)],
         "jawAxis": [1, 0, 0],
         "furMaxLength": FUR_MAX,
+        "furAtlas": {"shells": [0, 0, 0.5, 1], "locks": [0.5, 0, 1, 1], "lockVariants": LOCK_VARIANTS},
         "furShells": FUR_SHELLS,
         "lod1Distance": lod1_distance,
     }
