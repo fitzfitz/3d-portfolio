@@ -1,4 +1,5 @@
 import type { ChatterPools } from "../utils/chatterScheduler";
+import type { GuideLines } from "../utils/guideRadio";
 import type { BodyId } from "./bodyIds";
 
 /** All radio-chatter copy lives here — edit freely, one line per entry. */
@@ -124,6 +125,31 @@ export const eventLines: { comet: string[]; flare: string[]; convoy: Partial<Rec
   convoyAny: [
     "CONVOY INBOUND // CARGO MANIFEST: CLASSIFIED. PROBABLY SNACKS",
     "SUPPLY RUN ON FINAL APPROACH. EVERYONE ACT NATURAL",
+  ],
+};
+
+/**
+ * The jellyfish guide's `guide` pool (spec 2026-10-23-jellyfish-guide, "Calling
+ * it"), by moment: a called guide reaching the ship, the offer to a lost pilot,
+ * arriving at the step, and nothing left to show. SpaceJellyfish sends them
+ * through GuideRadio, which waits out a busy radio.
+ */
+export const guideLines: GuideLines = {
+  called: [
+    "YOUR GUIDE IS HERE: FOLLOW THE GLOW",
+    "GUIDE ALONGSIDE // FOLLOW THE GLOW TO YOUR NEXT STOP",
+  ],
+  offering: [
+    "LOST, PILOT? YOUR GUIDE IS ON ITS WAY. FOLLOW THE GLOW",
+    "NAV.AI: SOMETHING GLOWING WANTS TO SHOW YOU THE WAY",
+  ],
+  arrived: [
+    "YOU'RE HERE, PILOT. YOUR GUIDE TAKES A BOW",
+    "NEXT STOP REACHED // YOUR GUIDE CIRCLES, PLEASED",
+  ],
+  allDone: [
+    "NOTHING LEFT TO SHOW YOU, PILOT. YOUR GUIDE GOES ROAMING",
+    "YOUR GUIDE HAS SHOWN YOU EVERYTHING. IT'S OFF DUTY",
   ],
 };
 
