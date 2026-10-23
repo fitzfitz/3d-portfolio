@@ -69,7 +69,7 @@ describe("jellyfish path", () => {
 });
 
 // The guide hands the creature back to its loop at the loop phase nearest to
-// where it left it (spec 2026-10-23-jellyfish-guide, plan Task 5: "resumes the
+// where it left it (spec 2026-10-23-jellyfish-guide, plan: "resumes the
 // loop from the nearest loop phase (no teleport back)").
 describe("nearestLoopT", () => {
   const circ = (a: number, b: number) => { const d = Math.abs(a - b) % 1; return Math.min(d, 1 - d); };

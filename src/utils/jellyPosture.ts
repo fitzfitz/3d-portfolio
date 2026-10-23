@@ -5,9 +5,11 @@ import { PATH_JUMP } from "./jellyMood";
  * posture"): upright while it stands, bell (model +y) along the travel direction
  * while it swims. Pure and allocation-free: the frame loop calls it every frame.
  *
- * Output contract (Task 3 reads this): the orientation goes into the caller's
- * `out` quaternion; the 0..1 swim factor is `state.swim` (the same damped weight
- * the orientation uses, so the shader's tentacle ripple and the lean agree).
+ * Output contract: the orientation goes into the caller's `out` quaternion;
+ * the 0..1 swim factor is `state.swim`, which the shader's `uSwim` reads. It is
+ * its own damped scalar, eased toward the same speed blend as the orientation's
+ * target (fast into a swim, ~1 s back), so the tentacle ripple and the lean
+ * rise and fall together without being the same number.
  */
 
 export interface Quat { x: number; y: number; z: number; w: number }
@@ -32,8 +34,8 @@ export interface PostureState {
 /**
  * Below POSTURE_V_SLOW it stands; above POSTURE_V_SWIM it swims bell first, with
  * a smoothstep between (u/s). The loop path is 1183.8 u over 400 s = 2.96 u/s on
- * average, which is under the plan's 3 u/s swim threshold, so per the controller
- * ruling vSwim = 0.8 x that = 2.37: roaming has to read as swimming, bell first
+ * average, which is under the plan's 3 u/s swim threshold, so per spec build
+ * ruling R3 vSwim = 0.8 x that = 2.37: roaming has to read as swimming, bell first
  * (the surge strokes lift it well above the mean). Cruise tops out at 10.8 u/s.
  * tests/jellyPosture.test.ts re-measures the path so a re-routed loop can't
  * silently stop swimming.
@@ -46,10 +48,11 @@ export const POSTURE_V_SWIM = 2.37;
  * POSTURE_V_SWIM, so nothing faster changes how it looks; but smoothed in raw
  * u/s, the guide's ~250 u/s streak in took ~5 s to fall under the swim
  * threshold, and a guide stopped dead on its station hung sideways that long
- * (measured in the browser, jellyfish-guide Task 5). Capped at 4x the swim
+ * (measured in the browser while building the guide). Capped at 4x the swim
  * threshold, a stop from any speed falls below it in two half-lives (~1 s),
  * then eases upright (spec "Swim posture": "easing back upright over ~1 s as
- * it slows"). Above cruise (10.8) in spirit: 9.5 u/s already swims fully.
+ * it slows"). The cap (9.5 u/s) sits under cruise (10.8), which loses nothing:
+ * the posture is already fully bell first from 2.37 u/s.
  */
 export const POSTURE_V_MAX = 4 * POSTURE_V_SWIM;
 /** Half-lives (s): fast into a swim or a turn, slow back to upright (spec: ~1 s). */

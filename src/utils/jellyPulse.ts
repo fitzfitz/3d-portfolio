@@ -4,7 +4,7 @@
  * result and integrates the pulse phase on the CPU (`pulseClock`), so a rate
  * change speeds the beat up without ever jumping its phase, which a rate
  * multiplying `uTime` inside the shader would. That is why there is no
- * `uPulseRate` uniform (controller ruling R10): the phase is CPU-integrated.
+ * `uPulseRate` uniform (spec, build ruling R10): the phase is CPU-integrated.
  */
 
 /** Extra beat rate at full swim: x1.55 at swim 1, so propulsion reads faster. */

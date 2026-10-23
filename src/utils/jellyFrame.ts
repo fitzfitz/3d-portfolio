@@ -105,7 +105,7 @@ export function stepJellyFrame(f: JellyFrame, inp: JellyFrameInput, dt: number):
   f.handBack = false;
   const wasGuiding = f.guide.guiding;
   // Spec "Leading": "While guiding, boosting does not startle it", and the
-  // moods are the roaming creature's (plan Task 5: "Moods only while roaming"):
+  // moods are the roaming creature's (plan: "Moods only while roaming"):
   // not while it guides, nor while it swims home after. Reduced motion has
   // none, as before.
   if (!wasGuiding && !f.returning && !inp.reducedMotion && dt > 0) {

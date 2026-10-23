@@ -103,3 +103,52 @@ probe's ≤ 160 KB a frame of JS).
 - A logbook badge for following it, and fuel or friendship: later, with the
   game stages.
 - Its name on the radio beyond "your guide" (copy can change in review).
+
+## Build rulings (2026-10-23)
+
+Decisions taken while building, where the plan or this spec was silent, or
+wrong about the code. Code comments cite them as "spec, build ruling Rn".
+
+- **R1, the target.** The guide leads where the HUD waypoint points (one shared
+  helper, `utils/waypointTarget.ts`): the nearest unread probe, then the career
+  station, then contact. Once those are done, the nearest uncharted world
+  (CARTOGRAPHER). Badge goals (a slingshot, a comet) are activities, not
+  places, so they are skipped. Nothing left: no target, and it roams.
+- **R2, no gamepad button.** No gamepad button maps to J (the spec assumed one),
+  and none was invented. Listed in `docs/FOLLOW-UPS.md`.
+- **R3, posture thresholds.** Upright below 0.6 u/s, fully bell first above
+  vSwim; half-lives 0.3 s into a swim or a turn, 1 s back upright. The loop
+  averages 2.96 u/s, under the plan's 3 u/s, so vSwim is 0.8 of it (2.37 u/s)
+  and roaming reads as swimming.
+- **R4, merging.** The work stops at a pushed PR (#54). Merging deploys to
+  production, so it waits for the owner.
+- **R5, one keep-out law.** The guide clears solids with the moods' own
+  keep-out helper (`pushOutOfSolids` in `utils/jellyMood.ts`), shared, not copied.
+- **R6, debug bridge.** `fitzDebug.jellyGuide` shows the state, position,
+  velocity, body up (+y in world space) and swim factor, for the e2e probe.
+- **R7, the streak in.** About 2 s (this spec); the e2e probe allows up to 3 s
+  to come within ~25 u of the ship.
+- **R8, the old J follow-up.** The follow-up asking for J to summon the
+  jellyfish is done by this work and was removed.
+- **R9, no target-lock action.** No store action locks the HUD's target, so
+  arriving adds none; arrival uses the radius at which the HUD's own target
+  line locks on. Listed in `docs/FOLLOW-UPS.md`.
+- **R10, pulse rate on the CPU.** No `uPulseRate` uniform: the faster beat goes
+  into the CPU-integrated pulse clock, because a uniform multiplying `uTime`
+  would jump the phase whenever the rate changes.
+- **R11, reduced motion.** Only the bell moves, slowly: no surge, and the
+  tentacle sway and ripple stay frozen, as before.
+- **R12, a full logbook.** The target goes null only when no uncharted world is
+  left. The logbook has no charting entry, so a full logbook still leads to
+  worlds while any remain.
+- **R13, allocation.** A per-frame allocation in the target lookup counts as
+  Important, not Minor: frame loops allocate nothing, and the memory probe's
+  ceiling is already tight.
+- **R14, review before the PR.** The final whole-branch review and its fixes
+  land before the last verification and the PR, so that verification covers them.
+- **Final review, near targets.** The career station is reached 8.5 u out and
+  the portal 2.2 u out, both inside the 20 u lead. Within 20 u plus the
+  presenting radius of its target, the guide's station swings round onto the
+  presenting circle, beside the approach line, and it never comes nearer the
+  target than that radius: 16.7 u, the widest docking orbit (10) plus the
+  ship's half length and the creature's reach, so it clears a docked ship.

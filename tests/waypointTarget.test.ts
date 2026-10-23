@@ -103,7 +103,7 @@ describe("makeRecruiterTarget (WaypointDriver: the HUD waypoint)", () => {
   });
 });
 
-describe("makeGuideTarget (controller ruling R1: the guide's target)", () => {
+describe("makeGuideTarget (spec build ruling R1: the guide's target)", () => {
   it("before the essentials are done it is the HUD waypoint, exactly", () => {
     const guide = makeGuideTarget();
     const steps: LogbookProgress[] = [
@@ -147,7 +147,7 @@ describe("makeGuideTarget (controller ruling R1: the guide's target)", () => {
   it("is null once every body is charted", () => {
     expect(makeGuideTarget()(ship, ESSENTIALS, BODY_IDS.map(chart), bodies, createWaypointTarget())).toBe(false);
   });
-  // Ruling R12: the logbook has no CARTOGRAPHER entry, so a full logbook with
+  // Spec, build ruling R12: the logbook has no CARTOGRAPHER entry, so a full logbook with
   // worlds left to chart is reachable; only an empty chart list ends the lead.
   it("a full logbook with worlds left to chart still leads to the nearest uncharted body (R12)", () => {
     const out = createWaypointTarget();

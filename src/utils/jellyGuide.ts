@@ -7,8 +7,9 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
 /**
  * The jellyfish as a guide (spec 2026-10-23-jellyfish-guide: "Calling it",
  * "Offering itself", "Leading", "Arriving", "Reduced motion"). A pure state
- * machine, stepped once a frame by SpaceJellyfish and allocation-free: inputs
- * come in one object the caller reuses, every output is written into the state.
+ * machine, stepped once a frame by jellyFrame.ts (stepJellyFrame, which
+ * SpaceJellyfish calls) and allocation-free: inputs come in one object the
+ * caller reuses, every output is written into the state.
  *
  *   roaming --J / offer--> coming --~2 s--> leading --ship in radius--> presenting
  *      ^                     |                 |                         | one turn
@@ -23,12 +24,13 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
 export type GuideName = "roaming" | "coming" | "leading" | "presenting";
 
 /**
- * One per step at most, in `GuideState.event`, reset to null every step. For
- * Task 5's radio lines and HUD lock:
+ * One per step at most, in `GuideState.event`, reset to null every step.
+ * SpaceJellyfish turns them into radio lines (guideRadio.ts) and pulse kicks:
  * - `called`: J while roaming with somewhere to go; it starts streaking in.
  * - `offered`: lost for GUIDE_LOST_SECONDS; it starts streaking in on its own.
  * - `met`: it reached the ship (spec: "streaks to the ship, pulses"); leading begins.
- * - `arrived`: the ship entered the target's radius; it presents (HUD target lock).
+ * - `arrived`: the ship entered the target's radius (the HUD's own lock-on
+ *   radius; no lock action exists, spec build ruling R9); it presents.
  * - `dismissed`: J while active; it roams again.
  * - `declined`: the pilot flew away from an offer; it roams again.
  * - `allDone`: no target left (J with nothing to do, the target went null
@@ -44,7 +46,7 @@ export interface GuideInput {
   shipVel: Vec3;
   /** Warp held: only the glow streak reads it; speed matching uses `shipVel`. */
   warping: boolean;
-  /** World position of the logbook's NEXT place (controller ruling R1), or null when all is done. */
+  /** World position of the logbook's NEXT place (spec, build ruling R1), or null when all is done. */
   target: Vec3 | null;
   /** The target's dock or scan radius: the ship inside it has arrived. */
   targetRadius: number;
@@ -68,7 +70,7 @@ export interface GuideInput {
 }
 
 export interface GuideState {
-  /** OUTPUT: state name, for the debug bridge (ruling R6). */
+  /** OUTPUT: state name, for the debug bridge (spec, build ruling R6). */
   name: GuideName;
   /** OUTPUT: this step's transition, or null. */
   event: GuideEvent | null;
@@ -114,7 +116,7 @@ export const GUIDE_LOST_SECONDS = 45;
 /** Spec: "at most once every few minutes". Three minutes, counted from the offer. */
 export const GUIDE_OFFER_COOLDOWN = 180;
 /**
- * Spec: "it streaks to the ship (~2 s)" (ruling R7; the e2e bound is 25 u in
+ * Spec: "it streaks to the ship (~2 s)" (spec, build ruling R7; the e2e bound is 25 u in
  * 3 s). Time-bound, not speed-capped: from across the system it is a streak.
  */
 export const GUIDE_COME_SECONDS = 2;
@@ -458,7 +460,7 @@ export function stepGuide(s: GuideState, inp: GuideInput, dt: number): GuideStat
 
   if (s.name !== "roaming") {
     const target = inp.target;
-    // Ruling R1: null target means everything is done, so it roams. Presenting
+    // Spec, build ruling R1: null target means everything is done, so it roams. Presenting
     // keeps its own centre and finishes its turn first.
     if (!target && s.name !== "presenting") { toRoaming(s); s.event = "allDone"; }
     else if (s.name === "coming") stepComing(s, inp, target!, dt);

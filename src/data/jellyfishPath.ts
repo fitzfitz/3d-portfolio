@@ -49,7 +49,7 @@ function dist2At(t: number, p: { x: number; y: number; z: number }): number {
 /**
  * The loop phase (0..1, arc length, as getPointAt reads it) nearest to `p`:
  * where the creature rejoins its loop when the guide hands it back (spec
- * 2026-10-23-jellyfish-guide; plan Task 5: "resumes the loop from the nearest
+ * 2026-10-23-jellyfish-guide; plan: "resumes the loop from the nearest
  * loop phase"). A coarse scan, then a golden-section search inside the best
  * sample's neighbours. Called once per hand-back, never per frame.
  */

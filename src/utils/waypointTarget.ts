@@ -13,7 +13,7 @@ interface Vec3 { x: number; y: number; z: number }
 /**
  * Where the logbook's next step is, for the HUD waypoint (WaypointDriver) and
  * the jellyfish guide (spec 2026-10-23-jellyfish-guide, "Leading": "one source
- * of truth with the HUD's NEXT line and target lock"; controller ruling R1).
+ * of truth with the HUD's NEXT line and target lock"; spec, build ruling R1).
  * Written into a caller-owned object so the frame loops allocate nothing.
  */
 export interface WaypointTarget extends Vec3 {
@@ -74,12 +74,12 @@ export function makeRecruiterTarget(): (
 }
 
 /**
- * The guide's target (rulings R1, R12). Until the essentials are done it is the
+ * The guide's target (spec, build rulings R1 and R12). Until the essentials are done it is the
  * HUD waypoint, exactly. Then the logbook's next goals are badges (a slingshot,
  * a comet), which are activities, not places, so it leads to the nearest
  * uncharted body instead (CARTOGRAPHER), with the charted bodies as visited.
  * The logbook has no charting entry, so a full logbook still leads on while
- * worlds are left (R12). False (null: it roams) once every body is charted.
+ * worlds are left (build ruling R12). False (null: it roams) once every body is charted.
  *
  * A memo per caller: essentialsDone, afterProbes and the charted id list are
  * recomputed only when the store hands over a new array, so a steady frame does

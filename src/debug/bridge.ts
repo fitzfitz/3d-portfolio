@@ -19,7 +19,7 @@ import { orreryEpochJd, setOrreryEpochJd } from "../utils/orreryClock";
  */
 /**
  * The jellyfish guide as SpaceJellyfish writes it each frame (spec
- * 2026-10-23-jellyfish-guide; ruling R6), for the guide's e2e probe.
+ * 2026-10-23-jellyfish-guide, build ruling R6), for the guide's e2e probe.
  */
 export interface JellyGuideDebug {
   state: GuideName;
@@ -90,7 +90,7 @@ export interface FitzDebug {
   cargoSwerve: { x: number; y: number; z: number }[] | null;
   /** Live jellyfish mood and offset, registered by SpaceJellyfish in dev. */
   jelly: JellyState | null;
-  /** Live jellyfish guide (controller ruling R6), registered by SpaceJellyfish in dev. */
+  /** Live jellyfish guide (spec 2026-10-23-jellyfish-guide, build ruling R6), registered by SpaceJellyfish in dev. */
   jellyGuide: JellyGuideDebug | null;
   /** Live mining state (AsteroidBelt, dev only). */
   mining: typeof import("../utils/mining").miningState | null;

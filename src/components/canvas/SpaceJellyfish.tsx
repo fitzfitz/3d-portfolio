@@ -188,7 +188,7 @@ export default function SpaceJellyfish() {
   const tangent = useMemo(() => new THREE.Vector3(), []);
   const keepOut = useMemo<JellyKeepOut[]>(
     () => SOLAR_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size * ZONE_FACTOR + JELLY_RADIUS, body: b.size + JELLY_RADIUS })), []);
-  /** The guide's target (ruling R1) and the logbook progress it reads, reused every frame. */
+  /** The guide's target (spec, build ruling R1) and the logbook progress it reads, reused every frame. */
   const target = useMemo(createWaypointTarget, []);
   const guideTarget = useMemo(makeGuideTarget, []);
   const progress = useMemo<LogbookProgress>(
@@ -226,7 +226,7 @@ export default function SpaceJellyfish() {
   const lastAmbient = useRef<number | null>(null);
 
   /**
-   * The guide as the e2e probes read it (ruling R6): live, written every frame
+   * The guide as the e2e probes read it (spec, build ruling R6): live, written every frame
    * and mirrored onto the bridge (with the mood state) only in dev.
    * `up` is the body's +y in world space, `vel` the posture's smoothed velocity.
    */
@@ -321,7 +321,7 @@ export default function SpaceJellyfish() {
     // Reduced motion freezes ambient time (so `uTime`, which drives the tentacle
     // sway and rings, stays frozen as before), but the spec still wants the bell
     // to pulse slowly: `uBeat` carries the bell phase and steps on frame time
-    // there (controller ruling: only the bell may move).
+    // there (spec, build ruling R11: only the bell may move).
     const store = useSpaceStore.getState();
     const reduced = store.reducedMotion;
     pulseRate.current = damp(pulseRate.current, pulseRateTarget(JELLY_PULSE_RATE[jelly.mood], posture.swim, reduced), 0.5, dt);
@@ -366,7 +366,7 @@ export default function SpaceJellyfish() {
     fi.reducedMotion = reduced;
     fi.toggle = takeGuideToggle();
 
-    // Target (ruling R1): the HUD's next step, then the nearest uncharted world.
+    // Target (spec, build ruling R1): the HUD's next step, then the nearest uncharted world.
     progress.visitedDossiers = store.visitedDossiers;
     progress.shardsCollected = store.shardsCollected;
     progress.badges = store.badges;
@@ -394,8 +394,8 @@ export default function SpaceJellyfish() {
 
     stepJellyFrame(frame, fi, frameDt);
     if (frame.handBack) {
-      // Resume the loop at the phase nearest where the guide left it (plan Task
-      // 5); the gap swims home from there (beginReturn), never a teleport.
+      // Resume the loop at the phase nearest where the guide left it; the gap
+      // swims home from there (beginReturn), never a teleport.
       const near = nearestLoopT(frame.pos);
       tOffset.current = near - time / JELLY_LOOP_SECONDS;
       loopPoint(near, surge, bob, pathPos, basePos, tangent);
@@ -437,7 +437,7 @@ export default function SpaceJellyfish() {
     material.uniforms.uStreak.value = streak.current;
     if (meshRef.current) meshRef.current.frustumCulled = streak.current < 0.01;
 
-    // The bridge (ruling R6); written unconditionally, it allocates nothing.
+    // The bridge (spec, build ruling R6); written unconditionally, it allocates nothing.
     const q = g.quaternion, gd = guideDebug;
     gd.state = frame.guide.name;
     gd.pos.x = g.position.x; gd.pos.y = g.position.y; gd.pos.z = g.position.z;

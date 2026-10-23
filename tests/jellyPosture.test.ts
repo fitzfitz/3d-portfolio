@@ -130,7 +130,7 @@ describe("stepPosture", () => {
   it("is allocation-free: reuses state and out, no per-call garbage", () => {
     const s = createPostureState();
     const out = quat();
-    const keep = [s.dir, s.q, s];
+    const { dir, q, vel: sVel, last } = s;
     const vel = v(6, 1, -2);
     const heap = () => process.memoryUsage().heapUsed;
     for (let i = 0; i < 1000; i++) stepPosture(s, vel, 1 / 60, out);
@@ -138,7 +138,10 @@ describe("stepPosture", () => {
     for (let i = 0; i < 300000; i++) stepPosture(s, vel, 1 / 60, out);
     // 300k calls that each made a quaternion and a vector would add ~20 MB
     expect(heap() - h0).toBeLessThan(2_000_000);
-    expect(keep).toEqual([s.dir, s.q, s]);
+    expect(s.dir).toBe(dir);
+    expect(s.q).toBe(q);
+    expect(s.vel).toBe(sVel);
+    expect(s.last).toBe(last);
     expect(Object.keys(s).length).toBe(Object.keys(createPostureState()).length);
   });
 });
@@ -180,8 +183,8 @@ describe("stepVelocity", () => {
 // The guide streaks in at ~250 u/s and stops dead on its station (spec
 // 2026-10-23-jellyfish-guide, "Calling it"); it leads at warp and stops when
 // the pilot does. Smoothed in raw u/s, that speed took ~5 s to fall under the
-// swim threshold, so a stopped guide hung sideways (measured in the browser,
-// Task 5). Spec "Swim posture": "easing back upright over ~1 s as it slows".
+// swim threshold, so a stopped guide hung sideways (measured in the browser
+// while building the guide). Spec "Swim posture": "easing back upright over ~1 s as it slows".
 describe("stepVelocity: a fast stop still reads as a stop", () => {
   /** Dash along +x at `speed` for 2 s, then stand still; returns seconds until upright (body up · +y > 0.95). */
   function uprightAfterStop(speed: number): number {
@@ -201,7 +204,7 @@ describe("stepVelocity: a fast stop still reads as a stop", () => {
     expect(Math.hypot(s.vel.x, s.vel.y, s.vel.z)).toBeCloseTo(POSTURE_V_MAX, 3);
     expect(s.vel.x / s.vel.y).toBeCloseTo(3 / 4, 6);
   });
-  it("the cap sits above cruise-like swimming and is reached within two half-lives of the swim threshold", () => {
+  it("the cap is more than 3 and at most 4 times the swim threshold", () => {
     expect(POSTURE_V_MAX).toBeGreaterThan(POSTURE_V_SWIM * 3);
     expect(POSTURE_V_MAX).toBeLessThanOrEqual(POSTURE_V_SWIM * 4);
   });
