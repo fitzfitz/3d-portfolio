@@ -22,10 +22,10 @@
          `vite build --base=/3d-portfolio/`), so a relative Twitter URL would
          stay pointed at the domain root and 404 on a project page. Absolute
          URLs need no rewriting and sidestep both problems.
-         These four URLs assume the GitHub Pages project page; a custom domain
-         means updating og:url, canonical, og:image and twitter:image. -->
-    <meta property="og:url" content="https://fitzfitz.github.io/3d-portfolio/" />
-    <meta property="og:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
+         These URLs name production (porto.fitzgeral.my.id), so staging on
+         GitHub Pages points search engines and link previews there too. -->
+    <meta property="og:url" content="https://porto.fitzgeral.my.id/" />
+    <meta property="og:image" content="https://porto.fitzgeral.my.id/og.webp" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
@@ -33,9 +33,9 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Fitzgeral — Software Engineer | 3D Flight-Sim CV" />
     <meta name="twitter:description" content="An interactive CV you fly through. Grab a project probe with the tractor beam to open its dossier." />
-    <meta name="twitter:image" content="https://fitzfitz.github.io/3d-portfolio/og.webp" />
+    <meta name="twitter:image" content="https://porto.fitzgeral.my.id/og.webp" />
 
-    <link rel="canonical" href="https://fitzfitz.github.io/3d-portfolio/" />
+    <link rel="canonical" href="https://porto.fitzgeral.my.id/" />
 
     <!-- Structured data. Static HTML cannot import src/data/identity.ts, so
          keep name, title and profile URLs in sync with it by hand. -->
@@ -45,7 +45,7 @@
         "@type": "Person",
         "name": "Fitzgeral",
         "jobTitle": "Creative Software Engineer",
-        "url": "https://fitzfitz.github.io/3d-portfolio/",
+        "url": "https://porto.fitzgeral.my.id/",
         "address": { "@type": "PostalAddress", "addressLocality": "Jakarta", "addressCountry": "ID" },
         "worksFor": { "@type": "Organization", "name": "Hubexo" },
         "sameAs": [

@@ -4,8 +4,8 @@ main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
 [vars]
-# Every host that serves the site: GitHub Pages, the Cloudflare copy, and the
-# custom domain on that copy (porto.fitzgeral.my.id). A host missing here gets
+# Every host that serves the site: staging on GitHub Pages, and production on
+# the Cloudflare Worker (workers.dev and the custom domain porto.fitzgeral.my.id). A host missing here gets
 # 403 on /live and no CORS on /beacons: no ghosts, no buoys.
 ALLOWED_ORIGINS = "https://fitzfitz.github.io,https://3d-portfolio.fitzgeralmedia.workers.dev,https://porto.fitzgeral.my.id"
 
