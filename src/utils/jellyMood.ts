@@ -32,19 +32,42 @@ export interface JellyInput {
   dt: number;
 }
 
-/** Body radius: creature.glb spans ±1, drawn at scale 6, sway-padded 1.5x. */
-export const JELLY_RADIUS = 9;
-export const JELLY_CURIOUS_RADIUS = 60;
+/**
+ * The creature's drawn scale: the model is 1.94 x 4.92 x 1.96, so ~3.9 u tall
+ * in game, 1.6x the ship (spec 2026-10-23-jellyfish-guide, Size). Was 6 (~30 u).
+ */
+export const JELLY_SCALE = 0.8;
+/**
+ * Farthest the creature reaches from its group origin, in model units. Measured
+ * from creature.glb: the origin sits near the bell's crown (node y -1.74, bell
+ * top +0.72), the tentacle tips hang to y -4.20, and the shader sways them
+ * ~0.2 per unit of depth sideways (0.86 at the tips): hypot(4.20, 0.86) = 4.29.
+ */
+const JELLY_REACH = 4.3;
+/**
+ * Body radius for keep-outs and clearance: reach from the origin (the point the
+ * path and the keep-outs act on) times the scale = 3.44 u. The old "±1 at scale
+ * 6, 1.5x" = 9 under-counted a creature whose tips hang 25 u below its origin.
+ */
+export const JELLY_RADIUS = JELLY_REACH * JELLY_SCALE;
+/**
+ * Behaviour-feel distances, re-fitted to a ship-sized creature (was 60/18/40/40,
+ * tuned to a 30 u one). It notices a slow ship within ~10 body heights; it
+ * rests ~2 body heights (~3 ship lengths) off, close enough to look and clear
+ * of the hull; a boost startles it inside ~5 body heights; the flee carries
+ * it ~8 body heights, a clear dart without leaving the leash.
+ */
+export const JELLY_CURIOUS_RADIUS = 40;
 /** Cruise max is 10.8; under this the player reads as hovering. */
 export const JELLY_CURIOUS_MAX_SPEED = 4;
-export const JELLY_REST_DIST = 18;
-export const JELLY_STARTLE_RADIUS = 40;
-export const JELLY_FLEE_DIST = 40;
+export const JELLY_REST_DIST = 8;
+export const JELLY_STARTLE_RADIUS = 20;
+export const JELLY_FLEE_DIST = 30;
 /** Never more than this from where the path puts it: keeps the rare-sighting rhythm. */
 export const JELLY_LEASH = 80;
 export const JELLY_STARTLE_SECONDS = 2;
-/** A path step longer than this in one frame is a jump (the J summon), not drift. */
-const PATH_JUMP = 20;
+/** A path step longer than this in one frame is a jump (a loop re-phase, a teleport), not drift. */
+export const PATH_JUMP = 20;
 
 /** Spec: dart ~1s, follow gently, ease home ~6s (as half-lives). */
 const HALF_LIFE: Record<JellyMood, number> = { startled: 0.25, curious: 0.8, calm: 1.5 };
@@ -63,6 +86,28 @@ function setTarget(s: JellyState, x: number, y: number, z: number) {
   const l = Math.hypot(x, y, z);
   const k = l > JELLY_LEASH ? JELLY_LEASH / l : 1;
   s.target.x = x * k; s.target.y = y * k; s.target.z = z * k;
+}
+
+/**
+ * The keep-out law, shared by the moods and the guide (spec 2026-10-23
+ * jellyfish-guide: "keeps clear of every solid, as the keep-out law does
+ * today"): a point inside any `body` moves out to that body's surface, away
+ * from its centre (straight up from the exact centre, which has no away).
+ * Bodies are taken in order, as the moods always did. Mutates `p`; returns
+ * whether it moved, so a caller can leave an untouched value bit-exact.
+ */
+export function pushOutOfSolids(p: Vec3, keepOut: readonly JellyKeepOut[]): boolean {
+  let moved = false;
+  for (const k of keepOut) {
+    const px = p.x - k.x, py = p.y - k.y, pz = p.z - k.z;
+    const d = Math.hypot(px, py, pz);
+    if (d >= k.body) continue;
+    const push = k.body - d;
+    moved = true;
+    if (d < 1e-6) { p.y += push; continue; }
+    p.x += (px / d) * push; p.y += (py / d) * push; p.z += (pz / d) * push;
+  }
+  return moved;
 }
 
 /**
@@ -119,14 +164,10 @@ export function stepJelly(s: JellyState, inp: JellyInput): JellyState {
   // side, and the eased transit to a rest point can cut a chord through one.
   // Hold the creature's centre on the planet's surface instead. The path
   // itself always clears `body` (tests/planetClearance.test.ts), so a calm
-  // jellyfish on its path is never touched.
-  for (const k of inp.keepOut) {
-    const px = pathPos.x + s.offset.x - k.x, py = pathPos.y + s.offset.y - k.y, pz = pathPos.z + s.offset.z - k.z;
-    const d = Math.hypot(px, py, pz);
-    if (d >= k.body) continue;
-    const push = k.body - d;
-    if (d < 1e-6) { s.offset.y += push; continue; }
-    s.offset.x += (px / d) * push; s.offset.y += (py / d) * push; s.offset.z += (pz / d) * push;
+  // jellyfish on its path is never touched (and its offset stays bit-exact).
+  jelly.x = pathPos.x + s.offset.x; jelly.y = pathPos.y + s.offset.y; jelly.z = pathPos.z + s.offset.z;
+  if (pushOutOfSolids(jelly, inp.keepOut)) {
+    s.offset.x = jelly.x - pathPos.x; s.offset.y = jelly.y - pathPos.y; s.offset.z = jelly.z - pathPos.z;
   }
   const l = Math.hypot(s.offset.x, s.offset.y, s.offset.z);
   if (l > JELLY_LEASH) {

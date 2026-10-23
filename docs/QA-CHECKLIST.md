@@ -77,7 +77,9 @@ __fitz.store.getState().setLowPerf(true, true)
 // Undo it
 __fitz.store.getState().setLowPerf(false, true)
 
-// Summon the space jellyfish nearby (no console needed — just press the key)
+// Call the jellyfish guide (no console needed — just press the key; press J
+// again, or the touch GUIDE button, to dismiss it). It streaks to the ship,
+// then leads ahead toward the HUD's next target.
 // press J
 
 // Watch React commits while you fly — should NOT move during steady,
@@ -103,9 +105,9 @@ __fitz.bodies.earth
 | `C` or `X` | Pitch down |
 | `E` (hold) | Scan a nearby scannable target |
 | `P` | Photo mode |
-| `J` | Summon the space jellyfish |
+| `J` | Call or dismiss the jellyfish guide |
 
-Touch controls (joystick, pitch up/down, `SCAN`, `BOOST`) only render when
+Touch controls (joystick, pitch up/down, `SCAN`, `BOOST`, `GUIDE` to call or dismiss the jellyfish guide) only render when
 the browser reports `(pointer: coarse)` — they will **not** appear at all on
 a desktop browser, including devtools' device-emulation mode in some
 configurations. This matters for check 8, the real-device check: it cannot

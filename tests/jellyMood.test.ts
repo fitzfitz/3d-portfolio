@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createJellyState, stepJelly, type JellyInput, type JellyState,
-  JELLY_REST_DIST, JELLY_LEASH, JELLY_STARTLE_SECONDS,
+  JELLY_REST_DIST, JELLY_LEASH, JELLY_STARTLE_SECONDS, JELLY_STARTLE_RADIUS,
 } from "../src/utils/jellyMood";
 
 const v = (x = 0, y = 0, z = 0) => ({ x, y, z });
@@ -58,10 +58,11 @@ describe("stepJelly", () => {
   });
 
   it("startles on a boost nearby and darts away", () => {
-    const inp = input({ player: v(20, 0, 0), boosting: true });
+    const inp = input({ player: v(12, 0, 0), boosting: true });
     const s = run(createJellyState(), inp, 1);
     expect(s.mood).toBe("startled");
-    expect(dist(jellyAt(s, inp), inp.player)).toBeGreaterThan(35);
+    // Flees JELLY_FLEE_DIST (30): well clear of the startle radius (20) in a second.
+    expect(dist(jellyAt(s, inp), inp.player)).toBeGreaterThan(JELLY_STARTLE_RADIUS + 10);
   });
 
   it("lets a startle override curiosity", () => {
@@ -72,7 +73,7 @@ describe("stepJelly", () => {
   });
 
   it("calms down after the startle and eases home", () => {
-    const s = run(createJellyState(), input({ player: v(20, 0, 0), boosting: true }), 0.5);
+    const s = run(createJellyState(), input({ player: v(12, 0, 0), boosting: true }), 0.5);
     run(s, input({ player: v(200, 0, 0) }), JELLY_STARTLE_SECONDS + 0.5);
     expect(s.mood).toBe("calm");
     run(s, input({ player: v(200, 0, 0) }), 12);
@@ -89,8 +90,8 @@ describe("stepJelly", () => {
   });
 
   it("won't follow the player into a planet's keep-out", () => {
-    // Player at +30, jelly at the origin: the resting point would be (12,0,0).
-    const s = stepJelly(createJellyState(), input({ keepOut: [{ x: 12, y: 0, z: 0, r: 10, body: 5 }] }));
+    // Player at +30, jelly at the origin: the resting point would be (22,0,0).
+    const s = stepJelly(createJellyState(), input({ keepOut: [{ x: 22, y: 0, z: 0, r: 10, body: 5 }] }));
     expect(s.mood).toBe("calm");
   });
 

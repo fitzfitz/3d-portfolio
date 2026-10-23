@@ -72,21 +72,22 @@ async function reacting(page, checks) {
     `broadcast=${b?.text}`);
 
   // ---- jellyfish: curious, then startled ----
-  await page.keyboard.press("KeyJ");
-  await settle(page, 800);
+  // J now calls the guide, which suspends the moods, so the creature is left
+  // roaming and the ship goes to it (its position is on the debug bridge).
   const jelly = () => page.evaluate(() => {
     const p = window.__fitz.scene.getObjectByName("SpaceJellyfish").position;
     const f = window.__fitz.flight;
     return { mood: window.__fitz.jelly.mood, dist: Math.hypot(p.x - f.x, p.y - f.y, p.z - f.z), p: [p.x, p.y, p.z] };
   });
   const j0 = await jelly();
-  await teleport(page, [j0.p[0] + 30, j0.p[1], j0.p[2]]);
+  checks.check("the jellyfish roams (no guide called)", (await page.evaluate(() => window.__fitz.jellyGuide?.state)) === "roaming");
+  await teleport(page, [j0.p[0] + 24, j0.p[1], j0.p[2]]);
   await settle(page, 300);
   const start = (await jelly()).dist;
   // pollUntil resolves to { ok, value }, never the bare value.
   const curious = (await pollUntil(async () => {
     const j = await jelly();
-    return j.mood === "curious" && j.dist < start - 5 ? j : null;
+    return j.mood === "curious" && j.dist < start - 8 ? j : null;
   }, { timeoutMs: 8000 })).value;
   checks.check("the jellyfish turns curious and drifts toward a hovering ship", !!curious,
     curious ? `dist ${start.toFixed(1)} -> ${curious.dist.toFixed(1)}` : `start=${start.toFixed(1)}`);
@@ -119,6 +120,18 @@ async function stillUnderReducedMotion(page, checks) {
   await settle(page, 1500);
   const nearest = nearestTo(await beltRocks(page), await shipPos(page)).d;
   checks.check("reduced motion: the belt does not part", nearest < 1, `nearest rock ${nearest.toFixed(2)}u`);
+
+  // Spec "no surge": the slow bell beat must not lunge the creature (a beat
+  // is ~9 s at the reduced rate, so sample across one).
+  const jpos = () => page.evaluate(() => { const p = window.__fitz.scene.getObjectByName("SpaceJellyfish").position; return [p.x, p.y, p.z]; });
+  const j0 = await jpos();
+  let drift = 0;
+  for (let k = 0; k < 6; k++) {
+    await settle(page, 1700);
+    const j = await jpos();
+    drift = Math.max(drift, Math.hypot(j[0] - j0[0], j[1] - j0[1], j[2] - j0[2]));
+  }
+  checks.check("reduced motion: the jellyfish holds still (no surge)", drift < 0.01, `max drift ${drift.toFixed(4)}u over ~10s`);
 }
 
 /** One page each, independent: run.mjs runs them as separate jobs. */

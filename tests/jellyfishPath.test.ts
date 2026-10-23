@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
-import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS } from "../src/data/jellyfishPath";
+import { JELLY_PATH, JELLY_NEAR_T, JELLY_LOOP_SECONDS, nearestLoopT } from "../src/data/jellyfishPath";
 import { SPAWN } from "../src/data/spawn";
 import { BUOYS, STATION_POS } from "../src/data/careerTrail";
 import { PROBES } from "../src/data/probes";
@@ -64,6 +64,29 @@ describe("jellyfish path", () => {
     for (let i = 0; i < 400; i++) {
       const q = at(i / 400);
       for (const k of keep) expect(q.distanceTo(k.p), `t=${i / 400} vs ${k.name}`).toBeGreaterThan(k.r);
+    }
+  });
+});
+
+// The guide hands the creature back to its loop at the loop phase nearest to
+// where it left it (spec 2026-10-23-jellyfish-guide, plan: "resumes the
+// loop from the nearest loop phase (no teleport back)").
+describe("nearestLoopT", () => {
+  const circ = (a: number, b: number) => { const d = Math.abs(a - b) % 1; return Math.min(d, 1 - d); };
+  it("finds the phase of a point on the loop", () => {
+    for (const t of [0, 0.013, 0.2, 0.37, 0.5, 0.731, 0.999]) {
+      expect(circ(nearestLoopT(at(t)), t), `t=${t}`).toBeLessThan(1e-3);
+    }
+  });
+  it("finds the closest phase for points off the loop (as close as a fine scan, or closer)", () => {
+    const pts = [v([0, 0, 0]), v([3000, -40, 900]), v([-150, 300, 20]), v([216, 60, -39]), v(SHIPYARD_POS)];
+    for (const p of pts) {
+      let best = Infinity;
+      for (let i = 0; i < 4000; i++) best = Math.min(best, at(i / 4000).distanceTo(p));
+      const t = nearestLoopT(p);
+      expect(t).toBeGreaterThanOrEqual(0);
+      expect(t).toBeLessThan(1);
+      expect(at(t).distanceTo(p)).toBeLessThan(best + 0.01);
     }
   });
 });
