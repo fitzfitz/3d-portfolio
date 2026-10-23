@@ -40,6 +40,12 @@ else:
             if os.path.exists(p)]
 WITH_SHIP = "with-ship" in FLAGS
 SHIP_GLB = os.path.join(ROOT, "assets-src", "spaceship.glb")
+for p in GLBS + ([SHIP_GLB] if WITH_SHIP else []):
+    if not os.path.exists(p):
+        sys.exit(f"turntable_monsters.py: {p} not found")
+if not GLBS:
+    sys.exit("turntable_monsters.py: no monster glb in assets-src/ (run gen_saucer.py / gen_tardigrade.py) "
+             "and no --glb=PATH given")
 SHIP_SCALE = 0.35          # src/constants.ts PLAYER_SHIP_SCALE
 SAMPLES = int(OPT.get("samples", 64))
 RES = int(OPT.get("res", 1024))
@@ -148,18 +154,29 @@ def bounds(objs):
     return lo, hi
 
 
-def shoot(sc, sun, cam, path, target, radius, az_deg, el_deg, key=1):
-    """Camera on a sphere about target, framing a sphere of `radius`.
+def shoot(sc, sun, cam, path, target, radius, az_deg, el_deg, key=1, fit=None, margin=0.10):
+    """Camera on a sphere about target, framing a sphere of `radius`; or, with
+    fit (world points), aimed at the middle of their on-screen span and backed
+    off until every point lies `margin` of the frame inside each edge.
     key=1 lights from the camera's upper left, -1 from its upper right."""
     az, el = math.radians(az_deg), math.radians(el_deg)
     d = gl(math.sin(az) * math.cos(el), math.sin(el), math.cos(az) * math.cos(el))
-    half_fov = math.atan(18.0 / LENS)
-    dist = radius / math.sin(half_fov) * 1.04
-    cam.location = target + d * dist
-    cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
     f = -d
     right = f.cross(Vector((0, 0, 1))).normalized()
     up = right.cross(f).normalized()
+    half_fov = math.atan(18.0 / LENS)
+    if fit is None:
+        dist = radius / math.sin(half_fov) * 1.04
+    else:
+        def mid(axis):
+            ps = [p.dot(axis) for p in fit]
+            return (min(ps) + max(ps)) / 2
+        target = right * mid(right) + up * mid(up) + d * mid(d)
+        t = math.tan(half_fov) * (1 - 2 * margin)   # square frame: same both ways
+        dist = max((p - target).dot(d) + max(abs((p - target).dot(right)), abs((p - target).dot(up))) / t
+                   for p in fit)
+    cam.location = target + d * dist
+    cam.rotation_euler = f.to_track_quat("-Z", "Y").to_euler()
     sd = (f * 0.75 + right * 0.55 * key - up * 0.45).normalized()   # ~45 deg off the camera, raking
     sun.rotation_euler = sd.to_track_quat("-Z", "Y").to_euler()
     sc.render.filepath = path
@@ -204,8 +221,7 @@ for glb in GLBS:
         for r in roots:
             r.location = r.location + shift
         bpy.context.view_layer.update()
-        alo, ahi = bounds(objs + ship)
         sext = bounds(ship)[1] - bounds(ship)[0]
         print("ship at %.2f: extent (glTF x, y, z) %.3f %.3f %.3f" % (SHIP_SCALE, sext.x, sext.z, sext.y))
-        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_scale.png"), (alo + ahi) / 2,
-              (ahi - alo).length / 2 * 0.78, SCALE_AZ, 12)
+        pts = [o.matrix_world @ v.co for o in objs + ship for v in o.data.vertices]
+        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_scale.png"), None, None, SCALE_AZ, 12, fit=pts)
