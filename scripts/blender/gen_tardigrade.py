@@ -16,12 +16,14 @@
 #     rolled lip around a dark bore;
 #   - Tardigrade_Eyes: two tiny dark eyes on the head;
 #   - Tardigrade_Crystals: five crystals along the back (they glow, later);
-#   - (revision v2, scarier: furry and slimy) Tardigrade_Fur: a matted coat
-#     (a closed slab plus wet clumps, a coarse proxy for the shell-fur
-#     envelope) over the back and sides, the crystals poking through; the
-#     belly, legs, claws and mouth tube stay bare; Tardigrade_Teeth: two
-#     rings of raked teeth inside the (wider) mouth tube; Tardigrade_Drool;
-#     Tardigrade_Brows: scowling lids and brows over the eyes.
+#   - (revision v2/v3, scarier: furry and slimy) Tardigrade_Fur: a long,
+#     shaggy, drooping coat (a closed matted slab under long wet locks laid
+#     along the body and hanging to near the belly line; a coarse proxy for
+#     the shell-fur envelope) over the back and sides, the crystals poking
+#     through; Tardigrade_Drips off a few lock tips; the belly, legs, claws
+#     and mouth tube stay bare; Tardigrade_Teeth: two rings of raked teeth
+#     inside the (wider) mouth tube; Tardigrade_Drool; Tardigrade_Brows:
+#     scowling lids, thick brow ridges laid on the head's curve, furrows.
 # (Stage "final", Task 4, sculpts, bakes and adds the zones and motion data.)
 #
 # glTF space: +Y up, the mouth +Z, scale 1, origin at the centre of mass
@@ -143,7 +145,15 @@ for a, length, sway in ((-118, 0.42, (0.0, 0, 0.03)), (-92, 0.85, (0.03, 0, -0.0
 ml.to_object("Tardigrade_Drool", bm, rt)
 
 # ------------------------------------------------------------------ eyes ---
-# small dark eyes under heavy lids that slant down toward the snout
+def onto_body(P):
+    """The body surface point (and normal) under P, along the cross-section."""
+    dy = P.y - centre_y(P.z)
+    return surface_n(P.z, math.atan2(dy / (BACK if dy > 0 else BELLY), P.x))
+
+
+# small dark eyes under heavy lids, and scowling brow ridges: thick rounded
+# rolls laid on the head's own curve (so nothing pokes out of the outline),
+# low over each eye and dipping onto its inner corner, with furrows between
 bm = bmesh.new()
 brows = bmesh.new()
 for side in (1, -1):
@@ -152,8 +162,20 @@ for side in (1, -1):
     ml.ellipsoid(bm, c, (r, r, r), 20, 12, DARK)
     gaze = (AX + n * 0.6).normalized()
     toward = Vector((-side, 0, 0.35)).normalized()      # the lids sink toward the midline: a scowl
-    ml.lid_and_brow(brows, c, r, Vector((0, 1, 0)) + toward * 0.55, gaze, toward, SKIN, cover=24,
-                    brow=(0.045, 0.08), span=45)
+    ml.lid_and_brow(brows, c, r, Vector((0, 1, 0)) + toward * 0.55, gaze, toward, SKIN, cover=24, roll=False)
+    up = ml.perp(Vector((0, 1, 0)), gaze).normalized()
+    inner = ml.perp(ml.perp(Vector((-side, 0, 0)), gaze), up).normalized()
+    ridge = []
+    for s_, h in ((-0.25, 0.15), (-0.13, 0.19), (0.0, 0.19), (0.11, 0.15), (0.2, 0.08)):
+        q, qn = onto_body(c + up * h + inner * s_)
+        ridge.append(q + qn * 0.03)
+    ml.sweep(brows, ridge, lambda t: 0.085 + 0.045 * math.sin(math.pi * min(1.0, t * 1.2)), ring=14,
+             per_seg=5, mi=SKIN, cap=4)
+for x0, x1 in ((0.055, 0.085), (-0.055, -0.085)):          # furrows over the snout, between the brows
+    a, b_ = onto_body(Vector((x0, 0.9, 2.66)))[0], onto_body(Vector((x1, 0.9, 2.84)))[0]
+    mid, mn = onto_body((a + b_) / 2)
+    ml.sweep(brows, [a, mid + mn * 0.012, b_], lambda t: 0.03 + 0.012 * math.sin(math.pi * t), ring=8,
+             per_seg=4, mi=SKIN, cap=3)
 ml.to_object("Tardigrade_Eyes", bm, rt, smooth_angle=80)
 ml.to_object("Tardigrade_Brows", brows, rt)
 
@@ -229,10 +251,9 @@ def hem(z):
 
 
 COAT_Z0, COAT_Z1 = -HALF + 0.04, FOLDS[0] + 0.06
-# a shaggy, matted coat of wet clumps over the back and sides, from behind
-# the head to the rump, combed back and hanging down; a ragged hem above the
-# legs; bare round the crystals so they poke through. The head, belly, legs
-# and mouth stay bare (slimy, later).
+# a long, shaggy, drooping coat over the back and sides, from behind the
+# head to the rump, the crystals poking through; the head, belly, legs and
+# mouth stay bare (slimy, later).
 bm = bmesh.new()
 # the matted under-layer: a closed slab from just under the skin to 0.07 out
 NZ, NU = 64, 44
@@ -259,21 +280,56 @@ for j in range(NU):
 for f in slab:
     f.material_index = FUR
 bmesh.ops.recalc_face_normals(bm, faces=slab)
-cands = []
-z = COAT_Z0
-while z <= COAT_Z1:
-    t = hem(z)
-    while t <= math.pi - hem(z):
-        p, n = surface_n(z, t)
-        if all((p - q).length > 0.24 for q in CRYSTAL_ROOTS):
-            cands.append((p, n))
-        t += math.radians(3.5)
-    z += 0.07
-tufts = ml.scatter(cands, 0.24, rng)
-for p, n in tufts:
-    hang = 1 + 0.6 * max(0.0, 0.45 - n.y)          # longer, heavier clumps down the sides
-    ml.tuft(bm, p, n, rng.uniform(0.32, 0.48) * hang, rng.uniform(0.12, 0.155), ml.G + Vector((0, 0, -0.6)), FUR)
-print("COAT tufts", len(tufts), "from", len(cands))
-ml.to_object("Tardigrade_Fur", bm, rt)
+# long wet locks over the slab: rooted in rows from the spine down the
+# flanks, each laid along the body's curve (combed a little back, higher
+# rows lying over lower ones) and then hanging free under gravity to near
+# the belly line, tapering to a clumped wet point; none through the
+# crystals' roots
+ROWS = (84, 62, 40, 18)            # root angle above the side, degrees
+STEP = 0.2
+
+
+def lock(z0, a0, side):
+    """Points of one lock from root (z0, a0 deg above the side) on `side`."""
+    lift = 0.05 + 0.12 * a0 / 90
+    t = math.radians(90 - side * (90 - a0))
+    z = z0
+    p, n = surface_n(z, t)
+    pts = [p - n * 0.06]
+    y_tip = centre_y(z0) - radius(z0) * rng.uniform(0.38, 0.74)
+    sway = Vector((side * rng.uniform(-0.04, 0.16), 0, rng.uniform(-0.22, 0.1)))
+    done = 0.0
+    while pts[-1].y > y_tip:
+        above = (t if side > 0 else math.pi - t)
+        if above > math.radians(-6):
+            t -= side * STEP / max(radius(z), 0.35)
+            z -= 0.018
+            p, n = surface_n(z, t)
+            pts.append(p + n * (lift + 0.03 * done))
+        else:
+            pts.append(pts[-1] + (ml.G + sway).normalized() * STEP)
+        done += STEP
+    return pts
+
+
+locks = []
+for row, a0 in enumerate(ROWS):
+    z = COAT_Z0 + 0.38 + 0.1 * (row % 2)
+    while z <= COAT_Z1 - 0.02:
+        for side in (1, -1):
+            zz = z + rng.uniform(-0.05, 0.05)
+            pts = lock(zz, a0 + rng.uniform(-6, 6), side)
+            if any((q - c).length < 0.3 for q in pts[:4] for c in CRYSTAL_ROOTS):
+                continue
+            locks.append(pts)
+        z += 0.2
+for pts in locks:
+    r0 = rng.uniform(0.1, 0.19)
+    ml.sweep(bm, pts, lambda t: r0 * (1 - 0.88 * t ** 1.3) + 0.01, ring=7, per_seg=1, mi=FUR, cap=2)
+drool_locks = bmesh.new()
+for i in sorted(rng.sample(range(len(locks)), 9)):        # a few drips off the lock tips
+    ml.drip(drool_locks, locks[i][-1], rng.uniform(0.12, 0.24), 0.03, SLIME)
+ml.to_object("Tardigrade_Fur", bm, rt, smooth_angle=85)
+ml.to_object("Tardigrade_Drips", drool_locks, rt)
 
 ml.finish(rt, OUT_DIR, "tardigrade", EXTENT)

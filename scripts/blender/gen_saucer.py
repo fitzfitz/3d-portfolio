@@ -16,7 +16,8 @@
 #     Alien_ArmL / R resting on the rim;
 #   - (revision v2, scarier: furry and slimy) Alien_Fur_Crown and
 #     Alien_Fur_TentacleL / R / ArmL / R: wet clumps (a coarse proxy for the
-#     shell-fur envelope) over the crown and back of the head and down the
+#     shell-fur envelope) over the top, front (to the brow line, parted round
+#     the top eye) and back of the head and down the
 #     tentacles' backs, the face and undersides bare; Alien_Brows: heavy
 #     angry lids and brow rolls over all three eyes; the teeth are sharp
 #     crooked fangs with Alien_Goo strings between the jaws; Alien_Drips off
@@ -322,24 +323,31 @@ for side, name in ((1, "Alien_ArmL"), (-1, "Alien_ArmR")):
     tentacle(name, [(0.45 * side, 0.12, 0.10), (0.66 * side, 0.22, 0.36), (0.82 * side, 0.34, 0.60),
                     (0.83 * side, 0.37, 0.72), (0.80 * side, 0.31, 0.80)], 0.12, 0.06, upward)
 
-# the shaggy crown: clumps over the top and back of the head, down to a
-# ragged hem that hangs lower behind; the face and the eyes stay bare
+# the shaggy crown: wet clumps over the whole top and front of the head down
+# to the brow line, locks falling a little forward in front and back behind,
+# a ragged hem hanging lower at the back; the fur parts round the top eye
+# (no roots near it, and the nearest clumps lean away from it); the face
+# below the brows stays bare
 bm = bmesh.new()
 cands = []
+tc, tr, _ = EYES[2]
 for p, n in BODY_PTS:
-    hem = 1.10 + 0.10 * max(n.z, 0.0) - 0.32 * max(-n.z, 0.0) + 0.05 * math.sin(7 * math.atan2(p.x, p.z))
-    if p.y < hem or any((p - c).length < r + 0.07 for c, r, _ in EYES):
+    hem = 1.06 - 0.36 * max(-n.z, 0.0) + 0.04 * math.sin(7 * math.atan2(p.x, p.z))
+    if p.y < hem or (p - tc).length < tr + 0.06:
         continue
-    tc, tr, _ = EYES[2]          # nothing grows over the top eye's face
-    if p.z > tc.z - 0.04 and abs(p.x) < tr + 0.08:
+    if any((p - c).length < r + 0.12 for c, r, _ in EYES[:2]):     # the face eyes' brows stay clear
         continue
     cands.append((p, n))
 tips = []
-for p, n in ml.scatter(cands, 0.072, rng):
-    tips.append(ml.tuft(bm, p, n, rng.uniform(0.22, 0.34), rng.uniform(0.07, 0.09), ml.G + Vector((0, 0, -0.45))))
+for p, n in ml.scatter(cands, 0.06, rng):
+    fwd = max(n.z, 0.0)
+    away = ml.perp(p - tc, n)
+    near = math.exp(-(((p - tc).length - tr) / 0.12) ** 2)        # the parting round the top eye
+    flow = ml.G + Vector((0, 0, 0.35 * fwd - 0.45 * (1 - fwd))) + away.normalized() * 1.6 * near
+    length = rng.uniform(0.2, 0.3) * (1 - 0.35 * fwd)              # shorter over the brows
+    tips.append(ml.tuft(bm, p, n, length, rng.uniform(0.065, 0.085), flow))
 WORST.append(("Alien_Fur_Crown", max(in_dome(v.co) for v in bm.verts if v.co.y > DOME_Y)))
 ml.to_object("Alien_Fur_Crown", bm, rt)
-print("CROWN tufts", len(tips))
 DRIPS += sorted(tips, key=lambda p: p.y)[:3:2]
 
 # drips off the fur's lowest clumps

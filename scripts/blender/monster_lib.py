@@ -266,19 +266,21 @@ def fang(bm, base, d, w, h, mi=LIGHT, spin=0.0):
 
 
 def lid_and_brow(bm, c, r, a, gaze, heavy, mi=SKIN, cover=8.0, dip=0.0, brow=(0.03, 0.06), v_shape=False,
-                 span=88.0):
+                 span=88.0, roll=True):
     """An angry upper lid over the eye ball (centre c, radius r): a thick cap
     about axis a whose edge stops `cover` degrees short of the pupil's centre
     (the pupil looks along gaze; it is ~23 deg across, so ~10 hides its top
     half), and a heavy brow roll along the edge, thickest at the end toward
     `heavy` (or in the middle, dipped by `dip`, for a V brow), `span` degrees
-    either side of the gaze."""
+    either side of the gaze. roll=False builds the lid only."""
     a, g = Vector(a).normalized(), Vector(gaze).normalized()
     beta = math.acos(max(-1.0, min(1.0, a.dot(g)))) - math.radians(cover)
     steps = 10
     cap = [(math.sin(beta * i / steps), math.cos(beta * i / steps)) for i in range(steps + 1)]
     prof = [(1.01 * r * x, 1.01 * r * y) for x, y in cap] + [(1.13 * r * x, 1.13 * r * y) for x, y in cap[::-1]]
     lathe(bm, prof, 32, place(c, a), mi)
+    if not roll:
+        return
     u = perp(g, a).normalized()
     w = a.cross(u)
     pts = []
