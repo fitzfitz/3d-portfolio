@@ -1,7 +1,7 @@
 import { LOCK_RETAIN_FACTOR } from "../constants";
 import { DESTINATIONS } from "../data/destinations";
 import { GATE_POS } from "../data/dormantGate";
-import { PROBES } from "../data/probes";
+import { PROBE_SLOTS } from "../data/probes";
 
 /** A sphere spawns must stay clear of — a body, a landmark, or the ship. */
 export interface AvoidPoint { x: number; y: number; z: number; r: number }
@@ -45,9 +45,14 @@ export function isRejectedSpawn(x: number, y: number, z: number, avoid: AvoidPoi
  */
 export const LANDMARK_KEEP_OUT = 20;
 
-/** Fixed landmarks a crystal spawn keeps LANDMARK_KEEP_OUT from: every destination, the gate's frame (radius 15), and every probe home and remote spot. */
+/**
+ * Fixed landmarks a crystal spawn keeps LANDMARK_KEEP_OUT from: every
+ * destination, the gate's frame (radius 15), and every probe slot's home and
+ * remote spots, used or not, so the field never depends on how many projects
+ * D1 holds (spec 2026-10-23-dynamic-content, build ruling R8).
+ */
 export const CRYSTAL_LANDMARKS: readonly (readonly [number, number, number])[] = [
-  ...DESTINATIONS.map((d) => d.pos), GATE_POS, ...PROBES.flatMap((p) => [p.home, ...p.remote]),
+  ...DESTINATIONS.map((d) => d.pos), GATE_POS, ...PROBE_SLOTS.flatMap((p) => [p.home, ...p.remote]),
 ];
 const SHIP_KEEP_OUT = 30;
 

@@ -11,7 +11,8 @@ import { GATE_POS, GATE_KEEP_OUT } from "../src/data/dormantGate";
 import { BUOY_CARD_R, possibleBuoyPositions } from "../src/data/careerTrail";
 import { RING_GATES, RING_RADIUS } from "../src/data/ringCourse";
 import { CRYSTAL_PICKUP_RADIUS } from "../src/utils/crystalField";
-import { PROBES, PROBE_IDS, PROBE_RADIUS } from "../src/data/probes";
+import { PROBES, PROBE_IDS, PROBE_RADIUS, PROBE_SLOTS, MAX_PROBES, assignProbes } from "../src/data/probes";
+import { vi } from "vitest";
 import {
   loadProbeSpots, nextSpot, spotPos, RELOCATE_S, RELOCATE_DIST, relocationTravel, beaconLevel,
   POP_FADE_S, ARRIVE_S, relocationScale, arrivalScale, burnPlume, burnFlare, FLARE_CLEAR_DIST, FLARE_FULL_DIST,
@@ -28,25 +29,57 @@ function segDist(a: readonly number[], b: readonly number[], c: readonly number[
   return Math.hypot(ac[0] - t * ab[0], ac[1] - t * ab[1], ac[2] - t * ab[2]);
 }
 
+/** Every slot, named for failure messages: "slot 1" is the first project's. */
+const SLOTS = PROBE_SLOTS.map((slot, i) => ({ id: `slot ${i + 1}`, ...slot }));
+
 describe("probe table", () => {
-  it("lists the project ids in projects.json order", () => {
+  it("lists the project ids in projects.json order, on slots 1, 2, 3", () => {
     expect(PROBE_IDS).toEqual(projects.map((p) => p.id));
     expect(PROBES.map((p) => p.id)).toEqual(PROBE_IDS);
+    PROBES.forEach((p, i) => {
+      expect(p.home).toBe(PROBE_SLOTS[i].home);
+      expect(p.remote).toBe(PROBE_SLOTS[i].remote);
+    });
   });
 
-  it("gives every probe 6 to 8 remote spots", () => {
-    for (const p of PROBES) {
+  // spec 2026-10-23-dynamic-content, decision 6: today's three projects stay exactly where they were.
+  it("keeps slots 1-3 where the three probes always were", () => {
+    expect(PROBE_SLOTS.slice(0, 3).map((s) => s.home)).toEqual([[-30, 80, 48], [-111, 60, 100], [-67, 102, -7]]);
+    expect(PROBE_SLOTS[0].remote[0]).toEqual([-37, 413, -7]);
+    expect(PROBE_SLOTS[1].remote[6]).toEqual([-322, 9, 114]);
+    expect(PROBE_SLOTS[2].remote[3]).toEqual([169, -67, 121]);
+  });
+
+  it("holds six probes: with the three destinations, the number keys 1-9 reach them all", () => {
+    expect(MAX_PROBES).toBe(6);
+    expect(MAX_PROBES + DESTINATIONS.length).toBeLessThanOrEqual(9);
+  });
+
+  it("gives the first six projects slots in order, and the rest no probe, with a warning", () => {
+    const warn = vi.fn<(msg: string) => void>();
+    const ids = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    const defs = assignProbes(ids, warn);
+    expect(defs.map((d) => d.id)).toEqual(ids.slice(0, 6));
+    defs.forEach((d, i) => expect(d.home).toBe(PROBE_SLOTS[i].home));
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0][0]).toMatch(/g, h/);
+    expect(assignProbes(["solo"], warn).map((d) => d.home)).toEqual([PROBE_SLOTS[0].home]);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it("gives every slot 6 to 8 remote spots", () => {
+    for (const p of SLOTS) {
       expect(p.remote.length, p.id).toBeGreaterThanOrEqual(6);
       expect(p.remote.length, p.id).toBeLessThanOrEqual(8);
     }
   });
 
   it("keeps every home within 90 u of the spawn", () => {
-    for (const p of PROBES) expect(d3(p.home, S), p.id).toBeLessThanOrEqual(90);
+    for (const p of SLOTS) expect(d3(p.home, S), p.id).toBeLessThanOrEqual(90);
   });
 
-  it("puts probe 1's home nearest the spawn, within 45 u, on a clear straight line", () => {
-    const [first, ...rest] = PROBES;
+  it("puts slot 1's home nearest the spawn, within 45 u, on a clear straight line", () => {
+    const [first, ...rest] = SLOTS;
     const d1 = d3(first.home, S);
     expect(d1).toBeLessThanOrEqual(45);
     for (const p of rest) expect(d3(p.home, S), p.id).toBeGreaterThan(d1);
@@ -58,7 +91,7 @@ describe("probe table", () => {
   });
 
   it("scatters every remote spot 150 to 420 u from the spawn, inside the system", () => {
-    for (const p of PROBES) {
+    for (const p of SLOTS) {
       for (const r of p.remote) {
         expect(d3(r, S), p.id).toBeGreaterThanOrEqual(150);
         expect(d3(r, S), p.id).toBeLessThanOrEqual(420);
@@ -74,7 +107,7 @@ describe("probe table", () => {
 
 describe("spot cycling", () => {
   it("cycles 0, 1 ... n, then back to 1 (never 0)", () => {
-    for (const p of PROBES) {
+    for (const p of SLOTS) {
       const n = p.remote.length;
       let s = 0;
       const seen: number[] = [];
@@ -84,7 +117,7 @@ describe("spot cycling", () => {
   });
 
   it("resolves spot 0 to home and k to remote[k-1]", () => {
-    for (const p of PROBES) {
+    for (const p of SLOTS) {
       expect(spotPos(p, 0)).toEqual(p.home);
       p.remote.forEach((r, i) => expect(spotPos(p, i + 1)).toEqual(r));
     }
@@ -202,9 +235,9 @@ describe("beaconLevel", () => {
   });
 });
 
-describe("project probes clear the other fixed things they could touch (orbits: tests/solarClearance.test.ts)", () => {
+describe("every probe slot clears the other fixed things it could touch (orbits: tests/solarClearance.test.ts)", () => {
   const MARGIN = 4;
-  const spots = PROBES.flatMap((p) => [
+  const spots = SLOTS.flatMap((p) => [
     { name: `${p.id} home`, pos: p.home },
     ...p.remote.map((r, i) => ({ name: `${p.id} remote ${i + 1}`, pos: r })),
   ]);
