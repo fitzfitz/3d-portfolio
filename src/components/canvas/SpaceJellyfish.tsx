@@ -22,7 +22,7 @@ import { createJellyFrame, stepJellyFrame, beginReturn, streakLength, jellyScann
 import { createWaypointTarget, makeGuideTarget } from "../../utils/waypointTarget";
 import type { LogbookProgress } from "../../utils/logbook";
 import { GuideRadio } from "../../utils/guideRadio";
-import { takeGuideToggle, requestGuideToggle } from "../../utils/guideToggle";
+import { takeGuideToggle, requestGuideToggle, setGuideActive } from "../../utils/guideToggle";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
@@ -215,7 +215,7 @@ export default function SpaceJellyfish() {
   const streak = useRef(0);
   /** Registered with the scanner (only while it roams: jellyScannable). */
   const scannable = useRef(false);
-  useEffect(() => () => removeScannable("jellyfish"), []);
+  useEffect(() => () => { removeScannable("jellyfish"); setGuideActive(false); }, []);
   // The pulse runs on its own accumulated clock so its rate can follow the
   // mood and speed without jumping the phase. It advances on ambient time,
   // except under reduced motion (which freezes that), where it runs slow on
@@ -393,6 +393,8 @@ export default function SpaceJellyfish() {
     fi.blocked = selectModalOpen(store) || store.race.phase === "running" || store.photoMode || store.showClassicCV || radioBusy;
 
     stepJellyFrame(frame, fi, frameDt);
+    // The touch GUIDE button's pressed state; notifies only on a change.
+    setGuideActive(frame.guide.guiding);
     if (frame.handBack) {
       // Resume the loop at the phase nearest where the guide left it; the gap
       // swims home from there (beginReturn), never a teleport.

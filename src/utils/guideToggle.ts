@@ -16,3 +16,27 @@ export function takeGuideToggle(): boolean {
   toggle.pressed = false;
   return p;
 }
+
+/**
+ * Whether the guide is out (not roaming), for the touch button's
+ * `aria-pressed`. SpaceJellyfish writes it every frame; subscribers hear only a
+ * change, so the button renders on a call or a dismissal, never per frame.
+ */
+const active = { on: false };
+const listeners = new Set<() => void>();
+
+export function setGuideActive(on: boolean): void {
+  if (on === active.on) return;
+  active.on = on;
+  for (const l of listeners) l();
+}
+
+export function isGuideActive(): boolean {
+  return active.on;
+}
+
+/** For useSyncExternalStore: returns the unsubscribe. */
+export function subscribeGuideActive(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
