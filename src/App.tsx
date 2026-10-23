@@ -175,15 +175,21 @@ export default function App() {
       </AnimatePresence>
 
       {/* Cinematic letterbox while docked in orbit (behind the dossier,
-          under the HUD). Skipped under reduced motion. */}
+          under the HUD); instant under reduced motion (MotionConfig). Each
+          bar is its own fixed box, mounted only while docked: the old
+          full-window wrapper, bars parked off-screen, was a full-window
+          composited layer the whole time (~20 MB of tiles at 2×). */}
       {!photoMode && !showClassicCV && (
-        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30">
-          {(["top-0", "bottom-0"] as const).map((pos) => (
-            <div key={pos}
-              className={`absolute inset-x-0 ${pos} h-[8vh] bg-black/85 ${reducedMotion ? "" : "transition-transform duration-700 ease-out"} ${
-                modalOpen ? "translate-y-0" : pos === "top-0" ? "-translate-y-full" : "translate-y-full"}`} />
+        <AnimatePresence>
+          {modalOpen && (["top-0", "bottom-0"] as const).map((pos) => (
+            <motion.div key={pos} aria-hidden="true"
+              initial={{ y: pos === "top-0" ? "-100%" : "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: pos === "top-0" ? "-100%" : "100%" }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              className={`pointer-events-none fixed inset-x-0 ${pos} z-30 h-[8vh] bg-black/85`} />
           ))}
-        </div>
+        </AnimatePresence>
       )}
 
       {/* Edge-of-universe nebula haze: above the canvas, under the scanlines
@@ -193,11 +199,150 @@ export default function App() {
       {/* Dynamic scanline overlay visual */}
       <div className="pointer-events-none fixed inset-0 z-40 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,3px_100%] opacity-[0.12]" />
 
-      {/* Global Interactive Layers */}
-      <CustomCursor />
       {import.meta.env.DEV && <PerfOverlay />}
 
-      {!photoMode && !showClassicCV && <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />}
+      {/* -------------------- HUD + DYNAMIC SPACE INTERACTION MODALS -------------------- */}
+      {/* One wrapper for both: over the canvas, each full-window box was a
+          full-window composited layer of its own (~20 MB of tiles at 2×);
+          inside one they paint into one. The order inside is unchanged: the
+          cards (z-45) under the HUD (z-50), both over the joystick (z-40). */}
+      {!photoMode && !showClassicCV && (
+        <div className="pointer-events-none fixed inset-0 z-50">
+          {/* z-45: above TouchControls' joystick zone (z-40), which covers the
+              left half of the screen and otherwise swallowed taps on the cards.
+              The container itself is pointer-events-none, so flight touches
+              still reach the joystick everywhere a card isn't. */}
+          <div className="absolute inset-0 pointer-events-none z-[45] flex items-center justify-center p-6">
+            <AnimatePresence mode="wait">
+              {/* Startup Banner Info Card. Waits for the scene: before that it
+                  sat on top of the loading readout. Never centred: the ship sits
+                  mid-screen and the planet it is aimed at sits on the horizon
+                  just above it, so on desktop the card goes to the right. */}
+              {sceneReady && isNearSpawn && !activeZone && openDossier === null && (
+                <motion.div
+                  key="spawn-banner"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  className={`self-start mt-[19vh] md:mt-0 md:absolute md:right-6 md:top-[22vh] glass-card rounded-2xl p-5 sm:p-6 text-center max-w-sm border border-primary/20 bg-black/80 select-none ${
+                    // On touch the card sits over the joystick's half of the
+                    // screen; let drags on its text fall through to steer, and
+                    // keep only the buttons tappable.
+                    isCoarse ? "pointer-events-none [&_button]:pointer-events-auto" : "pointer-events-auto"}`}
+                >
+                  <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[10px] font-mono mb-4">
+                    <Terminal className="w-3.5 h-3.5" />
+                    SPACE FLIGHT CV
+                  </div>
+                  <h2 className="font-display font-bold text-2xl text-white">{identity.name}</h2>
+                  <p className="font-mono text-[11px] text-primary/90 mb-3">{identity.role}</p>
+                  <p className="text-white/70 text-xs leading-relaxed mb-3">
+                    Three probes carry three projects. Grab one with the tractor beam to open it.
+                  </p>
+                  <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
+                    &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP · F BEAM"}
+                  </div>
+                  {/* Fast path: straight into a dossier, no piloting required. */}
+                  <div className="text-[10px] font-mono text-white/50 mb-2">
+                    OR JUMP STRAIGHT TO
+                    <div className="text-white/40">THEN HOLD {padConnected ? "LB" : isCoarse ? "BEAM" : "F"}</div>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+                    {JUMP_TARGETS.map((t, i) => (
+                      <button
+                        key={t.id}
+                        onClick={() => useSpaceStore.getState().requestJump(t.id)}
+                        className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 font-mono text-[10px] text-white/80 hover:text-white cursor-pointer transition-colors"
+                        style={{ borderColor: `${t.color}55` }}
+                      >
+                        {!isCoarse && <span className="text-white/40 mr-1">[{i + 1}]</span>}
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setShowClassicCV(true)}
+                    className="font-mono text-[11px] text-white/60 hover:text-white underline underline-offset-4 decoration-white/20 hover:decoration-white cursor-pointer"
+                  >
+                    Prefer reading? Open the résumé
+                  </button>
+                </motion.div>
+              )}
+
+              {/* Project dossier: opened by grabbing a probe (or from the logbook) */}
+              {dossierProject && dossierVia && (
+                <motion.div
+                  key={`dossier-${dossierProject.id}`}
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  className="w-full max-w-2xl pointer-events-auto"
+                >
+                  <ProjectDossier project={dossierProject} via={dossierVia} onClose={closeDossier} />
+                </motion.div>
+              )}
+
+              {/* Portal gravity Orbit Lock: Contact form modal */}
+              {isOrbitLocked && zoneDestination === "contact" && (
+                <motion.div
+                  key="contact-portal"
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.92 }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Contact"
+                  className="w-full max-w-lg pointer-events-auto bg-black/90 rounded-3xl p-2 relative"
+                >
+                  <div className="absolute top-8 right-8 z-50">
+                    <button
+                      autoFocus
+                      onClick={breakOrbit}
+                      aria-label="Close contact form (Esc)"
+                      title="Close contact form (Esc)"
+                      className="p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <Contact isSidebar={true} />
+                </motion.div>
+              )}
+
+              {/* Career station Orbit Lock: Career dossier */}
+              {isOrbitLocked && zoneDestination === "career" && (
+                <CareerDossier key="career-dossier" onClose={breakOrbit} />
+              )}
+
+              {/* Shipyard Orbit Lock: Hangar (the plume picker) */}
+              {isOrbitLocked && zoneDestination === "shipyard" && (
+                <HangarPanel key="hangar" onClose={breakOrbit} />
+              )}
+
+              {/* Proximity hover tip overlays (if within gravity well but not yet
+                  locked). Hidden during the post-break cooldown, when flying
+                  closer would not lock anyway. */}
+              {activeZone && !isOrbitLocked && !isOrbitCooldown && (
+                <motion.div
+                  key="proximity-tip"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-black/80 border border-primary/20 px-4 py-2.5 rounded-xl text-center pointer-events-none"
+                >
+                  <span className="text-[10px] font-mono text-primary animate-pulse">
+                    &gt; GRAVITATIONAL PULL DETECTED // FLY CLOSER TO COMMENCE ORBITAL DATA DOCK
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <HUDOverlay beaconsEnabled={BEACONS_ENABLED} />
+        </div>
+      )}
+
+      {/* Global Interactive Layers: after the HUD and cards, so the cursor draws over both. */}
+      <CustomCursor />
       <LogbookPanel />
       <ChangelogPanel />
       {BEACONS_ENABLED && <BeaconPicker />}
@@ -238,138 +383,6 @@ export default function App() {
         </div>
       )}
 
-      {/* -------------------- DYNAMIC SPACE INTERACTION MODALS -------------------- */}
-      {!photoMode && !showClassicCV && (
-        // z-45: above TouchControls' joystick zone (z-40), which covers the
-        // left half of the screen and otherwise swallowed taps on the cards.
-        // The container itself is pointer-events-none, so flight touches
-        // still reach the joystick everywhere a card isn't.
-        <div className="absolute inset-0 pointer-events-none z-[45] flex items-center justify-center p-6">
-          <AnimatePresence mode="wait">
-            {/* Startup Banner Info Card. Waits for the scene: before that it
-                sat on top of the loading readout. Never centred: the ship sits
-                mid-screen and the planet it is aimed at sits on the horizon
-                just above it, so on desktop the card goes to the right. */}
-            {sceneReady && isNearSpawn && !activeZone && openDossier === null && (
-              <motion.div
-                key="spawn-banner"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                className={`self-start mt-[19vh] md:mt-0 md:absolute md:right-6 md:top-[22vh] glass-card rounded-2xl p-5 sm:p-6 text-center max-w-sm border border-primary/20 bg-black/80 select-none ${
-                  // On touch the card sits over the joystick's half of the
-                  // screen; let drags on its text fall through to steer, and
-                  // keep only the buttons tappable.
-                  isCoarse ? "pointer-events-none [&_button]:pointer-events-auto" : "pointer-events-auto"}`}
-              >
-                <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-primary/20 bg-primary/5 text-primary text-[10px] font-mono mb-4">
-                  <Terminal className="w-3.5 h-3.5" />
-                  SPACE FLIGHT CV
-                </div>
-                <h2 className="font-display font-bold text-2xl text-white">{identity.name}</h2>
-                <p className="font-mono text-[11px] text-primary/90 mb-3">{identity.role}</p>
-                <p className="text-white/70 text-xs leading-relaxed mb-3">
-                  Three probes carry three projects. Grab one with the tractor beam to open it.
-                </p>
-                <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
-                  &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP · F BEAM"}
-                </div>
-                {/* Fast path: straight into a dossier, no piloting required. */}
-                <div className="text-[10px] font-mono text-white/50 mb-2">
-                  OR JUMP STRAIGHT TO
-                  <div className="text-white/40">THEN HOLD {padConnected ? "LB" : isCoarse ? "BEAM" : "F"}</div>
-                </div>
-                <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2 mb-3 sm:mb-4">
-                  {JUMP_TARGETS.map((t, i) => (
-                    <button
-                      key={t.id}
-                      onClick={() => useSpaceStore.getState().requestJump(t.id)}
-                      className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 font-mono text-[10px] text-white/80 hover:text-white cursor-pointer transition-colors"
-                      style={{ borderColor: `${t.color}55` }}
-                    >
-                      {!isCoarse && <span className="text-white/40 mr-1">[{i + 1}]</span>}
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setShowClassicCV(true)}
-                  className="font-mono text-[11px] text-white/60 hover:text-white underline underline-offset-4 decoration-white/20 hover:decoration-white cursor-pointer"
-                >
-                  Prefer reading? Open the résumé
-                </button>
-              </motion.div>
-            )}
-
-            {/* Project dossier: opened by grabbing a probe (or from the logbook) */}
-            {dossierProject && dossierVia && (
-              <motion.div
-                key={`dossier-${dossierProject.id}`}
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.92 }}
-                className="w-full max-w-2xl pointer-events-auto"
-              >
-                <ProjectDossier project={dossierProject} via={dossierVia} onClose={closeDossier} />
-              </motion.div>
-            )}
-
-            {/* Portal gravity Orbit Lock: Contact form modal */}
-            {isOrbitLocked && zoneDestination === "contact" && (
-              <motion.div
-                key="contact-portal"
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.92 }}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Contact"
-                className="w-full max-w-lg pointer-events-auto bg-black/90 rounded-3xl p-2 relative"
-              >
-                <div className="absolute top-8 right-8 z-50">
-                  <button
-                    autoFocus
-                    onClick={breakOrbit}
-                    aria-label="Close contact form (Esc)"
-                    title="Close contact form (Esc)"
-                    className="p-2 rounded-lg border border-white/5 bg-white/2 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <Contact isSidebar={true} />
-              </motion.div>
-            )}
-
-            {/* Career station Orbit Lock: Career dossier */}
-            {isOrbitLocked && zoneDestination === "career" && (
-              <CareerDossier key="career-dossier" onClose={breakOrbit} />
-            )}
-
-            {/* Shipyard Orbit Lock: Hangar (the plume picker) */}
-            {isOrbitLocked && zoneDestination === "shipyard" && (
-              <HangarPanel key="hangar" onClose={breakOrbit} />
-            )}
-
-            {/* Proximity hover tip overlays (if within gravity well but not yet
-                locked). Hidden during the post-break cooldown, when flying
-                closer would not lock anyway. */}
-            {activeZone && !isOrbitLocked && !isOrbitCooldown && (
-              <motion.div
-                key="proximity-tip"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="absolute bottom-24 left-1/2 -translate-x-1/2 bg-black/80 border border-primary/20 px-4 py-2.5 rounded-xl text-center pointer-events-none"
-              >
-                <span className="text-[10px] font-mono text-primary animate-pulse">
-                  &gt; GRAVITATIONAL PULL DETECTED // FLY CLOSER TO COMMENCE ORBITAL DATA DOCK
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
 
       {/* -------------------- CLASSIC SCROLLABLE RESUME MODE -------------------- */}
       {!photoMode && showClassicCV && (
