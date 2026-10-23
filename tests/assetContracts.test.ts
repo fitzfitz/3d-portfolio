@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import type { Node, Primitive } from "@gltf-transform/core";
 import { NodeIO, getBounds, type Document } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
@@ -668,5 +669,182 @@ describe("dormant monsters", () => {
 
   it("the lab monsters stay inside their 700 KB download budget", () => {
     for (const m of ["saucer", "tardigrade"]) expect(labKb(m)).toBeLessThanOrEqual(700);
+  });
+});
+
+describe("saucer (saucer.glb)", () => {
+  // The saucer alien (scripts/blender/gen_saucer.py, whose header holds the
+  // full contract). Dormant: optimized into public/models-lab for the combat
+  // stage, which draws each LOD's primitives as one InstancedMesh per
+  // material (3 draw calls for a group) and plays every move in the vertex
+  // shader from _MOTION, _FUR and src/data/saucerRig.json.
+  const lab = () => load("saucer", "public/models-lab");
+  const rig = () => JSON.parse(readFileSync("src/data/saucerRig.json", "utf8"));
+  const MATS = ["SaucerBaked", "SaucerDome", "SaucerFur"];
+  const PART_IDS = 10; // 0 hull, 1 body, 2 tentacle, 3 eye L, 4 eye R, 5 eye top, 6 jaw, 7 cannon, 8 goo, 9 drips
+  const slot = (id: number) => (id + 0.5) / 16;
+  const partOf = (x: number) => {
+    const id = Math.round(x * 16 - 0.5);
+    return id >= 0 && id < PART_IDS && Math.abs(x - slot(id)) <= 0.01 ? id : -1;
+  };
+  const lod = async (k: 0 | 1) => node(await lab(), `Saucer_LOD${k}`);
+  const prim = (n: Node, material: string) => {
+    const p = n.getMesh()!.listPrimitives().find((q) => q.getMaterial()?.getName() === material);
+    if (!p) throw new Error(`${n.getName()}: no ${material} primitive`);
+    return p;
+  };
+  /** Every element of a primitive's attribute, decoded (normalized ints back to floats). */
+  const elements = (p: Primitive, semantic: string) => {
+    const a = p.getAttribute(semantic);
+    if (!a) throw new Error(`no ${semantic}`);
+    const out: number[][] = [];
+    for (let i = 0; i < a.getCount(); i++) out.push(a.getElement(i, []));
+    return out;
+  };
+  const tris = (n: Node) => n.getMesh()!.listPrimitives()
+    .reduce((s, p) => s + (p.getIndices()?.getCount() ?? p.getAttribute("POSITION")!.getCount()) / 3, 0);
+  /** World-space positions of a primitive's vertices (quantization puts a scale on the node). */
+  const world = (n: Node, p: Primitive) => {
+    const m = n.getWorldMatrix();
+    return elements(p, "POSITION").map(([x, y, z]) => [0, 1, 2].map((r) => m[r] * x + m[4 + r] * y + m[8 + r] * z + m[12 + r]));
+  };
+
+  it("has two LOD nodes, each one mesh of the baked, dome and fur primitives", async () => {
+    const doc = await lab();
+    for (const k of [0, 1] as const) {
+      const mesh = (await lod(k)).getMesh();
+      expect(mesh, `LOD${k}`).not.toBeNull();
+      expect(mesh!.listPrimitives().map((p) => p.getMaterial()?.getName()).sort()).toEqual(MATS);
+    }
+    expect(nodeNames(doc).filter((n) => n.startsWith("Saucer_LOD"))).toEqual(["Saucer_LOD0", "Saucer_LOD1"]);
+  });
+
+  it("stays inside its triangle budget: LOD0 <= 8000, LOD1 <= 2500", async () => {
+    expect(tris(await lod(0))).toBeLessThanOrEqual(8000);
+    expect(tris(await lod(1))).toBeLessThanOrEqual(2500);
+  });
+
+  it("is ship-sized: longest extent 2.4–3.6", async () => {
+    const b = bounds(await lab());
+    const longest = Math.max(...[0, 1, 2].map((i) => b.max[i] - b.min[i]));
+    expect(longest).toBeGreaterThanOrEqual(2.4);
+    expect(longest).toBeLessThanOrEqual(3.6);
+  });
+
+  it("has the three materials, no extensions; the dome blends, the fur alpha-tests", async () => {
+    const doc = await lab();
+    expect(materialNames(doc)).toEqual(MATS);
+    for (const m of MATS) expect(textureSet(doc, m).extensions, m).toEqual([]);
+    expect(textureSet(doc, "SaucerDome").alpha).toBe("BLEND");
+    expect(textureSet(doc, "SaucerFur").alpha).toBe("MASK");
+    const baked = textureSet(doc, "SaucerBaked");
+    expect([baked.base, baked.metalRough, baked.normal]).toEqual([true, true, true]);
+    const dome = textureSet(doc, "SaucerDome");
+    expect([dome.base, dome.metalRough, dome.normal, dome.emissive]).toEqual([false, false, false, false]);
+    expect(textureSet(doc, "SaucerFur").base).toBe(true);
+  });
+
+  it("COLOR_0 zones: skin > 0 and < 75%, spots and band each > 0 and < 40% of SaucerBaked vertices", async () => {
+    for (const k of [0, 1] as const) {
+      const col = elements(prim(await lod(k), "SaucerBaked"), "COLOR_0");
+      const share = (c: number) => col.filter((e) => e[c] > 0.5).length / col.length;
+      for (const c of [0, 1, 2]) for (const e of col) expect([0, 1]).toContain(Math.round(e[c] * 100) / 100);
+      expect(share(0), `LOD${k} R`).toBeGreaterThan(0);
+      expect(share(0), `LOD${k} R`).toBeLessThan(0.75);
+      for (const [c, z] of [[1, "G"], [2, "B"]] as const) {
+        expect(share(c), `LOD${k} ${z}`).toBeGreaterThan(0);
+        expect(share(c), `LOD${k} ${z}`).toBeLessThan(0.4);
+      }
+    }
+  });
+
+  it("_MOTION.x is a part slot on every vertex, and LOD0 has every alien and goo part", async () => {
+    const seen = new Set<number>();
+    for (const k of [0, 1] as const) {
+      for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
+        for (const e of elements(p, "_MOTION")) {
+          const id = partOf(e[0]);
+          expect(id, `LOD${k} ${p.getMaterial()?.getName()} x=${e[0]}`).toBeGreaterThanOrEqual(0);
+          for (const v of e) {
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(1);
+          }
+          if (k === 0) seen.add(id);
+        }
+      }
+    }
+    for (let id = 1; id < PART_IDS; id++) expect(seen.has(id), `part ${id}`).toBe(true);
+  });
+
+  it("_MOTION.z ramps the portholes: exactly rig.portholes non-zero values, (k + 0.5) / N", async () => {
+    const n = rig().portholes;
+    expect(rig().portholeOrder).toBe("+Z toward +X");
+    for (const k of [0, 1] as const) {
+      const zs = new Set<number>();
+      for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
+        for (const e of elements(p, "_MOTION")) if (e[2] > 0.001) zs.add(Math.round(e[2] * n - 0.5));
+      }
+      expect([...zs].sort((a, b) => a - b), `LOD${k}`).toEqual([...Array(n).keys()]);
+    }
+  });
+
+  it("the dome carries only the hull's slot", async () => {
+    for (const k of [0, 1] as const) {
+      for (const e of elements(prim(await lod(k), "SaucerDome"), "_MOTION")) {
+        expect(partOf(e[0])).toBe(0);
+        expect(e.slice(1).every((v) => v === 0)).toBe(true);
+      }
+    }
+  });
+
+  it("the rig's muzzle is under the saucer, inside the bounds, at the cannon", async () => {
+    const r = rig();
+    const b = bounds(await lab());
+    expect(r.muzzle[1]).toBeLessThan(0);
+    for (let i = 0; i < 3; i++) {
+      expect(r.muzzle[i]).toBeGreaterThanOrEqual(b.min[i]);
+      expect(r.muzzle[i]).toBeLessThanOrEqual(b.max[i]);
+    }
+    const n = await lod(0);
+    const p = prim(n, "SaucerBaked");
+    const motion = elements(p, "_MOTION");
+    const near = world(n, p).filter((_, i) => partOf(motion[i][0]) === 7)
+      .map((v) => Math.hypot(v[0] - r.muzzle[0], v[1] - r.muzzle[1], v[2] - r.muzzle[2]));
+    expect(near.length).toBeGreaterThan(0);
+    expect(Math.min(...near)).toBeLessThanOrEqual(0.15);
+  });
+
+  it("the rig has every pivot, the fur's length and shell count, and a LOD distance", () => {
+    const r = rig();
+    for (const k of ["body", "jaw", "eyeL", "eyeR", "eyeTop", "cannon", "gooTop", "gooBottom"]) {
+      expect(r.pivots[k], k).toHaveLength(3);
+      for (const v of r.pivots[k]) expect(Number.isFinite(v), k).toBe(true);
+    }
+    expect(r.muzzle).toHaveLength(3);
+    expect(Number.isInteger(r.portholes) && r.portholes > 0).toBe(true);
+    expect(r.furMaxLength).toBeGreaterThan(0);
+    expect(r.furShells).toBeGreaterThanOrEqual(8);
+    expect(r.furShells).toBeLessThanOrEqual(24);
+    expect(r.lod1Distance).toBeGreaterThan(0);
+  });
+
+  it("the fur carries _FUR in [0,1]; cards (COLOR_0 R) on LOD0 only", async () => {
+    for (const k of [0, 1] as const) {
+      const p = prim(await lod(k), "SaucerFur");
+      for (const e of elements(p, "_FUR")) {
+        expect(e).toHaveLength(2);
+        for (const v of e) {
+          expect(v).toBeGreaterThanOrEqual(0);
+          expect(v).toBeLessThanOrEqual(1);
+        }
+      }
+      const cards = elements(p, "COLOR_0").filter((e) => e[0] > 0.5).length;
+      if (k === 0) expect(cards, "LOD0 cards").toBeGreaterThan(0);
+      else expect(cards, "LOD1 cards").toBe(0);
+    }
+  });
+
+  it("stays inside its 700 KB download budget", () => {
+    expect(labKb("saucer")).toBeLessThanOrEqual(700);
   });
 });

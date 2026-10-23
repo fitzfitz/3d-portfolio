@@ -1,6 +1,7 @@
 # Cycles turntable stills of the space monsters: look checks A and B.
 #   $BLENDER --background --python scripts/blender/turntable_monsters.py -- --out=DIR \
-#       [--glb=assets-src/saucer.glb] [--with-ship] [--samples=64] [--res=1024]
+#       [--glb=assets-src/saucer.glb] [--with-ship] [--samples=64] [--res=1024] \
+#       [--lod=0|1] [--fur-shells=N] [--no-cards] [--rig=PATH] [--shots=a030,face,...]
 #
 # Look-dev only: renders are never shipped or committed (pass a scratch DIR).
 # Without --glb it renders every monster glb found in assets-src/ (saucer,
@@ -12,6 +13,16 @@
 # 5% of the key) for the shadow side, a black background; tone mapping is
 # Khronos PBR Neutral, like the game's. A glass material (name has "Glass"
 # or "Dome") is rendered as clear glass.
+#
+# A final-stage glb (nodes <Name>_LOD0 / _LOD1) shows one LOD (--lod, 0 by
+# default; the other is deleted). Its fur primitive (a material named
+# "...Fur") is previewed as the game will draw it: the fur base copied N
+# times (--fur-shells, default the rig's furShells; 0 shows the bare base)
+# outward along its normals by layer / N x _FUR.x x furMaxLength (from the
+# rig JSON: --rig, else src/data/<name>Rig.json, else next to the glb),
+# each layer alpha-testing the strand mask at layer / N, plus a gravity
+# droop growing with the square of the height (0.6 x the length at the tip); the cards alpha-test at their _FUR.x.
+# The face shot of a final glb frames the eyes, jaw and goo (_MOTION parts).
 #
 # Output per monster <name> (the glb's basename):
 #   DIR/<name>_a030.png, _a120, _a210, _a300 (azimuth about glTF +Y from the
@@ -53,6 +64,9 @@ RES = int(OPT.get("res", 1024))
 LENS = 50
 SCALE_AZ = 70             # the scale shot's azimuth: both models near broadside
 FACE_PARTS = ("Eye", "Brow", "Teeth", "Goo", "Mouth", "Drool")   # objects the face shot frames
+FACE_IDS = (3, 4, 5, 6, 8)        # a final glb's _MOTION parts the face shot frames (eyes, jaw, goo)
+LOD = int(OPT.get("lod", 0))
+SHOTS = set(OPT["shots"].split(",")) if "shots" in OPT else None
 
 
 def lin(h):
@@ -84,7 +98,7 @@ def setup():
     sc.cycles.samples = SAMPLES
     sc.cycles.use_denoising = True
     sc.cycles.max_bounces = 8
-    sc.cycles.transparent_max_bounces = 16
+    sc.cycles.transparent_max_bounces = 40       # the fur preview's shells
     sc.render.resolution_x = sc.render.resolution_y = RES
     sc.render.image_settings.file_format = "PNG"
     sc.view_settings.view_transform = "Khronos PBR Neutral"
@@ -141,12 +155,228 @@ def glassify(objs):
             slot.material = g
 
 
+def split_custom(path):
+    """Read the custom ("_") vertex attributes of a raw glb per mesh (the
+    primitives' arrays concatenated in order, as the importer lays out the
+    vertices) and write a copy without them. Blender 5.1's importer keeps
+    custom attribute names in a set and indexes them by its iteration order,
+    so a mesh with two of them (_MOTION, _FUR) imports or fails by hash
+    seed; three.js reads them by name and is unaffected."""
+    import json
+    import struct
+    import tempfile
+    import numpy as np
+    data = open(path, "rb").read()
+    jlen = struct.unpack_from("<I", data, 12)[0]
+    doc = json.loads(data[20:20 + jlen])
+    rest = data[20 + jlen:]
+    blen = struct.unpack_from("<I", rest, 0)[0]
+    binc = rest[8:8 + blen]
+    width = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
+    dt = {5126: np.float32, 5123: np.uint16, 5121: np.uint8}
+
+    def acc(i):
+        a = doc["accessors"][i]
+        bv = doc["bufferViews"][a["bufferView"]]
+        n, w = a["count"], width[a["type"]]
+        arr = np.frombuffer(binc, dt[a["componentType"]], n * w, bv.get("byteOffset", 0) + a.get("byteOffset", 0))
+        arr = arr.reshape(n, w).astype(np.float32)
+        if a.get("normalized"):
+            arr /= np.iinfo(dt[a["componentType"]]).max
+        return arr
+
+    custom = {}
+    for mesh in doc.get("meshes", []):
+        names = sorted({k for p in mesh["primitives"] for k in p["attributes"] if k.startswith("_")})
+        if not names:
+            continue
+        per = {k: [] for k in names}
+        for p in mesh["primitives"]:
+            n = doc["accessors"][p["attributes"]["POSITION"]]["count"]
+            for k in names:
+                if k in p["attributes"]:
+                    per[k].append(acc(p["attributes"][k]))
+                else:
+                    w = next(width[doc["accessors"][q["attributes"][k]]["type"]] for q in mesh["primitives"]
+                             if k in q["attributes"])
+                    per[k].append(np.zeros((n, w), np.float32))
+            for k in [k for k in p["attributes"] if k.startswith("_")]:
+                del p["attributes"][k]
+        custom[mesh.get("name")] = {k: np.concatenate(v) for k, v in per.items()}
+    if not custom:
+        return path, {}
+    js = json.dumps(doc, separators=(",", ":")).encode()
+    js += b" " * (-len(js) % 4)
+    out = struct.pack("<4sII", b"glTF", 2, 20 + len(js) + len(rest)) + struct.pack("<I4s", len(js), b"JSON") + js + rest
+    fd, tmp = tempfile.mkstemp(suffix=".glb")
+    os.write(fd, out)
+    os.close(fd)
+    return tmp, custom
+
+
 def import_glb(path):
     before = set(bpy.data.objects)
+    path, custom = split_custom(path)
     bpy.ops.import_scene.gltf(filepath=path)
     new = [o for o in bpy.data.objects if o not in before]
+    for o in new:
+        attrs = custom.get(o.data.name) if o.type == "MESH" else None
+        if not attrs:
+            continue
+        for k, arr in attrs.items():
+            if len(arr) != len(o.data.vertices):
+                print(f"{o.name}: {k} has {len(arr)} values for {len(o.data.vertices)} vertices, skipped")
+                continue
+            kind, prop = {4: ("FLOAT_COLOR", "color"), 2: ("FLOAT2", "vector"), 3: ("FLOAT_VECTOR", "vector"),
+                          1: ("FLOAT", "value")}[arr.shape[1]]
+            o.data.attributes.new(k, kind, "POINT").data.foreach_set(prop, arr.ravel())
+    if custom:
+        os.remove(path)
     roots = [o for o in new if o.parent is None]
     return roots, [o for o in new if o.type == "MESH"]
+
+
+def untint(objs):
+    """A final glb's COLOR_0 is a tint-zone mask, not a colour: the importer
+    multiplies it into the base colour (as the glTF spec says), so route the
+    albedo map straight to Base Color (the zones then show their authored,
+    untinted colours)."""
+    for o in objs:
+        for slot in o.material_slots:
+            m = slot.material
+            if m is None or not m.use_nodes or "Principled BSDF" not in m.node_tree.nodes:
+                continue
+            nt = m.node_tree
+            inp = nt.nodes["Principled BSDF"].inputs["Base Color"]
+            if not inp.links or inp.links[0].from_node.type == "TEX_IMAGE":
+                continue
+            node = inp.links[0].from_node
+            tex = next((lk.from_node for s_ in node.inputs for lk in s_.links if lk.from_node.type == "TEX_IMAGE"), None)
+            if tex is not None:
+                nt.links.new(tex.outputs["Color"], inp)
+
+
+def pick_lod(objs):
+    """A final glb: keep <Name>_LOD{LOD}, delete the other levels."""
+    lods = [o for o in objs if "_LOD" in o.name]
+    if not lods:
+        return objs
+    keep = [o for o in lods if o.name.endswith(f"_LOD{LOD}")]
+    for o in lods:
+        if o not in keep:
+            bpy.data.objects.remove(o)
+    return keep
+
+
+def rig_for(glb, name):
+    import json
+    for p in (OPT.get("rig"), os.path.join(ROOT, "src", "data", f"{name}Rig.json"),
+              os.path.join(os.path.dirname(glb), f"{name}Rig.json")):
+        if p and os.path.exists(p):
+            with open(p) as f:
+                return json.load(f)
+    return None
+
+
+def fur_preview(objs, rig):
+    """Shell fur as the game draws it (see the header)."""
+    import bmesh
+    import numpy as np
+    for o in objs:
+        slots = [i for i, s in enumerate(o.material_slots) if s.material and "Fur" in s.material.name]
+        if not slots or rig is None:
+            continue
+        fur_mat = o.material_slots[slots[0]].material
+        tex = next(n for n in fur_mat.node_tree.nodes if n.type == "TEX_IMAGE")
+        n_shell = int(OPT.get("fur-shells", rig["furShells"]))
+        if n_shell < 1:
+            continue
+        L = rig["furMaxLength"]
+        me = o.data
+        col = me.color_attributes[0].name if len(me.color_attributes) else None
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        furl = bm.verts.layers.float_vector.get("_FUR") or bm.verts.layers.float_vector.get("_fur")
+        if furl is None:      # imported as a 2D float attribute
+            vals = np.zeros(len(me.vertices) * 2, np.float32)
+            me.attributes["_FUR"].data.foreach_get("vector", vals)
+            fv = vals.reshape(-1, 2)
+        cl = bm.loops.layers.float_color.get(col) or bm.loops.layers.color.get(col)
+        bm.verts.ensure_lookup_table()
+        base_faces = [f for f in bm.faces if f.material_index == slots[0] and f.loops[0][cl][0] < 0.5]
+        card_faces = [f for f in bm.faces if f.material_index == slots[0] and f.loops[0][cl][0] >= 0.5]
+
+        def shell_mat(name, thr, use_attr):
+            m = bpy.data.materials.new(name)
+            m.use_nodes = True
+            nt = m.node_tree
+            b = nt.nodes["Principled BSDF"]
+            t = nt.nodes.new("ShaderNodeTexImage")
+            t.image = tex.image
+            uv = nt.nodes.new("ShaderNodeUVMap")
+            nt.links.new(uv.outputs[0], t.inputs[0])
+            at = nt.nodes.new("ShaderNodeAttribute")
+            at.attribute_name = "furx"
+            wt = nt.nodes.new("ShaderNodeAttribute")
+            wt.attribute_name = "furwet"
+            ge = nt.nodes.new("ShaderNodeMath")
+            ge.operation = "GREATER_THAN"
+            nt.links.new(t.outputs["Alpha"], ge.inputs[0])
+            if use_attr:
+                nt.links.new(at.outputs["Fac"], ge.inputs[1])
+            else:
+                ge.inputs[1].default_value = thr - 1e-4
+            dark = nt.nodes.new("ShaderNodeMix")
+            dark.data_type = "RGBA"
+            nt.links.new(wt.outputs["Fac"], dark.inputs[0])
+            dark.blend_type = "MULTIPLY"
+            dark.inputs[7].default_value = (0.7, 0.72, 0.7, 1)
+            nt.links.new(t.outputs["Color"], dark.inputs[6])
+            nt.links.new(dark.outputs[2], b.inputs["Base Color"])
+            rough = nt.nodes.new("ShaderNodeMapRange")
+            nt.links.new(wt.outputs["Fac"], rough.inputs[0])
+            rough.inputs[3].default_value, rough.inputs[4].default_value = 0.65, 0.3
+            nt.links.new(rough.outputs[0], b.inputs["Roughness"])
+            nt.links.new(ge.outputs[0], b.inputs["Alpha"])
+            return m
+
+        def build(name, faces, h, thr, use_attr):
+            nb = bmesh.new()
+            vmap = {}
+            x = nb.verts.layers.float.new("furx")
+            w = nb.verts.layers.float.new("furwet")
+            uvn = nb.loops.layers.uv.new("UVMap")
+            uvo = bm.loops.layers.uv.active
+            for f in faces:
+                for v in f.verts:
+                    if v not in vmap:
+                        fx, fw = (v[furl][0], v[furl][1]) if furl else (fv[v.index][0], fv[v.index][1])
+                        d = v.normal * (h * fx * L) + Vector((0, 0, -1)) * (0.6 * h * h * fx * L)
+                        nv = nb.verts.new(o.matrix_world @ (v.co + d))
+                        nv[x], nv[w] = fx, fw
+                        vmap[v] = nv
+                nf = nb.faces.new([vmap[v] for v in f.verts])
+                for lo, ln in zip(f.loops, nf.loops):
+                    ln[uvn].uv = lo[uvo].uv
+            mesh = bpy.data.meshes.new(name)
+            nb.to_mesh(mesh)
+            nb.free()
+            mesh.materials.append(shell_mat(name + "_mat", thr, use_attr))
+            ob = bpy.data.objects.new(name, mesh)
+            bpy.context.scene.collection.objects.link(ob)
+            ob.data.shade_smooth() if hasattr(ob.data, "shade_smooth") else None
+            return ob
+
+        bm.normal_update()
+        out = [build(f"{o.name}_shell{i:02d}", base_faces, i / n_shell, i / n_shell * 0.98, False)
+               for i in range(0, n_shell + 1)]          # layer 0: the base, opaque
+        if card_faces and "no-cards" not in FLAGS:
+            out.append(build(f"{o.name}_cards", card_faces, 0.0, 0.0, True))
+        bmesh.ops.delete(bm, geom=base_faces + card_faces, context="FACES")
+        bm.to_mesh(me)
+        bm.free()
+        print("fur preview: %d shells over %d base faces, %d card faces" % (n_shell, len(base_faces), len(card_faces)))
+        yield from out
 
 
 def bounds(objs):
@@ -191,21 +421,36 @@ for glb in GLBS:
     name = os.path.splitext(os.path.basename(glb))[0]
     sc, sun, cam = setup()
     _, objs = import_glb(glb)
+    objs = pick_lod(objs)
+    if any("_LOD" in o.name for o in objs):
+        untint(objs)
     glassify(objs)
     lo, hi = bounds(objs)
     centre, radius = (lo + hi) / 2, (hi - lo).length / 2
     ext = hi - lo
     print("%s: extent (glTF x, y, z) %.3f %.3f %.3f" % (name, ext.x, ext.z, ext.y))
+    face_pts = []
+    for o in objs:      # a final glb: the face's parts by their _MOTION slot
+        if "_MOTION" in o.data.attributes:
+            mo = [0.0] * (len(o.data.vertices) * 4)
+            o.data.attributes["_MOTION"].data.foreach_get("color", mo)
+            face_pts += [o.matrix_world @ v.co for v in o.data.vertices
+                         if round(mo[4 * v.index] * 16 - 0.5) in FACE_IDS]
+    if any("_LOD" in o.name for o in objs) and OPT.get("fur-shells", "1") != "0":
+        objs = objs + list(fur_preview(objs, rig_for(glb, name)))
+    want = (lambda s: SHOTS is None or s in SHOTS)
     for az, key in ((30, 1), (120, 1), (210, 1), (300, -1)):
-        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_a{az:03d}.png"), centre, radius * 0.92, az, 18, key)
+        if want(f"a{az:03d}"):
+            shoot(sc, sun, cam, os.path.join(OUT, f"{name}_a{az:03d}.png"), centre, radius * 0.92, az, 18, key)
     # from below: the saucer's cannon and spikes, the tardigrade's legs and claws
-    shoot(sc, sun, cam, os.path.join(OUT, f"{name}_under.png"), centre, radius * 0.92, 30, -32)
+    if want("under"):
+        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_under.png"), centre, radius * 0.92, 30, -32)
     # the face up close, fitted to the parts that make its expression
     face = [o for o in objs if any(k in o.name for k in FACE_PARTS)]
-    if face:
-        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_face.png"), None, None, 22, 10, fit=[
+    if (face or face_pts) and want("face"):
+        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_face.png"), None, None, 22, 10, fit=face_pts or [
             o.matrix_world @ v.co for o in face for v in o.data.vertices], margin=0.12)
-    if WITH_SHIP:
+    if WITH_SHIP and want("scale"):
         roots, ship = import_glb(SHIP_GLB)
         for r in roots:      # nose to glTF +Z like the monster (its engines face +Z unturned)
             r.matrix_world = Matrix.Rotation(math.pi, 4, "Z") @ Matrix.Diagonal((SHIP_SCALE,) * 3 + (1,))

@@ -40,8 +40,11 @@ G = Vector((0, -1, 0))   # gravity, for drooping fur and hanging drips
 MATS = []
 
 
-def parse_args(name):
-    """`-- [--out DIR | --out=DIR] [--stage=blockout|final]` -> (out_dir, stage)."""
+def parse_args(name, stages=("blockout",), default="blockout"):
+    """`-- [--out DIR | --out=DIR] [--stage=blockout|final]` -> (out_dir, stage).
+    `stages` lists the stages the generator has built; `default` is the stage
+    run without --stage (gen_saucer.py: final; gen_tardigrade.py: blockout,
+    until Task 4 builds its final stage)."""
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     opt = {}
     i = 0
@@ -55,9 +58,9 @@ def parse_args(name):
             i += 1
         i += 1
     out_dir = os.path.abspath(opt.get("out", os.path.join(ROOT, "assets-src")))
-    stage = opt.get("stage", "blockout")   # Task 3/4 add "final" and make it the default
-    if stage != "blockout":
-        sys.exit(f"gen_{name}.py: --stage={stage} is not built yet (only blockout exists)")
+    stage = opt.get("stage", default)
+    if stage not in stages:
+        sys.exit(f"gen_{name}.py: --stage={stage} is not built yet (only {', '.join(stages)})")
     return out_dir, stage
 
 
@@ -242,43 +245,49 @@ def tuft(bm, base, n, length, radius, flow, mi=FUR, ring=5):
     return p3
 
 
-def drip(bm, top, length, r, mi=SLIME, sway=(0, 0, 0)):
-    """A hanging drop of slime: a thin neck from `top` down to a round bulb."""
+def drip(bm, top, length, r, mi=SLIME, sway=(0, 0, 0), ring=8, per_seg=4, cap=3):
+    """A hanging drop of slime: a thin neck from `top` down to a round bulb.
+    Returns (faces, centreline)."""
     s = Vector(sway)
     pts = [Vector(top) + G * length * k + s * k * k for k in (0.0, 0.4, 0.75, 1.0)]
-    sweep(bm, pts, lambda t: r * (0.5 + 0.3 * t) + r * 0.85 * math.exp(-((t - 0.9) / 0.13) ** 2),
-          ring=8, per_seg=4, mi=mi, cap=3)
+    return sweep(bm, pts, lambda t: r * (0.5 + 0.3 * t) + r * 0.85 * math.exp(-((t - 0.9) / 0.13) ** 2),
+                 ring=ring, per_seg=per_seg, mi=mi, cap=cap)
 
 
-def strand(bm, pts, r_end, r_mid, mi=SLIME, beads=()):
+def strand(bm, pts, r_end, r_mid, mi=SLIME, beads=(), ring=8, per_seg=5, cap=2):
     """A goo string through pts: thick where it clings, thin in the middle,
-    optional beads (t, radius) along it."""
+    optional beads (t, radius) along it. Returns (faces, centreline)."""
     def rad(t):
         r = r_mid + (r_end - r_mid) * abs(2 * t - 1) ** 2
         return r + sum(b * math.exp(-((t - tb) / 0.07) ** 2) for tb, b in beads)
-    sweep(bm, pts, rad, ring=8, per_seg=5, mi=mi, cap=2)
+    return sweep(bm, pts, rad, ring=ring, per_seg=per_seg, mi=mi, cap=cap)
 
 
-def fang(bm, base, d, w, h, mi=LIGHT, spin=0.0):
-    """A sharp six-sided tooth from `base` along d, w wide at the root, h long."""
+def fang(bm, base, d, w, h, mi=LIGHT, spin=0.0, sides=6, low=False):
+    """A sharp six-sided tooth from `base` along d, w wide at the root, h long.
+    low=True drops the profile's shoulder (a game-mesh tooth). Returns its frame."""
     prof = [(0.0, -0.03), (w, -0.03), (w * 0.92, h * 0.28), (w * 0.5, h * 0.7), (w * 0.1, h * 0.96), (0.0, h)]
-    lathe(bm, prof, 6, place(base, d, spin), mi)
+    if low:
+        prof = [(0.0, -0.03), (w, -0.03), (w * 0.8, h * 0.45), (w * 0.22, h * 0.88), (0.0, h)]
+    M = place(base, d, spin)
+    lathe(bm, prof, sides, M, mi)
+    return M
 
 
 def lid_and_brow(bm, c, r, a, gaze, heavy, mi=SKIN, cover=8.0, dip=0.0, brow=(0.03, 0.06), v_shape=False,
-                 span=88.0, roll=True):
+                 span=88.0, roll=True, segs=32, steps=10, ring=12, per_seg=4):
     """An angry upper lid over the eye ball (centre c, radius r): a thick cap
     about axis a whose edge stops `cover` degrees short of the pupil's centre
     (the pupil looks along gaze; it is ~23 deg across, so ~10 hides its top
     half), and a heavy brow roll along the edge, thickest at the end toward
     `heavy` (or in the middle, dipped by `dip`, for a V brow), `span` degrees
-    either side of the gaze. roll=False builds the lid only."""
+    either side of the gaze. roll=False builds the lid only. segs/steps (the
+    lid) and ring/per_seg (the roll) set the resolution."""
     a, g = Vector(a).normalized(), Vector(gaze).normalized()
     beta = math.acos(max(-1.0, min(1.0, a.dot(g)))) - math.radians(cover)
-    steps = 10
     cap = [(math.sin(beta * i / steps), math.cos(beta * i / steps)) for i in range(steps + 1)]
     prof = [(1.01 * r * x, 1.01 * r * y) for x, y in cap] + [(1.13 * r * x, 1.13 * r * y) for x, y in cap[::-1]]
-    lathe(bm, prof, 32, place(c, a), mi)
+    lathe(bm, prof, segs, place(c, a), mi)
     if not roll:
         return
     u = perp(g, a).normalized()
@@ -297,7 +306,7 @@ def lid_and_brow(bm, c, r, a, gaze, heavy, mi=SKIN, cover=8.0, dip=0.0, brow=(0.
         if pts[0].dot(heavy) > pts[-1].dot(heavy):
             pts.reverse()
         rad = lambda t: brow[0] + (brow[1] - brow[0]) * t  # noqa: E731
-    sweep(bm, pts, rad, ring=12, per_seg=4, mi=mi, cap=3)
+    sweep(bm, pts, rad, ring=ring, per_seg=per_seg, mi=mi, cap=3)
 
 
 def scatter(cands, spacing, rng):
