@@ -127,17 +127,17 @@ describe("stepPosture", () => {
     }
   });
 
-  it("is allocation-free: reuses state and out, no per-call garbage", () => {
+  // No heap measurement: a heapUsed delta failed the #56 deploy on clean code
+  // (the interpreter boxes numbers until V8 optimises, and a busy CI runner
+  // optimises late) and missed a real per-call allocation one run in three
+  // (the scavenger frees it mid-loop). Reuse is what can be checked exactly;
+  // the e2e memory budget guards the real-world total.
+  it("reuses its state and out: no per-call objects", () => {
     const s = createPostureState();
     const out = quat();
     const { dir, q, vel: sVel, last } = s;
     const vel = v(6, 1, -2);
-    const heap = () => process.memoryUsage().heapUsed;
-    for (let i = 0; i < 1000; i++) stepPosture(s, vel, 1 / 60, out);
-    const h0 = heap();
-    for (let i = 0; i < 300000; i++) stepPosture(s, vel, 1 / 60, out);
-    // 300k calls that each made a quaternion and a vector would add ~20 MB
-    expect(heap() - h0).toBeLessThan(2_000_000);
+    for (let i = 0; i < 1000; i++) expect(stepPosture(s, vel, 1 / 60, out)).toBe(out);
     expect(s.dir).toBe(dir);
     expect(s.q).toBe(q);
     expect(s.vel).toBe(sVel);
