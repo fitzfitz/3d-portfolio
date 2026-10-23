@@ -184,6 +184,17 @@ class SoundManager {
   uiTick() {
     this.blip("square", 880, 0.04, 0.025);
   }
+  /**
+   * The jellyfish guide speaks (spec 2026-10-23-jellyfish-guide): a soft
+   * rising "woo-ee", two sine glides like a sonar call, so its radio lines are
+   * heard as the creature's and not just the typewriter's 40 ms uiTick (0.025,
+   * near inaudible). Gain 0.08: clearly audible beside chime() (0.1), never
+   * over it. Through master like every blip, so mute silences it.
+   */
+  guideChime() {
+    this.blip("sine", 392, 0.32, 0.08, 523.25);
+    setTimeout(() => this.blip("sine", 659.25, 0.55, 0.08, 987.77), 190);
+  }
   /** Shard collected: two-note rising chime */
   pickup() {
     this.blip("sine", 880, 0.08, 0.09);

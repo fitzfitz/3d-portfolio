@@ -140,8 +140,10 @@ export const guideLines: GuideLines = {
     "GUIDE ALONGSIDE // FOLLOW THE GLOW TO YOUR NEXT STOP",
   ],
   offering: [
-    "LOST, PILOT? YOUR GUIDE IS ON ITS WAY. FOLLOW THE GLOW",
-    "NAV.AI: SOMETHING GLOWING WANTS TO SHOW YOU THE WAY",
+    // Owner, 2026-10-23: say what it is and how to send it off. [J] as the
+    // radio's other key hints (the logbook's "(L)"); on touch the GUIDE button does it.
+    "LOST, PILOT? A GLOWING GUIDE COMES TO LEAD YOU. [J] SENDS IT OFF",
+    "NAV.AI: A JELLYFISH GUIDE WILL SHOW YOU THE WAY // [J] DISMISSES",
   ],
   arrived: [
     "YOU'RE HERE, PILOT. YOUR GUIDE TAKES A BOW",

@@ -24,6 +24,14 @@ const hudTarget = (page) => page.evaluate(async () => {
   return ok ? { id: out.id, x: out.x, y: out.y, z: out.z, radius: out.radius } : null;
 });
 
+/** Points the ship's nose at `t` (yaw/pitch as pitchFlight.ts noseDirection), or `turn` radians of yaw off it, level. */
+const aim = (page, t, turn = 0) => page.evaluate((t, turn) => {
+  const f = window.__fitz.flight;
+  const dx = t.x - f.x, dy = t.y - f.y, dz = t.z - f.z;
+  const yaw = Math.atan2(dx, dz) + turn;
+  window.__fitz.setAttitude(yaw, turn ? 0 : Math.asin(dy / Math.hypot(dx, dy, dz)));
+}, t, turn);
+
 /** Presses J and waits (in the page, on rAF) for the creature to come within 25 u; resolves the seconds, or null. */
 async function callGuide(page, limitMs = 6000) {
   await page.evaluate((limitMs) => {
@@ -73,17 +81,26 @@ async function guiding(page, checks) {
     };
     requestAnimationFrame(tick);
   });
+  // Count the guide's chime (soundManager.guideChime) as its radio lines go out.
+  await page.evaluate(() => {
+    const s = window.__fitz.sound, chime = s.guideChime.bind(s);
+    window.__chimes = 0;
+    s.guideChime = () => { window.__chimes++; chime(); };
+  });
   const secs = await callGuide(page);
   checks.check("J brings the guide within 25 u in 3 s or less", secs !== null && secs <= 3,
     `from ${away.toFixed(0)} u away: ${secs === null ? "never" : secs.toFixed(2) + " s"}`);
   const radio = (await pollUntil(async () => { const t = await chatterText(page); return /GUIDE/.test(t) ? t : null; }, { timeoutMs: 6000, intervalMs: 250 })).value;
   checks.check("the radio says the guide is here", !!radio, radio ?? `radio: ${await chatterText(page)}`);
+  const chimes = await page.evaluate(() => window.__chimes);
+  checks.check("the guide chimes when it speaks (owner: \"I don't hear any radio sound\")", chimes >= 1, `${chimes} chime(s)`);
 
   const leading = (await pollUntil(async () => ((await guideState(page)) === "leading" ? true : null), { timeoutMs: 8000, intervalMs: 100 })).ok;
   checks.check("it settles into leading", leading, `state=${await guideState(page)}`);
 
-  // Fly the ship toward the target, smoothly every frame (40 u/s), and check
-  // the guide stays ahead of it and closes on the target.
+  // Fly the ship toward the target, smoothly every frame (40 u/s), nose on it,
+  // and check the guide stays ahead of it and closes on the target.
+  await aim(page, target);
   const lead = await page.evaluate((t) => new Promise((resolve) => {
     const f = window.__fitz.flight, g = window.__fitz.jellyGuide;
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -121,13 +138,76 @@ async function guiding(page, checks) {
   // Ship at rest: the guide holds its station and stands up (~1 s half-life).
   await settle(page, 4000);
   const stand = await page.evaluate(() => ({ ...window.__fitz.jellyGuide.up, state: window.__fitz.jellyGuide.state, swim: window.__fitz.jellyGuide.swim }));
-  checks.check("standing: waiting for a stopped ship, the bell points up (body +y . up > 0.95)", stand.y > 0.95,
+  checks.check("standing: holding its station by a stopped ship, the bell points up (body +y . up > 0.95)", stand.y > 0.95,
     `state=${stand.state} up.y=${stand.y.toFixed(3)} swim=${stand.swim.toFixed(2)}`);
+
+  // Owner feedback 2026-10-23 (after #54): "I'm able to pass the jellyfish;
+  // it's behind". Fly for real (W held) 135 degrees off the target: the guide
+  // must stay in front of the nose, ahead = (guide - ship) . nose, as the
+  // repro measured it (the old rule fell from -2 to -47 u in 8 s). Read every
+  // frame after 1.5 s, once the turn's swing (~34 u) has closed.
+  await aim(page, target, (135 * Math.PI) / 180);
+  await page.evaluate(() => {
+    const r = window.__ahead = { min: Infinity, n: 0, onScreen: 0, speed: 0, on: true, t0: performance.now() };
+    const tick = () => {
+      if (!r.on) return;
+      if (performance.now() - r.t0 > 1500) {
+        const f = window.__fitz.flight, p = window.__fitz.jellyGuide.pos, c = window.__fitz.camera;
+        const cp = Math.cos(f.pitch);
+        const nx = Math.sin(f.heading) * cp, ny = Math.sin(f.pitch), nz = Math.cos(f.heading) * cp;
+        r.min = Math.min(r.min, (p.x - f.x) * nx + (p.y - f.y) * ny + (p.z - f.z) * nz);
+        r.speed = Math.max(r.speed, f.speed);
+        r.n++;
+        // On screen: project through the live camera (column-major matrices).
+        const v = c.matrixWorldInverse.elements, q = c.projectionMatrix.elements;
+        const vx = v[0] * p.x + v[4] * p.y + v[8] * p.z + v[12];
+        const vy = v[1] * p.x + v[5] * p.y + v[9] * p.z + v[13];
+        const vz = v[2] * p.x + v[6] * p.y + v[10] * p.z + v[14];
+        const cx = q[0] * vx + q[4] * vy + q[8] * vz + q[12], cy = q[1] * vx + q[5] * vy + q[9] * vz + q[13];
+        const cw = q[3] * vx + q[7] * vy + q[11] * vz + q[15];
+        if (cw > 0 && Math.abs(cx / cw) < 1 && Math.abs(cy / cw) < 1) r.onScreen++;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await page.keyboard.down("KeyW");
+  await settle(page, 4000);
+  await page.keyboard.up("KeyW");
+  const off = await page.evaluate(() => { window.__ahead.on = false; return { ...window.__ahead, state: window.__fitz.jellyGuide.state }; });
+  checks.check("flying 135 degrees off the target, the guide stays ahead of the nose (> 10 u)", off.n > 20 && off.min > 10,
+    `min ahead ${off.min.toFixed(1)} u over ${off.n} frames, ship up to ${off.speed.toFixed(1)} u/s, state=${off.state}`);
+  checks.check("flying 135 degrees off the target, the guide is on screen", off.n > 20 && off.onScreen === off.n,
+    `${off.onScreen}/${off.n} frames`);
 
   // Park the ship at the target: the guide arrives and presents.
   await teleport(page, [target.x + 20, target.y + 10, target.z]);
   const presenting = (await pollUntil(async () => ((await guideState(page)) === "presenting" ? true : null), { timeoutMs: 10000, intervalMs: 100 })).ok;
   checks.check("at the target it presents", presenting, `state=${await guideState(page)}`);
+  // Owner, 2026-10-23: "Will it inform me of what to do?" The arrival line is
+  // the step's own instruction (the probe's: grab it, HOLD F).
+  const told = (await pollUntil(async () => { const t = await chatterText(page); return /YOU'RE HERE/.test(t) ? t : null; }, { timeoutMs: 12000, intervalMs: 250 })).value;
+  checks.check("arriving, the radio says what to do here", !!told, told ?? `radio: ${await chatterText(page)}`);
+
+  // After its one turn (8 s) it attends: it holds still beside the stop and
+  // stands up. The circle ends at a swim; standing takes ~3-4 s, as from the
+  // station above (velocity half-life 0.5 s, then upright 1 s: jellyPosture.ts).
+  const attending = (await pollUntil(async () => ((await guideState(page)) === "attending" ? true : null), { timeoutMs: 12000, intervalMs: 200 })).ok;
+  checks.check("after the circle it attends the stop (not home)", attending, `state=${await guideState(page)}`);
+  await settle(page, 4000);
+  const att = await page.evaluate(() => ({ up: window.__fitz.jellyGuide.up.y, state: window.__fitz.jellyGuide.state }));
+  checks.check("attending, it stands upright (body +y . up > 0.95)", att.state === "attending" && att.up > 0.95,
+    `state=${att.state} up.y=${att.up.toFixed(3)}`);
+
+  // Do the step for real: the dossier opens (the frame loop freezes under it,
+  // so it just attends), then closes; the target moves on to the next probe.
+  await page.evaluate((id) => window.__fitz.store.getState().openProjectDossier(id, "probe"), target.id);
+  await settle(page, 1000);
+  await page.evaluate(() => window.__fitz.store.getState().closeDossier());
+  const onward = (await pollUntil(async () => ((await guideState(page)) === "leading" ? true : null), { timeoutMs: 5000, intervalMs: 100 })).ok;
+  checks.check("the step done, it leads on to the next one", onward, `state=${await guideState(page)}`);
+  const next = (await pollUntil(async () => { const t = await chatterText(page); return /ONWARD/.test(t) ? t : null; }, { timeoutMs: 15000, intervalMs: 250 })).value;
+  checks.check("the radio says onward, naming the next step", !!next, next ?? `radio: ${await chatterText(page)}`);
 
   await page.keyboard.press("KeyJ");
   const back = (await pollUntil(async () => ((await guideState(page)) === "roaming" ? true : null), { timeoutMs: 3000, intervalMs: 100 })).ok;

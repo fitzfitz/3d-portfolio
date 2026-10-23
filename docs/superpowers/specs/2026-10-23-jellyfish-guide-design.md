@@ -45,7 +45,8 @@ startled moods. It swims bell first along the loop (see posture).
 - **J** (keyboard), the gamepad button J already maps to, and a small touch
   button: toggle. Called, it streaks to the ship (~2 s, glow trail), pulses,
   and the radio says one line from a new `guide` pool, e.g. *"Your guide is
-  here: follow the glow."* Pressed again: it is sent back to roaming.
+  here: follow the glow."* Each guide line plays its own call, the guide
+  chime: a soft rising "woo-ee", two sine glides. Pressed again: it is sent back to roaming.
 - J no longer fast-forwards the loop to the spawn pad.
 
 ### Offering itself ("when lost")
@@ -54,7 +55,10 @@ startled moods. It swims bell first along the loop (see posture).
 - Never while docked or orbit-locked, in a dossier, racing, in photo mode, in
   the classic résumé, or while another broadcast holds the radio.
 - At most once every few minutes (cooldown; a constant in the guide module).
-  If the pilot flies away from the offer, it goes back to roaming.
+  An offered guide behaves exactly like a called one: it stays until the
+  pilot arrives at the next step or presses J (owner, 2026-10-23: flying
+  away no longer withdraws it). Its radio line says what it is and that J
+  sends it off.
 
 ### Leading
 - **Target:** the world position of the logbook's NEXT step: the three probe
@@ -63,14 +67,37 @@ startled moods. It swims bell first along the loop (see posture).
   HUD's NEXT line and target lock (`nextGoal`, `utils/navigation.ts`).
 - **Station:** ~20 u ahead of the ship along the route to the target,
   matching the ship's speed, warp included (glow streak while warping).
-- **Waiting:** if the pilot falls behind or turns away, it slows and turns
-  back toward the ship until the pilot follows again.
+- **Never behind** (owner, 2026-10-23, after #54; this replaces the old
+  "Waiting" rule, which let the pilot pass it): it holds ~20 u in front of
+  the ship's nose. Flying within 20° of the target, the station is on the
+  route, as above. Otherwise it is the nose turned 20° toward the target
+  (`GUIDE_LEAD_MAX_ANGLE`), so it stays in view and still points the way.
+  Wherever the pilot flies, it keeps up, warp included.
 - While guiding, boosting does not startle it, and it keeps clear of every
   solid (planets, moons, stations), as the keep-out law does today.
 
 ### Arriving
-It circles the target once, pulses, and the HUD's target locks on. Then it
-returns to roaming, or leads to the next step if called again.
+It circles the target once and pulses, and the HUD's target locks on. The
+radio says what to do there, using the step's own instruction: the logbook
+hint for a probe, the career station or the contact portal (e.g. *"YOU'RE
+HERE, PILOT // GRAB THE RUANGRAPI PROBE (HOLD F)"*), or the scanner's
+"HOLD E TO SCAN" for an uncharted world. A step with neither gets the
+generic arrived line.
+
+Then it **attends** (owner, 2026-10-23). It holds still beside the stop,
+upright, where its circle ended, while the pilot does the step, and it
+stays with a target that moves. It never goes home on its own:
+- **Step done** (the target's id changes; a probe relocates, so position
+  cannot tell): it leads straight on to the next step, and the radio says
+  *"ONWARD, PILOT // NEXT: CAREER DOSSIER"* (the entry's short hint, or
+  "CHART <WORLD>").
+- **The pilot leaves undone** (the ship 15 u past the arrival radius): it
+  leads back to the same stop.
+- **Nothing left** (no target): the all-done line, and it roams.
+- **J**: it is dismissed, from any state.
+
+A docking or dossier panel freezes the scene, so it attends until the panel
+closes. An offered guide carries on the same way.
 
 ### Swim posture
 - **Stopped or slow:** upright, bell up, tentacles hanging (today's look).
@@ -152,3 +179,13 @@ wrong about the code. Code comments cite them as "spec, build ruling Rn".
   presenting circle, beside the approach line, and it never comes nearer the
   target than that radius: 16.7 u, the widest docking orbit (10) plus the
   ship's half length and the creature's reach, so it clears a docked ship.
+- **Owner feedback 2026-10-23 (after #54):** the guide never falls behind; it
+  holds ~20 u in front of the nose, leaning ≤ 20° toward the target. Offers
+  stay until arrival or J ("I never get any offer when I flew away": a lost
+  pilot flies anywhere, so a fly-away withdrawal ate every offer), and the
+  offer line names the guide and [J] to send it off. Arrival names the
+  action at the stop, and the guide carries on to each next step (attending
+  in between) until J or everything is done ("After I reach my stop, what
+  will the jellyfish do? Will it inform me of what to do?"). Guide radio lines play the guide chime
+  (`soundManager.guideChime`, gain 0.08, under `chime()`'s 0.1), because the
+  typewriter's tick alone was near inaudible ("I don't hear any radio sound").

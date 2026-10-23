@@ -25,6 +25,7 @@ import { GuideRadio } from "../../utils/guideRadio";
 import { takeGuideToggle, requestGuideToggle, setGuideActive } from "../../utils/guideToggle";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
+import { soundManager } from "../../audio/soundManager";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
@@ -195,8 +196,8 @@ export default function SpaceJellyfish() {
     () => ({ visitedDossiers: [], shardsCollected: [], badges: [] }), []);
   /** Reused every frame: the frame step's input, so the loop allocates nothing. */
   const frameIn = useMemo<JellyFrameInput>(() => ({
-    pathPos, basePos, ship: flight, shipVel: { x: 0, y: 0, z: 0 }, shipSpeed: 0, warping: false,
-    target: null, targetRadius: 0, progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut,
+    pathPos, basePos, ship: flight, shipVel: { x: 0, y: 0, z: 0 }, shipNose: { x: 0, y: 0, z: 1 }, shipSpeed: 0, warping: false,
+    target: null, targetId: "", targetRadius: 0, progress: 0, blocked: false, reducedMotion: false, toggle: false, keepOut,
   }), [pathPos, basePos, keepOut]);
   /** Last frame's ship position, for its velocity (the guide matches it, warp included). */
   const lastShip = useMemo(() => ({ x: 0, y: 0, z: 0, has: false }), []);
@@ -361,6 +362,12 @@ export default function SpaceJellyfish() {
       fi.shipVel.z = (flight.z - lastShip.z) / frameDt;
     }
     lastShip.x = flight.x; lastShip.y = flight.y; lastShip.z = flight.z; lastShip.has = true;
+    // The nose, as pitchFlight.ts noseDirection has it, written in place (that
+    // helper returns a new object): the guide holds its station in front of it.
+    const cp = Math.cos(flight.pitch);
+    fi.shipNose.x = Math.sin(flight.heading) * cp;
+    fi.shipNose.y = Math.sin(flight.pitch);
+    fi.shipNose.z = Math.cos(flight.heading) * cp;
     fi.shipSpeed = flight.speed;
     fi.warping = store.isWarping;
     fi.reducedMotion = reduced;
@@ -372,6 +379,7 @@ export default function SpaceJellyfish() {
     progress.badges = store.badges;
     const has = guideTarget(flight, progress, store.charted, bodies, target);
     fi.target = has ? target : null;
+    fi.targetId = has ? target.id : "";
     fi.targetRadius = has ? target.radius : 0;
 
     // Progress signature: every count only grows, so their sum changes on any
@@ -405,8 +413,10 @@ export default function SpaceJellyfish() {
     }
 
     const ev = frame.guide.event;
-    const line = radio.update(ev, frame.guide.offered, now / 1000, radioBusy);
-    if (line) store.sendBroadcast(line);
+    const line = radio.update(ev, frame.guide.offered, now / 1000, radioBusy, frame.guide.targetId);
+    // The guide's own call with each line it sends: the typewriter's tick alone
+    // was near inaudible (owner, after #54: "I don't hear any radio sound").
+    if (line) { store.sendBroadcast(line); soundManager.guideChime(); }
     // Spec "Calling it": "it streaks to the ship, pulses"; "Arriving": "pulses".
     // A kick to the pulse rate that eases back (the phase never jumps).
     if (!reduced && (ev === "met" || ev === "arrived")) pulseRate.current = GUIDE_PULSE_KICK;

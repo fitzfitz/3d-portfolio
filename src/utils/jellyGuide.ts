@@ -12,8 +12,16 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
  * caller reuses, every output is written into the state.
  *
  *   roaming --J / offer--> coming --~2 s--> leading --ship in radius--> presenting
- *      ^                     |                 |                         | one turn
- *      +---- J, target null, or (offer only) the pilot flies away -------+
+ *      ^                     |                 ^  ^                      | one turn
+ *      |                     |                 |  +- target id changed --+ (onward)
+ *      |                     |                 |  |                      v
+ *      |                     |                 |  +--- id changed ---- attending
+ *      |                     |                 +-- pilot left undone ---+
+ *      +---------- J, or target null (nothing left), from any state -----+
+ *
+ * Owner, 2026-10-23 ("After I reach my stop, what will the jellyfish do?"):
+ * after the circle it attends, holding beside the stop while the pilot does
+ * the step, then carries on to the next one until J or nothing is left.
  *
  * While roaming the component owns the position (loop + moods) and the guide
  * only passes it through and runs the lost timer. In every other state `pos` is
@@ -21,7 +29,7 @@ import { SHIP_HALF_LENGTH } from "./worldCollide";
  * and skips the moods (`guiding`: never startled while guiding).
  */
 
-export type GuideName = "roaming" | "coming" | "leading" | "presenting";
+export type GuideName = "roaming" | "coming" | "leading" | "presenting" | "attending";
 
 /**
  * One per step at most, in `GuideState.event`, reset to null every step.
@@ -31,12 +39,13 @@ export type GuideName = "roaming" | "coming" | "leading" | "presenting";
  * - `met`: it reached the ship (spec: "streaks to the ship, pulses"); leading begins.
  * - `arrived`: the ship entered the target's radius (the HUD's own lock-on
  *   radius; no lock action exists, spec build ruling R9); it presents.
+ * - `onward`: the step it presented was done (the target id changed while it
+ *   presented or attended); it leads to the next one.
  * - `dismissed`: J while active; it roams again.
- * - `declined`: the pilot flew away from an offer; it roams again.
- * - `allDone`: no target left (J with nothing to do, the target went null
- *   mid-guide, or the last step was just presented); it roams.
+ * - `allDone`: no target left (J with nothing to do, or the target went null
+ *   while it guided: the last step was done); it roams.
  */
-export type GuideEvent = "called" | "offered" | "met" | "arrived" | "dismissed" | "declined" | "allDone";
+export type GuideEvent = "called" | "offered" | "met" | "arrived" | "onward" | "dismissed" | "allDone";
 
 export interface GuideInput {
   /** The creature's roaming position this frame (loop + mood offset), as the component computes it. */
@@ -44,10 +53,22 @@ export interface GuideInput {
   /** Ship world position and velocity (u/s, warp included). */
   ship: Vec3;
   shipVel: Vec3;
+  /**
+   * The ship's nose, a unit vector (pitchFlight.ts noseDirection's convention,
+   * from flight.heading and flight.pitch). The station leans off it toward the
+   * target by at most GUIDE_LEAD_MAX_ANGLE, so the guide stays in view.
+   */
+  shipNose: Vec3;
   /** Warp held: only the glow streak reads it; speed matching uses `shipVel`. */
   warping: boolean;
   /** World position of the logbook's NEXT place (spec, build ruling R1), or null when all is done. */
   target: Vec3 | null;
+  /**
+   * The target's identity (waypointTarget.ts WaypointTarget.id), "" with no
+   * target. A changed id is a step done (when it has arrived) or a re-pick
+   * (while it leads); a position is not, since probes relocate and worlds orbit.
+   */
+  targetId: string;
   /** The target's dock or scan radius: the ship inside it has arrived. */
   targetRadius: number;
   /**
@@ -85,11 +106,13 @@ export interface GuideState {
   vel: Vec3;
   /** OUTPUT: name !== "roaming". The component skips mood stepping (no startle) while set. */
   guiding: boolean;
-  /** OUTPUT: leading, but holding for a pilot who turned away or fell behind. */
-  waiting: boolean;
   /** OUTPUT: draw the glow streak (fast travel; never under reduced motion). */
   streak: boolean;
-  /** This run began as an offer, so flying away from it withdraws it. */
+  /**
+   * This run began as an offer, whose radio line went out when it started, so
+   * meeting the ship says nothing more (guideRadio.ts). Otherwise an offer
+   * behaves as a call: it stays until the pilot arrives or presses J.
+   */
   offered: boolean;
   /** Seconds lost (no progress, no blocker) while roaming. */
   lostFor: number;
@@ -100,8 +123,6 @@ export interface GuideState {
   /** Streak-in clock and start point. */
   comeT: number;
   from: Vec3;
-  /** Closest the ship has been to an offer since it began (u). */
-  offerNear: number;
   /** Presenting: the circle's centre (the target as it was on arrival), radius, start bearing, turn so far. */
   center: Vec3;
   radius: number;
@@ -109,6 +130,10 @@ export interface GuideState {
   turned: number;
   /** Presenting: the nearest it may come to the circle's axis (u), min(radius, where it started). */
   floor: number;
+  /** The id of the target it leads to, presents or attends (GuideInput.targetId); the radio names it. */
+  targetId: string;
+  /** Attending: its offset from the target, held as the target moves. */
+  hold: Vec3;
 }
 
 /** Spec: "after 45 s with no progress". */
@@ -123,53 +148,36 @@ export const GUIDE_COME_SECONDS = 2;
 /** Spec: "Station: ~20 u ahead of the ship along the route to the target". */
 export const GUIDE_LEAD_DIST = 20;
 /**
+ * The most the station leans off the ship's nose toward the target (radians,
+ * 20 degrees). Owner feedback 2026-10-23 (after #54): the guide must never fall
+ * behind, so it holds GUIDE_LEAD_DIST in front of the nose, on the route when
+ * the route is within this of the nose, else this far round toward it.
+ *
+ * The largest lean that stays on a landscape screen in every direction. The
+ * chase camera (chaseCam.ts) sits d behind the ship and 1.8 u up, looking at
+ * 1.5 u past it and 0.2 u up, so its axis dips atan(1.6 / (1.5 + d)) below the
+ * nose. Seen from the camera, a station leaned up by a sits atan((20 sin a - 1.8)
+ * / (20 cos a + d)) above the nose line. The worst case is a hovering ship (d =
+ * 4.6, vertical fov 58, Spaceship.tsx): the axis dips 14.7 degrees. At 20
+ * degrees the station is 12.2 above the nose, 26.9 above the axis, inside the 29
+ * degree half-fov with 2.1 to spare. At cruise (d = 5.2, fov 64) it is 25.3 of
+ * 32, and at warp (6.8 u back, 2.8 up, fov 86) 26.4 of 43. The owner's first
+ * figure, 30 degrees, put it 35.2 above the axis at a hover, off the top, and 25
+ * still 31.0. Sideways and downward leans sit nearer the axis: ~16-19 degrees
+ * aside, inside the ~42 degree horizontal half-fov of a 16:10 screen, and under
+ * 6 below. A portrait phone's ~14 degree horizontal half-fov still loses a
+ * sideways lean (docs/FOLLOW-UPS.md).
+ */
+export const GUIDE_LEAD_MAX_ANGLE = (20 * Math.PI) / 180;
+const LEAN_COS = Math.cos(GUIDE_LEAD_MAX_ANGLE);
+const LEAN_SIN = Math.sin(GUIDE_LEAD_MAX_ANGLE);
+/**
  * Closing rate on the station (1/s) on top of the ship's own speed. The
  * station moves at the ship's velocity, so the ship's speed alone holds it
- * exactly, warp included; this term only closes a gap (after waiting, or a
- * keep-out detour), halving it every ~0.46 s.
+ * exactly, warp included; this term only closes a gap (a turn swinging the
+ * station round the ship, a jump, a keep-out detour), halving it every ~0.46 s.
  */
 export const GUIDE_CATCHUP_GAIN = 1.5;
-/** Below this the ship is hovering, neither following nor turning away (u/s). */
-export const GUIDE_MOVING_SPEED = 1;
-/**
- * Turned away: the ship's heading is more than ~78 degrees off the route
- * (velocity along the route under 0.2 of its speed). Flying across the route
- * is not following. It leads again once the heading is within 60 degrees
- * (0.5): the gap between the two keeps a weaving pilot from flickering it.
- */
-export const GUIDE_AWAY_COS = 0.2;
-export const GUIDE_RESUME_COS = 0.5;
-/**
- * Fallen behind: the ship is this far from the guide (u) and not heading to
- * the target. Station distance plus 25 u of slack, so a keep-out detour round
- * a moon is not the pilot falling behind; a pilot who is following never gets
- * here, since the station rides with the ship.
- */
-export const GUIDE_FALL_BEHIND_DIST = GUIDE_LEAD_DIST + 25;
-/**
- * Waiting: it swims back toward the ship and holds this far off (u): ~3 body
- * heights, outside the moods' 8 u rest distance, so it beckons without crowding.
- */
-export const GUIDE_WAIT_DIST = 12;
-/**
- * Waiting swim speed cap (u/s): above the posture's 2.37 u/s swim threshold, so
- * it reads as turning and swimming back bell first; well under the 10.8 cruise,
- * so a pilot who keeps going does leave it (spec: it "slows", it does not chase).
- */
-export const GUIDE_WAIT_MAX_SPEED = 6;
-/** Waiting swim speed per u of distance beyond the hold (1/s): eases in, no snap. */
-const WAIT_GAIN = 0.5;
-/** Half-life (s) of the slow-down into waiting: a cruise-speed lead brakes in ~1 s. */
-const WAIT_HALF_LIFE = 0.25;
-/**
- * Flying away from an offer (spec: "it goes back to roaming"): the ship-guide
- * distance has grown this far (u) past the closest it has been since the
- * offer. Measured from the closest, not absolutely, because an offer starts
- * wherever the loop had it, often hundreds of u off. 3x the station distance:
- * a following pilot never opens it, a cruising pilot who leaves the waiting
- * guide opens it in ~12 s, a warping one in a fraction of a second.
- */
-export const GUIDE_OFFER_LEAVE_DIST = 60;
 /** Spec: "It circles the target once". One unhurried turn. */
 export const GUIDE_PRESENT_SECONDS = 8;
 /** Margin (u) between the creature's reach and whatever it circles or keeps off. */
@@ -190,11 +198,21 @@ export const GUIDE_PRESENT_MIN_R =
  * in view. A target inside a solid (an uncharted world) widens it to clear that body.
  */
 export const GUIDE_PRESENT_MAX_R = 30;
+/**
+ * Attending: the pilot has left without doing the step once the ship is this
+ * far (u) past the target's arrival radius; it leads back. The gap keeps a
+ * pilot drifting at the edge of the radius from flickering it between
+ * attending and arriving again, and clears a docked ship's orbit (10 u round
+ * the career station, whose radius is 8.5).
+ */
+export const GUIDE_ATTEND_LEAVE_MARGIN = 15;
 /** Half-life (s) of easing onto the circle, so the arrival point blends in. */
 const PRESENT_HALF_LIFE = 0.3;
 /**
  * Reduced motion has no streak (spec): a gap larger than this (u), e.g. after
- * the pilot left it waiting, is closed by re-appearing at the station.
+ * a number-key jump, is closed by re-appearing at the station. A turn swings
+ * the station at most 2 * 20 * sin(80 degrees) = 39.4 u round the ship, under
+ * this, so a turn is swum, not snapped.
  */
 export const GUIDE_REDUCED_SNAP_DIST = 40;
 /** Faster than this (1.5x cruise) is fast travel and draws the glow streak. */
@@ -208,15 +226,18 @@ export function createGuideState(): GuideState {
   return {
     name: "roaming", event: null,
     pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 },
-    guiding: false, waiting: false, streak: false, offered: false,
+    guiding: false, streak: false, offered: false,
     lostFor: 0, cooldown: 0, progress: NaN,
-    comeT: 0, from: { x: 0, y: 0, z: 0 }, offerNear: Infinity,
+    comeT: 0, from: { x: 0, y: 0, z: 0 },
     center: { x: 0, y: 0, z: 0 }, radius: 0, angle: 0, turned: 0, floor: 0,
+    targetId: "", hold: { x: 0, y: 0, z: 0 },
   };
 }
 
 const prev = { x: 0, y: 0, z: 0 };
 const route = { x: 0, y: 0, z: 0 };
+/** Unit direction from the ship to its station (far from the target). */
+const lead = { x: 0, y: 0, z: 0 };
 const station = { x: 0, y: 0, z: 0 };
 /** The target as a keep-out of radius GUIDE_PRESENT_MIN_R (moved onto the target each step). */
 const targetKeep: JellyKeepOut[] = [{ x: 0, y: 0, z: 0, r: GUIDE_PRESENT_MIN_R, body: GUIDE_PRESENT_MIN_R }];
@@ -228,22 +249,52 @@ function dist(a: Vec3, b: Vec3) { return Math.hypot(a.x - b.x, a.y - b.y, a.z - 
 const NEAR_TARGET = GUIDE_LEAD_DIST + GUIDE_PRESENT_MIN_R;
 
 /**
- * The station: GUIDE_LEAD_DIST ahead of the ship toward the target (spec
- * "Leading"). Near the target that point would sit inside it: the career
+ * The direction from the ship to its station, into `lead`: the route when it
+ * is within GUIDE_LEAD_MAX_ANGLE of the nose (flying at the target: the spec's
+ * station exactly), else the nose turned that far toward the route, in their
+ * common plane, so the guide stays in front of the pilot and still points the
+ * way (owner feedback 2026-10-23, after #54: "I'm able to pass the jellyfish").
+ * Flying straight away the plane is undefined; it turns toward the nose's
+ * horizontal perpendicular instead (world +x for a vertical nose), so it is
+ * stable frame to frame and never NaN.
+ */
+function setLead(nose: Vec3) {
+  const c = nose.x * route.x + nose.y * route.y + nose.z * route.z;
+  if (c >= LEAN_COS) { copy(lead, route); return; }
+  // The route's part perpendicular to the nose: the way to turn.
+  let px = route.x - nose.x * c, py = route.y - nose.y * c, pz = route.z - nose.z * c;
+  let pl = Math.hypot(px, py, pz);
+  if (pl < 1e-6) {
+    px = nose.z; py = 0; pz = -nose.x; pl = Math.hypot(px, pz);
+    if (pl < 1e-6) { px = 1; pz = 0; pl = 1; }
+  }
+  const k = LEAN_SIN / pl;
+  lead.x = nose.x * LEAN_COS + px * k;
+  lead.y = nose.y * LEAN_COS + py * k;
+  lead.z = nose.z * LEAN_COS + pz * k;
+}
+
+/**
+ * The station: GUIDE_LEAD_DIST in front of the ship, toward the target as far
+ * as the nose allows (setLead; spec "Leading"). Near the target that point
+ * would sit inside it: the career
  * station is reached at 8.5 u, the portal at 2.2, both well inside the 20 u
  * lead. So once the ship is within NEAR_TARGET, the station swings round the
  * target at GUIDE_PRESENT_MIN_R, from the route (where the two rules meet, at
  * exactly NEAR_TARGET: no jump) to beside it, on the route's horizontal
- * perpendicular (by the time the ship is GUIDE_PRESENT_MIN_R out). It waits
- * there, out of the ship's path, and presenting starts from that circle.
+ * perpendicular (by the time the ship is GUIDE_PRESENT_MIN_R out). It holds
+ * there, out of the ship's path, and presenting starts from that circle. A
+ * pilot not facing the target meets this rule with the station leaned off the
+ * route, so it swims the difference (under 40 u: no reduced-motion snap).
  */
 function setStation(inp: GuideInput, target: Vec3) {
   awayFrom(route, inp.ship, target);
   const d = dist(inp.ship, target);
   if (d >= NEAR_TARGET) {
-    station.x = inp.ship.x + route.x * GUIDE_LEAD_DIST;
-    station.y = inp.ship.y + route.y * GUIDE_LEAD_DIST;
-    station.z = inp.ship.z + route.z * GUIDE_LEAD_DIST;
+    setLead(inp.shipNose);
+    station.x = inp.ship.x + lead.x * GUIDE_LEAD_DIST;
+    station.y = inp.ship.y + lead.y * GUIDE_LEAD_DIST;
+    station.z = inp.ship.z + lead.z * GUIDE_LEAD_DIST;
     return;
   }
   // The side: the route's horizontal perpendicular; a vertical route has none, so +x.
@@ -264,7 +315,7 @@ function setStation(inp: GuideInput, target: Vec3) {
  * Keep it GUIDE_PRESENT_MIN_R off its target, then out of every solid (spec
  * "Leading": "it keeps clear of every solid (planets, moons, stations)"). The
  * station never sits closer, but the straight line to it can cut inside (a
- * streak in, a catch-up, a swim back to a pilot waiting near the target).
+ * streak in, a catch-up, a swing round a pilot turning near the target).
  */
 function keepClear(p: Vec3, target: Vec3, keepOut: readonly JellyKeepOut[]) {
   copy(targetKeep[0], target);
@@ -275,10 +326,9 @@ function keepClear(p: Vec3, target: Vec3, keepOut: readonly JellyKeepOut[]) {
 function startComing(s: GuideState, inp: GuideInput, offered: boolean) {
   s.name = "coming";
   s.offered = offered;
-  s.waiting = false;
+  s.targetId = inp.targetId;
   s.comeT = 0;
   s.lostFor = 0;
-  s.offerNear = Infinity;
   copy(s.from, inp.jelly);
   copy(s.pos, inp.jelly);
 }
@@ -286,11 +336,11 @@ function startComing(s: GuideState, inp: GuideInput, offered: boolean) {
 function toRoaming(s: GuideState) {
   s.name = "roaming";
   s.offered = false;
-  s.waiting = false;
   s.lostFor = 0;
 }
 
 function stepComing(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  s.targetId = inp.targetId;
   setStation(inp, target);
   s.comeT += dt;
   if (inp.reducedMotion) {
@@ -316,7 +366,6 @@ function stepComing(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
 
 function startPresenting(s: GuideState, inp: GuideInput, target: Vec3) {
   s.name = "presenting";
-  s.waiting = false;
   copy(s.center, target);
   const dx = s.pos.x - target.x, dz = s.pos.z - target.z, h = Math.hypot(dx, dz);
   let r = Math.min(GUIDE_PRESENT_MAX_R, Math.max(GUIDE_PRESENT_MIN_R, h));
@@ -336,6 +385,9 @@ function startPresenting(s: GuideState, inp: GuideInput, target: Vec3) {
 }
 
 function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  // A changed id while it leads is a re-pick (a nearer unread probe), not a
+  // step done: it follows silently.
+  s.targetId = inp.targetId;
   // Arrival is the ship's, not the creature's (spec "Arriving": "the HUD's
   // target locks on", the pilot's arrival). The creature rides ~20 u ahead and
   // would cross the radius long before the pilot it is guiding.
@@ -345,49 +397,20 @@ function stepLeading(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
     return;
   }
   setStation(inp, target);
+  // Owner feedback 2026-10-23 (after #54), overriding the spec's "Waiting":
+  // it never falls behind. Wherever the pilot flies it tracks its station in
+  // front of the nose: the ship's own speed holds the station exactly (spec:
+  // "matching the ship's speed, warp included"); the gain closes any gap (a
+  // turn, a jump, a keep-out detour). No overshoot.
   const v = inp.shipVel, sp = Math.hypot(v.x, v.y, v.z);
-  const along = v.x * route.x + v.y * route.y + v.z * route.z;
-  const moving = sp > GUIDE_MOVING_SPEED;
-  const toward = moving && along >= GUIDE_RESUME_COS * sp;
-  const away = moving && along < GUIDE_AWAY_COS * sp;
-  const behind = dist(s.pos, inp.ship) > GUIDE_FALL_BEHIND_DIST;
-  // Spec "Waiting": "if the pilot falls behind or turns away, it slows and
-  // turns back toward the ship until the pilot follows again". A hovering ship
-  // close by is neither: it holds its station, still pointing the way.
-  if (s.waiting) { if (toward) s.waiting = false; }
-  else if (away || (behind && !toward)) s.waiting = true;
-
-  if (!s.waiting) {
-    const gx = station.x - s.pos.x, gy = station.y - s.pos.y, gz = station.z - s.pos.z;
-    const gap = Math.hypot(gx, gy, gz);
-    if (inp.reducedMotion && gap > GUIDE_REDUCED_SNAP_DIST) {
-      copy(s.pos, station);
-    } else {
-      // The ship's own speed holds the station exactly (spec: "matching the
-      // ship's speed, warp included"); the gain closes any gap. No overshoot.
-      const step = (sp + GUIDE_CATCHUP_GAIN * gap) * dt;
-      if (step >= gap) copy(s.pos, station);
-      else { const k = step / gap; s.pos.x += gx * k; s.pos.y += gy * k; s.pos.z += gz * k; }
-    }
+  const gx = station.x - s.pos.x, gy = station.y - s.pos.y, gz = station.z - s.pos.z;
+  const gap = Math.hypot(gx, gy, gz);
+  if (inp.reducedMotion && gap > GUIDE_REDUCED_SNAP_DIST) {
+    copy(s.pos, station);
   } else {
-    // Brake from last step's velocity toward a slow swim back to the ship,
-    // holding GUIDE_WAIT_DIST off. Easing the velocity (not the position) is
-    // what makes it slow first and then turn round. That velocity is last
-    // step's displacement over dt, which a reduced-motion re-appearance
-    // (> 40 u in a frame: >= 2400 u/s) or a catch-up from far off
-    // (sp + 1.5 * gap: ~790 u/s from 500 u) spikes; braking from that coasts
-    // ~0.36 v on, hundreds to thousands of u past the ship. So it brakes from
-    // no faster than the ship flies, or its own waiting swim.
-    const cap = Math.max(sp, GUIDE_WAIT_MAX_SPEED), vl = Math.hypot(s.vel.x, s.vel.y, s.vel.z);
-    if (vl > cap) { const c = cap / vl; s.vel.x *= c; s.vel.y *= c; s.vel.z *= c; }
-    const tx = inp.ship.x - s.pos.x, ty = inp.ship.y - s.pos.y, tz = inp.ship.z - s.pos.z;
-    const d = Math.hypot(tx, ty, tz);
-    const want = d > GUIDE_WAIT_DIST ? Math.min(GUIDE_WAIT_MAX_SPEED, WAIT_GAIN * (d - GUIDE_WAIT_DIST)) / d : 0;
-    const k = decay(WAIT_HALF_LIFE, dt);
-    s.vel.x = tx * want + (s.vel.x - tx * want) * k;
-    s.vel.y = ty * want + (s.vel.y - ty * want) * k;
-    s.vel.z = tz * want + (s.vel.z - tz * want) * k;
-    s.pos.x += s.vel.x * dt; s.pos.y += s.vel.y * dt; s.pos.z += s.vel.z * dt;
+    const step = (sp + GUIDE_CATCHUP_GAIN * gap) * dt;
+    if (step >= gap) copy(s.pos, station);
+    else { const k = step / gap; s.pos.x += gx * k; s.pos.y += gy * k; s.pos.z += gz * k; }
   }
   // Spec "Leading": "it keeps clear of every solid ... as the keep-out law does today".
   keepClear(s.pos, target, inp.keepOut);
@@ -412,10 +435,43 @@ function stepPresenting(s: GuideState, inp: GuideInput, dt: number) {
   }
   pushOutOfSolids(s.pos, inp.keepOut);
   if (s.turned >= TURN) {
-    // Spec "Arriving": "Then it returns to roaming, or leads to the next step if called again".
-    toRoaming(s);
-    if (!inp.target) s.event = "allDone";
+    // Spec "Arriving" (owner, 2026-10-23): after the one turn it carries on,
+    // never home: on to the next step if this one was done while it circled,
+    // else it attends here. Nothing left goes to roaming.
+    const target = inp.target;
+    if (!target) { toRoaming(s); s.event = "allDone"; }
+    else if (inp.targetId !== s.targetId) goOnward(s, inp);
+    else {
+      s.name = "attending";
+      s.hold.x = s.pos.x - target.x; s.hold.y = s.pos.y - target.y; s.hold.z = s.pos.z - target.z;
+    }
   }
+}
+
+/** The step was done: lead on to the next target, saying so (the radio names it by `targetId`). */
+function goOnward(s: GuideState, inp: GuideInput) {
+  s.name = "leading";
+  s.targetId = inp.targetId;
+  s.event = "onward";
+}
+
+/**
+ * Attending: it holds beside the stop, where its circle ended, while the
+ * pilot does the step. Still relative to the target (a world orbits, a probe
+ * is pulled by the beam), so the posture stands it upright. The step done
+ * changes the target's id; the pilot leaving undone sends it back to leading
+ * the same target. A docking panel freezes the frame loop, so it simply
+ * attends until the panel closes and the id has changed.
+ */
+function stepAttending(s: GuideState, inp: GuideInput, target: Vec3, dt: number) {
+  if (inp.targetId !== s.targetId) { goOnward(s, inp); return; }
+  if (dist(inp.ship, target) > inp.targetRadius + GUIDE_ATTEND_LEAVE_MARGIN) {
+    s.name = "leading";
+    stepLeading(s, inp, target, dt);
+    return;
+  }
+  s.pos.x = target.x + s.hold.x; s.pos.y = target.y + s.hold.y; s.pos.z = target.z + s.hold.z;
+  pushOutOfSolids(s.pos, inp.keepOut);
 }
 
 /**
@@ -465,13 +521,8 @@ export function stepGuide(s: GuideState, inp: GuideInput, dt: number): GuideStat
     if (!target && s.name !== "presenting") { toRoaming(s); s.event = "allDone"; }
     else if (s.name === "coming") stepComing(s, inp, target!, dt);
     else if (s.name === "leading") stepLeading(s, inp, target!, dt);
+    else if (s.name === "attending") stepAttending(s, inp, target!, dt);
     else stepPresenting(s, inp, dt);
-
-    if (s.offered && (s.name === "coming" || s.name === "leading") && s.event === null) {
-      const d = dist(s.pos, inp.ship);
-      s.offerNear = Math.min(s.offerNear, d);
-      if (d > s.offerNear + GUIDE_OFFER_LEAVE_DIST) { toRoaming(s); s.event = "declined"; }
-    }
   }
 
   // Roaming passes the component's position through, except on the step it

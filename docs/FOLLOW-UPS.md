@@ -79,11 +79,16 @@ Delete an entry when it is fixed.
     runs in 6 over, median ~142 KB, measured while building the guide and
     not caused by it. Find the remaining per-frame garbage or re-measure the
     ceiling on a quiet machine.
-  - Under reduced motion the guide appears at its station, 20 u ahead along
-    the route to the target, which can be behind the camera when the ship
-    faces away from the target, so "it appears beside the ship" may go
-    unseen. Make it appear in view instead: past the ship's nose, then
-    lead from there.
+  - The guide's lean toward the target (`GUIDE_LEAD_MAX_ANGLE`, added after
+    #54) is 20°, the largest that keeps it on a landscape screen in every
+    direction. A lean straight up from a hovering ship sits 26.9° above the
+    view axis, inside the 29° vertical half-fov; the derivation is in the
+    constant's comment. That is an accepted limitation: on a portrait phone
+    the horizontal half-fov is only ~14°, so a sideways lean (~16° off the
+    axis) is still off screen. Within ~37 u of its target (20 u plus the
+    16.7 u presenting radius) the station is beside the target, wherever the
+    nose points, so a reduced-motion call made there can still appear out
+    of view.
   - The keep-out list holds the planets only (SolarBodies). The guide keeps
     its own target's radius clear (the station or portal it leads to), but
     not a station it only passes (the shipyard, or the career station on the
