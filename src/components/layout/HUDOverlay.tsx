@@ -23,6 +23,7 @@ import BuoyCard from "./BuoyCard";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
+import { setText, setStyle } from "../../utils/domWrite";
 
 /** Probe rows only (keyed by probe id); destination rows take their colour from the table. */
 const ZONE_COLORS: Record<string, string> = {
@@ -107,38 +108,32 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   useEffect(() => {
     let raf: number;
     const tick = () => {
-      if (locRef.current)
-        locRef.current.textContent = `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`;
+      // setText / setStyle skip unchanged writes (utils/domWrite.ts): at rest
+      // nothing here changes, and each rewrite was a relayout and garbage.
+      setText(locRef.current, `NAV.LOC: X(${flight.x.toFixed(2)}) / Y(${flight.y.toFixed(1)}) / Z(${flight.z.toFixed(2)})`);
       const kmS = speedKmS(flight.speed);
-      if (speedRef.current) speedRef.current.textContent = `VELOCITY: ${kmS.toFixed(0)} KM/S`;
-      if (lightRef.current) lightRef.current.textContent = lightFractionLabel(flight.speed);
-      if (sunDistRef.current)
-        sunDistRef.current.textContent = ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`;
-      if (orreryDateRef.current) orreryDateRef.current.textContent = ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`;
+      setText(speedRef.current, `VELOCITY: ${kmS.toFixed(0)} KM/S`);
+      setText(lightRef.current, lightFractionLabel(flight.speed));
+      setText(sunDistRef.current, ` · SUN ${distanceAU(Math.hypot(flight.x, flight.y, flight.z)).toFixed(2)} AU`);
+      setText(orreryDateRef.current, ` · ORRERY ${formatOrreryDate(orreryJd(bodiesGameSeconds()))}`);
       // Accent while a gravity assist carries the ship past cruise speed.
-      if (velRef.current) velRef.current.style.color = flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "";
+      setStyle(velRef.current, "color", flight.speed > SHIP_MAX_SPEED ? "#bd00ff" : "");
       const pct = Math.max(0, Math.min(1, flight.fuel / FUEL_MAX));
-      if (fuelFillRef.current) {
-        fuelFillRef.current.style.width = `${(pct * 100).toFixed(1)}%`;
-        // Amber under a quarter, red when dry. Written as style rather than a
-        // className so this never touches React.
-        fuelFillRef.current.style.backgroundColor =
-          pct <= 0 ? "#ef4444" : pct < FUEL_LOW / FUEL_MAX ? "#f59e0b" : "#00ff87";
-      }
-      if (fuelLabelRef.current)
-        fuelLabelRef.current.textContent =
-          pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`;
+      // Amber under a quarter, red when dry. Written as style rather than a
+      // className so this never touches React.
+      setStyle(fuelFillRef.current, "width", `${(pct * 100).toFixed(1)}%`);
+      setStyle(fuelFillRef.current, "backgroundColor",
+        pct <= 0 ? "#ef4444" : pct < FUEL_LOW / FUEL_MAX ? "#f59e0b" : "#00ff87");
+      setText(fuelLabelRef.current, pct <= 0 ? "WARP.FUEL: DRY" : `WARP.FUEL: ${(pct * 100).toFixed(0)}%`);
       // Mining readout: shown while pebbles are coming in, and 2s after.
       if (oreRef.current) {
         const show = performance.now() - beamState.oreAt < 2000;
-        oreRef.current.style.display = show ? "" : "none";
-        if (show) oreRef.current.textContent = oreReadout(beamState.ore);
+        setStyle(oreRef.current, "display", show ? "" : "none");
+        if (show) setText(oreRef.current, oreReadout(beamState.ore));
       }
       for (const def of PROBES) {
-        const el = probeRowRefs.current[def.id];
         const b = probePos[def.id];
-        if (el && b) el.textContent =
-          `PROBE_${def.id.toUpperCase()} ([${b.x.toFixed(0)}, ${b.y.toFixed(0)}, ${b.z.toFixed(0)}])`;
+        if (b) setText(probeRowRefs.current[def.id], `PROBE_${def.id.toUpperCase()} ([${b.x.toFixed(0)}, ${b.y.toFixed(0)}, ${b.z.toFixed(0)}])`);
       }
       raf = requestAnimationFrame(tick);
     };

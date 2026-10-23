@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { scanState } from "../../utils/scanState";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { setText } from "../../utils/domWrite";
 
 const RING_MASK = "radial-gradient(circle, transparent 23px, #000 24px)";
 
@@ -19,7 +20,7 @@ export default function ScanRing() {
       if (ringRef.current) {
         ringRef.current.style.background = `conic-gradient(#00f0ff ${progress * 360}deg, rgba(255,255,255,0.08) 0)`;
       }
-      if (labelRef.current) labelRef.current.textContent = label;
+      setText(labelRef.current, label);
       if (containerRef.current) containerRef.current.style.opacity = label ? "1" : "0";
       // The hint is only useful before the first hold starts.
       if (hintRef.current) hintRef.current.style.visibility = progress > 0 ? "hidden" : "visible";

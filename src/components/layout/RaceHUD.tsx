@@ -3,6 +3,7 @@ import { useSpaceStore } from "../../store/spaceStore";
 import { raceClock } from "../../utils/raceClock";
 import { formatRaceTime } from "../../utils/race";
 import { PAR_SECONDS, RING_GATES } from "../../data/ringCourse";
+import { setText } from "../../utils/domWrite";
 
 const RINGS = RING_GATES.length - 1;
 
@@ -20,7 +21,7 @@ export default function RaceHUD() {
     if (race.phase !== "running") return;
     let raf = 0;
     const tick = () => {
-      if (clockRef.current) clockRef.current.textContent = formatRaceTime(raceClock.now - race.startClock);
+      setText(clockRef.current, formatRaceTime(raceClock.now - race.startClock));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
