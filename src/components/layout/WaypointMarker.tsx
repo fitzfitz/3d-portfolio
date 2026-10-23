@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { waypointState } from "../../utils/waypointState";
+import { setText } from "../../utils/domWrite";
 
 /**
  * HUD waypoint toward the next unread dossier: a bracket on the target when it
@@ -26,7 +27,7 @@ export default function WaypointMarker() {
         arrowRef.current.style.display = w.onScreen ? "none" : "block";
         arrowRef.current.style.transform = `translate(-50%, -50%) rotate(${w.angle.toFixed(3)}rad)`;
       }
-      if (labelRef.current) labelRef.current.textContent = `${w.label} · ${Math.round(w.distance)}u`;
+      setText(labelRef.current, `${w.label} · ${Math.round(w.distance)}u`);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

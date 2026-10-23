@@ -6,30 +6,22 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
-- **Memory, past PR 47** (docs/superpowers/specs/2026-10-22-memory-budget-design.md;
-  the game's live share is 909 MB at 1512×802, the target 500):
-  - Chrome's GPU process sits ~600 MB above everything WebGL is asked for
-    (ledger 388 MB, process 990 MB), in every build measured. Compositing of
-    the HUD at device scale 2, the canvas's swap chain and ANGLE/Metal's own
-    copies are the suspects; Chrome's memory-infra tracing would split it.
-    The largest remaining chunk, and not yet known to be reachable from the page.
+- **Memory, past PR 53** (docs/superpowers/specs/2026-10-22-memory-budget-design.md;
+  Chrome's memory-infra dump, 2026-10-23, at 1512×802@2):
+  - ~550 MB of the GPU process is Chrome's own for any WebGL page here (a blank
+    WebGL2 canvas: ANGLE/Metal 252 MB, shared images 304 MB). ANGLE holds what
+    the page allocates plus ~255 MB more, internal and not reachable from the
+    page. An opaque canvas (`alpha: false`) changed nothing.
+  - Done: the HTML overlays were five full-window layers over the canvas (PRs
+    51, 52: ~80 MB of the GPU process); the HUD rewrote unchanged text every
+    frame, growing Blink's heap ~2.6 MB/s at rest (PR 53, now ~0.3 MB/s).
   - The model textures are still WebP: ~196 MB uncompressed on the GPU.
     Colour as ETC1S and normal/roughness as UASTC measured −136 MB for +9 MB
-    of download (the owner kept maps only, 2026-10-22). GlobalCanvas's
-    pack-entry `useGLTF.preload` runs before a renderer exists, which
-    KTX2Loader.detectSupport needs: queue it until the canvas is created.
-  - In some production sessions the tab's V8 memory climbs ~2.6 MB/s, outside
-    the JS heap (which stays ~41 MB), until a major GC clears it; in others it
-    stays flat. Not the cargo wakes (both builds do it) and the dev build does
-    not reproduce it, so typed-array or WebSocket buffers in a prod-only path
-    are the suspects. It makes "steady" footprints swing ±150 MB with GC
-    timing; memory-footprint.mjs's post-GC "live" figure is the one to compare.
-  - JS allocation is ~114 KB a frame while flying: three's per-draw uniform
-    uploads (~36 KB) and many 1–10 KB app sites (AsteroidBelt, RadarMap,
-    Spaceship, nearestScannable, sunVisibility), mostly doubles boxed by
-    calls V8 does not inline.
-  - `.claude/worktrees/agent-ac262aec2ebdde563` (PR 43's branch, merged) is a
-    stale agent worktree; vite.config.ts now keeps vitest out of `.claude/`.
+    of download; the owner deferred it (2026-10-23) to keep the hero ship sharp
+    and the first load fast. GlobalCanvas's pack-entry `useGLTF.preload` runs
+    before a renderer exists, which KTX2Loader.detectSupport needs: queue it.
+  - What is left of Blink's growth (~0.3 MB/s at rest) is the radio's
+    typewriter and other text that really changes.
 
 - **New Worlds C1 minors, left for later** (each noticed in review, none
   wrong on screen; the items about `worlds.ts`, `SpaceWorlds.tsx`,
