@@ -1,22 +1,8 @@
 import { parseBeacons, validateDrop, type Beacon, type BeaconDrop } from "./beacons";
+import { beaconApiUrl } from "./apiBase";
 
-/**
- * Where the beacon API lives (beacon-api/), baked in at build time. Empty means
- * the feature does not exist: no fetch, no buoys, no button, no key.
- *
- * Dev builds also accept a localStorage override so the e2e probe can point a
- * running page at a mock without restarting Vite; `import.meta.env.DEV` is a
- * compile-time false in production, so the override is stripped from the bundle.
- */
-export function beaconApiUrl(): string {
-  if (import.meta.env.DEV) {
-    try {
-      const o = localStorage.getItem("fitz-beacon-api-dev");
-      if (o) return o;
-    } catch { /* storage blocked */ }
-  }
-  return (import.meta.env.VITE_BEACON_API ?? "").replace(/\/+$/, "");
-}
+/** Re-exported: the URL lives in apiBase.ts so the content loader can read it without loading beacons.ts. */
+export { beaconApiUrl };
 
 export async function fetchBeacons(): Promise<Beacon[]> {
   const base = beaconApiUrl();
