@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
-// @ts-expect-error: plain .mjs test tooling, no types
 import { ALL } from "./e2e/probeList.mjs";
-// @ts-expect-error: plain .mjs test tooling, no types
 import { RULES, affectedProbes } from "./e2e/affected.mjs";
 
 describe("e2e affected-probe selection", () => {
