@@ -53,8 +53,9 @@ const TEXTURE_OPTS = {
   deimos: { quality: 85 },
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
-// The space monsters (saucer, tardigrade) are viewed close up but sit in the
-// lab folder until a game stage uses them, so they get the probe's q88.
+  probe: { quality: 88 },
+  // The space monsters (saucer, tardigrade) are viewed close up but sit in the
+  // lab folder until a game stage uses them, so they get the probe's q88.
   saucer: { quality: 88 },
   tardigrade: { quality: 88 },
 };
