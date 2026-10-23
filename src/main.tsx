@@ -13,7 +13,7 @@ import '@fontsource/jetbrains-mono/latin-700.css'
 import './index.css'
 import { settleContent } from './data/content'
 import { browserLoaderDeps, loadContent } from './utils/contentLoader'
-import { overlayWriter, withBootStep } from './utils/bootStep'
+import { loadOrExplain, overlayWriter, withBootStep } from './utils/bootStep'
 import { loadAssetPack } from './utils/assetPack'
 import { FLIES_AT_START } from './utils/flightGate'
 
@@ -39,7 +39,11 @@ async function boot() {
     ? await withBootStep(() => loadContent(deps), overlayWriter())
     : await loadContent(deps)
   settleContent(content, source)
-  const { default: App } = await import('./App.tsx')
+  // A chunk that fails to load (dropped connection, a deploy replaced it)
+  // must not leave the overlay up with no word: it says to reload instead.
+  const app = await loadOrExplain(() => import('./App.tsx'), overlayWriter())
+  if (!app) return
+  const App = app.default
 
   // Profiler counts React commits, which is exactly the quantity the
   // "zero React renders during flight" claim is about. Dev-only, with the

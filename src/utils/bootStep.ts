@@ -14,6 +14,24 @@ export const BOOT_STEP_TEXT: Readonly<Record<"pending" | ContentSource, string>>
   bundled: "MISSION DATA: ONBOARD",
 };
 
+/** Written into the overlay when App's code cannot load (a dropped connection, a stale deploy). */
+export const BOOT_FAILED_TEXT = "SYSTEMS OFFLINE // RELOAD THE PAGE TO RETRY";
+
+/**
+ * Imports App (or anything) for main.tsx. A failed chunk would otherwise leave
+ * the INITIALIZING overlay up for good: it writes BOOT_FAILED_TEXT and gives
+ * null instead. Never rejects.
+ */
+export async function loadOrExplain<T>(load: () => Promise<T>, write: (text: string) => void): Promise<T | null> {
+  try {
+    return await load();
+  } catch (e) {
+    console.error("boot: the app failed to load", e);
+    try { write(BOOT_FAILED_TEXT); } catch { /* no overlay */ }
+    return null;
+  }
+}
+
 export async function withBootStep(load: () => Promise<Loaded>, write: (text: string) => void): Promise<Loaded> {
   const show = (t: string) => { try { write(t); } catch { /* a missing overlay must not stop loading */ } };
   show(BOOT_STEP_TEXT.pending);

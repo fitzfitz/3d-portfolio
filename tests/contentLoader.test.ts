@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BUNDLED_CONTENT } from "../src/data/content";
-import { loadContent, CONTENT_TIMEOUT_MS, type LoaderDeps, type Loaded } from "../src/utils/contentLoader";
-import { withBootStep, overlayWriter, BOOT_STEP_TEXT } from "../src/utils/bootStep";
+import { loadContent, CONTENT_TIMEOUT_MS, CONTENT_ABORT_MS, type LoaderDeps, type Loaded } from "../src/utils/contentLoader";
+import { withBootStep, overlayWriter, loadOrExplain, BOOT_STEP_TEXT, BOOT_FAILED_TEXT } from "../src/utils/bootStep";
 
 const API = "https://api.example";
 const row = (id: string, title = id) => ({
@@ -34,12 +34,21 @@ function deferredFetch(answer: () => Response | Promise<Response>) {
 }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-/** A timer the test fires by hand. */
+/** Timers the test fires by hand, one per duration: fire() is the loading timeout, abort() the fetch's cap. */
 function manualDelay() {
-  let fire!: () => void;
-  const p = new Promise<void>((r) => { fire = r; });
+  const timers = new Map<number, { p: Promise<void>; resolve: () => void }>();
+  const get = (ms: number) => {
+    let t = timers.get(ms);
+    if (!t) { let resolve!: () => void; const p = new Promise<void>((r) => { resolve = r; }); t = { p, resolve }; timers.set(ms, t); }
+    return t;
+  };
   const asked: number[] = [];
-  return { delay: (ms: number) => { asked.push(ms); return p; }, fire, asked };
+  return {
+    delay: (ms: number) => { asked.push(ms); return get(ms).p; },
+    fire: () => get(CONTENT_TIMEOUT_MS).resolve(),
+    abort: () => get(CONTENT_ABORT_MS).resolve(),
+    asked,
+  };
 }
 
 let warn: ReturnType<typeof vi.fn<(msg: string) => void>>;
@@ -65,7 +74,28 @@ describe("loadContent: the order is fresh, then the last good payload, then bund
     const p = loadContent(deps({ delay: timer.delay }));
     timer.fire();
     await p;
-    expect(timer.asked).toEqual([4000]);
+    expect(timer.asked).toContain(4000);
+  });
+
+  it("aborts a /content that never answers after 15 s, long after loading moved on", async () => {
+    expect(CONTENT_ABORT_MS).toBe(15_000);
+    expect(CONTENT_ABORT_MS).toBeGreaterThan(CONTENT_TIMEOUT_MS);
+    const timer = manualDelay();
+    let signal: AbortSignal | undefined;
+    const hanging = ((_: string, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise((_r, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }) as unknown as typeof fetch;
+    const storage = memoryStorage();
+    const p = loadContent(deps({ fetch: hanging, delay: timer.delay, storage }));
+    timer.fire();
+    const r = await p;
+    expect(r.source).toBe("bundled");
+    expect(signal?.aborted).toBe(false);
+    timer.abort();
+    await r.refresh;
+    expect(signal?.aborted).toBe(true);
+    expect(storage.value).toBeNull();
   });
 
   it("uses the bundled data and sends nothing when no API is configured", async () => {
@@ -179,6 +209,13 @@ describe("loadContent: the order is fresh, then the last good payload, then bund
     await expect(loadContent(deps({ delay: badDelay as never, fetch: (() => new Promise(() => {})) as unknown as typeof fetch })))
       .resolves.toMatchObject({ source: "bundled" });
   });
+
+  it("still falls back to the last good payload when the race itself breaks", async () => {
+    const badDelay = () => Promise.reject(new Error("timer"));
+    const r = await loadContent(deps({ delay: badDelay as never, storage: memoryStorage(CACHED), fetch: (() => new Promise(() => {})) as unknown as typeof fetch }));
+    expect(r.source).toBe("cache");
+    expect(r.content.projects.map((x) => x.title)).toEqual(["Cached"]);
+  });
 });
 
 describe("the INITIALIZING overlay's step (withBootStep)", () => {
@@ -216,7 +253,17 @@ describe("the INITIALIZING overlay's step (withBootStep)", () => {
     expect(() => overlayWriter(doc)("x")).not.toThrow();
   });
 
+  it("says to reload, instead of hanging, when App's chunk fails to load", async () => {
+    const lines: string[] = [];
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await loadOrExplain(() => Promise.reject(new TypeError("Failed to fetch dynamically imported module")), (t) => lines.push(t))).toBeNull();
+    expect(lines).toEqual([BOOT_FAILED_TEXT]);
+    expect(await loadOrExplain(async () => ({ default: 1 }), (t) => lines.push(t))).toEqual({ default: 1 });
+    expect(lines).toHaveLength(1);
+    err.mockRestore();
+  });
+
   it("speaks the HUD's voice: upper case, terse", () => {
-    for (const t of Object.values(BOOT_STEP_TEXT)) expect(t).toBe(t.toUpperCase());
+    for (const t of [...Object.values(BOOT_STEP_TEXT), BOOT_FAILED_TEXT]) expect(t).toBe(t.toUpperCase());
   });
 });

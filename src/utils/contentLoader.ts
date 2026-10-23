@@ -25,6 +25,12 @@ import { beaconApiUrl } from "./apiBase";
 export const CONTENT_CACHE_KEY = "fitz-content";
 /** How long loading waits for /content: the asset packs usually take longer anyway. */
 export const CONTENT_TIMEOUT_MS = 4000;
+/**
+ * When a /content that never answers is abandoned. Well past the loading
+ * timeout, so a slow but good answer still arrives and is kept for the next
+ * visit; bounded, so a hung request never stays open for the whole visit.
+ */
+export const CONTENT_ABORT_MS = 15_000;
 
 export interface LoaderDeps {
   /** beaconApiUrl(): empty means no API. */
@@ -50,8 +56,10 @@ type Fresh = { body: unknown } | { failed: string };
 
 /** GET /content. A 200 of the right shape with a valid row is kept as the last good payload. */
 async function fetchContent(d: LoaderDeps): Promise<Fresh> {
+  const ctrl = new AbortController();
+  void d.delay(CONTENT_ABORT_MS).then(() => ctrl.abort(), () => ctrl.abort());
   try {
-    const res = await d.fetch(`${d.base}/content`);
+    const res = await d.fetch(`${d.base}/content`, { signal: ctrl.signal });
     if (!res.ok) return { failed: `HTTP ${res.status}` };
     const text = await res.text();
     const body: unknown = JSON.parse(text);
@@ -94,11 +102,13 @@ export async function loadContent(d: LoaderDeps): Promise<Loaded> {
       if (r.usable) return { content: r.content, source: "api", refresh };
       d.warn("content: /content had no valid rows; falling back");
     }
-    const cached = lastGood(d);
-    if (cached) return { content: cached, source: "cache", refresh };
   } catch {
-    /* never break loading: the bundled data below */
+    /* the race itself broke (a fetch that throws at once, a broken timer): fall back the same way */
+    d.warn("content: loading /content broke; falling back");
   }
+  // lastGood never throws: the last good payload, else the bundled data.
+  const cached = lastGood(d);
+  if (cached) return { content: cached, source: "cache", refresh };
   return { content: BUNDLED_CONTENT, source: "bundled", refresh };
 }
 
