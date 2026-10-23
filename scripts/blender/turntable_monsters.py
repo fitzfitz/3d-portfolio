@@ -16,7 +16,8 @@
 # Output per monster <name> (the glb's basename):
 #   DIR/<name>_a030.png, _a120, _a210, _a300 (azimuth about glTF +Y from the
 #     face, +Z, toward +X; 18 degrees up), DIR/<name>_under.png (32 degrees
-#     below: the cannon and spikes, the legs and claws), and with --with-ship
+#     below: the cannon and spikes, the legs and claws), DIR/<name>_face.png
+#     (close up, framed on the objects named in FACE_PARTS), and with --with-ship
 #   DIR/<name>_scale.png: the monster beside assets-src/spaceship.glb drawn
 #     at the game's 0.35 (PLAYER_SHIP_SCALE), both facing glTF +Z.
 import math
@@ -51,6 +52,7 @@ SAMPLES = int(OPT.get("samples", 64))
 RES = int(OPT.get("res", 1024))
 LENS = 50
 SCALE_AZ = 70             # the scale shot's azimuth: both models near broadside
+FACE_PARTS = ("Eye", "Brow", "Teeth", "Goo", "Mouth", "Drool")   # objects the face shot frames
 
 
 def lin(h):
@@ -198,6 +200,11 @@ for glb in GLBS:
         shoot(sc, sun, cam, os.path.join(OUT, f"{name}_a{az:03d}.png"), centre, radius * 0.92, az, 18, key)
     # from below: the saucer's cannon and spikes, the tardigrade's legs and claws
     shoot(sc, sun, cam, os.path.join(OUT, f"{name}_under.png"), centre, radius * 0.92, 30, -32)
+    # the face up close, fitted to the parts that make its expression
+    face = [o for o in objs if any(k in o.name for k in FACE_PARTS)]
+    if face:
+        shoot(sc, sun, cam, os.path.join(OUT, f"{name}_face.png"), None, None, 22, 10, fit=[
+            o.matrix_world @ v.co for o in face for v in o.data.vertices], margin=0.12)
     if WITH_SHIP:
         roots, ship = import_glb(SHIP_GLB)
         for r in roots:      # nose to glTF +Z like the monster (its engines face +Z unturned)

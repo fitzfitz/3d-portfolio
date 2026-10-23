@@ -22,15 +22,21 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 GL2BL = Matrix.Rotation(math.radians(90), 4, "X")   # glTF (x, y, z) -> Blender (x, -z, y)
 Y = Vector((0, 1, 0))
 
-# blockout materials: flat tones so shapes read, nothing more
-GREY, LIGHT, DARK, GLASS, MID = range(5)
+# blockout materials: flat tones so shapes read, nothing more. Skin is bare
+# and glossy, fur matte and darker, slime near-mirror, so the owner can tell
+# the zones apart before any texture exists.
+GREY, LIGHT, DARK, GLASS, MID, SKIN, FUR, SLIME = range(8)
 _MAT_DEFS = [
     ("Blockout_Grey", (0.42, 0.42, 0.42), 0.55, 1.0),
     ("Blockout_Light", (0.78, 0.78, 0.78), 0.45, 1.0),
     ("Blockout_Dark", (0.035, 0.035, 0.04), 0.35, 1.0),
     ("Blockout_Glass", (0.9, 0.93, 1.0), 0.05, 0.18),
     ("Blockout_Mid", (0.6, 0.6, 0.6), 0.5, 1.0),
+    ("Blockout_Skin", (0.6, 0.6, 0.6), 0.18, 1.0),
+    ("Blockout_Fur", (0.3, 0.3, 0.3), 0.9, 1.0),
+    ("Blockout_Slime", (0.72, 0.74, 0.72), 0.03, 1.0),
 ]
+G = Vector((0, -1, 0))   # gravity, for drooping fur and hanging drips
 MATS = []
 
 
@@ -212,6 +218,96 @@ def sweep(bm, ctrl, radius, ring=16, per_seg=8, mi=GREY, cap=4):
             faces.append(f)
     bmesh.ops.recalc_face_normals(bm, faces=faces)
     return faces, C
+
+
+def perp(v, n):
+    """v with its component along unit n removed."""
+    return v - n * v.dot(n)
+
+
+def tuft(bm, base, n, length, radius, flow, mi=FUR, ring=5):
+    """One wet clump of fur: rises out of the surface along n, then bends over
+    along `flow` (already perpendicular-ish to n) and tapers to a point.
+    Returns the tip."""
+    n = n.normalized()
+    f = perp(Vector(flow), n)
+    f = f.normalized() if f.length > 1e-4 else perp(Vector((0, 0, -1)), n).normalized()
+    # wet fur lies down: a short rise, then it slumps along the flow and
+    # hangs its pointed tip a little (the clump's root is fat, so they mat)
+    p0 = base - n * radius * 0.9
+    p1 = base + n * length * 0.2 + f * length * 0.12
+    p2 = p1 + (n * 0.3 + f).normalized() * length * 0.42
+    p3 = p2 + (f + G * 0.5 - n * 0.1).normalized() * length * 0.38
+    sweep(bm, [p0, p1, p2, p3], lambda t: radius * (1 - t) ** 0.75 + 0.005, ring=ring, per_seg=2, mi=mi, cap=2)
+    return p3
+
+
+def drip(bm, top, length, r, mi=SLIME, sway=(0, 0, 0)):
+    """A hanging drop of slime: a thin neck from `top` down to a round bulb."""
+    s = Vector(sway)
+    pts = [Vector(top) + G * length * k + s * k * k for k in (0.0, 0.4, 0.75, 1.0)]
+    sweep(bm, pts, lambda t: r * (0.5 + 0.3 * t) + r * 0.85 * math.exp(-((t - 0.9) / 0.13) ** 2),
+          ring=8, per_seg=4, mi=mi, cap=3)
+
+
+def strand(bm, pts, r_end, r_mid, mi=SLIME, beads=()):
+    """A goo string through pts: thick where it clings, thin in the middle,
+    optional beads (t, radius) along it."""
+    def rad(t):
+        r = r_mid + (r_end - r_mid) * abs(2 * t - 1) ** 2
+        return r + sum(b * math.exp(-((t - tb) / 0.07) ** 2) for tb, b in beads)
+    sweep(bm, pts, rad, ring=8, per_seg=5, mi=mi, cap=2)
+
+
+def fang(bm, base, d, w, h, mi=LIGHT, spin=0.0):
+    """A sharp six-sided tooth from `base` along d, w wide at the root, h long."""
+    prof = [(0.0, -0.03), (w, -0.03), (w * 0.92, h * 0.28), (w * 0.5, h * 0.7), (w * 0.1, h * 0.96), (0.0, h)]
+    lathe(bm, prof, 6, place(base, d, spin), mi)
+
+
+def lid_and_brow(bm, c, r, a, gaze, heavy, mi=SKIN, cover=8.0, dip=0.0, brow=(0.03, 0.06), v_shape=False,
+                 span=88.0):
+    """An angry upper lid over the eye ball (centre c, radius r): a thick cap
+    about axis a whose edge stops `cover` degrees short of the pupil's centre
+    (the pupil looks along gaze; it is ~23 deg across, so ~10 hides its top
+    half), and a heavy brow roll along the edge, thickest at the end toward
+    `heavy` (or in the middle, dipped by `dip`, for a V brow), `span` degrees
+    either side of the gaze."""
+    a, g = Vector(a).normalized(), Vector(gaze).normalized()
+    beta = math.acos(max(-1.0, min(1.0, a.dot(g)))) - math.radians(cover)
+    steps = 10
+    cap = [(math.sin(beta * i / steps), math.cos(beta * i / steps)) for i in range(steps + 1)]
+    prof = [(1.01 * r * x, 1.01 * r * y) for x, y in cap] + [(1.13 * r * x, 1.13 * r * y) for x, y in cap[::-1]]
+    lathe(bm, prof, 32, place(c, a), mi)
+    u = perp(g, a).normalized()
+    w = a.cross(u)
+    pts = []
+    for k in range(9):
+        psi = math.radians(span * (k / 4 - 1))
+        d = a * math.cos(beta) + (u * math.cos(psi) + w * math.sin(psi)) * math.sin(beta)
+        p = c + d * (1.13 * r + brow[0] * 0.6) + a * 0.015
+        if dip:
+            p += (g * 0.6 - a) * dip * math.exp(-(psi / math.radians(32)) ** 2)
+        pts.append(p)
+    if v_shape:
+        rad = lambda t: brow[1] - (brow[1] - brow[0]) * abs(2 * t - 1)  # noqa: E731
+    else:
+        if pts[0].dot(heavy) > pts[-1].dot(heavy):
+            pts.reverse()
+        rad = lambda t: brow[0] + (brow[1] - brow[0]) * t  # noqa: E731
+    sweep(bm, pts, rad, ring=12, per_seg=4, mi=mi, cap=3)
+
+
+def scatter(cands, spacing, rng):
+    """Greedy blue-noise pick from (point, normal) candidates (seeded order)."""
+    order = list(range(len(cands)))
+    rng.shuffle(order)
+    picked = []
+    for i in order:
+        p = cands[i][0]
+        if all((p - q[0]).length >= spacing for q in picked):
+            picked.append(cands[i])
+    return picked
 
 
 # -------------------------------------------------------------- objects ---

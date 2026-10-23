@@ -32,7 +32,7 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import monster_lib as ml  # noqa: E402
-from monster_lib import DARK, LIGHT, MID  # noqa: E402
+from monster_lib import DARK, FUR, LIGHT, SKIN, SLIME  # noqa: E402
 
 SEED = 20261024
 OUT_DIR, STAGE = ml.parse_args("tardigrade")
@@ -47,7 +47,7 @@ FOLD_DEPTH, FOLD_W = 0.09, 0.16
 ARCH = 0.12                     # the back's arch (head and tail sit lower)
 BELLY, BACK = 0.72, 0.92        # cross-section half-heights below/above, x RMAX
 RINGS, SEGS = 160, 40
-SKIN, CLAW = MID, DARK
+CLAW = DARK
 
 scene = ml.reset_scene()
 rt = ml.root("Tardigrade")
@@ -106,20 +106,50 @@ bmesh.ops.recalc_face_normals(bm, faces=faces)
 ml.to_object("Tardigrade_Body", bm, rt)
 
 # ----------------------------------------------------------------- mouth ---
-# a short tube out of the snout: rolled lip, dark bore
+# a short tube out of the snout: rolled lip, a wide dark bore lined with
+# two rings of small teeth raked inward, and drool hanging off the lip
 MOUTH_Z = 3.06
-TUBE = [(0.0, -0.25), (0.33, -0.25), (0.34, 0.20), (0.37, 0.36), (0.375, 0.44), (0.35, 0.51), (0.30, 0.545),
-        (0.24, 0.53), (0.20, 0.47), (0.185, 0.36), (0.18, 0.12), (0.0, 0.12)]
+BORE = 0.25
+TUBE = [(0.0, -0.25), (0.40, -0.25), (0.41, 0.20), (0.45, 0.36), (0.46, 0.45), (0.43, 0.53), (0.37, 0.565),
+        (0.31, 0.55), (0.27, 0.49), (BORE + 0.005, 0.36), (BORE, 0.06), (0.0, 0.06)]
+MC = Vector((0, centre_y(MOUTH_Z), MOUTH_Z))
+AX = Vector((0, 0, 1))
 bm = bmesh.new()
-ml.lathe(bm, TUBE, 40, ml.place((0, centre_y(MOUTH_Z), MOUTH_Z), (0, 0, 1)), mats=[SKIN] * 8 + [DARK] * 3)
+ml.lathe(bm, TUBE, 40, ml.place(MC, AX), mats=[SKIN] * 8 + [DARK] * 3)
 ml.to_object("Tardigrade_Mouth", bm, rt)
 
-# ------------------------------------------------------------------ eyes ---
 bm = bmesh.new()
+for depth, count, h, w, phase in ((0.43, 12, 0.10, 0.034, 0.0), (0.24, 10, 0.08, 0.03, 0.5)):
+    for k in range(count):
+        a = 2 * math.pi * (k + phase) / count
+        radial = Vector((math.cos(a), math.sin(a), 0))
+        base = MC + AX * depth + radial * (BORE + 0.01)
+        d = (-radial * 0.85 - AX * 0.5 + Vector((rng.uniform(-0.12, 0.12), rng.uniform(-0.12, 0.12), 0)))
+        ml.fang(bm, base, d.normalized(), w * rng.uniform(0.9, 1.1), h * rng.uniform(0.85, 1.15), LIGHT,
+                rng.uniform(0, 1))
+ml.to_object("Tardigrade_Teeth", bm, rt)
+
+bm = bmesh.new()
+for a, length, sway in ((-118, 0.42, (0.0, 0, 0.03)), (-92, 0.85, (0.03, 0, -0.04)), (-66, 0.55, (-0.02, 0, 0.0))):
+    a = math.radians(a)
+    top = MC + AX * 0.50 + Vector((math.cos(a), math.sin(a), 0)) * 0.43
+    ml.drip(bm, top, length, 0.045, SLIME, sway)
+ml.to_object("Tardigrade_Drool", bm, rt)
+
+# ------------------------------------------------------------------ eyes ---
+# small dark eyes under heavy lids that slant down toward the snout
+bm = bmesh.new()
+brows = bmesh.new()
 for side in (1, -1):
-    p, n = surface_n(2.75, math.radians(90 - side * 52))
-    ml.ellipsoid(bm, p - n * 0.035, (0.10, 0.10, 0.10), 20, 12, DARK)
+    p, n = surface_n(2.72, math.radians(90 - side * 34))
+    c, r = p - n * 0.01, 0.15
+    ml.ellipsoid(bm, c, (r, r, r), 20, 12, DARK)
+    gaze = (AX + n * 0.6).normalized()
+    toward = Vector((-side, 0, 0.35)).normalized()      # the lids sink toward the midline: a scowl
+    ml.lid_and_brow(brows, c, r, Vector((0, 1, 0)) + toward * 0.55, gaze, toward, SKIN, cover=24,
+                    brow=(0.045, 0.08), span=45)
 ml.to_object("Tardigrade_Eyes", bm, rt, smooth_angle=80)
+ml.to_object("Tardigrade_Brows", brows, rt)
 
 # ------------------------------------------------------------------ legs ---
 # (z of the hip, angle below the side, leg direction (x for the left side)):
@@ -167,21 +197,77 @@ for pair, (z, below, d) in enumerate(LEGS):
 
 # -------------------------------------------------------------- crystals ---
 # five along the back, staggered either side of the spine, seeded sizes/tilts
+CRYSTAL_ROOTS = []
 bm = bmesh.new()
 for z, off in ((1.31, 14), (0.42, -16), (-0.42, 12), (-1.26, -14), (-2.04, 10)):
     theta = math.radians(90 + off)
     p, nrm = surface_n(z, theta)
-    h = rng.uniform(0.50, 0.78)
-    w = rng.uniform(0.13, 0.18)
+    h = rng.uniform(0.95, 1.25)          # tall enough to stand clear of the coat
+    w = rng.uniform(0.15, 0.21)
     tilt = Vector((rng.uniform(-0.25, 0.25), 0, rng.uniform(-0.35, 0.1)))
     d = (nrm + tilt).normalized()
     prof = [(0.0, -0.15), (w, -0.15), (w, h * 0.68), (w * 0.35, h * 0.92), (0.0, h)]
     ml.lathe(bm, prof, 6, ml.place(p, d, spin=rng.uniform(0, math.pi)), mi=LIGHT)
+    CRYSTAL_ROOTS.append(p)
     if rng.random() < 0.7:      # a small sibling leaning out of the same root
         d2 = (d + Vector((rng.uniform(-0.6, 0.6), 0, rng.uniform(-0.6, 0.6)))).normalized()
         h2, w2 = h * 0.5, w * 0.7
         prof = [(0.0, -0.12), (w2, -0.12), (w2, h2 * 0.68), (w2 * 0.35, h2 * 0.92), (0.0, h2)]
         ml.lathe(bm, prof, 6, ml.place(p + d * 0.02, d2, spin=rng.uniform(0, math.pi)), mi=LIGHT)
 ml.to_object("Tardigrade_Crystals", bm, rt, smooth_angle=30)
+
+# ------------------------------------------------------------------ coat ---
+def hem(z):
+    """How far below the side (radians) the coat reaches at axial z."""
+    return math.radians(-20 + 9 * math.sin(2.3 * z + 0.7))
+
+
+COAT_Z0, COAT_Z1 = -HALF + 0.04, FOLDS[0] + 0.06
+# a shaggy, matted coat of wet clumps over the back and sides, from behind
+# the head to the rump, combed back and hanging down; a ragged hem above the
+# legs; bare round the crystals so they poke through. The head, belly, legs
+# and mouth stay bare (slimy, later).
+bm = bmesh.new()
+# the matted under-layer: a closed slab from just under the skin to 0.07 out
+NZ, NU = 64, 44
+grid = {}
+for side, off in ((0, -0.04), (1, 0.07)):
+    for i in range(NZ + 1):
+        z = COAT_Z0 + (COAT_Z1 - COAT_Z0) * i / NZ
+        for j in range(NU + 1):
+            t = hem(z) + (math.pi - 2 * hem(z)) * j / NU
+            p, n = surface_n(z, t)
+            grid[side, i, j] = bm.verts.new(p + n * off)
+slab = []
+for side in (0, 1):
+    for i in range(NZ):
+        for j in range(NU):
+            slab.append(bm.faces.new([grid[side, i, j], grid[side, i + 1, j], grid[side, i + 1, j + 1],
+                                      grid[side, i, j + 1]]))
+for i in range(NZ):                  # the rims: front and back edges, and the hems
+    for j in (0, NU):
+        slab.append(bm.faces.new([grid[0, i, j], grid[0, i + 1, j], grid[1, i + 1, j], grid[1, i, j]]))
+for j in range(NU):
+    for i in (0, NZ):
+        slab.append(bm.faces.new([grid[0, i, j], grid[0, i, j + 1], grid[1, i, j + 1], grid[1, i, j]]))
+for f in slab:
+    f.material_index = FUR
+bmesh.ops.recalc_face_normals(bm, faces=slab)
+cands = []
+z = COAT_Z0
+while z <= COAT_Z1:
+    t = hem(z)
+    while t <= math.pi - hem(z):
+        p, n = surface_n(z, t)
+        if all((p - q).length > 0.24 for q in CRYSTAL_ROOTS):
+            cands.append((p, n))
+        t += math.radians(3.5)
+    z += 0.07
+tufts = ml.scatter(cands, 0.24, rng)
+for p, n in tufts:
+    hang = 1 + 0.6 * max(0.0, 0.45 - n.y)          # longer, heavier clumps down the sides
+    ml.tuft(bm, p, n, rng.uniform(0.32, 0.48) * hang, rng.uniform(0.12, 0.155), ml.G + Vector((0, 0, -0.6)), FUR)
+print("COAT tufts", len(tufts), "from", len(cands))
+ml.to_object("Tardigrade_Fur", bm, rt)
 
 ml.finish(rt, OUT_DIR, "tardigrade", EXTENT)
