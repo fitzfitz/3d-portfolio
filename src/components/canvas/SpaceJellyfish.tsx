@@ -6,7 +6,7 @@ import { JELLY_PATH, JELLY_LOOP_SECONDS, nearestLoopT } from "../../data/jellyfi
 import { DESTINATIONS } from "../../data/destinations";
 import { guideLines } from "../../data/chatterLines";
 import { isEditableTarget } from "../../hooks/useKeyboardInput";
-import { setScannable } from "../../utils/scannables";
+import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
@@ -18,7 +18,7 @@ import { JELLY_PULSE_RATE, JELLY_RADIUS, JELLY_SCALE, type JellyKeepOut } from "
 import { pulseRateTarget, surgeDistance } from "../../utils/jellyPulse";
 import { createPostureState, stepPosture, stepVelocity } from "../../utils/jellyPosture";
 import { GUIDE_STREAK_SPEED } from "../../utils/jellyGuide";
-import { createJellyFrame, stepJellyFrame, beginReturn, streakLength, type JellyFrameInput } from "../../utils/jellyFrame";
+import { createJellyFrame, stepJellyFrame, beginReturn, streakLength, jellyScannable, type JellyFrameInput } from "../../utils/jellyFrame";
 import { createWaypointTarget, makeGuideTarget } from "../../utils/waypointTarget";
 import type { LogbookProgress } from "../../utils/logbook";
 import { GuideRadio } from "../../utils/guideRadio";
@@ -213,6 +213,9 @@ export default function SpaceJellyfish() {
   const reached = useRef({ mask: 0, count: 0 });
   const radio = useMemo(() => new GuideRadio(guideLines), []);
   const streak = useRef(0);
+  /** Registered with the scanner (only while it roams: jellyScannable). */
+  const scannable = useRef(false);
+  useEffect(() => () => removeScannable("jellyfish"), []);
   // The pulse runs on its own accumulated clock so its rate can follow the
   // mood and speed without jumping the phase. It advances on ambient time,
   // except under reduced motion (which freezes that), where it runs slow on
@@ -445,7 +448,14 @@ export default function SpaceJellyfish() {
     gd.swim = posture.swim;
     gd.streak = streak.current;
     gd.returning = frame.returning;
-    setScannable("jellyfish", groupRef.current.position.x, groupRef.current.position.y, groupRef.current.position.z, "UNKNOWN_LIFEFORM");
+    // The scanner may take it only while it roams (jellyFrame.ts jellyScannable).
+    if (jellyScannable(frame)) {
+      setScannable("jellyfish", g.position.x, g.position.y, g.position.z, "UNKNOWN_LIFEFORM");
+      scannable.current = true;
+    } else if (scannable.current) {
+      removeScannable("jellyfish");
+      scannable.current = false;
+    }
   });
 
   return (

@@ -1,5 +1,5 @@
 import { createGuideState, stepGuide, GUIDE_STREAK_SPEED, type GuideInput, type GuideState } from "./jellyGuide";
-import { createJellyState, stepJelly, type JellyInput, type JellyKeepOut, type JellyState } from "./jellyMood";
+import { createJellyState, pushOutOfSolids, stepJelly, type JellyInput, type JellyKeepOut, type JellyState } from "./jellyMood";
 import type { Vec3 } from "./reactions";
 
 /**
@@ -130,6 +130,12 @@ export function stepJellyFrame(f: JellyFrame, inp: JellyFrameInput, dt: number):
   r.x = inp.pathPos.x + f.mood.offset.x + f.ret.x;
   r.y = inp.pathPos.y + f.mood.offset.y + f.ret.y;
   r.z = inp.pathPos.z + f.mood.offset.z + f.ret.z;
+  // The swim home runs with the moods off, so their keep-out backstop does
+  // not; the eased line home can cut through a planet (after presenting at a
+  // world, or a dismissal beside one). The same law holds it on the surface
+  // (spec "Leading": "it keeps clear of every solid"). `ret` stays as eased,
+  // so the push never accumulates and it lands on the loop exactly.
+  if (f.returning) pushOutOfSolids(r, inp.keepOut);
 
   const g = f.guideIn;
   copy(g.ship, inp.ship); copy(g.shipVel, inp.shipVel);
@@ -172,6 +178,17 @@ export function beginReturn(f: JellyFrame, pathPos: Vec3, reducedMotion: boolean
   f.retFrom.x = f.ret.x = dx; f.retFrom.y = f.ret.y = dy; f.retFrom.z = f.ret.z = dz;
   f.retT = 0;
   f.retDur = Math.min(RETURN_MAX_S, Math.max(RETURN_MIN_S, gap / RETURN_SPEED));
+}
+
+/**
+ * Whether the scanner may take it (UNKNOWN_LIFEFORM): only while it roams.
+ * Guiding, its station (20 u), its wait (12 u) and its presenting circle
+ * (10-30 u) sit inside SCAN_RANGE (22 u), so it would take the scanner from
+ * the very thing it led the pilot to, and reset that world's scan. Not while
+ * it swims home either, nor on the hand-back step.
+ */
+export function jellyScannable(f: JellyFrame): boolean {
+  return !f.guide.guiding && !f.returning && !f.handBack;
 }
 
 /**

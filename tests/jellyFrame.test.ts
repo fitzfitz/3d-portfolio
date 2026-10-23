@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  createJellyFrame, stepJellyFrame, beginReturn, streakLength, type JellyFrame, type JellyFrameInput,
+  createJellyFrame, stepJellyFrame, beginReturn, streakLength, jellyScannable, type JellyFrame, type JellyFrameInput,
   RETURN_MIN_S, RETURN_MAX_S, RETURN_SPEED, STREAK_FULL_SPEED,
 } from "../src/utils/jellyFrame";
 import { GUIDE_COME_SECONDS, GUIDE_STREAK_SPEED } from "../src/utils/jellyGuide";
@@ -191,6 +191,60 @@ describe("the hand-back: back to the loop with no teleport", () => {
     expect(f.returning).toBe(false);
     expect(f.guide.name).toBe("coming");
     expect(dist(f.pos, mid)).toBeLessThan(5);
+  });
+});
+
+// Review finding: the swim home ran with the moods off and no keep-out push,
+// so a return could cut straight through a planet (spec "Leading": "it keeps
+// clear of every solid ... as the keep-out law does today").
+describe("the swim home keeps the keep-out law", () => {
+  it("a return whose straight line crosses a planet goes round its surface, and still gets home", () => {
+    const f = createJellyFrame(), inp = input({ target: v(0, 80, 400), ship: v(0, 80, 300) });
+    callAndMeet(f, inp);
+    inp.toggle = true; step(f, inp, 1);
+    // Handed back beyond the planet: home (the loop point) is on the far side.
+    f.pos.x = 0.5; f.pos.y = 80; f.pos.z = 400;
+    const planet = { x: 0, y: 80, z: 200, r: 60, body: 40 };
+    inp.keepOut = [planet];
+    beginReturn(f, inp.pathPos, false);
+    let inside = 0, minD = Infinity;
+    for (let i = 0; i < Math.ceil(RETURN_MAX_S / DT) + 2 && f.returning; i++) {
+      step(f, inp, 1);
+      const d = dist(f.pos, planet);
+      minD = Math.min(minD, d);
+      if (d < planet.body - 1e-6) inside++;
+    }
+    expect(inside).toBe(0);
+    expect(minD).toBeLessThan(planet.body + 1); // it did reach the surface: the path really crossed it
+    expect(f.returning).toBe(false);
+    expect(dist(f.pos, inp.pathPos)).toBeLessThan(1e-6);
+  });
+});
+
+// Review finding: the scanner took the creature as its target while it led
+// (its 20 u station sits inside SCAN_RANGE 22), and at a world it led to it
+// reset that world's scan. It is a scannable only while it roams.
+describe("jellyScannable", () => {
+  it("roaming: yes; guiding or swimming home: no; home again: yes", () => {
+    const f = createJellyFrame(), inp = input();
+    step(f, inp, 2);
+    expect(jellyScannable(f)).toBe(true);
+    inp.toggle = true; step(f, inp, 1);
+    expect(jellyScannable(f)).toBe(false); // coming
+    step(f, inp, Math.ceil((GUIDE_COME_SECONDS + 0.2) / DT));
+    expect(f.guide.name).toBe("leading");
+    expect(jellyScannable(f)).toBe(false);
+    inp.toggle = true; step(f, inp, 1);
+    expect(f.handBack).toBe(true);
+    expect(jellyScannable(f)).toBe(false); // the hand-back step, before beginReturn
+    f.pos.x += 100;
+    beginReturn(f, inp.pathPos, false);
+    step(f, inp, 30);
+    expect(f.returning).toBe(true);
+    expect(jellyScannable(f)).toBe(false);
+    step(f, inp, Math.ceil(RETURN_MAX_S / DT));
+    expect(f.returning).toBe(false);
+    expect(jellyScannable(f)).toBe(true);
   });
 });
 
