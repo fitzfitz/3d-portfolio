@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { NodeIO, getBounds, type Document } from "@gltf-transform/core";
 import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { MeshoptDecoder } from "meshoptimizer";
@@ -24,14 +24,18 @@ beforeAll(async () => {
   io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.decoder": MeshoptDecoder });
 });
 
-async function load(name: string): Promise<Document> {
-  if (!cache.has(name)) cache.set(name, await io.read(`public/models/${name}.glb`));
-  return cache.get(name)!;
+// Keyed by directory too, so a public/models-lab model never collides with a
+// same-named public/models entry.
+async function load(name: string, dir = "public/models"): Promise<Document> {
+  const key = `${dir}/${name}`;
+  if (!cache.has(key)) cache.set(key, await io.read(`${dir}/${name}.glb`));
+  return cache.get(key)!;
 }
 
 const materialNames = (doc: Document) => doc.getRoot().listMaterials().map((m) => m.getName()).sort();
 const nodeNames = (doc: Document) => doc.getRoot().listNodes().map((n) => n.getName()).sort();
 const kb = (name: string) => statSync(`public/models/${name}.glb`).size / 1024;
+const labKb = (name: string) => statSync(`public/models-lab/${name}.glb`).size / 1024;
 const close = (a: number[], b: number[], tol: number) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
 
 function triangles(doc: Document, material?: string): number {
@@ -649,5 +653,20 @@ describe("public/models", () => {
   it("stays under 17 MiB in total", () => {
     const total = readdirSync("public/models").reduce((s, f) => s + statSync(`public/models/${f}`).size, 0);
     expect(total / 1024 / 1024).toBeLessThan(17);
+  });
+});
+
+describe("dormant monsters", () => {
+  it("no monster file is in public/models (so no asset pack carries one)", () => {
+    const names = readdirSync("public/models");
+    for (const m of ["saucer", "tardigrade"]) expect(names.some((f) => f.startsWith(m))).toBe(false);
+  });
+
+  it("both monsters are optimized into public/models-lab", () => {
+    for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-lab/${m}.glb`)).toBe(true);
+  });
+
+  it("the lab monsters stay small (blockout sizes; a later task tightens these)", () => {
+    for (const m of ["saucer", "tardigrade"]) expect(labKb(m)).toBeLessThanOrEqual(600);
   });
 });
