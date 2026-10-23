@@ -3,7 +3,8 @@
  * posture" > Bell pulse, and "Reduced motion"). Pure: the frame loop damps the
  * result and integrates the pulse phase on the CPU (`pulseClock`), so a rate
  * change speeds the beat up without ever jumping its phase, which a rate
- * multiplying `uTime` inside the shader would.
+ * multiplying `uTime` inside the shader would. That is why there is no
+ * `uPulseRate` uniform (controller ruling R10): the phase is CPU-integrated.
  */
 
 /** Extra beat rate at full swim: x1.55 at swim 1, so propulsion reads faster. */
@@ -15,4 +16,12 @@ export const REDUCED_PULSE_RATE = 0.35;
 export function pulseRateTarget(moodRate: number, swim: number, reducedMotion: boolean): number {
   if (reducedMotion) return REDUCED_PULSE_RATE;
   return moodRate * (1 + SWIM_PULSE_GAIN * Math.min(1, Math.max(0, swim)));
+}
+
+/** Forward lunge per beat (u). */
+export const SURGE_DISTANCE = 2.2;
+
+/** Propulsion lunge from the 0..1 stroke; none under reduced motion (spec: "no surge"). */
+export function surgeDistance(stroke: number, reducedMotion: boolean): number {
+  return reducedMotion ? 0 : stroke * SURGE_DISTANCE;
 }

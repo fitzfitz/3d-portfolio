@@ -119,6 +119,18 @@ async function stillUnderReducedMotion(page, checks) {
   await settle(page, 1500);
   const nearest = nearestTo(await beltRocks(page), await shipPos(page)).d;
   checks.check("reduced motion: the belt does not part", nearest < 1, `nearest rock ${nearest.toFixed(2)}u`);
+
+  // Spec "no surge": the slow bell beat must not lunge the creature (a beat
+  // is ~9 s at the reduced rate, so sample across one).
+  const jpos = () => page.evaluate(() => { const p = window.__fitz.scene.getObjectByName("SpaceJellyfish").position; return [p.x, p.y, p.z]; });
+  const j0 = await jpos();
+  let drift = 0;
+  for (let k = 0; k < 6; k++) {
+    await settle(page, 1700);
+    const j = await jpos();
+    drift = Math.max(drift, Math.hypot(j[0] - j0[0], j[1] - j0[1], j[2] - j0[2]));
+  }
+  checks.check("reduced motion: the jellyfish holds still (no surge)", drift < 0.01, `max drift ${drift.toFixed(4)}u over ~10s`);
 }
 
 /** One page each, independent: run.mjs runs them as separate jobs. */

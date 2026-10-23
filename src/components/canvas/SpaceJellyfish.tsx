@@ -13,7 +13,7 @@ import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
 import { createJellyState, stepJelly, JELLY_PULSE_RATE, JELLY_RADIUS, JELLY_SCALE, type JellyKeepOut, type JellyInput } from "../../utils/jellyMood";
-import { pulseRateTarget } from "../../utils/jellyPulse";
+import { pulseRateTarget, surgeDistance } from "../../utils/jellyPulse";
 import { createPostureState, stepPosture, stepVelocity } from "../../utils/jellyPosture";
 import { fitzDebug } from "../../debug/bridge";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
@@ -32,6 +32,8 @@ const vertexShader = /* glsl */ `
   // 0..1 swim factor (spec 2026-10-23-jellyfish-guide). Every swim term below is
   // weighted by it, so at 0 they vanish and this is the standing shader exactly.
   uniform float uSwim;
+  // Bell phase: equals uTime, except under reduced motion, where only this runs.
+  uniform float uBeat;
   varying float vY;
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -46,7 +48,7 @@ const vertexShader = /* glsl */ `
     float depth = max(0.0, -p.y);
 
     // Bell stroke: contract radially, stretch upward — a real swimming beat
-    float contract = pulseCycle(uTime);
+    float contract = pulseCycle(uBeat);
     // Swimming deepens the stroke (propulsion): up to 1.6x at uSwim 1.
     float stroke = 1.0 + 0.6 * uSwim;
     p.xz *= 1.0 - bell * contract * 0.28 * stroke;
@@ -65,7 +67,7 @@ const vertexShader = /* glsl */ `
     p.x += ripple;
     p.z += ripple * 0.6;
     // Contraction draws the tentacles inward, trailing the bell
-    p.xz *= 1.0 - tent * pulseCycle(uTime - 0.35) * 0.14;
+    p.xz *= 1.0 - tent * pulseCycle(uBeat - 0.35) * 0.14;
 
     vY = position.y;
     vContract = contract;
@@ -151,6 +153,7 @@ export default function SpaceJellyfish() {
   // frame time.
   const pulseClock = useRef(0);
   const pulseRate = useRef(1);
+  const slowBeat = useRef(0);
   const lastAmbient = useRef<number | null>(null);
 
   // Mirrored onto the bridge purely so the e2e probe can read it.
@@ -164,7 +167,7 @@ export default function SpaceJellyfish() {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uSwim: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, uSwim: { value: 0 }, uBeat: { value: 0 } },
         vertexShader,
         fragmentShader,
         transparent: true,
@@ -236,13 +239,21 @@ export default function SpaceJellyfish() {
     const dt = Math.min(delta, 0.05);
     const step = lastAmbient.current === null ? 0 : time - lastAmbient.current;
     lastAmbient.current = time;
-    // Reduced motion freezes ambient time, but the spec still wants a slow
-    // pulse, so that case steps the clock on frame time instead.
-    const reduced = useSpaceStore.getState().reducedMotion;
+    // Reduced motion freezes ambient time (so `uTime`, which drives the tentacle
+    // sway and rings, stays frozen as before), but the spec still wants the bell
+    // to pulse slowly: `uBeat` carries the bell phase and steps on frame time
+    // there (controller ruling: only the bell may move).
+    const store = useSpaceStore.getState();
+    const reduced = store.reducedMotion;
     pulseRate.current = damp(pulseRate.current, pulseRateTarget(JELLY_PULSE_RATE[jelly.mood], posture.swim, reduced), 0.5, dt);
-    pulseClock.current += (reduced ? dt : step) * pulseRate.current;
+    pulseClock.current += step * pulseRate.current;
     const pulseTime = pulseClock.current + 4 * Math.sin(time * 0.045);
+    // Outside reduced motion the beat IS pulseTime; the slow clock tracks it so
+    // entering reduced motion continues from the same phase.
+    if (reduced) slowBeat.current += dt * pulseRate.current; else slowBeat.current = pulseTime;
+    const beatTime = slowBeat.current;
     material.uniforms.uTime.value = pulseTime;
+    material.uniforms.uBeat.value = beatTime;
     // No tentacle ripple or stretch under reduced motion (posture still follows).
     material.uniforms.uSwim.value = reduced ? 0 : posture.swim;
     const t = ((time / JELLY_LOOP_SECONDS + tOffset.current) % 1 + 1) % 1;
@@ -253,13 +264,13 @@ export default function SpaceJellyfish() {
     // the drift is no longer a constant glide.
     // Surge reads the same warped clock as the shader, so the propulsion stroke
     // stays locked to the visible contraction rather than drifting out of sync.
-    const surge = pulseCycle(pulseTime - 0.15);
-    pathPos.addScaledVector(tangent, surge * 2.2);
+    // Reduced motion: no surge (spec), only the bell moves.
+    const surge = surgeDistance(pulseCycle(beatTime - 0.15), reduced);
+    pathPos.addScaledVector(tangent, surge);
     pathPos.y += Math.sin(time * 0.5) * 0.8;
 
     // Mood: an eased offset off the path toward or away from the pilot.
-    const store = useSpaceStore.getState();
-    if (!store.reducedMotion) {
+    if (!reduced) {
       for (let i = 0; i < SOLAR_BODIES.length; i++) {
         const b = bodies[SOLAR_BODIES[i].id];
         keepOut[i].x = b.x; keepOut[i].y = b.y; keepOut[i].z = b.z;
