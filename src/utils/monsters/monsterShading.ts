@@ -16,9 +16,15 @@ import { FOCAL_PX } from "../sphereLod";
 
 /**
  * The uniforms every monster material shares (the same objects in each
- * program). The caller sets `uTime` (seconds, keep it running under reduced
- * motion: the glow zones use it) and `uMotion` (1, or 0 under reduced
- * motion: every vertex move scales by it, so only the glow zones change).
+ * program). The caller sets `uTime` (seconds; keep it running under reduced
+ * motion) and `uMotion` (1, or 0 under reduced motion). Reduced motion (R20)
+ * stops the decorative motion only: the idle wave, breathing, sway, paddle,
+ * the drips' and the drool's sway, the fur's flow and the glow pulses all
+ * scale by `uMotion`. The state poses (look, aim, fire, hit, blink, defeat,
+ * curl, charge, recoil) come from the per-instance attributes and still
+ * apply, held without oscillation: a player must still see where a monster
+ * aims. The caller holds each pose still under reduced motion too (no timed
+ * blink, no pulsing fire).
  */
 export const MONSTER_UNIFORMS = {
   uTime: { value: 0 },
@@ -156,6 +162,15 @@ export const TRANSLUCENCY_FRAGMENT = /* glsl */ `{
 export const FUR_DROOP = 0.35;
 /** The tips' slow flow (sway), as a share of the fur's length; 0 under reduced motion. */
 export const FUR_FLOW = 0.12;
+
+/**
+ * How far a shell's tip can sit from its root, at most: the full length out
+ * along the normal plus the droop and the flow (furVertexHeader: n·h + (droop
+ * + flow)·h², h ≤ 1, |flow| ≤ FUR_FLOW·√2). For the bounds margins.
+ */
+export function furReach(furMaxLength: number): number {
+  return furMaxLength * (1 + Math.hypot(FUR_DROOP, FUR_FLOW * Math.SQRT2));
+}
 /** Wet fur clumps: the strand threshold rises this much faster at wetness 1. */
 export const FUR_CLUMP = 0.35;
 /** Wet tips darken by up to this share. */

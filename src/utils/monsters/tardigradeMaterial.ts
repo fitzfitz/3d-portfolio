@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { TOKSVIG_FRAGMENT } from "../../components/canvas/toksvig";
 import {
-  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
+  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
   monsterVertexMain, patchFurFragment, shareMonsterUniforms, translucencyHeader,
 } from "./monsterShading";
 import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInstances";
@@ -88,6 +88,27 @@ const DRIP_SWAY = 0.03;
 /** Warm wrap-lit share of the light through the thin skin (tan-pink flesh glows red-orange). */
 const SKIN_SSS: readonly number[] = [1.0, 0.45, 0.3];
 const SKIN_SSS_AMOUNT = 0.9;
+
+/**
+ * How far any tardigrade vertex can reach past its primitive's rest bounding
+ * sphere (glTF units), for prepareMonsterGeometry: the fur's shell reach,
+ * plus the legs' paddle about their hips (a leg reaching about as far as
+ * the body's half-width, the hips' widest |x|), the undulation, the hit's
+ * sideways spread and the recoil's bulge across that half-width, the tube's
+ * swell, and the drool's and drips' stretch and sway. The curl bends the
+ * axis into a ball round rig.curlCentre, inside the rest sphere, so it adds
+ * nothing. A sum of upper bounds, so it is conservative;
+ * tests/monsterGeometry.test.ts checks it against every vertex of the
+ * shipped glb at the extreme poses and every stage of the curl.
+ */
+export function tardigradeBoundsMargin(rig: TardigradeRig): number {
+  const half = Math.max(...rig.hips.map((h) => Math.abs(h[0])));
+  const paddle = (PADDLE_IDLE + PADDLE_SWIM) * half;
+  const undulate = (UNDULATE_IDLE + UNDULATE) * Math.hypot(0.7, 1);
+  const spread = (HIT_SQUASH / 2 + RECOIL / 2 + TUBE_SWELL) * half;
+  const drool = DROOL_STRETCH * 1.25 + DROOL_SWAY + DRIP_STRETCH + DRIP_SWAY;
+  return furReach(rig.furMaxLength) + paddle + undulate + spread + drool;
+}
 
 /** The emissive scale of the throat's glow at `charge`: charge² × THROAT_GAIN, 0 at 0 (the default look is dark). */
 export function throatEmissiveScale(charge: number): number {

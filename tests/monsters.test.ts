@@ -67,10 +67,10 @@ function instanced(g: THREE.BufferGeometry, capacity: number): THREE.InstancedMe
 function saucerLods(capacity: number, shells: number): SaucerLod[] {
   return [0, 1].map((k) => {
     const body = stubGeometry(), dome = stubGeometry(), fur = stubGeometry(true), cards = stubGeometry(true);
-    prepareMonsterGeometry(body, capacity, SAUCER_INSTANCE_ATTRIBUTES.body);
-    prepareMonsterGeometry(dome, capacity, SAUCER_INSTANCE_ATTRIBUTES.dome);
-    prepareMonsterGeometry(fur, capacity * shells, SAUCER_INSTANCE_ATTRIBUTES.fur);
-    prepareMonsterGeometry(cards, capacity, SAUCER_INSTANCE_ATTRIBUTES.fur);
+    prepareMonsterGeometry(body, capacity, SAUCER_INSTANCE_ATTRIBUTES.body, 0);
+    prepareMonsterGeometry(dome, capacity, SAUCER_INSTANCE_ATTRIBUTES.dome, 0);
+    prepareMonsterGeometry(fur, capacity * shells, SAUCER_INSTANCE_ATTRIBUTES.fur, 0);
+    prepareMonsterGeometry(cards, capacity, SAUCER_INSTANCE_ATTRIBUTES.fur, 0);
     return {
       body: instanced(body, capacity), dome: instanced(dome, capacity), fur: instanced(fur, capacity * shells),
       cards: k === 0 ? instanced(cards, capacity) : null,
@@ -82,9 +82,9 @@ const saucerMeshes = (lods: SaucerLod[]) => lods.flatMap((l) => [l.body, l.dome,
 function tardigradeLods(capacity: number, shells: number): TardigradeLod[] {
   return [0, 1].map(() => {
     const body = stubGeometry(), fur = stubGeometry(true), cards = stubGeometry(true);
-    prepareMonsterGeometry(body, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.body);
-    prepareMonsterGeometry(fur, capacity * shells, TARDIGRADE_INSTANCE_ATTRIBUTES.fur);
-    prepareMonsterGeometry(cards, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.fur);
+    prepareMonsterGeometry(body, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.body, 0);
+    prepareMonsterGeometry(fur, capacity * shells, TARDIGRADE_INSTANCE_ATTRIBUTES.fur, 0);
+    prepareMonsterGeometry(cards, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.fur, 0);
     return { body: instanced(body, capacity), fur: instanced(fur, capacity * shells), cards: instanced(cards, capacity) };
   });
 }

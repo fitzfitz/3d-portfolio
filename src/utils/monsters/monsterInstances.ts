@@ -26,9 +26,11 @@ const RENAMES = [["color", "monsterMask"], ["_motion", "monsterMotion"], ["_fur"
  *  - renames COLOR_0 (a zone mask), _MOTION and _FUR to the shaders' names;
  *  - adds the layout's per-instance attributes, `capacity` slots each
  *    (the fur's capacity is monsters × rig.furShells), dynamic;
- *  - pads the bounding sphere by `margin` (the vertex motion and the fur's
- *    shells reach past the rest mesh), so InstancedMesh.computeBoundingSphere
- *    never culls a moving monster.
+ *  - pads the bounding sphere by `margin`, the model's own bounds margin
+ *    (saucerBoundsMargin / tardigradeBoundsMargin: the vertex motion and the
+ *    fur's shells reach past the rest mesh), so InstancedMesh's bounds never
+ *    cull a monster at the edge of the screen while part of it still shows.
+ *    Required: a forgotten margin of 0 culls early.
  * Pass the geometry with its node transform baked in, in float: the rigs are
  * in glTF space, and the files quantize positions onto the node. Each LOD
  * node is one mesh of 2–3 primitives, which GLTFLoader loads as a Group (the
@@ -36,7 +38,7 @@ const RENAMES = [["color", "monsterMask"], ["_motion", "monsterMotion"], ["_fur"
  * primitive whose own matrix is identity, so bake the mesh's matrixWorld
  * (after updateWorldMatrix), not mesh.matrix as bakeNodeTransform does.
  */
-export function prepareMonsterGeometry(g: THREE.BufferGeometry, capacity: number, layout: InstanceLayout, margin = 0): void {
+export function prepareMonsterGeometry(g: THREE.BufferGeometry, capacity: number, layout: InstanceLayout, margin: number): void {
   for (const [from, to] of RENAMES) {
     const a = g.getAttribute(from);
     if (!a) continue;
@@ -60,7 +62,9 @@ export function prepareMonsterGeometry(g: THREE.BufferGeometry, capacity: number
  * the saucer's LOD1). Each part keeps only its own vertices, every
  * attribute copied as float. Call it at load, on the baked geometry, before
  * prepareMonsterGeometry; both parts take the fur's material and layout (a
- * card is shell 0 of 1 in the same program).
+ * card is shell 0 of 1 in the same program). A triangle with one or two
+ * card-flagged vertices is a broken export (the shader would stretch it
+ * between a shell and a card), so it throws rather than vote it to a side.
  */
 export function splitFurGeometry(g: THREE.BufferGeometry): { base: THREE.BufferGeometry; cards: THREE.BufferGeometry | null } {
   const mask = g.getAttribute("color") ?? g.getAttribute("monsterMask");
@@ -72,7 +76,10 @@ export function splitFurGeometry(g: THREE.BufferGeometry): { base: THREE.BufferG
   for (let k = 0; k < n; k += 3) {
     let flagged = 0;
     for (let c = 0; c < 3; c++) if (mask.getX(vert(k + c)) > 0.5) flagged++;
-    (flagged >= 2 ? cards : base).push(vert(k), vert(k + 1), vert(k + 2));
+    if (flagged === 1 || flagged === 2) {
+      throw new Error(`splitFurGeometry: triangle ${k / 3} is mixed card and base (${flagged} of 3 vertices card-flagged)`);
+    }
+    (flagged === 3 ? cards : base).push(vert(k), vert(k + 1), vert(k + 2));
   }
   return { base: subsetGeometry(g, base), cards: cards.length ? subsetGeometry(g, cards) : null };
 }

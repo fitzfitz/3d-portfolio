@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { TOKSVIG_FRAGMENT } from "../../components/canvas/toksvig";
 import type { SaucerTint } from "./monsterTint";
 import {
-  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
+  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
   monsterVertexMain, patchFurFragment, shareMonsterUniforms, translucencyHeader,
 } from "./monsterShading";
 import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInstances";
@@ -53,6 +53,9 @@ export interface SaucerRig {
  * `chase` is -1 (off) or the chase's position round the portholes, 0 → 1
  * (it wraps); `phase` (0 → 1, wraps) desynchronises the idle motion; the
  * rest are 0 → 1 and clamp.
+ * `blink` is a state pose like the others (R20): the shader applies it
+ * whatever uMotion is, so the caller drives idle blinks only while motion is
+ * on and passes 0 under reduced motion (a held blink would read as a wink).
  */
 export interface SaucerPose {
   phase: number;
@@ -127,6 +130,25 @@ const SKIN_SSS: readonly number[] = [1.0, 0.8, 0.4];
 const SKIN_SSS_AMOUNT = 0.9;
 /** The dome's edge opacity (glass reflects more at grazing angles). */
 const DOME_RIM = 0.55;
+
+/**
+ * How far any saucer vertex can reach past its primitive's rest bounding
+ * sphere (glTF units), for prepareMonsterGeometry: the fur's shell reach,
+ * plus the body's lean, roll, squash and breath about its pivot at the
+ * crown's distance from it (the farthest a leaning vertex sits), plus the
+ * tentacle wave, the drips' sway and stretch and the goo's sag. A sum of
+ * upper bounds, so it is conservative; tests/monsterGeometry.test.ts checks
+ * it against every vertex of the shipped glb at the extreme poses. The
+ * barrel turns about its pivot and stays inside the hull's sphere.
+ */
+export function saucerBoundsMargin(rig: SaucerRig): number {
+  const crown = rig.bodySpan[1] - rig.pivots.body[1];
+  // lean (fire + idle) and roll are about crossed axes; the squash spreads x and z
+  const turn = Math.hypot(LEAN_FIRE + SWAY, SWAY) + HIT_SQUASH / 2 + BREATH;
+  const wave = WAVE * Math.hypot(1, 0.5, 1);
+  const drips = DRIP_SWAY * Math.SQRT2 + DRIP_STRETCH + 3 * GOO_SAG;
+  return furReach(rig.furMaxLength) + crown * turn + wave + drips;
+}
 
 /** Body weight (base 0 → crown 1), linear in glTF y over rig.bodySpan (R13). */
 export function saucerBodyWeight(y: number, rig: SaucerRig): number {
@@ -254,7 +276,8 @@ export function addSaucer(lods: readonly SaucerLod[], rig: SaucerRig, matrix: TH
 /**
  * Where a shot leaves the barrel for `aim` (model space, as the pose's): the
  * rig's muzzle turned about the cannon pivot as the shader turns the barrel.
- * Under reduced motion the barrel holds its rest aim: pass +Z then.
+ * Right under reduced motion too: aiming is a state pose (R20), so the
+ * barrel still turns to `aim` when uMotion is 0.
  */
 export function saucerMuzzle(aim: THREE.Vector3, rig: SaucerRig, out: THREE.Vector3): THREE.Vector3 {
   yawPitch(aim, _aim);
