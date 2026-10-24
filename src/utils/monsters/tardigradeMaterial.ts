@@ -9,8 +9,8 @@ import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInst
 /**
  * The tardigrade's instanced materials and motion (space monsters, Task 5).
  * Contract: gen_tardigrade.py's CONTRACT header and
- * src/data/tardigradeRig.json. Two primitives, two programs, two draw calls
- * per LOD level in use:
+ * src/data/tardigradeRig.json. Two programs; three draw calls per LOD level
+ * in use (the body, the fur base and the lock cards, R19):
  *  - TardigradeBaked ("tardigrade:v1"): parts by _MOTION.x slot (0 body, 1–8
  *    legs front-left 1 … back-right 8, 9 mouth tube, 10 crystals, 11 eyes, 12
  *    drool, 13 body drips, 14 teeth). The body undulates along its axis
@@ -20,9 +20,16 @@ import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInst
  *    the legs in. The emissive map's throat glow (COLOR_0 R) scales by
  *    charge² × THROAT_GAIN (dark at 0); the crystals (G) glow steadily with a
  *    slow pulse;
- *  - TardigradeFur ("tardigradeFur:v1"): the coat's shells and lock cards,
- *    all on the body (part 0), so they undulate and curl with it.
- * Under reduced motion (uMotion 0) no vertex moves: only the glow changes.
+ *  - TardigradeFur ("tardigradeFur:v1"): the coat, all on the body (part 0),
+ *    so it undulates and curls with it; split at load into the fur base
+ *    (drawn once per shell) and the lock cards (once per tardigrade; LOD1's
+ *    merged fringe cards too), both on this material and program.
+ * Reduced motion (uMotion 0, R20) stops the decorative motion (the swim's
+ * paddle and undulation and the idle breath, the drool's and drips' sway
+ * and idle stretch, the fur's flow, the crystals' pulse) and keeps every
+ * state pose: recoil, the hit squash, the curl and the legs' retraction,
+ * the charge's glow, swell and drool. tardigradeDeformPoint is the vertex
+ * shader's TS mirror.
  */
 
 type Vec3 = readonly number[];
@@ -41,13 +48,17 @@ export interface TardigradeRig {
 /** One tardigrade's pose, written per instance each frame. `phase` wraps (0 → 1); the rest are 0 → 1 and clamp. */
 export interface TardigradePose { phase: number; swim: number; charge: number; recoil: number; hit: number; curl: number }
 
-/** One LOD level's two InstancedMeshes (each geometry from prepareMonsterGeometry). */
-export interface TardigradeLod { body: THREE.InstancedMesh; fur: THREE.InstancedMesh }
+/**
+ * One LOD level's InstancedMeshes (each geometry from prepareMonsterGeometry):
+ * `fur` the fur base (capacity × rig.furShells), `cards` the lock cards
+ * (capacity; null if a level had none). Both use the fur's layout and material.
+ */
+export interface TardigradeLod { body: THREE.InstancedMesh; fur: THREE.InstancedMesh; cards: THREE.InstancedMesh | null }
 
 /**
  * Per-instance attributes (name → item size): tardigradePose (phase, swim,
  * charge, recoil), tardigradeState (hit, curl), and monsterShell (shell
- * index, shell count) on the fur.
+ * index, shell count) on the fur (base and cards: a card is shell 0 of 1).
  */
 export const TARDIGRADE_INSTANCE_ATTRIBUTES = {
   body: { tardigradePose: 4, tardigradeState: 2 },
@@ -145,8 +156,9 @@ export function writeTardigradeInstance(mesh: THREE.InstancedMesh, i: number, po
 
 /**
  * Adds one tardigrade to this frame (between beginMonsterFrame and
- * endMonsterFrame): its LOD level at rig.lod1Distance, its body slot and one
- * fur slot per shell, at `matrix`. A full mesh drops it. Allocates nothing.
+ * endMonsterFrame): its LOD level at rig.lod1Distance, its body slot, one
+ * cards slot and one fur-base slot per shell, at `matrix`. A full mesh drops
+ * it. Allocates nothing.
  */
 export function addTardigrade(lods: readonly TardigradeLod[], rig: TardigradeRig, matrix: THREE.Matrix4, distance: number,
   pose: TardigradePose): void {
@@ -154,6 +166,13 @@ export function addTardigrade(lods: readonly TardigradeLod[], rig: TardigradeRig
   const i = claimSlot(lod.body, matrix);
   if (i < 0) return;
   writeTardigradeInstance(lod.body, i, pose);
+  if (lod.cards) {
+    const c = claimSlot(lod.cards, matrix);
+    if (c >= 0) {
+      writeTardigradeInstance(lod.cards, c, pose);
+      writeShell(lod.cards, c, 0, 1);
+    }
+  }
   const n = furShellCount(distance, rig.furMaxLength, rig.furShells);
   for (let s = 0; s < n; s++) {
     const j = claimSlot(lod.fur, matrix);
@@ -161,6 +180,69 @@ export function addTardigrade(lods: readonly TardigradeLod[], rig: TardigradeRig
     writeTardigradeInstance(lod.fur, j, pose);
     writeShell(lod.fur, j, s, n);
   }
+}
+
+/** The crystals' glow (× the emissive map's G zone) at time `t`; steady under reduced motion (`m` 0). The TS mirror of the shader's. */
+export function crystalGlow(t: number, phase: number, m: number): number {
+  return CRYSTAL_GLOW * (1 + CRYSTAL_PULSE * Math.sin(t * 0.8 + wrap01(phase) * 2 * Math.PI) * m);
+}
+
+const _qp = new THREE.Vector3(), _hip = new THREE.Vector3(), _tmp = new THREE.Vector3();
+
+/**
+ * The TS mirror of tardigradeDeform (the baked primitive's vertex shader;
+ * the fur runs the body part of it): where the rest vertex `rest` with
+ * `_MOTION` `motion` goes for `pose` at time `t`, `m` = uMotion. Line for
+ * line with the GLSL (the same constants); normals are not mirrored.
+ */
+export function tardigradeDeformPoint(rig: TardigradeRig, motion: ArrayLike<number>, rest: { x: number; y: number; z: number },
+  pose: TardigradePose, t: number, m: number, out: THREE.Vector3): THREE.Vector3 {
+  const f = frameOf(rig);
+  const ph = wrap01(pose.phase) * 2 * Math.PI;
+  const swim = clamp01(pose.swim), charge = clamp01(pose.charge), recoil = clamp01(pose.recoil);
+  const hit = clamp01(pose.hit), curl = clamp01(pose.curl);
+  const part = Math.floor(motion[0] * 16);
+  const y = motion[1];
+  let a = motion[1];
+  const p = out.set(rest.x, rest.y, rest.z);
+  if (part >= 1 && part <= 8) {
+    const leg = part - 1;
+    const h = rig.hips[leg];
+    _hip.set(h[0], h[1], h[2]);
+    const amp = (PADDLE_IDLE + PADDLE_SWIM * swim) * m;
+    const ang = amp * Math.sin(t * (1.8 + 2.6 * swim) + ph + (leg % 2) * Math.PI + Math.floor(leg / 2) * (Math.PI / 2))
+      * Math.min(1, motion[2] * 3);
+    _tmp.copy(p).sub(_hip).applyAxisAngle(f.lat, ang).multiplyScalar(1 - LEG_RETRACT * curl);
+    p.copy(_hip).add(_tmp);
+  } else if (part === 12) {
+    a = 1;
+    const stretch = DROOL_STRETCH * (charge + 0.25 * (0.5 + 0.5 * Math.sin(t * 1.1 + ph)) * m);
+    const sway = y * y * DROOL_SWAY * Math.sin(t * 2.0 + ph + p.x * 6) * m;
+    p.addScaledVector(f.belly, y * stretch).addScaledVector(f.lat, sway);
+  } else if (part === 13) {
+    a = motion[2];
+    const st = y * DRIP_STRETCH * (0.5 + 0.5 * Math.sin(t * 0.9 + ph + p.z * 3)) * m;
+    const sw = y * y * DRIP_SWAY * Math.sin(t * 2.2 + ph + p.z * 5) * m;
+    p.addScaledVector(f.belly, st).addScaledVector(f.lat, sw);
+  }
+  // tardigradeBody
+  let sm = (a - 0.5) * f.length;
+  const q = _tmp.copy(p).sub(f.mid).addScaledVector(f.axis, -sm);
+  const qa = q.dot(f.axis);
+  const qp = _qp.copy(q).addScaledVector(f.axis, -qa);
+  if (part === 9 || part === 12 || part === 14) qp.multiplyScalar(1 + TUBE_SWELL * charge * charge);
+  sm *= 1 - RECOIL * recoil;
+  qp.multiplyScalar(1 + (RECOIL / 2) * recoil);
+  const hk = HIT_SQUASH * hit;
+  const qb = qp.dot(f.belly), ql = qp.dot(f.lat);
+  qp.addScaledVector(f.belly, -hk * qb).addScaledVector(f.lat, 0.5 * hk * ql);
+  const amp = (UNDULATE_IDLE + UNDULATE * swim) * (0.35 + 0.65 * (1 - a)) * m;
+  qp.addScaledVector(f.belly, -0.7 * Math.sin(2 * Math.PI * 1.1 * a - t * (1.6 + 2.2 * swim) + ph) * amp)
+    .addScaledVector(f.lat, Math.sin(2 * Math.PI * 0.8 * a - t * (1.2 + 1.8 * swim) + ph + 1.3) * amp);
+  const phi = (2 * Math.PI * curl * sm) / f.length;
+  arc(phi, _arc);
+  qp.addScaledVector(f.axis, qa).applyAxisAngle(f.lat, phi);
+  return p.copy(f.mid).addScaledVector(f.axis, sm * _arc.s).addScaledVector(f.belly, sm * _arc.c).add(qp);
 }
 
 // ----------------------------------------------------------- shaders -----
@@ -181,15 +263,15 @@ vec2 tardigradeArc( float phi ) {
 }
 void tardigradeBody( inout vec3 p, inout vec3 n, float a, int part, float t, float ph, float m ) {
   float swim = tardigradePose.y, charge = tardigradePose.z, recoil = tardigradePose.w;
-  float hit = tardigradeState.x, curl = tardigradeState.y * m;
+  float hit = tardigradeState.x, curl = tardigradeState.y;
   float sm = ( a - 0.5 ) * TARDI_LENGTH;
   vec3 q = p - ( TARDI_MID + TARDI_AXIS * sm );
   float qa = dot( q, TARDI_AXIS );
   vec3 qp = q - TARDI_AXIS * qa;
-  if ( part == 9 || part == 12 || part == 14 ) qp *= 1.0 + ${glslFloat(TUBE_SWELL)} * charge * charge * m;
-  sm *= 1.0 - ${glslFloat(RECOIL)} * recoil * m;
-  qp *= 1.0 + ${glslFloat(RECOIL / 2)} * recoil * m;
-  float hk = ${glslFloat(HIT_SQUASH)} * hit * m;
+  if ( part == 9 || part == 12 || part == 14 ) qp *= 1.0 + ${glslFloat(TUBE_SWELL)} * charge * charge;
+  sm *= 1.0 - ${glslFloat(RECOIL)} * recoil;
+  qp *= 1.0 + ${glslFloat(RECOIL / 2)} * recoil;
+  float hk = ${glslFloat(HIT_SQUASH)} * hit;
   qp += TARDI_BELLY * ( - hk * dot( qp, TARDI_BELLY ) ) + TARDI_LAT * ( 0.5 * hk * dot( qp, TARDI_LAT ) );
   float amp = ( ${glslFloat(UNDULATE_IDLE)} + ${glslFloat(UNDULATE)} * swim ) * ( 0.35 + 0.65 * ( 1.0 - a ) ) * m;
   qp += ( - TARDI_BELLY * 0.7 * sin( MONSTER_TAU * 1.1 * a - t * ( 1.6 + 2.2 * swim ) + ph )
@@ -213,7 +295,7 @@ void tardigradeLeg( inout vec3 p, inout vec3 n, int leg, float t, float ph, floa
   float ang = amp * sin( t * ( 1.8 + 2.6 * swim ) + ph + side + pair ) * min( 1.0, monsterMotion.z * 3.0 );
   vec3 q = monsterRotate( p - hip, TARDI_LAT, ang );
   n = monsterRotate( n, TARDI_LAT, ang );
-  p = hip + q * ( 1.0 - ${glslFloat(LEG_RETRACT)} * tardigradeState.y * m );
+  p = hip + q * ( 1.0 - ${glslFloat(LEG_RETRACT)} * tardigradeState.y );
 }
 `;
 }
@@ -230,8 +312,8 @@ void tardigradeDeform( inout vec3 p, inout vec3 n ) {
   if ( part >= 1 && part <= 8 ) tardigradeLeg( p, n, part - 1, t, ph, m );
   else if ( part == 12 ) {
     a = 1.0;
-    float stretch = ${glslFloat(DROOL_STRETCH)} * ( tardigradePose.z + 0.25 * ( 0.5 + 0.5 * sin( t * 1.1 + ph ) ) );
-    p += ( TARDI_BELLY * y * stretch + TARDI_LAT * y * y * ${glslFloat(DROOL_SWAY)} * sin( t * 2.0 + ph + p.x * 6.0 ) ) * m;
+    float stretch = ${glslFloat(DROOL_STRETCH)} * ( tardigradePose.z + 0.25 * ( 0.5 + 0.5 * sin( t * 1.1 + ph ) ) * m );
+    p += TARDI_BELLY * y * stretch + TARDI_LAT * y * y * ${glslFloat(DROOL_SWAY)} * sin( t * 2.0 + ph + p.x * 6.0 ) * m;
   }
   else if ( part == 13 ) {
     a = monsterMotion.z;
@@ -256,7 +338,7 @@ export function createTardigradeMaterials(body: THREE.MeshStandardMaterial, fur:
     shareMonsterUniforms(shader);
     const main = monsterVertexMain("tardigradeDeform( monsterPos, objectNormal );",
       `vMonsterGlow = monsterMask.r * tardigradePose.z * tardigradePose.z * ${glslFloat(THROAT_GAIN)}
-  + monsterMask.g * ${glslFloat(CRYSTAL_GLOW)} * ( 1.0 + ${glslFloat(CRYSTAL_PULSE)} * sin( uTime * 0.8 + tardigradePose.x * MONSTER_TAU ) );`);
+  + monsterMask.g * ${glslFloat(CRYSTAL_GLOW)} * ( 1.0 + ${glslFloat(CRYSTAL_PULSE)} * sin( uTime * 0.8 + tardigradePose.x * MONSTER_TAU ) * uMotion );`);
     let vs = injectShader(shader.vertexShader, "#include <common>", MONSTER_VERTEX_COMMON + tardigradeVertexHeader(rig, true) + tardigradeDeform(true), "after");
     vs = injectShader(vs, "#include <beginnormal_vertex>", main.beginnormal, "after");
     shader.vertexShader = injectShader(vs, "#include <begin_vertex>", main.begin, "after");

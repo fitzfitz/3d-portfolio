@@ -4,11 +4,12 @@ import * as THREE from "three";
  * Instancing for the space monsters (Task 5): geometry preparation and the
  * per-frame slot packing every monster type shares.
  *
- * Each LOD level of a monster type is one InstancedMesh per primitive (the
- * saucer 3, the tardigrade 2), so a group draws in that many calls whatever
- * its size, per LOD level in use. Every frame the caller zeroes the counts
- * (beginMonsterFrame), adds each monster (addSaucer / addTardigrade pick its
- * LOD by distance and claim the next slots, its fur once per shell), then
+ * Each LOD level of a monster type is one InstancedMesh per primitive, the
+ * fur split in two (R19: the base, once per shell; the lock cards, once per
+ * monster): the saucer 4 (3 on LOD1, which has no cards), the tardigrade 3,
+ * whatever the group's size, per LOD level in use. Every frame the caller
+ * zeroes the counts (beginMonsterFrame), adds each monster (addSaucer /
+ * addTardigrade pick its LOD by distance and claim the next slots), then
  * closes the frame (endMonsterFrame). Slots are packed, so a mesh draws
  * exactly the instances in use: no hidden or collapsed shells are submitted.
  * Nothing here allocates per frame.
@@ -50,6 +51,51 @@ export function prepareMonsterGeometry(g: THREE.BufferGeometry, capacity: number
   }
   g.computeBoundingSphere();
   if (g.boundingSphere) g.boundingSphere.radius += margin;
+}
+
+/**
+ * Splits a fur primitive (R19) by its card flag (COLOR_0 R, 1 on lock-card
+ * vertices) into the fur base, which draws once per shell, and the lock
+ * cards, which draw once per monster (null when the primitive has none, as
+ * the saucer's LOD1). Each part keeps only its own vertices, every
+ * attribute copied as float. Call it at load, on the baked geometry, before
+ * prepareMonsterGeometry; both parts take the fur's material and layout (a
+ * card is shell 0 of 1 in the same program).
+ */
+export function splitFurGeometry(g: THREE.BufferGeometry): { base: THREE.BufferGeometry; cards: THREE.BufferGeometry | null } {
+  const mask = g.getAttribute("color") ?? g.getAttribute("monsterMask");
+  if (!mask) throw new Error("splitFurGeometry: the fur has no COLOR_0 card mask");
+  const index = g.getIndex();
+  const n = index ? index.count : g.getAttribute("position").count;
+  const vert = (k: number) => (index ? index.getX(k) : k);
+  const base: number[] = [], cards: number[] = [];
+  for (let k = 0; k < n; k += 3) {
+    let flagged = 0;
+    for (let c = 0; c < 3; c++) if (mask.getX(vert(k + c)) > 0.5) flagged++;
+    (flagged >= 2 ? cards : base).push(vert(k), vert(k + 1), vert(k + 2));
+  }
+  return { base: subsetGeometry(g, base), cards: cards.length ? subsetGeometry(g, cards) : null };
+}
+
+/** A geometry of the listed triangles' vertices only (float attributes, compacted, re-indexed). */
+function subsetGeometry(g: THREE.BufferGeometry, tris: readonly number[]): THREE.BufferGeometry {
+  const remap = new Map<number, number>();
+  const order: number[] = [];
+  const idx = new Uint32Array(tris.length);
+  for (let i = 0; i < tris.length; i++) {
+    let v = remap.get(tris[i]);
+    if (v === undefined) { v = order.length; remap.set(tris[i], v); order.push(tris[i]); }
+    idx[i] = v;
+  }
+  const out = new THREE.BufferGeometry();
+  for (const name of Object.keys(g.attributes)) {
+    const a = g.getAttribute(name);
+    const arr = new Float32Array(order.length * a.itemSize);
+    for (let i = 0; i < order.length; i++) for (let c = 0; c < a.itemSize; c++) arr[i * a.itemSize + c] = a.getComponent(order[i], c);
+    out.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize));
+  }
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
 }
 
 /** Starts a frame: every mesh draws nothing until monsters are added. */

@@ -10,7 +10,8 @@ import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInst
 /**
  * The saucer alien's instanced materials and motion (space monsters, Task 5).
  * Contract: gen_saucer.py's CONTRACT header and src/data/saucerRig.json.
- * Three primitives, three programs, three draw calls per LOD level in use:
+ * Three programs; four draw calls per LOD level in use (three on LOD1, which
+ * has no lock cards):
  *  - SaucerBaked ("saucer:v1"): the hull, the alien, the slime. Every part
  *    moves by its _MOTION.x slot (0 hull, 1 body, 2 tentacle, 3 eye L, 4 eye
  *    R, 5 eye top, 6 jaw, 7 cannon, 8 goo, 9 rim drips, 10 tentacle drips, 11
@@ -18,10 +19,15 @@ import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInst
  *    porthole lenses (the only emissive) run the chase;
  *  - SaucerDome ("saucerDome:v1"): the glass, blended over the alien, no
  *    depth write, front faces only (six overlapping domes need no sort);
- *  - SaucerFur ("saucerFur:v1"): the shell fur and the lock cards, drawn
- *    once per shell (monsterShading.ts).
- * Under reduced motion (uMotion 0) no vertex moves: only the portholes'
- * glow changes. Not imported by the game yet (Task 6's lab drives it).
+ *  - SaucerFur ("saucerFur:v1"): split at load (splitFurGeometry, R19)
+ *    into the fur base, drawn once per shell, and the lock cards, drawn once
+ *    per saucer; both InstancedMeshes share this material and program.
+ * Reduced motion (uMotion 0, R20) stops the decorative motion (the tentacle
+ * wave, breathing, sway, the idle chew and goo sag, the drips, the fur's
+ * flow) and keeps every state pose, without oscillation: look, aim, the
+ * fire lean and grin, the hit squash, blink, the defeat swirl (held still).
+ * saucerDeformPoint is the vertex shader's TS mirror.
+ * Not imported by the game yet (Task 6's lab drives it).
  */
 
 type Vec3 = readonly number[];
@@ -59,8 +65,15 @@ export interface SaucerPose {
   blink: number;
 }
 
-/** One LOD level's three InstancedMeshes (each geometry from prepareMonsterGeometry). */
-export interface SaucerLod { body: THREE.InstancedMesh; dome: THREE.InstancedMesh; fur: THREE.InstancedMesh }
+/**
+ * One LOD level's InstancedMeshes (each geometry from prepareMonsterGeometry):
+ * `fur` the fur base (capacity saucers × rig.furShells), `cards` the lock
+ * cards (capacity saucers; null on LOD1, which has none). Both use the fur's
+ * layout and material.
+ */
+export interface SaucerLod {
+  body: THREE.InstancedMesh; dome: THREE.InstancedMesh; fur: THREE.InstancedMesh; cards: THREE.InstancedMesh | null;
+}
 
 /**
  * The per-instance attributes of each primitive (name → item size):
@@ -68,7 +81,8 @@ export interface SaucerLod { body: THREE.InstancedMesh; dome: THREE.InstancedMes
  *  - saucerLook (gaze yaw, gaze pitch, aim yaw, aim pitch; radians, clamped);
  *  - saucerMood (defeat, blink);
  *  - saucerSkin / saucerSpot / saucerBand (the tint, linear RGB);
- *  - monsterShell (shell index, shell count) on the fur.
+ *  - monsterShell (shell index, shell count) on the fur (base and cards:
+ *    a card is shell 0 of 1).
  * The body uses 15 of WebGL2's 16 vertex attributes (5 own + 4 for the
  * instance matrix + 6), so a further body attribute must pack into these.
  */
@@ -103,10 +117,11 @@ const JAW_IDLE = 0.05;        // the jaw's idle chew
 const WAVE = 0.1;             // tentacle tips' wave
 const DRIP_SWAY = 0.025;      // a drip's tip sway
 const DRIP_STRETCH = 0.03;    // a drip's slow stretch
-const GOO_SAG = 0.035;        // the goo strings' sag at rest (×3 at fire 1)
+const GOO_SAG = 0.035;        // the goo strings' idle sag (decorative); twice this more at fire 1 (pose)
 const BLINK = 0.92;           // a blink flattens the eye this much
 const SWIRL = 0.32;           // the defeated pupils' circle (rad)
-const SWIRL_SPEED = 7.0;      // rad/s
+const SWIRL_SPEED = 7.0;      // rad/s (held still under reduced motion)
+const SWIRL_SPLIT = 1.2;      // the eyes' swirl phases differ, so held still they still look crossed
 /** Warm wrap-lit share of the light through the thin skin (green skin × warm → yellow-green). */
 const SKIN_SSS: readonly number[] = [1.0, 0.8, 0.4];
 const SKIN_SSS_AMOUNT = 0.9;
@@ -166,22 +181,41 @@ const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi 
 const _look = { yaw: 0, pitch: 0 };
 const _aim = { yaw: 0, pitch: 0 };
 
+/** A pose as the shader sees it: clamped, wrapped, look and aim as clamped angles. */
+interface SaucerPacked {
+  phase: number; chase: number; fire: number; hit: number;
+  lookYaw: number; lookPitch: number; aimYaw: number; aimPitch: number; defeat: number; blink: number;
+}
+const newPacked = (): SaucerPacked => ({ phase: 0, chase: -1, fire: 0, hit: 0, lookYaw: 0, lookPitch: 0, aimYaw: 0, aimPitch: 0, defeat: 0, blink: 0 });
+const _packed = newPacked();
+const _mirrorPacked = newPacked();
+
+function packSaucerPose(pose: SaucerPose, out: SaucerPacked): SaucerPacked {
+  out.phase = wrap01(pose.phase);
+  out.chase = pose.chase < 0 ? -1 : wrap01(pose.chase);
+  out.fire = clamp01(pose.fire);
+  out.hit = clamp01(pose.hit);
+  yawPitch(pose.look, _look);
+  yawPitch(pose.aim, _aim);
+  out.lookYaw = clamp(_look.yaw, -EYE_YAW_MAX, EYE_YAW_MAX);
+  out.lookPitch = clamp(_look.pitch, -EYE_PITCH_MAX, EYE_PITCH_MAX);
+  out.aimYaw = _aim.yaw;
+  out.aimPitch = clamp(_aim.pitch, AIM_PITCH_MIN, AIM_PITCH_MAX);
+  out.defeat = clamp01(pose.defeat);
+  out.blink = clamp01(pose.blink);
+  return out;
+}
+
 /**
  * Packs a saucer's pose and tint into slot `i` of `mesh`'s per-instance
  * attributes (whichever of them that primitive has: the dome has none).
  * Clamps and wraps out-of-range input; allocates nothing.
  */
 export function writeSaucerInstance(mesh: THREE.InstancedMesh, i: number, pose: SaucerPose, tint: SaucerTint): void {
-  const chase = pose.chase < 0 ? -1 : wrap01(pose.chase);
-  writeSlot(mesh, "saucerPose", i, wrap01(pose.phase), chase, clamp01(pose.fire), clamp01(pose.hit));
-  if (mesh.geometry.getAttribute("saucerLook")) {
-    yawPitch(pose.look, _look);
-    yawPitch(pose.aim, _aim);
-    writeSlot(mesh, "saucerLook", i,
-      clamp(_look.yaw, -EYE_YAW_MAX, EYE_YAW_MAX), clamp(_look.pitch, -EYE_PITCH_MAX, EYE_PITCH_MAX),
-      _aim.yaw, clamp(_aim.pitch, AIM_PITCH_MIN, AIM_PITCH_MAX));
-  }
-  writeSlot(mesh, "saucerMood", i, clamp01(pose.defeat), clamp01(pose.blink));
+  const p = packSaucerPose(pose, _packed);
+  writeSlot(mesh, "saucerPose", i, p.phase, p.chase, p.fire, p.hit);
+  writeSlot(mesh, "saucerLook", i, p.lookYaw, p.lookPitch, p.aimYaw, p.aimPitch);
+  writeSlot(mesh, "saucerMood", i, p.defeat, p.blink);
   writeSlot(mesh, "saucerSkin", i, tint.skin.r, tint.skin.g, tint.skin.b);
   writeSlot(mesh, "saucerSpot", i, tint.spot.r, tint.spot.g, tint.spot.b);
   writeSlot(mesh, "saucerBand", i, tint.band.r, tint.band.g, tint.band.b);
@@ -190,8 +224,9 @@ export function writeSaucerInstance(mesh: THREE.InstancedMesh, i: number, pose: 
 /**
  * Adds one saucer to this frame (between beginMonsterFrame and
  * endMonsterFrame): picks its LOD level at rig.lod1Distance, claims its body
- * and dome slots and one fur slot per shell (furShellCount by distance),
- * placing each at `matrix`. A full mesh drops the saucer. Allocates nothing.
+ * and dome slots, one cards slot (shell 0 of 1) and one fur-base slot per
+ * shell (furShellCount by distance), placing each at `matrix`. A full mesh
+ * drops the saucer. Allocates nothing.
  */
 export function addSaucer(lods: readonly SaucerLod[], rig: SaucerRig, matrix: THREE.Matrix4, distance: number,
   pose: SaucerPose, tint: SaucerTint): void {
@@ -200,6 +235,13 @@ export function addSaucer(lods: readonly SaucerLod[], rig: SaucerRig, matrix: TH
   if (i < 0) return;
   writeSaucerInstance(lod.body, i, pose, tint);
   claimSlot(lod.dome, matrix);
+  if (lod.cards) {
+    const c = claimSlot(lod.cards, matrix);
+    if (c >= 0) {
+      writeSaucerInstance(lod.cards, c, pose, tint);
+      writeShell(lod.cards, c, 0, 1);
+    }
+  }
   const n = furShellCount(distance, rig.furMaxLength, rig.furShells);
   for (let s = 0; s < n; s++) {
     const j = claimSlot(lod.fur, matrix);
@@ -226,6 +268,93 @@ export function saucerMuzzle(aim: THREE.Vector3, rig: SaucerRig, out: THREE.Vect
   return out.set(px + qx * cy + qz * sy, py + qy, pz - qx * sy + qz * cy);
 }
 
+// ------------------------------------------------------ TS mirror ------
+
+const TAU = 2 * Math.PI;
+const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), AZ = new THREE.Vector3(0, 0, 1);
+const _q = new THREE.Vector3(), _v = new THREE.Vector3(), _axis = new THREE.Vector3();
+const _hw = { wave: 0, body: 0 };
+
+function mirrorEye(p: THREE.Vector3, k: SaucerPacked, pivot: readonly number[], spin: number, eph: number, t: number, m: number) {
+  const swirl = t * SWIRL_SPEED * spin * m + eph + spin * SWIRL_SPLIT;
+  const yaw = k.lookYaw + k.defeat * SWIRL * Math.cos(swirl);
+  const pitch = k.lookPitch + k.defeat * SWIRL * Math.sin(swirl);
+  _q.set(p.x - pivot[0], p.y - pivot[1], p.z - pivot[2]).applyAxisAngle(AX, -pitch).applyAxisAngle(AY, yaw);
+  _q.y *= 1 - BLINK * k.blink;
+  p.set(pivot[0] + _q.x, pivot[1] + _q.y, pivot[2] + _q.z);
+}
+
+function mirrorJaw(v: THREE.Vector3, rig: SaucerRig, a: number) {
+  _axis.set(rig.jawAxis[0], rig.jawAxis[1], rig.jawAxis[2]).normalize();
+  const j = rig.pivots.jaw;
+  return v.set(v.x - j[0], v.y - j[1], v.z - j[2]).applyAxisAngle(_axis, a).add(_v.set(j[0], j[1], j[2]));
+}
+
+/**
+ * The TS mirror of saucerDeform (the baked primitive's vertex shader; the fur
+ * runs the same code for its parts 1 and 2): where the rest vertex `rest`
+ * with `_MOTION` `motion` goes for `pose` at time `t`, `m` = uMotion. Line
+ * for line with the GLSL (the same constants), for tests and the combat
+ * stage; normals are not mirrored.
+ */
+export function saucerDeformPoint(rig: SaucerRig, motion: ArrayLike<number>, rest: { x: number; y: number; z: number },
+  pose: SaucerPose, t: number, m: number, out: THREE.Vector3): THREE.Vector3 {
+  const k = packSaucerPose(pose, _mirrorPacked);
+  const p = out.set(rest.x, rest.y, rest.z);
+  const part = Math.floor(motion[0] * 16);
+  const ph = k.phase * TAU;
+  const pv = rig.pivots;
+  saucerHostWeights(motion, rest.y, rig, _hw);
+  const wave = _hw.wave, body = _hw.body;
+  const jawAngle = JAW_FIRE * k.fire + JAW_IDLE * (0.5 + 0.5 * Math.sin(t * 1.7 + ph)) * m;
+  if (part === 3) mirrorEye(p, k, pv.eyeL, 1, ph, t, m);
+  else if (part === 4) mirrorEye(p, k, pv.eyeR, -1, ph, t, m);
+  else if (part === 5) mirrorEye(p, k, pv.eyeTop, 1, ph + 2.1, t, m);
+  else if (part === 7) {
+    const c = pv.cannon;
+    _q.set(p.x - c[0], p.y - c[1], p.z - c[2]).applyAxisAngle(AX, -k.aimPitch * motion[1]).applyAxisAngle(AY, k.aimYaw);
+    p.set(c[0] + _q.x, c[1] + _q.y, c[2] + _q.z);
+  }
+  if (wave > 0) {
+    const side = p.x * 2.3 + p.z * 1.7, a = wave * wave * WAVE * m;
+    p.x += a * Math.sin(t * 1.9 + ph + side - wave * 2.6);
+    p.y += a * 0.5 * Math.sin(t * 1.3 + ph * 1.7 + side + 1 - wave * 2);
+    p.z += a * Math.cos(t * 1.6 + ph + side * 1.3 - wave * 2.6);
+  }
+  if (part >= 9) {
+    const y = motion[1], s2 = y * y;
+    const dx = Math.sin(t * 2.3 + ph + p.x * 7) * DRIP_SWAY * s2;
+    const dy = -(0.5 + 0.5 * Math.sin(t * 0.9 + ph + p.z * 5)) * DRIP_STRETCH * y;
+    const dz = Math.cos(t * 1.9 + ph + p.z * 7) * DRIP_SWAY * s2;
+    p.x += dx * m; p.y += dy * m; p.z += dz * m;
+  }
+  if (part === 6) mirrorJaw(p, rig, jawAngle * motion[1]);
+  if (part === 8) {
+    const g = motion[1];
+    const jx = p.x, jy = p.y, jz = p.z;
+    mirrorJaw(p, rig, jawAngle);
+    p.set(jx + (p.x - jx) * g, jy + (p.y - jy) * g, jz + (p.z - jz) * g);
+    p.y -= 4 * g * (1 - g) * GOO_SAG * ((0.5 + 0.5 * Math.sin(t * 1.2 + ph)) * m + 2 * k.fire);
+  }
+  if (body > 0) {
+    const b = pv.body;
+    const breathe = BREATH * Math.sin(t * 1.6 + ph) * m;
+    const sx = 1 + (HIT_SQUASH / 2) * k.hit, sy = 1 + breathe - HIT_SQUASH * k.hit;
+    _q.set(p.x - b[0], p.y - b[1], p.z - b[2]);
+    _q.x *= 1 + (sx - 1) * body; _q.y *= 1 + (sy - 1) * body; _q.z *= 1 + (sx - 1) * body;
+    const lean = (LEAN_FIRE * k.fire + SWAY * Math.sin(t * 0.9 + ph) * m) * body;
+    const roll = SWAY * Math.sin(t * 0.7 + ph * 1.3 + 1) * m * body;
+    _q.applyAxisAngle(AX, lean).applyAxisAngle(AZ, roll);
+    p.set(b[0] + _q.x, b[1] + _q.y, b[2] + _q.z);
+  }
+  return p;
+}
+
+/** Fire's lean (rad) at body weight 1, and the grin's jaw angle (rad) at fire 1: for tests and the combat stage. */
+export const SAUCER_FIRE_LEAN = LEAN_FIRE;
+export const SAUCER_FIRE_JAW = JAW_FIRE;
+export const SAUCER_HIT_SQUASH = HIT_SQUASH;
+
 // ----------------------------------------------------------- shaders -----
 
 function saucerVertexHeader(rig: SaucerRig, face: boolean): string {
@@ -245,15 +374,14 @@ vec3 saucerWave( float w, vec3 p, float t, float ph ) {
 }
 void saucerBody( inout vec3 p, inout vec3 n, float bw, float t, float ph, float m ) {
   float fire = saucerPose.z, hit = saucerPose.w;
-  float k = bw * m;
   vec3 q = p - SAUCER_BODY_PIVOT;
-  float breathe = ${glslFloat(BREATH)} * sin( t * 1.6 + ph );
+  float breathe = ${glslFloat(BREATH)} * sin( t * 1.6 + ph ) * m;
   vec3 s = vec3( 1.0 + ${glslFloat(HIT_SQUASH / 2)} * hit, 1.0 + breathe - ${glslFloat(HIT_SQUASH)} * hit, 1.0 + ${glslFloat(HIT_SQUASH / 2)} * hit );
-  s = mix( vec3( 1.0 ), s, k );
+  s = mix( vec3( 1.0 ), s, bw );
   q *= s;
   n /= s;
-  float lean = ( ${glslFloat(LEAN_FIRE)} * fire + ${glslFloat(SWAY)} * sin( t * 0.9 + ph ) ) * k;
-  float roll = ${glslFloat(SWAY)} * sin( t * 0.7 + ph * 1.3 + 1.0 ) * k;
+  float lean = ( ${glslFloat(LEAN_FIRE)} * fire + ${glslFloat(SWAY)} * sin( t * 0.9 + ph ) * m ) * bw;
+  float roll = ${glslFloat(SWAY)} * sin( t * 0.7 + ph * 1.3 + 1.0 ) * m * bw;
   q = monsterRotZ( monsterRotX( q, lean ), roll );
   n = monsterRotZ( monsterRotX( n, lean ), roll );
   p = SAUCER_BODY_PIVOT + q;
@@ -283,24 +411,25 @@ vec3 saucerDripSway( float y, vec3 p, float t, float ph ) {
 }
 void saucerEye( inout vec3 p, inout vec3 n, vec3 pivot, float spin, float t, float ph, float m ) {
   float defeat = saucerMood.x, blink = saucerMood.y;
-  float yaw = ( saucerLook.x + defeat * ${glslFloat(SWIRL)} * cos( t * ${glslFloat(SWIRL_SPEED)} * spin + ph ) ) * m;
-  float pitch = ( saucerLook.y + defeat * ${glslFloat(SWIRL)} * sin( t * ${glslFloat(SWIRL_SPEED)} * spin + ph ) ) * m;
+  float swirl = t * ${glslFloat(SWIRL_SPEED)} * spin * m + ph + spin * ${glslFloat(SWIRL_SPLIT)};
+  float yaw = saucerLook.x + defeat * ${glslFloat(SWIRL)} * cos( swirl );
+  float pitch = saucerLook.y + defeat * ${glslFloat(SWIRL)} * sin( swirl );
   vec3 q = monsterRotY( monsterRotX( p - pivot, - pitch ), yaw );
   n = monsterRotY( monsterRotX( n, - pitch ), yaw );
-  float squash = 1.0 - ${glslFloat(BLINK)} * blink * m;
+  float squash = 1.0 - ${glslFloat(BLINK)} * blink;
   q.y *= squash;
   n.y /= max( squash, 0.05 );
   p = pivot + q;
 }
 float saucerJawAngle( float t, float ph, float m ) {
-  return ( ${glslFloat(JAW_FIRE)} * saucerPose.z + ${glslFloat(JAW_IDLE)} * ( 0.5 + 0.5 * sin( t * 1.7 + ph ) ) ) * m;
+  return ${glslFloat(JAW_FIRE)} * saucerPose.z + ${glslFloat(JAW_IDLE)} * ( 0.5 + 0.5 * sin( t * 1.7 + ph ) ) * m;
 }
 vec3 saucerJaw( vec3 v, float a ) {
   return SAUCER_JAW_PIVOT + monsterRotate( v - SAUCER_JAW_PIVOT, SAUCER_JAW_AXIS, a );
 }
-void saucerCannon( inout vec3 p, inout vec3 n, float barrel, float m ) {
-  float pitch = - saucerLook.w * barrel * m;
-  float yaw = saucerLook.z * m;
+void saucerCannon( inout vec3 p, inout vec3 n, float barrel ) {
+  float pitch = - saucerLook.w * barrel;
+  float yaw = saucerLook.z;
   vec3 q = monsterRotY( monsterRotX( p - SAUCER_CANNON_PIVOT, pitch ), yaw );
   n = monsterRotY( monsterRotX( n, pitch ), yaw );
   p = SAUCER_CANNON_PIVOT + q;
@@ -335,7 +464,7 @@ void saucerDeform( inout vec3 p, inout vec3 n ) {
   else if ( part == 3 ) { body = saucerBodyWeight( SAUCER_EYE_L.y ); saucerEye( p, n, SAUCER_EYE_L, 1.0, t, ph, m ); }
   else if ( part == 4 ) { body = saucerBodyWeight( SAUCER_EYE_R.y ); saucerEye( p, n, SAUCER_EYE_R, - 1.0, t, ph, m ); }
   else if ( part == 5 ) { body = saucerBodyWeight( SAUCER_EYE_TOP.y ); saucerEye( p, n, SAUCER_EYE_TOP, 1.0, t, ph + 2.1, m ); }
-  else if ( part == 7 ) saucerCannon( p, n, monsterMotion.y, m );` : ""}
+  else if ( part == 7 ) saucerCannon( p, n, monsterMotion.y );` : ""}
   if ( wave > 0.0 ) p += saucerWave( wave, p, t, ph ) * m;${face ? `
   if ( part >= 9 ) p += saucerDripSway( monsterMotion.y, p, t, ph ) * m;
   if ( part == 6 ) {
@@ -346,7 +475,7 @@ void saucerDeform( inout vec3 p, inout vec3 n ) {
   if ( part == 8 ) {
     float g = monsterMotion.y;
     p = mix( p, saucerJaw( p, saucerJawAngle( t, ph, m ) ), g );
-    p.y -= 4.0 * g * ( 1.0 - g ) * ${glslFloat(GOO_SAG)} * ( 1.0 + 2.0 * saucerPose.z ) * m;
+    p.y -= 4.0 * g * ( 1.0 - g ) * ${glslFloat(GOO_SAG)} * ( ( 0.5 + 0.5 * sin( t * 1.2 + ph ) ) * m + 2.0 * saucerPose.z );
   }` : ""}
   if ( body > 0.0 ) saucerBody( p, n, body, t, ph, m );
 }

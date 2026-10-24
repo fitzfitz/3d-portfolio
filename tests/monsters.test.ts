@@ -7,15 +7,16 @@ import {
 import {
   FUR_SHELL_GAP_PX, MONSTER_UNIFORMS, furAtlasUv, furShellCount, furShellPx, injectShader,
 } from "../src/utils/monsters/monsterShading";
-import { beginMonsterFrame, endMonsterFrame, prepareMonsterGeometry } from "../src/utils/monsters/monsterInstances";
+import { beginMonsterFrame, endMonsterFrame, prepareMonsterGeometry, splitFurGeometry } from "../src/utils/monsters/monsterInstances";
 import {
   AIM_PITCH_MAX, AIM_PITCH_MIN, EYE_PITCH_MAX, EYE_YAW_MAX, PORTHOLE_DIM, PORTHOLE_IDLE, PORTHOLE_TRAIL,
-  SAUCER_INSTANCE_ATTRIBUTES, addSaucer, createSaucerMaterials, portholeGlow, saucerBodyWeight, saucerHostWeights,
-  saucerMuzzle, writeSaucerInstance, type SaucerLod, type SaucerPose, type SaucerRig,
+  SAUCER_FIRE_JAW, SAUCER_FIRE_LEAN, SAUCER_HIT_SQUASH, SAUCER_INSTANCE_ATTRIBUTES, addSaucer, createSaucerMaterials,
+  portholeGlow, saucerBodyWeight, saucerDeformPoint, saucerHostWeights, saucerMuzzle, writeSaucerInstance,
+  type SaucerLod, type SaucerPose, type SaucerRig,
 } from "../src/utils/monsters/saucerMaterial";
 import {
-  LEG_RETRACT, TARDIGRADE_INSTANCE_ATTRIBUTES, THROAT_GAIN, addTardigrade, createTardigradeMaterials,
-  legRetraction, tardigradeCurlPoint, throatEmissiveScale, writeTardigradeInstance,
+  CRYSTAL_GLOW, LEG_RETRACT, TARDIGRADE_INSTANCE_ATTRIBUTES, THROAT_GAIN, addTardigrade, createTardigradeMaterials,
+  crystalGlow, legRetraction, tardigradeCurlPoint, tardigradeDeformPoint, throatEmissiveScale, writeTardigradeInstance,
   type TardigradeLod, type TardigradePose, type TardigradeRig,
 } from "../src/utils/monsters/tardigradeMaterial";
 
@@ -62,22 +63,29 @@ function instanced(g: THREE.BufferGeometry, capacity: number): THREE.InstancedMe
   return mesh;
 }
 
+/** The saucer's lock cards are LOD0 only (its LOD1 has none, so no cards mesh). */
 function saucerLods(capacity: number, shells: number): SaucerLod[] {
-  return [0, 1].map(() => {
-    const body = stubGeometry(), dome = stubGeometry(), fur = stubGeometry(true);
+  return [0, 1].map((k) => {
+    const body = stubGeometry(), dome = stubGeometry(), fur = stubGeometry(true), cards = stubGeometry(true);
     prepareMonsterGeometry(body, capacity, SAUCER_INSTANCE_ATTRIBUTES.body);
     prepareMonsterGeometry(dome, capacity, SAUCER_INSTANCE_ATTRIBUTES.dome);
     prepareMonsterGeometry(fur, capacity * shells, SAUCER_INSTANCE_ATTRIBUTES.fur);
-    return { body: instanced(body, capacity), dome: instanced(dome, capacity), fur: instanced(fur, capacity * shells) };
+    prepareMonsterGeometry(cards, capacity, SAUCER_INSTANCE_ATTRIBUTES.fur);
+    return {
+      body: instanced(body, capacity), dome: instanced(dome, capacity), fur: instanced(fur, capacity * shells),
+      cards: k === 0 ? instanced(cards, capacity) : null,
+    };
   });
 }
+const saucerMeshes = (lods: SaucerLod[]) => lods.flatMap((l) => [l.body, l.dome, l.fur, ...(l.cards ? [l.cards] : [])]);
 
 function tardigradeLods(capacity: number, shells: number): TardigradeLod[] {
   return [0, 1].map(() => {
-    const body = stubGeometry(), fur = stubGeometry(true);
+    const body = stubGeometry(), fur = stubGeometry(true), cards = stubGeometry(true);
     prepareMonsterGeometry(body, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.body);
     prepareMonsterGeometry(fur, capacity * shells, TARDIGRADE_INSTANCE_ATTRIBUTES.fur);
-    return { body: instanced(body, capacity), fur: instanced(fur, capacity * shells) };
+    prepareMonsterGeometry(cards, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.fur);
+    return { body: instanced(body, capacity), fur: instanced(fur, capacity * shells), cards: instanced(cards, capacity) };
   });
 }
 
@@ -357,13 +365,22 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
   it("six saucers up close: LOD0 only, the fur drawn monsters × shells with each shell's index written", () => {
     const r = saucerRig();
     const lods = saucerLods(6, r.furShells);
-    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    const all = saucerMeshes(lods);
     beginMonsterFrame(all);
     const tint = saucerTint(3);
     for (let i = 0; i < 6; i++) addSaucer(lods, r, at(i * 4), 3, saucerPose({ fire: i / 5 }), tint);
     endMonsterFrame(all);
     expect([lods[0].body.count, lods[0].dome.count, lods[0].fur.count]).toEqual([6, 6, 6 * r.furShells]);
     expect([lods[1].body.count, lods[1].dome.count, lods[1].fur.count]).toEqual([0, 0, 0]);
+    // R19: the lock cards draw once per saucer, as shell 0 of 1, with the saucer's own pose and place
+    expect(lods[0].cards!.count).toBe(6);
+    for (let m = 0; m < 6; m++) {
+      expect(slot(lods[0].cards!, "monsterShell", m)).toEqual([0, 1]);
+      expect(slot(lods[0].cards!, "saucerPose", m)[2]).toBeCloseTo(m / 5, 6);
+      const e = new THREE.Matrix4();
+      lods[0].cards!.getMatrixAt(m, e);
+      expect(e.elements[12]).toBe(m * 4);
+    }
     for (let m = 0; m < 6; m++) {
       for (let s = 0; s < r.furShells; s++) {
         const j = m * r.furShells + s;
@@ -381,7 +398,7 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
   it("a saucer past rig.lod1Distance moves to LOD1, with fewer shells; the frame starts clean", () => {
     const r = saucerRig();
     const lods = saucerLods(6, r.furShells);
-    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    const all = saucerMeshes(lods);
     beginMonsterFrame(all);
     const tint = saucerTint(3);
     addSaucer(lods, r, at(0), 3, saucerPose(), tint);
@@ -389,6 +406,8 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
     addSaucer(lods, r, at(0), 500, saucerPose(), tint);
     endMonsterFrame(all);
     expect([lods[0].body.count, lods[1].body.count, lods[1].dome.count]).toEqual([1, 2, 2]);
+    expect(lods[0].cards!.count).toBe(1); // the LOD1 saucers have no cards to draw
+    expect(lods[1].cards).toBeNull();
     const far = furShellCount(r.lod1Distance + 0.01, r.furMaxLength, r.furShells);
     expect(lods[1].fur.count).toBe(far + furShellCount(500, r.furMaxLength, r.furShells));
     expect(slot(lods[1].fur, "monsterShell", 0)).toEqual([0, far]);
@@ -399,17 +418,18 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
   it("never writes past a mesh's capacity", () => {
     const r = saucerRig();
     const lods = saucerLods(2, r.furShells);
-    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    const all = saucerMeshes(lods);
     beginMonsterFrame(all);
     for (let i = 0; i < 5; i++) addSaucer(lods, r, at(i), 2, saucerPose(), saucerTint(i));
     expect(lods[0].body.count).toBe(2);
     expect(lods[0].fur.count).toBe(2 * r.furShells);
+    expect(lods[0].cards!.count).toBe(2);
   });
 
-  it("two tardigrades: two calls' worth of meshes, the shells per monster, the LOD per instance", () => {
+  it("two tardigrades: body, fur base and cards per level, the shells per monster, the LOD per instance", () => {
     const r = tardigradeRig();
     const lods = tardigradeLods(2, r.furShells);
-    const all = lods.flatMap((l) => [l.body, l.fur]);
+    const all = lods.flatMap((l) => [l.body, l.fur, l.cards!]);
     beginMonsterFrame(all);
     addTardigrade(lods, r, at(0), 4, tardigradePose({ charge: 0.5 }));
     addTardigrade(lods, r, at(20), r.lod1Distance + 1, tardigradePose());
@@ -419,6 +439,45 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
     expect(slot(lods[0].fur, "monsterShell", r.furShells - 1)).toEqual([r.furShells - 1, r.furShells]);
     expect(slot(lods[0].fur, "tardigradePose", 3)[2]).toBe(0.5);
     expect(lods[1].fur.count).toBe(furShellCount(r.lod1Distance + 1, r.furMaxLength, r.furShells));
+    // R19: cards once per tardigrade on either level (LOD1 keeps its merged fringe cards)
+    expect([lods[0].cards!.count, lods[1].cards!.count]).toEqual([1, 1]);
+    expect(slot(lods[0].cards!, "monsterShell", 0)).toEqual([0, 1]);
+    expect(slot(lods[0].cards!, "tardigradePose", 0)[2]).toBe(0.5);
+  });
+});
+
+describe("splitFurGeometry (R19): the lock cards come off the fur base at load", () => {
+  /** Two quads' worth: triangle 0 on the fur base, triangle 1 a card (COLOR_0 R = 1), sharing no vertex. */
+  function furWithCard(): THREE.BufferGeometry {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0, 0, 6, 0, 0, 5, 1, 0, 9, 9, 9], 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1], 4));
+    g.setAttribute("_fur", new THREE.Float32BufferAttribute([0.5, 0.1, 0.6, 0.2, 0.7, 0.3, 0.04, 0.9, 0.2, 0.9, 0.34, 0.9, 0, 0], 2));
+    g.setIndex([0, 1, 2, 3, 4, 5]); // vertex 6 is unused
+    return g;
+  }
+
+  it("splits by the card flag, keeps only each part's vertices, and carries every attribute", () => {
+    const { base, cards } = splitFurGeometry(furWithCard());
+    expect(base.getIndex()!.count).toBe(3);
+    expect(cards!.getIndex()!.count).toBe(3);
+    expect(base.getAttribute("position").count).toBe(3);
+    expect(cards!.getAttribute("position").count).toBe(3);
+    expect(Array.from(cards!.getAttribute("position").array.slice(0, 3))).toEqual([5, 0, 0]);
+    expect(Array.from(cards!.getAttribute("_fur").array)).toEqual([0.04, 0.9, 0.2, 0.9, 0.34, 0.9].map((v) => expect.closeTo(v, 6)));
+    for (let i = 0; i < 3; i++) {
+      expect(base.getAttribute("color").getX(i)).toBe(0);
+      expect(cards!.getAttribute("color").getX(i)).toBe(1);
+    }
+    expect(Object.keys(cards!.attributes).sort()).toEqual(["_fur", "color", "position"]);
+  });
+
+  it("a fur with no cards (the saucer's LOD1) gives no cards geometry; a fur without the mask is refused", () => {
+    const g = furWithCard();
+    g.setIndex([0, 1, 2]);
+    expect(splitFurGeometry(g).cards).toBeNull();
+    g.deleteAttribute("color");
+    expect(() => splitFurGeometry(g)).toThrow(/mask/);
   });
 });
 
@@ -631,5 +690,174 @@ describe("tardigrade helpers", () => {
     const legReach = 0.9; // hip to the foot's far side, about (gen_tardigrade.py: LEG_LEN 0.44, claws, FOOT_R 0.31)
     expect(ring + hipDrop - legReach * legRetraction(1)).toBeGreaterThan(0);
     expect(C.y).toBeLessThan(r.axis.tail[1]);
+  });
+});
+
+// ------------------------------------------- reduced motion (R20) -------
+
+describe("reduced motion (R20): decorative motion stops, state poses still apply without oscillating", () => {
+  const slot16 = (id: number) => (id + 0.5) / 16;
+  const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  const out = new THREE.Vector3();
+  const TIMES = [0, 0.5, 3.7, 19.1, 41.2];
+
+  /** One rest vertex per saucer part (positions in glTF space, near where the part sits). */
+  const saucerSamples = (r: SaucerRig) => {
+    const piv = (p: readonly number[], dz = 0, dy = 0) => v(p[0], p[1] + dy, p[2] + dz);
+    return [
+      { name: "hull porthole", motion: [slot16(0), 0, 0.3, 0], rest: v(1.2, -0.1, 0.5) },
+      { name: "body crown", motion: [slot16(1), 0.9, 0, 0], rest: v(0, 1.1, 0.1) },
+      { name: "tentacle", motion: [slot16(2), 0.8, 0, 0.3], rest: v(0.6, 0.6, 0.2) },
+      { name: "eye L", motion: [slot16(3), 0, 0, 0], rest: piv(r.pivots.eyeL, r.eyeRadius) },
+      { name: "eye R", motion: [slot16(4), 0, 0, 0], rest: piv(r.pivots.eyeR, r.eyeRadius) },
+      { name: "eye top", motion: [slot16(5), 0, 0, 0], rest: piv(r.pivots.eyeTop, r.eyeRadius) },
+      { name: "jaw", motion: [slot16(6), 1, 0, 0.3], rest: v(0, 0.2, 0.55) },
+      { name: "cannon barrel", motion: [slot16(7), 1, 0, 0], rest: v(r.muzzle[0], r.muzzle[1], r.muzzle[2]) },
+      { name: "goo", motion: [slot16(8), 0.5, 0, 0.8], rest: v(0, 0.2, 0.56) },
+      { name: "rim drip", motion: [slot16(9), 0.8, 0, 0.8], rest: v(1.4, 0.1, 0.3) },
+      { name: "tentacle drip", motion: [slot16(10), 0.7, 0.6, 0.8], rest: v(0.6, 0.4, 0.2) },
+      { name: "body drip", motion: [slot16(11), 0.7, 0.5, 0.8], rest: v(0.3, 0.6, 0.4) },
+    ];
+  };
+  /** One rest vertex per tardigrade part kind (a = _MOTION.y along the axis). */
+  const tardigradeSamples = (r: TardigradeRig) => {
+    const T = v(...(r.axis.tail as [number, number, number])), M = v(...(r.axis.mouth as [number, number, number]));
+    const on = (a: number, up: number) => T.clone().lerp(M, a).add(v(0, up, 0));
+    const hip = v(...(r.hips[0] as [number, number, number]));
+    return [
+      { name: "body back", motion: [slot16(0), 0.2, 0, 0.1], rest: on(0.2, 1.0) },
+      { name: "leg claw", motion: [slot16(1), 0.66, 1, 0.3], rest: hip.clone().add(v(0.1, -0.5, 0.05)) },
+      { name: "mouth tube", motion: [slot16(9), 0.97, 0, 0.5], rest: on(0.97, 0.4) },
+      { name: "crystal", motion: [slot16(10), 0.5, 0, 0], rest: on(0.5, 1.6) },
+      { name: "drool tip", motion: [slot16(12), 1, 0, 0.9], rest: on(1, -0.6) },
+      { name: "drip", motion: [slot16(13), 0.8, 0.4, 0.9], rest: on(0.4, -0.9) },
+    ];
+  };
+  const restSaucer = () => saucerPose({ phase: 0.37 });
+  const richSaucer = () => saucerPose({
+    phase: 0.37, look: v(1, 0.3, 1), aim: v(0.5, -0.6, 1), chase: 0.4, fire: 1, hit: 0.5, defeat: 1, blink: 0.3,
+  });
+
+  it("the saucer's rest pose holds its authored shape at any time; with motion on, the decorative terms move it", () => {
+    const r = saucerRig();
+    for (const s of saucerSamples(r)) {
+      for (const t of TIMES) {
+        saucerDeformPoint(r, s.motion, s.rest, restSaucer(), t, 0, out);
+        expect(out.distanceTo(s.rest), `${s.name} t=${t}`).toBeLessThan(1e-9);
+      }
+    }
+    for (const name of ["body crown", "tentacle", "rim drip", "tentacle drip", "body drip", "goo", "jaw"]) {
+      const s = saucerSamples(r).find((x) => x.name === name)!;
+      saucerDeformPoint(r, s.motion, s.rest, restSaucer(), 3.7, 1, out);
+      expect(out.distanceTo(s.rest), `${name} moves with motion on`).toBeGreaterThan(1e-4);
+    }
+  });
+
+  it("the saucer's state poses don't oscillate under reduced motion (the defeat swirl is held still)", () => {
+    const r = saucerRig();
+    const a = new THREE.Vector3();
+    for (const s of saucerSamples(r)) {
+      saucerDeformPoint(r, s.motion, s.rest, richSaucer(), TIMES[0], 0, a);
+      for (const t of TIMES.slice(1)) {
+        saucerDeformPoint(r, s.motion, s.rest, richSaucer(), t, 0, out);
+        expect(out.distanceTo(a), `${s.name} t=${t}`).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it("the saucer's state poses still apply under reduced motion: aim, look, fire lean and grin, hit, blink, defeat", () => {
+    const r = saucerRig();
+    const S = saucerSamples(r);
+    const at = (name: string, pose: SaucerPose, t = 2.3) => {
+      const s = S.find((x) => x.name === name)!;
+      return saucerDeformPoint(r, s.motion, s.rest, pose, t, 0, new THREE.Vector3());
+    };
+    // the barrel turns to the aim: its tip is saucerMuzzle's shot origin
+    const aim = v(0.5, -0.6, 1);
+    expect(at("cannon barrel", saucerPose({ aim })).distanceTo(saucerMuzzle(aim, r, new THREE.Vector3()))).toBeLessThan(1e-9);
+    // the eye turns to the look: its pupil sits eyeRadius out along the clamped gaze
+    const L = r.pivots.eyeL;
+    const pupil = at("eye L", saucerPose({ look: v(1, 0, 0) }));
+    expect(pupil.distanceTo(v(L[0] + r.eyeRadius * Math.sin(EYE_YAW_MAX), L[1], L[2] + r.eyeRadius * Math.cos(EYE_YAW_MAX)))).toBeLessThan(1e-9);
+    // fire leans the body forward about its pivot by SAUCER_FIRE_LEAN × the body weight
+    const crown = S.find((x) => x.name === "body crown")!;
+    const B = v(...(r.pivots.body as [number, number, number]));
+    const bw = saucerBodyWeight(crown.rest.y, r);
+    const lean = crown.rest.clone().sub(B).applyAxisAngle(v(1, 0, 0), SAUCER_FIRE_LEAN * bw).add(B);
+    expect(at("body crown", saucerPose({ fire: 1 })).distanceTo(lean)).toBeLessThan(1e-9);
+    expect(lean.z).toBeGreaterThan(crown.rest.z);
+    // and opens the grin: the jaw swings down about its pivot
+    const jawRest = S.find((x) => x.name === "jaw")!.rest;
+    const J = v(...(r.pivots.jaw as [number, number, number]));
+    const grin = jawRest.clone().sub(J).applyAxisAngle(v(1, 0, 0), SAUCER_FIRE_JAW).add(J);
+    const leanJaw = grin.clone().sub(B).applyAxisAngle(v(1, 0, 0), SAUCER_FIRE_LEAN * saucerBodyWeight(jawRest.y, r)).add(B);
+    expect(at("jaw", saucerPose({ fire: 1 })).distanceTo(leanJaw)).toBeLessThan(1e-9);
+    expect(grin.y).toBeLessThan(jawRest.y);
+    // a hit squashes the body (top down, sides out) by the body weight
+    const q = crown.rest.clone().sub(B);
+    const squash = v(q.x * (1 + SAUCER_HIT_SQUASH / 2 * bw), q.y * (1 - SAUCER_HIT_SQUASH * bw), q.z * (1 + SAUCER_HIT_SQUASH / 2 * bw)).add(B);
+    expect(at("body crown", saucerPose({ hit: 1 })).distanceTo(squash)).toBeLessThan(1e-9);
+    // a blink flattens the eye about its pivot
+    const top = new THREE.Vector3();
+    saucerDeformPoint(r, [slot16(3), 0, 0, 0], v(L[0], L[1] + r.eyeRadius, L[2]), saucerPose({ blink: 1 }), 2.3, 0, top);
+    expect(top.y - L[1]).toBeLessThan(0.1 * r.eyeRadius);
+    // defeated, the eyes still look crossed (each its own way), held still
+    const dl = at("eye L", saucerPose({ defeat: 1 })).sub(S.find((x) => x.name === "eye L")!.rest);
+    const dr = at("eye R", saucerPose({ defeat: 1 })).sub(S.find((x) => x.name === "eye R")!.rest);
+    expect(dl.length()).toBeGreaterThan(0.02);
+    expect(dr.length()).toBeGreaterThan(0.02);
+    expect(dl.normalize().dot(dr.normalize())).toBeLessThan(0.9);
+  });
+
+  it("the tardigrade's rest pose holds still at any time; with motion on, the idle breath and paddle move it", () => {
+    const r = tardigradeRig();
+    const rest = tardigradePose({ phase: 0.37 });
+    for (const s of tardigradeSamples(r)) {
+      for (const t of TIMES) {
+        tardigradeDeformPoint(r, s.motion, s.rest, rest, t, 0, out);
+        expect(out.distanceTo(s.rest), `${s.name} t=${t}`).toBeLessThan(1e-9);
+      }
+      tardigradeDeformPoint(r, s.motion, s.rest, tardigradePose({ phase: 0.37, swim: 1 }), 3.7, 1, out);
+      expect(out.distanceTo(s.rest), `${s.name} swims with motion on`).toBeGreaterThan(1e-4);
+      // ... but not under reduced motion: swimming is decorative
+      tardigradeDeformPoint(r, s.motion, s.rest, tardigradePose({ phase: 0.37, swim: 1 }), 3.7, 0, out);
+      expect(out.distanceTo(s.rest), `${s.name} swim under reduced motion`).toBeLessThan(1e-9);
+    }
+  });
+
+  it("a defeated tardigrade still ends curled under reduced motion, legs drawn in, with no oscillation", () => {
+    const r = tardigradeRig();
+    const T = v(...(r.axis.tail as [number, number, number])), M = v(...(r.axis.mouth as [number, number, number]));
+    const curled = tardigradePose({ phase: 0.37, curl: 1 });
+    const tail = tardigradeDeformPoint(r, [slot16(0), 0, 0, 0], T, curled, 5, 0, new THREE.Vector3());
+    const mouth = tardigradeDeformPoint(r, [slot16(0), 1, 0, 0], M, curled, 5, 0, new THREE.Vector3());
+    expect(tail.distanceTo(mouth)).toBeLessThan(1e-6); // the ball closes
+    expect(tail.distanceTo(tardigradeCurlPoint(0, 1, r, new THREE.Vector3()))).toBeLessThan(1e-6);
+    // the legs: a claw's reach from its hip shrinks by LEG_RETRACT (hip and claw share the axial position, so the bend is rigid)
+    const claw = tardigradeSamples(r).find((x) => x.name === "leg claw")!;
+    const hipRest = v(...(r.hips[0] as [number, number, number]));
+    const c = tardigradeDeformPoint(r, claw.motion, claw.rest, curled, 5, 0, new THREE.Vector3());
+    const h = tardigradeDeformPoint(r, [slot16(1), 0.66, 0, 0.3], hipRest, curled, 5, 0, new THREE.Vector3());
+    expect(c.distanceTo(h) / claw.rest.distanceTo(hipRest)).toBeCloseTo(1 - LEG_RETRACT, 9);
+    // every state pose at once is still under reduced motion
+    const rich = tardigradePose({ phase: 0.37, swim: 1, charge: 0.8, recoil: 0.4, hit: 0.3, curl: 0.6 });
+    for (const s of tardigradeSamples(r)) {
+      const a = tardigradeDeformPoint(r, s.motion, s.rest, rich, TIMES[0], 0, new THREE.Vector3());
+      for (const t of TIMES.slice(1)) {
+        tardigradeDeformPoint(r, s.motion, s.rest, rich, t, 0, out);
+        expect(out.distanceTo(a), `${s.name} t=${t}`).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it("the tardigrade's charge still shows under reduced motion: the throat glows, the drool hangs longer; the crystals stop pulsing", () => {
+    const r = tardigradeRig();
+    const drool = tardigradeSamples(r).find((x) => x.name === "drool tip")!;
+    const idle = tardigradeDeformPoint(r, drool.motion, drool.rest, tardigradePose(), 2, 0, new THREE.Vector3());
+    const charged = tardigradeDeformPoint(r, drool.motion, drool.rest, tardigradePose({ charge: 1 }), 2, 0, new THREE.Vector3());
+    expect(idle.y - charged.y).toBeGreaterThan(0.25);
+    expect(throatEmissiveScale(1)).toBe(THROAT_GAIN); // the glow has no motion term at all
+    for (const t of TIMES) expect(crystalGlow(t, 0.37, 0)).toBe(CRYSTAL_GLOW);
+    expect(new Set(TIMES.map((t) => crystalGlow(t, 0.37, 1).toFixed(6))).size).toBeGreaterThan(1);
   });
 });
