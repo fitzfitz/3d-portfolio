@@ -11,9 +11,15 @@ import * as THREE from "three";
  * cannot hold anything outside [-1, 1] — every baked model was silently
  * clamped into a unit box (the jellyfish rendered squashed to ~40% of its
  * height). Expanding the vertex attributes to Float32 first fixes that.
+ *
+ * `world` bakes the mesh's world matrix instead of its own: GLTFLoader loads
+ * a node holding a multi-primitive mesh as a Group (carrying the node's
+ * transform, the quantization scale and offset included) of one Mesh per
+ * primitive whose own matrix is identity (the space monsters' LOD nodes).
  */
-export function bakeNodeTransform(mesh: THREE.Mesh, { center = false } = {}): THREE.BufferGeometry {
+export function bakeNodeTransform(mesh: THREE.Mesh, { center = false, world = false } = {}): THREE.BufferGeometry {
   mesh.updateMatrix();
+  if (world) mesh.updateWorldMatrix(true, false);
   const g = mesh.geometry.clone();
   for (const name of Object.keys(g.attributes)) {
     const a = g.getAttribute(name) as THREE.BufferAttribute | THREE.InterleavedBufferAttribute;
@@ -24,7 +30,7 @@ export function bakeNodeTransform(mesh: THREE.Mesh, { center = false } = {}): TH
     }
     g.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
   }
-  g.applyMatrix4(mesh.matrix);
+  g.applyMatrix4(world ? mesh.matrixWorld : mesh.matrix);
   // Generators often lay variants out side by side for previews (asteroids at
   // x = -4.5 .. +4.5); an instanced/placed copy should pivot on its own body.
   if (center) g.center();

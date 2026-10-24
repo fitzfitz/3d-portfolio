@@ -52,6 +52,8 @@ export const RULES = [
   [/^src\/audio\//, () => ["audio"]],
   [/^(public\/models|public\/basis)\//, () => ["assets", "memory", "sky", "startup", "basepath"]],
   [/^public\/sw\.js$/, () => ["basepath"]],
+  // The space monsters: dev-only until the combat stage imports them (the game imports none of these).
+  [/^(src\/lab\/|src\/utils\/monsters\/|src\/data\/(saucerRig|tardigradeRig)\.json$|public\/models-lab\/|monster-lab\.html$)/, () => ["monsterlab"]],
   // The app's shell, its state and shared code: everything.
   [/^(src|public)\//, () => "ALL"],
   [/^(index\.html|vite\.config\.ts|package\.json|package-lock\.json|tsconfig[^/]*\.json)$/, () => "ALL"],

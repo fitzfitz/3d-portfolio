@@ -1,7 +1,7 @@
 // First: the hue-keeping toe must be in the tone-mapping chunk before any program compiles.
 import "./hueToe";
 import { Canvas, useFrame, useThree, invalidate } from "@react-three/fiber";
-import { Html, PerformanceMonitor, Environment, Lightformer, OrbitControls, useGLTF } from "@react-three/drei";
+import { Html, PerformanceMonitor, OrbitControls, useGLTF } from "@react-three/drei";
 import { Suspense, use, useRef, useMemo, useState, useEffect, useLayoutEffect, memo, type ReactNode } from "react";
 import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
@@ -17,6 +17,7 @@ import Sun from "./Sun";
 import { PlasmaAnomalies } from "./PlasmaAnomalies";
 import type { AnomaliesRef } from "./PlasmaAnomalies";
 import PostFX from "./PostFX";
+import SpaceEnvironment from "./SpaceEnvironment";
 import { CAMERA_FAR, LOG_DEPTH_BUFFER } from "./logDepth";
 import SafeErrorBoundary from "./SafeErrorBoundary";
 import Asteroids from "./Asteroids";
@@ -597,12 +598,7 @@ function GlobalCanvas() {
 
             {/* Static generated IBL: cool spacelight + warm sun echo. frames={1} renders it once.
                 For the ship and the props: the bodies opt out (noIbl.ts, L29). */}
-            <Environment resolution={64} frames={1}>
-              <color attach="background" args={["#050310"]} />
-              <Lightformer form="rect" intensity={1.1} color="#3a4a8f" position={[0, 8, -10]} scale={[14, 7, 1]} />
-              <Lightformer form="rect" intensity={0.7} color="#ff5500" position={[9, -3, 4]} scale={[8, 4, 1]} />
-              <Lightformer form="rect" intensity={0.6} color="#00f0ff" position={[-9, 2, 5]} scale={[6, 6, 1]} />
-            </Environment>
+            <SpaceEnvironment />
 
             {/* Ambient galactic backdrop lighting; with the IBL above it falls
                 off like the sunlight past 1 AU (ExposureDriver, L19) */}

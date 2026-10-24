@@ -35,8 +35,8 @@ const RENAMES = [["color", "monsterMask"], ["_motion", "monsterMotion"], ["_fur"
  * in glTF space, and the files quantize positions onto the node. Each LOD
  * node is one mesh of 2–3 primitives, which GLTFLoader loads as a Group (the
  * node, carrying the quantization scale and offset) of one Mesh per
- * primitive whose own matrix is identity, so bake the mesh's matrixWorld
- * (after updateWorldMatrix), not mesh.matrix as bakeNodeTransform does.
+ * primitive whose own matrix is identity, so bake the mesh's matrixWorld:
+ * bakeNodeTransform(mesh, { world: true }), not its default mesh.matrix.
  */
 export function prepareMonsterGeometry(g: THREE.BufferGeometry, capacity: number, layout: InstanceLayout, margin: number): void {
   for (const [from, to] of RENAMES) {

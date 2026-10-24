@@ -1,0 +1,227 @@
+import { writeFile } from "node:fs/promises";
+import sharp from "sharp";
+import { withPage, nextFrames, settle, BASE_URL } from "./harness.mjs";
+
+// The monster lab (dev only, /monster-lab.html; space monsters Task 6) and
+// the shaders and budgets of Task 5's instanced monsters, in a real WebGL
+// context with the game's renderer, light and post stack:
+//  - every layout (fight, spread, overlap) loads under both light presets
+//    (near: Earth's distance from the sun; far: Neptune's) with no console
+//    error and no program carrying compile diagnostics;
+//  - R19's draw-call budget: at `fight`, LOD0, the monsters draw in at most
+//    7 calls above a baseline measured on the same page with them hidden
+//    (saucer 4: body, dome, fur base, cards; tardigrade 3: body, fur base,
+//    cards). LOD1 and auto are measured too;
+//  - nothing submitted is culled: in every layout, and above all `spread`
+//    (8 monsters 200 u apart), the triangles drawn above the baseline equal
+//    the triangles the instance counts submit, with all 8 bodies counted;
+//  - every state compiles nothing new and carries no diagnostics, and with
+//    motion on the monsters visibly move (idle, fire, curl);
+//  - reduced motion (R20): for each state, two frames 0.8 s apart are
+//    pixel-identical (decorative motion stopped), while the state's pose
+//    still differs from idle (swim excepted: it is decorative only);
+//  - the TS mirrors agree with the GPU (best effort): the saucer's
+//    saucerMuzzle point, aimed well off its rest aim, and the tardigrade's
+//    curled axis point (tardigradeCurlPoint) each land on the monster in the
+//    posed frame and on empty space in the unposed frame (barrel at its rest
+//    aim; the tardigrade straight), same camera: the GPU put geometry where
+//    the mirror says, and only because of the pose.
+// Screenshots go to $SCRATCH (default /tmp) as monsterlab-*.png.
+
+const OUT = process.env.SCRATCH ?? "/tmp";
+const LAB = `${BASE_URL}/monster-lab.html`;
+const READY_TIMEOUT_MS = 45_000;
+const LAYOUTS = ["fight", "spread", "overlap"];
+const PRESETS = ["near", "far"];
+const STATES = ["idle", "look", "fire", "chase", "hit", "defeat", "swim", "charge", "recoil", "curl"];
+/** R19: draw calls per LOD level in use. */
+const SAUCER_CALLS = { 0: 4, 1: 3 };
+const TARDIGRADE_CALLS = 3;
+/** States whose pose is decorative only (R20): identical to idle under reduced motion. */
+const DECORATIVE_ONLY = new Set(["swim"]);
+
+const lab = (page, fn, ...args) => page.evaluate(fn, ...args);
+
+async function open(page, query) {
+  // ui=0: no panel, whose live readout would differ between two screenshots.
+  const q = new URLSearchParams({ cycle: "0", ui: "0", ...query });
+  await page.goto(`${LAB}?${q}`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.__monsterLab?.ready === true, { timeout: READY_TIMEOUT_MS });
+  await nextFrames(page, 12);
+}
+
+/** Stats with the monsters hidden (the baseline) and shown, and what the instance counts submit. */
+async function measure(page) {
+  await lab(page, () => window.__monsterLab.setHidden(true));
+  await nextFrames(page, 6);
+  const base = await lab(page, () => window.__monsterLab.stats());
+  await lab(page, () => window.__monsterLab.setHidden(false));
+  await nextFrames(page, 6);
+  const shown = await lab(page, () => window.__monsterLab.stats());
+  const meshes = await lab(page, () => window.__monsterLab.instances());
+  const live = meshes.filter((m) => m.count > 0);
+  const bodies = (model) => meshes.filter((m) => m.model === model && m.part === "body").reduce((n, m) => n + m.count, 0);
+  const levels = (model) => new Set(meshes.filter((m) => m.model === model && m.count > 0).map((m) => m.lod));
+  return {
+    base, shown,
+    calls: shown.calls - base.calls,
+    triangles: shown.triangles - base.triangles,
+    submittedCalls: live.length,
+    submittedTriangles: live.reduce((n, m) => n + m.count * m.triangles, 0),
+    saucers: bodies("saucer"), tardigrades: bodies("tardigrade"),
+    saucerLods: [...levels("saucer")].sort(), tardigradeLods: [...levels("tardigrade")].sort(),
+  };
+}
+
+/** The R19 budget for the LOD levels a measurement used. */
+const budget = (m) => m.saucerLods.reduce((n, l) => n + SAUCER_CALLS[l], 0) + m.tardigradeLods.length * TARDIGRADE_CALLS;
+
+const row = (m) => `calls ${m.calls} (budget ${budget(m)}), triangles ${m.triangles.toLocaleString("en")}`
+  + ` (submitted ${m.submittedTriangles.toLocaleString("en")}), programs ${m.shown.programs},`
+  + ` saucers ${m.saucers} on LOD ${m.saucerLods.join("+") || "-"}, tardigrades ${m.tardigrades} on LOD ${m.tardigradeLods.join("+") || "-"}`;
+
+async function shot(page, name) {
+  const buf = Buffer.from(await page.screenshot({ encoding: "base64" }), "base64");
+  if (name) await writeFile(`${OUT}/monsterlab-${name}.png`, buf).catch(() => {});
+  const { data, info } = await sharp(buf).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return { data, width: info.width, height: info.height };
+}
+
+/** How many pixels differ between two frames (any channel by more than `tol`). */
+function differing(a, b, tol = 0) {
+  let n = 0;
+  for (let i = 0; i < a.data.length; i += 3) {
+    if (Math.abs(a.data[i] - b.data[i]) > tol || Math.abs(a.data[i + 1] - b.data[i + 1]) > tol
+      || Math.abs(a.data[i + 2] - b.data[i + 2]) > tol) n++;
+  }
+  return n;
+}
+
+/** Share of a 5×5 window at (x, y) where the frame with monsters differs from the one without. */
+function coverage(shown, hidden, x, y) {
+  let on = 0, all = 0;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const px = Math.round(x) + dx, py = Math.round(y) + dy;
+      if (px < 0 || py < 0 || px >= shown.width || py >= shown.height) continue;
+      const i = (py * shown.width + px) * 3;
+      const d = Math.abs(shown.data[i] - hidden.data[i]) + Math.abs(shown.data[i + 1] - hidden.data[i + 1])
+        + Math.abs(shown.data[i + 2] - hidden.data[i + 2]);
+      all++;
+      if (d > 24) on++;
+    }
+  }
+  return all ? on / all : 0;
+}
+
+export default function run() {
+  return withPage({ label: "monsterlab" }, async (page, checks) => {
+    const table = [];
+
+    // --- every layout under both presets ---
+    for (const layout of LAYOUTS) {
+      for (const preset of PRESETS) {
+        const lod = layout === "fight" ? "0" : "auto";
+        await open(page, { layout, preset, lod, state: "idle", seed: "7" });
+        const m = await measure(page);
+        const tag = `${layout} ${preset} lod=${lod}`;
+        table.push([tag, m]);
+        checks.check(`${tag}: no program carries compile diagnostics`, m.shown.diagnostics === 0, `${m.shown.diagnostics} with diagnostics`);
+        checks.check(`${tag}: monster draw calls within R19's budget`, m.calls <= budget(m) && m.calls === m.submittedCalls, row(m));
+        checks.check(`${tag}: every submitted triangle is drawn (none culled)`, m.triangles === m.submittedTriangles,
+          `drawn ${m.triangles} vs submitted ${m.submittedTriangles}`);
+        const want = layout === "overlap" ? [2, 0] : [6, 2];
+        checks.check(`${tag}: ${want[0]} saucers and ${want[1]} tardigrades are drawn`, m.saucers === want[0] && m.tardigrades === want[1],
+          `saucers ${m.saucers}, tardigrades ${m.tardigrades}`);
+        if (layout === "fight") {
+          checks.check(`${tag}: R19 — the fight at LOD0 draws in ≤ 7 calls above the baseline`, m.calls <= 7 && budget(m) === 7, `${m.calls} calls`);
+          for (const other of ["1", "auto"]) {
+            await lab(page, (l) => window.__monsterLab.setLod(l), other);
+            await nextFrames(page, 6);
+            const o = await measure(page);
+            table.push([`${layout} ${preset} lod=${other}`, o]);
+            checks.check(`${layout} ${preset} lod=${other}: within budget, none culled`,
+              o.calls <= budget(o) && o.calls === o.submittedCalls && o.triangles === o.submittedTriangles, row(o));
+          }
+        }
+        if (layout === "spread") await shot(page, `spread-${preset}`);
+        else await shot(page, `${layout}-${preset}`);
+      }
+    }
+    for (const [tag, m] of table) checks.note(`measured: ${tag}`, row(m));
+
+    // --- every state: nothing new compiles, no diagnostics ---
+    await open(page, { layout: "fight", preset: "near", lod: "0", state: "idle", seed: "7" });
+    const programs0 = (await lab(page, () => window.__monsterLab.stats())).programs;
+    for (const state of STATES) {
+      await lab(page, (s) => window.__monsterLab.setState(s), state);
+      await nextFrames(page, 8);
+      const s = await lab(page, () => window.__monsterLab.stats());
+      checks.check(`state ${state}: compiles nothing new, no diagnostics`, s.programs === programs0 && s.diagnostics === 0,
+        `programs ${s.programs} (idle ${programs0}), diagnostics ${s.diagnostics}`);
+    }
+
+    // --- motion on: the timed poses and the idle motion are alive ---
+    for (const state of ["idle", "fire", "curl"]) {
+      await lab(page, (s) => window.__monsterLab.setState(s), state);
+      await nextFrames(page, 8);
+      const a = await shot(page, `motion-${state}`);
+      await settle(page, 600);
+      await nextFrames(page, 4);
+      const moved = differing(a, await shot(page), 8);
+      checks.check(`motion on, ${state}: the monsters move (frames 0.6 s apart differ)`, moved > 500, `${moved} pixels differ`);
+    }
+
+    // --- reduced motion (R20): held poses, no decorative motion ---
+    await lab(page, () => window.__monsterLab.setReducedMotion(true));
+    await lab(page, () => window.__monsterLab.setState("idle"));
+    await nextFrames(page, 10);
+    const idle = await shot(page, "rm-idle");
+    for (const state of STATES) {
+      await lab(page, (s) => window.__monsterLab.setState(s), state);
+      await nextFrames(page, 10);
+      const a = await shot(page, `rm-${state}`);
+      await settle(page, 800);
+      await nextFrames(page, 4);
+      const b = await shot(page);
+      const still = differing(a, b);
+      checks.check(`reduced motion, ${state}: two frames 0.8 s apart are pixel-identical`, still === 0, `${still} pixels differ`);
+      if (state === "idle") continue;
+      const vsIdle = differing(a, idle, 8);
+      if (DECORATIVE_ONLY.has(state)) {
+        checks.check(`reduced motion, ${state}: decorative only, so it matches idle`, vsIdle === 0, `${vsIdle} pixels differ from idle`);
+      } else {
+        checks.check(`reduced motion, ${state}: the pose still shows (differs from idle)`, vsIdle > 200, `${vsIdle} pixels differ from idle`);
+      }
+    }
+
+    // --- the TS mirrors against the GPU (best effort) ---
+    const MIRRORS = [
+      { kind: "saucer", posed: "fire", unposed: "fire", what: "saucerMuzzle (aimed)" },
+      { kind: "tardigrade", posed: "curl", unposed: "idle", what: "tardigradeCurlPoint (curled)" },
+    ];
+    for (const m of MIRRORS) {
+      const frame = async (state, posed, name) => {
+        await lab(page, (k, s, p) => { window.__monsterLab.setSolo(k); window.__monsterLab.setState(s); window.__monsterLab.frameMirror(p); },
+          m.kind, state, posed);
+        await nextFrames(page, 12);
+        return shot(page, name);
+      };
+      const posed = await frame(m.posed, true, `mirror-${m.kind}-posed`);
+      const pts = await lab(page, () => window.__monsterLab.mirror());
+      const unposed = await frame(m.unposed, false, `mirror-${m.kind}-unposed`);
+      await lab(page, () => window.__monsterLab.setHidden(true));
+      await nextFrames(page, 6);
+      const hidden = await shot(page);
+      await lab(page, () => window.__monsterLab.setHidden(false));
+      const [x, y] = pts[m.kind].posed;
+      const on = coverage(posed, hidden, x, y);
+      const off = coverage(unposed, hidden, x, y);
+      checks.check(`mirror vs GPU: ${m.what} lands on the ${m.kind}`, on >= 0.5,
+        `${(on * 100).toFixed(0)}% of a 5×5 window at (${x.toFixed(0)}, ${y.toFixed(0)}) is monster`);
+      checks.check(`mirror vs GPU: unposed, the same pixel is empty (the pose moved the geometry there)`, off <= 0.2,
+        `${(off * 100).toFixed(0)}% monster with the ${m.kind} unposed`);
+    }
+    await lab(page, () => window.__monsterLab.setSolo(null));
+  });
+}
