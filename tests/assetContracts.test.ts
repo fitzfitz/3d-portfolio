@@ -1093,7 +1093,7 @@ describe("tardigrade (tardigrade.glb)", () => {
     }
   });
 
-  it("the fur carries _FUR in [0,1]; cards (COLOR_0 R) on LOD0 only, in the atlas's lock half", async () => {
+  it("the fur carries _FUR in [0,1]; cards (COLOR_0 R) in the atlas's lock half; LOD1 keeps <= 400 fringe-card triangles (R17)", async () => {
     const r = rig();
     expect(r.furAtlas.shells).toEqual([0, 0, 0.5, 1]);
     expect(r.furAtlas.locks).toEqual([0.5, 0, 1, 1]);
@@ -1118,9 +1118,56 @@ describe("tardigrade (tardigrade.glb)", () => {
         expect(uv[i][1]).toBeGreaterThanOrEqual(0);
         expect(uv[i][1]).toBeLessThanOrEqual(1);
       }
-      if (k === 0) expect(cards, "LOD0 cards").toBeGreaterThan(0);
-      else expect(cards, "LOD1 cards").toBe(0);
+      expect(cards, `LOD${k} cards`).toBeGreaterThan(0);
+      if (k === 1) {
+        // R17: LOD1's coat outline is a few large merged fringe cards
+        const idx = p.getIndices()!;
+        let cardTris = 0;
+        for (let t = 0; t < idx.getCount(); t += 3) {
+          if ([0, 1, 2].every((c) => col[idx.getScalar(t + c)][0] > 0.5)) cardTris++;
+        }
+        expect(cardTris, "LOD1 card triangles").toBeGreaterThan(0);
+        expect(cardTris, "LOD1 card triangles").toBeLessThanOrEqual(400);
+      }
     }
+  });
+
+  it("the glow zones are exact: COLOR_0 R only on the mouth tube (9), G only on the crystals (10)", async () => {
+    for (const k of [0, 1] as const) {
+      const p = prim(await lod(k), "TardigradeBaked");
+      const col = elements(p, "COLOR_0"), mo = elements(p, "_MOTION");
+      for (let i = 0; i < col.length; i++) {
+        if (col[i][0] > 0.5) expect(partOf(mo[i][0]), `LOD${k} R vertex ${i}`).toBe(9);
+        if (col[i][1] > 0.5) expect(partOf(mo[i][0]), `LOD${k} G vertex ${i}`).toBe(10);
+      }
+    }
+  });
+
+  it("the emissive map is the glow zones' only: lit on the throat, dark off R and G (so the game can scale the charge)", async () => {
+    const doc = await lab();
+    const baked = doc.getRoot().listMaterials().find((m) => m.getName() === "TardigradeBaked")!;
+    const tex = baked.getEmissiveTexture();
+    expect(tex, "emissive texture").not.toBeNull();
+    const { data, info } = await sharp(Buffer.from(tex!.getImage()!)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const at = (u: number, v: number) => {
+      const x = Math.min(info.width - 1, Math.max(0, Math.floor(u * info.width)));
+      const y = Math.min(info.height - 1, Math.max(0, Math.floor(v * info.height)));
+      const o = (y * info.width + x) * info.channels;
+      return Math.max(data[o], data[o + 1], data[o + 2]);
+    };
+    const p = prim(await lod(0), "TardigradeBaked");
+    const uv = elements(p, "TEXCOORD_0"), col = elements(p, "COLOR_0"), idx = p.getIndices()!;
+    const off: number[] = [], throat: number[] = [];
+    for (let t = 0; t < idx.getCount(); t += 3) {
+      const vs = [0, 1, 2].map((c) => idx.getScalar(t + c));
+      const u = vs.reduce((s_, i) => s_ + uv[i][0], 0) / 3, v = vs.reduce((s_, i) => s_ + uv[i][1], 0) / 3;
+      if (vs.every((i) => col[i][0] < 0.5 && col[i][1] < 0.5)) off.push(at(u, v));
+      else if (vs.every((i) => col[i][0] > 0.5)) throat.push(at(u, v));
+    }
+    // (triangle centroids; a few tiny ones sit within the bake margin of a glowing island)
+    expect(off.filter((x) => x > 10).length / off.length).toBeLessThan(0.01);
+    throat.sort((a, b) => a - b);
+    expect(throat[Math.floor(throat.length / 2)], "throat glow (median)").toBeGreaterThan(20);
   });
 
   it("the fur moves with the body: every fur vertex is part 0", async () => {
@@ -1159,15 +1206,16 @@ describe("tardigrade (tardigrade.glb)", () => {
     expect(Math.min(...near)).toBeLessThanOrEqual(0.6);
   });
 
-  it("the 8 hips mirror in pairs across x = 0 (within 0.05), left (+X) first", () => {
+  it("the 8 hips mirror in pairs across x = 0 (within 0.005: the origin sits on the symmetry plane), left (+X) first", () => {
     const h: number[][] = rig().hips;
+    expect(rig().axis.tail[0]).toBeCloseTo(0, 4);
     expect(h).toHaveLength(8);
     for (let k = 0; k < 8; k += 2) {
       const [l, r] = [h[k], h[k + 1]];
       expect(l[0], `hip ${k + 1} on +X`).toBeGreaterThan(0);
-      expect(Math.abs(l[0] + r[0]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
-      expect(Math.abs(l[1] - r[1]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
-      expect(Math.abs(l[2] - r[2]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(l[0] + r[0]), `pair ${k / 2}`).toBeLessThanOrEqual(0.005);
+      expect(Math.abs(l[1] - r[1]), `pair ${k / 2}`).toBeLessThanOrEqual(0.005);
+      expect(Math.abs(l[2] - r[2]), `pair ${k / 2}`).toBeLessThanOrEqual(0.005);
     }
     // front to back
     for (let k = 2; k < 8; k += 2) expect(h[k][2]).toBeLessThan(h[k - 2][2]);
