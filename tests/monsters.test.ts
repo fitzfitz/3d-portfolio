@@ -1,0 +1,635 @@
+import { describe, it, expect } from "vitest";
+import * as THREE from "three";
+import { readFileSync } from "node:fs";
+import {
+  SAUCER_BAND_PAINTS, SAUCER_SKIN_HUE, SAUCER_SPOT_HUE, saucerTint,
+} from "../src/utils/monsters/monsterTint";
+import {
+  FUR_SHELL_GAP_PX, MONSTER_UNIFORMS, furAtlasUv, furShellCount, furShellPx, injectShader,
+} from "../src/utils/monsters/monsterShading";
+import { beginMonsterFrame, endMonsterFrame, prepareMonsterGeometry } from "../src/utils/monsters/monsterInstances";
+import {
+  AIM_PITCH_MAX, AIM_PITCH_MIN, EYE_PITCH_MAX, EYE_YAW_MAX, PORTHOLE_DIM, PORTHOLE_IDLE, PORTHOLE_TRAIL,
+  SAUCER_INSTANCE_ATTRIBUTES, addSaucer, createSaucerMaterials, portholeGlow, saucerBodyWeight, saucerHostWeights,
+  saucerMuzzle, writeSaucerInstance, type SaucerLod, type SaucerPose, type SaucerRig,
+} from "../src/utils/monsters/saucerMaterial";
+import {
+  LEG_RETRACT, TARDIGRADE_INSTANCE_ATTRIBUTES, THROAT_GAIN, addTardigrade, createTardigradeMaterials,
+  legRetraction, tardigradeCurlPoint, throatEmissiveScale, writeTardigradeInstance,
+  type TardigradeLod, type TardigradePose, type TardigradeRig,
+} from "../src/utils/monsters/tardigradeMaterial";
+
+/**
+ * Task 5 (space monsters): the instanced materials and the vertex-shader
+ * motion. WebGL does not run here, so the shaders are checked for their
+ * anchors and the pure maths through their TypeScript mirrors; Task 6's lab
+ * compiles and shows them for real. The rigs are read from the committed
+ * JSON (the asset contract), never copied.
+ */
+const saucerRig = (): SaucerRig => JSON.parse(readFileSync("src/data/saucerRig.json", "utf8"));
+const tardigradeRig = (): TardigradeRig => JSON.parse(readFileSync("src/data/tardigradeRig.json", "utf8"));
+
+const sRGBHue = (c: THREE.Color) => {
+  const hsl = { h: 0, s: 0, l: 0 };
+  c.getHSL(hsl, THREE.SRGBColorSpace);
+  return hsl.h * 360;
+};
+
+const saucerPose = (over: Partial<SaucerPose> = {}): SaucerPose => ({
+  phase: 0.3, look: new THREE.Vector3(0, 0, 1), aim: new THREE.Vector3(0, 0, 1),
+  chase: -1, fire: 0, hit: 0, defeat: 0, blink: 0, ...over,
+});
+const tardigradePose = (over: Partial<TardigradePose> = {}): TardigradePose => ({
+  phase: 0.6, swim: 0, charge: 0, recoil: 0, hit: 0, curl: 0, ...over,
+});
+
+/** A small stand-in for a monster primitive, with the glTF attributes the loader names. */
+function stubGeometry(fur = false): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1], 2));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(new Array(12).fill(0), 4));
+  g.setAttribute("_motion", new THREE.Float32BufferAttribute(new Array(12).fill(0.03125), 4));
+  if (fur) g.setAttribute("_fur", new THREE.Float32BufferAttribute(new Array(6).fill(0.5), 2));
+  g.setIndex([0, 1, 2]);
+  return g;
+}
+
+function instanced(g: THREE.BufferGeometry, capacity: number): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial(), capacity);
+  mesh.count = 0;
+  return mesh;
+}
+
+function saucerLods(capacity: number, shells: number): SaucerLod[] {
+  return [0, 1].map(() => {
+    const body = stubGeometry(), dome = stubGeometry(), fur = stubGeometry(true);
+    prepareMonsterGeometry(body, capacity, SAUCER_INSTANCE_ATTRIBUTES.body);
+    prepareMonsterGeometry(dome, capacity, SAUCER_INSTANCE_ATTRIBUTES.dome);
+    prepareMonsterGeometry(fur, capacity * shells, SAUCER_INSTANCE_ATTRIBUTES.fur);
+    return { body: instanced(body, capacity), dome: instanced(dome, capacity), fur: instanced(fur, capacity * shells) };
+  });
+}
+
+function tardigradeLods(capacity: number, shells: number): TardigradeLod[] {
+  return [0, 1].map(() => {
+    const body = stubGeometry(), fur = stubGeometry(true);
+    prepareMonsterGeometry(body, capacity, TARDIGRADE_INSTANCE_ATTRIBUTES.body);
+    prepareMonsterGeometry(fur, capacity * shells, TARDIGRADE_INSTANCE_ATTRIBUTES.fur);
+    return { body: instanced(body, capacity), fur: instanced(fur, capacity * shells) };
+  });
+}
+
+const attr = (mesh: THREE.InstancedMesh, name: string) => mesh.geometry.getAttribute(name) as THREE.InstancedBufferAttribute;
+const slot = (mesh: THREE.InstancedMesh, name: string, i: number) => {
+  const a = attr(mesh, name);
+  return Array.from(a.array.slice(i * a.itemSize, (i + 1) * a.itemSize));
+};
+
+/** Runs a material's compile hook over a shader, as the renderer would. */
+function compile(m: THREE.Material, vertexShader: string, fragmentShader: string) {
+  const shader = {
+    uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms),
+    vertexShader, fragmentShader,
+  } as unknown as THREE.WebGLProgramParametersWithUniforms;
+  m.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+  return shader;
+}
+const standard = (m: THREE.Material) => compile(m, THREE.ShaderLib.standard.vertexShader, THREE.ShaderLib.standard.fragmentShader);
+
+function saucerMaterials() {
+  const body = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), normalMap: new THREE.Texture(), emissiveMap: new THREE.Texture() });
+  const dome = new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.16 });
+  const fur = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), normalMap: new THREE.Texture(), alphaTest: 0.01, side: THREE.DoubleSide });
+  body.vertexColors = true; fur.vertexColors = true; // as GLTFLoader leaves them (COLOR_0 present)
+  createSaucerMaterials(body, dome, fur, saucerRig());
+  return { body, dome, fur };
+}
+function tardigradeMaterials() {
+  const body = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), normalMap: new THREE.Texture(), emissiveMap: new THREE.Texture() });
+  const fur = new THREE.MeshStandardMaterial({ map: new THREE.Texture(), normalMap: new THREE.Texture(), alphaTest: 0.01, side: THREE.DoubleSide });
+  body.vertexColors = true; fur.vertexColors = true;
+  createTardigradeMaterials(body, fur, tardigradeRig());
+  return { body, fur };
+}
+
+// ---------------------------------------------------------------- tint ---
+
+describe("saucerTint: a per-instance colour for the skin, spot and band zones", () => {
+  it("six seeds give six distinct skins inside 95°–135°, spots inside 330°–355°, bands from the five paints", () => {
+    const tints = [0, 1, 2, 3, 4, 5].map((s) => saucerTint(s));
+    expect(new Set(tints.map((t) => t.skin.getHexString())).size).toBe(6);
+    expect(SAUCER_SKIN_HUE).toEqual([95, 135]);
+    expect(SAUCER_SPOT_HUE).toEqual([330, 355]);
+    expect(SAUCER_BAND_PAINTS).toHaveLength(5);
+    const paints = SAUCER_BAND_PAINTS.map((p) => new THREE.Color(p).getHex());
+    for (const t of tints) {
+      expect(sRGBHue(t.skin)).toBeGreaterThanOrEqual(95 - 0.5);
+      expect(sRGBHue(t.skin)).toBeLessThanOrEqual(135 + 0.5);
+      expect(sRGBHue(t.spot)).toBeGreaterThanOrEqual(330 - 0.5);
+      expect(sRGBHue(t.spot)).toBeLessThanOrEqual(355 + 0.5);
+      expect(paints).toContain(t.band.getHex());
+    }
+    // the six use more than one paint
+    expect(new Set(tints.map((t) => t.band.getHex())).size).toBeGreaterThan(1);
+  });
+
+  it("is deterministic per seed, and fills a passed-in tint without allocating new colours", () => {
+    const a = saucerTint(42), b = saucerTint(42);
+    expect(a.skin.equals(b.skin) && a.spot.equals(b.spot) && a.band.equals(b.band)).toBe(true);
+    const out = { skin: new THREE.Color(), spot: new THREE.Color(), band: new THREE.Color() };
+    const skin = out.skin;
+    expect(saucerTint(42, out)).toBe(out);
+    expect(out.skin).toBe(skin);
+    expect(out.skin.equals(a.skin)).toBe(true);
+  });
+
+  it("multiplies the baked albedo without blacking it out: every channel stays above 0.2 (linear)", () => {
+    for (let s = 0; s < 32; s++) {
+      const t = saucerTint(s);
+      for (const c of [t.skin, t.spot]) for (const v of [c.r, c.g, c.b]) expect(v).toBeGreaterThan(0.2);
+    }
+  });
+});
+
+// ------------------------------------------------------- materials -------
+
+describe("createSaucerMaterials / createTardigradeMaterials: flags and program keys", () => {
+  it("the dome is glass: transparent, no depth write, front faces only", () => {
+    const { dome } = saucerMaterials();
+    expect(dome.transparent).toBe(true);
+    expect(dome.depthWrite).toBe(false);
+    expect(dome.side).toBe(THREE.FrontSide);
+  });
+
+  it("each material keeps one stable program key, and COLOR_0 is a zone mask, not a colour", () => {
+    const s = saucerMaterials(), t = tardigradeMaterials();
+    expect(s.body.customProgramCacheKey()).toBe("saucer:v1");
+    expect(s.dome.customProgramCacheKey()).toBe("saucerDome:v1");
+    expect(s.fur.customProgramCacheKey()).toBe("saucerFur:v1");
+    expect(t.body.customProgramCacheKey()).toBe("tardigrade:v1");
+    expect(t.fur.customProgramCacheKey()).toBe("tardigradeFur:v1");
+    for (const m of [s.body, s.fur, t.body, t.fur]) expect(m.vertexColors).toBe(false);
+    // the fur keeps its authored cutoff (the shells raise it per shell in the shader) and its double side (the cards)
+    expect(s.fur.alphaTest).toBeCloseTo(0.01, 5);
+    expect(s.fur.side).toBe(THREE.DoubleSide);
+  });
+
+  it("every material shares the one uTime and uMotion uniform objects", () => {
+    const s = saucerMaterials(), t = tardigradeMaterials();
+    for (const m of [s.body, s.fur, t.body, t.fur]) {
+      const sh = standard(m);
+      expect(sh.uniforms.uTime).toBe(MONSTER_UNIFORMS.uTime);
+      expect(sh.uniforms.uMotion).toBe(MONSTER_UNIFORMS.uMotion);
+    }
+    expect(MONSTER_UNIFORMS.uMotion.value).toBe(1);
+  });
+});
+
+describe("the shader patches hit every three.js anchor they target", () => {
+  const V = ["#include <common>", "#include <beginnormal_vertex>", "#include <begin_vertex>"];
+  const BAKED_F = ["#include <common>", "#include <emissivemap_fragment>",
+    "#include <lights_physical_fragment>", "#include <lights_fragment_begin>"];
+  const SAUCER_F = [...BAKED_F, "#include <color_fragment>"]; // + the per-instance tint
+  const FUR_F = ["#include <common>", "#include <map_fragment>", "#include <alphatest_fragment>",
+    "#include <normal_fragment_maps>", "#include <lights_fragment_begin>"];
+  const DOME_F = ["#include <common>", "#include <opaque_fragment>"];
+  const cases = () => {
+    const s = saucerMaterials(), t = tardigradeMaterials();
+    return [
+      ["saucer body", s.body, V, SAUCER_F],
+      ["saucer dome", s.dome, [], DOME_F],
+      ["saucer fur", s.fur, V, FUR_F],
+      ["tardigrade body", t.body, V, BAKED_F],
+      ["tardigrade fur", t.fur, V, FUR_F],
+    ] as const;
+  };
+  const marker = (anchor: string) => `// monster patch: ${anchor}`;
+
+  it("on three's own standard shader, each targeted anchor carries its patch (no silent no-op)", () => {
+    for (const [name, m, vs, fs] of cases()) {
+      const sh = standard(m);
+      for (const a of vs) expect(sh.vertexShader, `${name} vertex ${a}`).toContain(marker(a));
+      for (const a of fs) expect(sh.fragmentShader, `${name} fragment ${a}`).toContain(marker(a));
+      // and nothing else is marked: the lists above are the whole patch
+      expect(sh.vertexShader.split("// monster patch: ").length - 1, `${name} vertex`).toBe(vs.length);
+      expect(sh.fragmentShader.split("// monster patch: ").length - 1, `${name} fragment`).toBe(fs.length);
+    }
+  });
+
+  it("on a stub holding only the anchors, every anchor is patched too", () => {
+    for (const [name, m, vs, fs] of cases()) {
+      const sh = compile(m, vs.join("\n"), fs.join("\n"));
+      for (const a of vs) expect(sh.vertexShader, `${name} ${a}`).toContain(marker(a));
+      for (const a of fs) expect(sh.fragmentShader, `${name} ${a}`).toContain(marker(a));
+    }
+  });
+
+  it("a missing anchor fails loudly (a three.js upgrade must not silently drop the motion)", () => {
+    for (const [name, m, vs, fs] of cases()) {
+      if (vs.length) expect(() => compile(m, vs.slice(1).join("\n"), fs.join("\n")), name).toThrow(/anchor/);
+      expect(() => compile(m, vs.join("\n"), fs.slice(0, -1).join("\n")), name).toThrow(/anchor/);
+    }
+    expect(() => injectShader("void main() {}", "#include <begin_vertex>", "x", "after")).toThrow(/anchor/);
+  });
+
+  it("the replaced fur chunks keep three's code but sample the remapped atlas with explicit gradients", () => {
+    for (const m of [saucerMaterials().fur, tardigradeMaterials().fur]) {
+      const fs = standard(m).fragmentShader;
+      // (the patch markers quote the anchor in a comment; no live include line may remain)
+      expect(fs).not.toMatch(/^\s*#include <map_fragment>/m);
+      expect(fs).not.toMatch(/^\s*#include <normal_fragment_maps>/m);
+      expect(fs).not.toMatch(/^\s*#include <alphatest_fragment>/m);
+      expect(fs).not.toContain("texture2D( map, vMapUv )");
+      expect(fs).not.toContain("texture2D( normalMap, vNormalMapUv )");
+      expect(fs).toContain("monsterFurTexture( map, vMapUv )");
+      expect(fs).toContain("monsterFurTexture( normalMap, vNormalMapUv )");
+      expect(fs).toContain("textureGrad(");
+      expect(fs).toContain("mapN.xy *= normalScale;"); // the rest of three's chunk is still there
+    }
+  });
+
+  it("the generated GLSL has no NaN, undefined or unbalanced braces (template slips)", () => {
+    for (const [name, m] of cases()) {
+      const sh = standard(m);
+      for (const src of [sh.vertexShader, sh.fragmentShader]) {
+        expect(src, name).not.toMatch(/NaN|undefined|Infinity|\[object/);
+        expect(src.split("{").length, name).toBe(src.split("}").length);
+        expect(src.split("(").length, name).toBe(src.split(")").length);
+      }
+    }
+  });
+
+  it("the rig's numbers reach the shaders (pivots, the fur's atlas rect and length, the curl centre)", () => {
+    const r = saucerRig(), tr = tardigradeRig();
+    const s = saucerMaterials(), t = tardigradeMaterials();
+    const fv = (x: number) => x.toFixed(5);
+    expect(standard(s.body).vertexShader).toContain(fv(r.pivots.jaw[1]));
+    expect(standard(s.body).vertexShader).toContain(fv(r.pivots.cannon[1]));
+    expect(standard(s.fur).vertexShader).toContain(fv(r.furMaxLength));
+    expect(standard(s.fur).fragmentShader).toContain(`vec4(${r.furAtlas.shells.map(fv).join(", ")})`);
+    expect(standard(t.body).vertexShader).toContain(fv(tr.hips[7][2]));
+    expect(standard(t.fur).vertexShader).toContain(fv(tr.furMaxLength));
+  });
+});
+
+// ------------------------------------------------------- writers ---------
+
+describe("writeSaucerInstance / writeTardigradeInstance: packed, clamped, in their declared slots", () => {
+  it("declares the per-instance attributes of each primitive (and stays under 16 vertex attributes)", () => {
+    expect(Object.keys(SAUCER_INSTANCE_ATTRIBUTES).sort()).toEqual(["body", "dome", "fur"]);
+    expect(SAUCER_INSTANCE_ATTRIBUTES.fur.monsterShell).toBe(2);
+    expect(TARDIGRADE_INSTANCE_ATTRIBUTES.fur.monsterShell).toBe(2);
+    const slots = (layout: Record<string, number>, mesh: number) => Object.keys(layout).length + mesh + 4; // + instanceMatrix
+    expect(slots(SAUCER_INSTANCE_ATTRIBUTES.body, 5)).toBeLessThanOrEqual(16); // position normal uv mask motion
+    expect(slots(SAUCER_INSTANCE_ATTRIBUTES.fur, 6)).toBeLessThanOrEqual(16); // + _FUR
+    expect(slots(TARDIGRADE_INSTANCE_ATTRIBUTES.body, 5)).toBeLessThanOrEqual(16);
+    expect(slots(TARDIGRADE_INSTANCE_ATTRIBUTES.fur, 6)).toBeLessThanOrEqual(16);
+  });
+
+  it("saucer: the pose and the tint land in slot i of their attributes", () => {
+    const [lod] = saucerLods(4, 16);
+    const tint = saucerTint(7);
+    writeSaucerInstance(lod.body, 2, saucerPose({ phase: 0.25, chase: 0.4, fire: 0.5, hit: 0.75, defeat: 0.2, blink: 0.9 }), tint);
+    expect(slot(lod.body, "saucerPose", 2)).toEqual([0.25, expect.closeTo(0.4, 6), 0.5, 0.75]);
+    expect(slot(lod.body, "saucerPose", 1)).toEqual([0, 0, 0, 0]);
+    expect(slot(lod.body, "saucerMood", 2)).toEqual([expect.closeTo(0.2, 6), expect.closeTo(0.9, 6)]);
+    expect(slot(lod.body, "saucerLook", 2)).toEqual([0, 0, 0, 0]); // rest gaze and rest aim are +Z
+    expect(slot(lod.body, "saucerSkin", 2)).toEqual([tint.skin.r, tint.skin.g, tint.skin.b].map((v) => expect.closeTo(v, 6)));
+    expect(slot(lod.body, "saucerSpot", 2)).toEqual([tint.spot.r, tint.spot.g, tint.spot.b].map((v) => expect.closeTo(v, 6)));
+    expect(slot(lod.body, "saucerBand", 2)).toEqual([tint.band.r, tint.band.g, tint.band.b].map((v) => expect.closeTo(v, 6)));
+    expect(attr(lod.body, "saucerPose").version).toBeGreaterThan(0);
+    // the dome has no pose; the fur takes only what its parts use
+    writeSaucerInstance(lod.dome, 0, saucerPose(), tint);
+    writeSaucerInstance(lod.fur, 5, saucerPose({ fire: 1 }), tint);
+    expect(slot(lod.fur, "saucerPose", 5)[2]).toBe(1);
+  });
+
+  it("saucer: out-of-range input is clamped, the chase wraps (or switches off), the phase wraps", () => {
+    const [lod] = saucerLods(2, 16);
+    const tint = saucerTint(1);
+    writeSaucerInstance(lod.body, 0, saucerPose({ phase: 1.25, chase: 5, fire: 2, hit: -1, defeat: 9, blink: -3 }), tint);
+    expect(slot(lod.body, "saucerPose", 0)).toEqual([0.25, 0, 1, 0]);
+    expect(slot(lod.body, "saucerMood", 0)).toEqual([1, 0]);
+    writeSaucerInstance(lod.body, 0, saucerPose({ chase: 5.75, phase: -0.25 }), tint);
+    expect(slot(lod.body, "saucerPose", 0)[1]).toBeCloseTo(0.75, 6);
+    expect(slot(lod.body, "saucerPose", 0)[0]).toBeCloseTo(0.75, 6);
+    writeSaucerInstance(lod.body, 0, saucerPose({ chase: -0.3 }), tint);
+    expect(slot(lod.body, "saucerPose", 0)[1]).toBe(-1);
+  });
+
+  it("saucer: look and aim become clamped yaw/pitch (eyes can't look behind; the barrel can't aim into the hull)", () => {
+    const [lod] = saucerLods(1, 16);
+    const tint = saucerTint(1);
+    writeSaucerInstance(lod.body, 0, saucerPose({ look: new THREE.Vector3(1, 0, 0), aim: new THREE.Vector3(0, -1, 0) }), tint);
+    let [ly, lp, ay, ap] = slot(lod.body, "saucerLook", 0);
+    expect(ly).toBeCloseTo(EYE_YAW_MAX, 6);
+    expect(lp).toBeCloseTo(0, 6);
+    expect(ap).toBeCloseTo(AIM_PITCH_MIN, 6);
+    writeSaucerInstance(lod.body, 0, saucerPose({ look: new THREE.Vector3(0, 5, 0.1), aim: new THREE.Vector3(-1, 0, -1) }), tint);
+    [ly, lp, ay, ap] = slot(lod.body, "saucerLook", 0);
+    expect(lp).toBeCloseTo(EYE_PITCH_MAX, 6);
+    expect(ay).toBeCloseTo(-3 * Math.PI / 4, 5); // the turret turns all the way round
+    expect(ap).toBeCloseTo(0, 6);
+    writeSaucerInstance(lod.body, 0, saucerPose({ aim: new THREE.Vector3(0, 1, 1) }), tint);
+    expect(slot(lod.body, "saucerLook", 0)[3]).toBeCloseTo(AIM_PITCH_MAX, 6);
+    // a zero vector is the rest pose, never NaN
+    writeSaucerInstance(lod.body, 0, saucerPose({ look: new THREE.Vector3(), aim: new THREE.Vector3() }), tint);
+    expect(slot(lod.body, "saucerLook", 0)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("tardigrade: the pose lands in slot i; charge 2 → 1 and every other channel clamps", () => {
+    const [lod] = tardigradeLods(3, 16);
+    writeTardigradeInstance(lod.body, 1, tardigradePose({ phase: 0.5, swim: 0.25, charge: 0.75, recoil: 0.1, hit: 0.2, curl: 0.3 }));
+    expect(slot(lod.body, "tardigradePose", 1)).toEqual([0.5, 0.25, 0.75, expect.closeTo(0.1, 6)]);
+    expect(slot(lod.body, "tardigradeState", 1)).toEqual([expect.closeTo(0.2, 6), expect.closeTo(0.3, 6)]);
+    expect(slot(lod.body, "tardigradePose", 0)).toEqual([0, 0, 0, 0]);
+    writeTardigradeInstance(lod.body, 1, tardigradePose({ phase: 2.5, swim: -1, charge: 2, recoil: 7, hit: -2, curl: 1.5 }));
+    expect(slot(lod.body, "tardigradePose", 1)).toEqual([0.5, 0, 1, 1]);
+    expect(slot(lod.body, "tardigradeState", 1)).toEqual([0, 1]);
+  });
+});
+
+describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () => {
+  const at = (x: number) => new THREE.Matrix4().makeTranslation(x, 0, 0);
+
+  it("six saucers up close: LOD0 only, the fur drawn monsters × shells with each shell's index written", () => {
+    const r = saucerRig();
+    const lods = saucerLods(6, r.furShells);
+    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    beginMonsterFrame(all);
+    const tint = saucerTint(3);
+    for (let i = 0; i < 6; i++) addSaucer(lods, r, at(i * 4), 3, saucerPose({ fire: i / 5 }), tint);
+    endMonsterFrame(all);
+    expect([lods[0].body.count, lods[0].dome.count, lods[0].fur.count]).toEqual([6, 6, 6 * r.furShells]);
+    expect([lods[1].body.count, lods[1].dome.count, lods[1].fur.count]).toEqual([0, 0, 0]);
+    for (let m = 0; m < 6; m++) {
+      for (let s = 0; s < r.furShells; s++) {
+        const j = m * r.furShells + s;
+        expect(slot(lods[0].fur, "monsterShell", j)).toEqual([s, r.furShells]);
+        expect(slot(lods[0].fur, "saucerPose", j)[2]).toBeCloseTo(m / 5, 6); // the monster's data, once per shell
+        const e = new THREE.Matrix4();
+        lods[0].fur.getMatrixAt(j, e);
+        expect(e.elements[12]).toBe(m * 4);
+      }
+    }
+    expect(lods[0].body.boundingSphere).not.toBeNull();
+    expect(lods[0].body.boundingSphere!.radius).toBeGreaterThan(10); // spans all six
+  });
+
+  it("a saucer past rig.lod1Distance moves to LOD1, with fewer shells; the frame starts clean", () => {
+    const r = saucerRig();
+    const lods = saucerLods(6, r.furShells);
+    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    beginMonsterFrame(all);
+    const tint = saucerTint(3);
+    addSaucer(lods, r, at(0), 3, saucerPose(), tint);
+    addSaucer(lods, r, at(0), r.lod1Distance + 0.01, saucerPose(), tint);
+    addSaucer(lods, r, at(0), 500, saucerPose(), tint);
+    endMonsterFrame(all);
+    expect([lods[0].body.count, lods[1].body.count, lods[1].dome.count]).toEqual([1, 2, 2]);
+    const far = furShellCount(r.lod1Distance + 0.01, r.furMaxLength, r.furShells);
+    expect(lods[1].fur.count).toBe(far + furShellCount(500, r.furMaxLength, r.furShells));
+    expect(slot(lods[1].fur, "monsterShell", 0)).toEqual([0, far]);
+    beginMonsterFrame(all);
+    expect(all.every((m) => m.count === 0)).toBe(true);
+  });
+
+  it("never writes past a mesh's capacity", () => {
+    const r = saucerRig();
+    const lods = saucerLods(2, r.furShells);
+    const all = lods.flatMap((l) => [l.body, l.dome, l.fur]);
+    beginMonsterFrame(all);
+    for (let i = 0; i < 5; i++) addSaucer(lods, r, at(i), 2, saucerPose(), saucerTint(i));
+    expect(lods[0].body.count).toBe(2);
+    expect(lods[0].fur.count).toBe(2 * r.furShells);
+  });
+
+  it("two tardigrades: two calls' worth of meshes, the shells per monster, the LOD per instance", () => {
+    const r = tardigradeRig();
+    const lods = tardigradeLods(2, r.furShells);
+    const all = lods.flatMap((l) => [l.body, l.fur]);
+    beginMonsterFrame(all);
+    addTardigrade(lods, r, at(0), 4, tardigradePose({ charge: 0.5 }));
+    addTardigrade(lods, r, at(20), r.lod1Distance + 1, tardigradePose());
+    endMonsterFrame(all);
+    expect([lods[0].body.count, lods[1].body.count]).toEqual([1, 1]);
+    expect(lods[0].fur.count).toBe(r.furShells);
+    expect(slot(lods[0].fur, "monsterShell", r.furShells - 1)).toEqual([r.furShells - 1, r.furShells]);
+    expect(slot(lods[0].fur, "tardigradePose", 3)[2]).toBe(0.5);
+    expect(lods[1].fur.count).toBe(furShellCount(r.lod1Distance + 1, r.furMaxLength, r.furShells));
+  });
+});
+
+describe("prepareMonsterGeometry", () => {
+  it("renames the glTF zone mask and motion channels, adds dynamic per-instance attributes, pads the bounds", () => {
+    const g = stubGeometry(true);
+    g.computeBoundingSphere();
+    const r0 = g.boundingSphere!.radius;
+    prepareMonsterGeometry(g, 8, SAUCER_INSTANCE_ATTRIBUTES.fur, 0.5);
+    expect(g.getAttribute("color")).toBeUndefined();
+    expect(g.getAttribute("_motion")).toBeUndefined();
+    expect(g.getAttribute("_fur")).toBeUndefined();
+    expect(g.getAttribute("monsterMask").itemSize).toBe(4);
+    expect(g.getAttribute("monsterMotion").itemSize).toBe(4);
+    expect(g.getAttribute("monsterFur").itemSize).toBe(2);
+    const shell = g.getAttribute("monsterShell") as THREE.InstancedBufferAttribute;
+    expect(shell.isInstancedBufferAttribute).toBe(true);
+    expect(shell.count).toBe(8);
+    expect(shell.usage).toBe(THREE.DynamicDrawUsage);
+    expect(g.boundingSphere!.radius).toBeCloseTo(r0 + 0.5, 6);
+  });
+});
+
+// ------------------------------------------------------- pure maths ------
+
+describe("furAtlasUv: the shells sample only the atlas's shell half, inset against bleeding", () => {
+  const rect = () => saucerRig().furAtlas.shells as [number, number, number, number];
+  const out = { u: 0, v: 0 };
+
+  it("wraps unbounded coordinates into the rect from the rig (not a hard-coded 0.5)", () => {
+    const r = rect();
+    furAtlasUv(3.25, -1.75, r, 1024, 512, 1, out);
+    const w = r[2] - r[0], h = r[3] - r[1];
+    const iu = 1 / 1024, iv = 1 / 512;
+    expect(out.u).toBeCloseTo(r[0] + iu + 0.25 * (w - 2 * iu), 9);
+    expect(out.v).toBeCloseTo(r[1] + iv + 0.25 * (h - 2 * iv), 9);
+    furAtlasUv(0.5, 0.5, [0.5, 0, 1, 1], 1024, 512, 1, out);
+    expect(out.u).toBeCloseTo(0.75, 9);
+  });
+
+  it("never reaches the rect's edge by less than the current mip's footprint", () => {
+    const r = rect();
+    for (const fp of [1, 2, 8, 64]) {
+      for (const u of [0, 0.999999, -0.000001, 7.5, -7.0]) {
+        furAtlasUv(u, u, r, 1024, 512, fp, out);
+        expect(out.u).toBeGreaterThanOrEqual(r[0] + fp / 1024 - 1e-9);
+        expect(out.u).toBeLessThanOrEqual(r[2] - fp / 1024 + 1e-9);
+        expect(out.v).toBeGreaterThanOrEqual(r[1] + fp / 512 - 1e-9);
+        expect(out.v).toBeLessThanOrEqual(r[3] - fp / 512 + 1e-9);
+      }
+    }
+    // a footprint under one texel still insets a whole texel (bilinear at mip 0 reads half of one each side)
+    furAtlasUv(0, 0, r, 1024, 512, 0.25, out);
+    expect(out.u).toBeCloseTo(r[0] + 1 / 1024, 9);
+  });
+});
+
+describe("furShellCount: the shells thin with distance", () => {
+  it("draws every shell up close and thins in steps, never leaving a gap over FUR_SHELL_GAP_PX once thinned", () => {
+    for (const rig of [saucerRig(), tardigradeRig()]) {
+      const { furMaxLength: len, furShells: max } = rig;
+      expect(furShellCount(1, len, max)).toBe(max);
+      let last = max;
+      for (let d = 1; d < 400; d += 0.5) {
+        const n = furShellCount(d, len, max);
+        expect(n).toBeLessThanOrEqual(last);
+        expect([1, 4, 8, 12, max]).toContain(n);
+        if (n < max && n > 1) expect(furShellPx(d, len) / n).toBeLessThanOrEqual(FUR_SHELL_GAP_PX + 1e-9);
+        last = n;
+      }
+      expect(furShellCount(1000, len, max)).toBe(1); // the undercoat only, once the fur is under 2 px deep
+    }
+  });
+
+  it("keeps shells past the LOD1 switch while the fur is still several pixels deep", () => {
+    const r = saucerRig();
+    expect(furShellPx(r.lod1Distance, r.furMaxLength)).toBeGreaterThan(8);
+    expect(furShellCount(r.lod1Distance, r.furMaxLength, r.furShells)).toBeGreaterThan(1);
+  });
+});
+
+describe("portholeGlow: the chase runs round the 16 portholes", () => {
+  it("off (chase -1): every porthole holds the idle glow; off a lens nothing glows", () => {
+    const n = saucerRig().portholes;
+    expect(saucerRig().portholeOrder).toBe("+Z toward +X");
+    for (let k = 0; k < n; k++) expect(portholeGlow((k + 0.5) / n, -1, n)).toBe(PORTHOLE_IDLE);
+    expect(portholeGlow(0, 0.3, n)).toBe(0);
+    expect(portholeGlow(0, -1, n)).toBe(0);
+  });
+
+  it("the porthole nearest the chase glows full and the two behind it fade, wrapping round", () => {
+    const n = saucerRig().portholes;
+    const glow = (c: number) => Array.from({ length: n }, (_, k) => portholeGlow((k + 0.5) / n, c, n));
+    const g = glow((5 + 0.5) / n);
+    expect(g[5]).toBe(1);
+    expect(g[4]).toBe(PORTHOLE_TRAIL[0]);
+    expect(g[3]).toBe(PORTHOLE_TRAIL[1]);
+    expect(PORTHOLE_TRAIL[0]).toBeGreaterThan(PORTHOLE_TRAIL[1]);
+    expect(PORTHOLE_TRAIL[1]).toBeGreaterThan(PORTHOLE_DIM);
+    for (const k of [0, 1, 2, 6, 7, 15]) expect(g[k]).toBe(PORTHOLE_DIM);
+    const w = glow(0.01);
+    expect([w[0], w[15], w[14], w[13]]).toEqual([1, PORTHOLE_TRAIL[0], PORTHOLE_TRAIL[1], PORTHOLE_DIM]);
+    // quantized ramps (±0.002) still find their own porthole
+    expect(portholeGlow((5 + 0.5) / n + 0.002, (5 + 0.5) / n, n)).toBe(1);
+  });
+});
+
+describe("saucer motion helpers (TS mirrors of the vertex shader's choices)", () => {
+  it("body weight is linear in glTF y over rig.bodySpan, clamped", () => {
+    const r = saucerRig();
+    expect(saucerBodyWeight(r.bodySpan[0], r)).toBe(0);
+    expect(saucerBodyWeight(r.bodySpan[1], r)).toBe(1);
+    expect(saucerBodyWeight((r.bodySpan[0] + r.bodySpan[1]) / 2, r)).toBeCloseTo(0.5, 9);
+    expect(saucerBodyWeight(-5, r)).toBe(0);
+    expect(saucerBodyWeight(5, r)).toBe(1);
+  });
+
+  it("each part follows its host: drips by their root's host weight (_MOTION.z), the jaw by its height", () => {
+    const r = saucerRig();
+    const out = { wave: 0, body: 0 };
+    const slot16 = (id: number) => (id + 0.5) / 16;
+    // rim drips (9) are static but for their own sway
+    saucerHostWeights([slot16(9), 0.8, 0, 0.5], 0.1, r, out);
+    expect(out).toEqual({ wave: 0, body: 0 });
+    // tentacle drips (10) follow the wave at the root's weight, and the body by its height under the base
+    saucerHostWeights([slot16(10), 0.9, 0.6, 0.5], 0.5, r, out);
+    expect(out.wave).toBeCloseTo(0.6, 6);
+    expect(out.body).toBeCloseTo(saucerBodyWeight(0.5, r) * 0.4, 6);
+    // body drips (11) lean with the body at the root's height weight
+    saucerHostWeights([slot16(11), 0.9, 0.7, 0.5], -0.4, r, out);
+    expect(out).toEqual({ wave: 0, body: expect.closeTo(0.7, 6) });
+    // the jaw's y is its influence, so its body weight comes from its height (R13)
+    saucerHostWeights([slot16(6), 1, 0, 0.3], 0.2, r, out);
+    expect(out.body).toBeCloseTo(saucerBodyWeight(0.2, r), 6);
+    // the tentacle itself: wave by its weight, body lean fading toward its tip
+    saucerHostWeights([slot16(2), 0.25, 0, 0], 0.4, r, out);
+    expect(out.wave).toBeCloseTo(0.25, 6);
+    expect(out.body).toBeCloseTo(saucerBodyWeight(0.4, r) * 0.75, 6);
+    // the hull and the cannon never lean
+    for (const id of [0, 7]) {
+      saucerHostWeights([slot16(id), 1, 0.5, 0], 0.9, r, out);
+      expect(out).toEqual({ wave: 0, body: 0 });
+    }
+  });
+
+  it("saucerMuzzle: the barrel's tip follows the aim about the cannon pivot", () => {
+    const r = saucerRig();
+    const out = new THREE.Vector3();
+    saucerMuzzle(new THREE.Vector3(0, 0, 1), r, out);
+    expect(out.toArray().map((v, i) => v - r.muzzle[i]).every((d) => Math.abs(d) < 1e-6)).toBe(true);
+    saucerMuzzle(new THREE.Vector3(1, 0, 0), r, out);
+    const reach = Math.hypot(r.muzzle[0] - r.pivots.cannon[0], r.muzzle[1] - r.pivots.cannon[1], r.muzzle[2] - r.pivots.cannon[2]);
+    expect(out.x - r.pivots.cannon[0]).toBeCloseTo(reach, 5);
+    saucerMuzzle(new THREE.Vector3(0, -1, 0), r, out);
+    expect(out.y).toBeLessThan(r.muzzle[1]);
+    expect(out.distanceTo(new THREE.Vector3(...r.pivots.cannon))).toBeCloseTo(reach, 5);
+  });
+});
+
+describe("tardigrade helpers", () => {
+  it("throatEmissiveScale: dark at charge 0 (the tested default look), monotone, charge² × gain, clamped", () => {
+    expect(throatEmissiveScale(0)).toBe(0);
+    expect(throatEmissiveScale(-1)).toBe(0);
+    expect(throatEmissiveScale(1)).toBe(THROAT_GAIN);
+    expect(throatEmissiveScale(2)).toBe(THROAT_GAIN);
+    expect(throatEmissiveScale(0.5)).toBeCloseTo(0.25 * THROAT_GAIN, 9);
+    let last = -1;
+    for (let c = 0; c <= 1.0001; c += 0.05) {
+      const v = throatEmissiveScale(c);
+      expect(v).toBeGreaterThan(last);
+      last = v;
+    }
+  });
+
+  it("the curl: straight at 0; at full curl the axis closes into a ring of radius L/2π about rig.curlCentre", () => {
+    const r = tardigradeRig();
+    const T = new THREE.Vector3(...r.axis.tail), M = new THREE.Vector3(...r.axis.mouth), C = new THREE.Vector3(...r.curlCentre);
+    const L = T.distanceTo(M);
+    const p = new THREE.Vector3();
+    for (const a of [0, 0.25, 0.5, 0.9, 1]) {
+      tardigradeCurlPoint(a, 0, r, p);
+      expect(p.distanceTo(T.clone().lerp(M, a))).toBeLessThan(1e-6);
+      tardigradeCurlPoint(a, 1, r, p);
+      expect(p.distanceTo(C)).toBeCloseTo(L / (2 * Math.PI), 3); // the rig is rounded to 4 decimals
+    }
+    const tail = new THREE.Vector3(), mouth = new THREE.Vector3();
+    tardigradeCurlPoint(0, 1, r, tail);
+    tardigradeCurlPoint(1, 1, r, mouth);
+    expect(tail.distanceTo(mouth)).toBeLessThan(1e-5);
+    // the middle stays put and the ends swing toward the belly (curlCentre's side)
+    tardigradeCurlPoint(0.5, 0.6, r, p);
+    expect(p.distanceTo(T.clone().lerp(M, 0.5))).toBeLessThan(1e-6);
+    tardigradeCurlPoint(0, 0.6, r, p);
+    expect(p.y).toBeLessThan(T.y);
+    // tiny curls are stable (no 0/0)
+    tardigradeCurlPoint(1, 1e-9, r, p);
+    expect(p.distanceTo(M)).toBeLessThan(1e-5);
+  });
+
+  it("the legs retract toward their hips as the curl rises, so the feet stay outside the ball's centre", () => {
+    expect(legRetraction(0)).toBe(1);
+    expect(legRetraction(1)).toBeCloseTo(1 - LEG_RETRACT, 9);
+    expect(legRetraction(2)).toBeCloseTo(1 - LEG_RETRACT, 9);
+    const r = tardigradeRig();
+    // at full curl the hips sit on the ring's belly side: a leg's reach shrunk by the retraction must not reach the centre
+    const C = new THREE.Vector3(...r.curlCentre);
+    const L = new THREE.Vector3(...r.axis.tail).distanceTo(new THREE.Vector3(...r.axis.mouth));
+    const ring = L / (2 * Math.PI);
+    const hipDrop = Math.min(...r.hips.map((h) => h[1])) - r.axis.tail[1]; // hips sit this far below the axis (belly side)
+    const legReach = 0.9; // hip to the foot's far side, about (gen_tardigrade.py: LEG_LEN 0.44, claws, FOOT_R 0.31)
+    expect(ring + hipDrop - legReach * legRetraction(1)).toBeGreaterThan(0);
+    expect(C.y).toBeLessThan(r.axis.tail[1]);
+  });
+});

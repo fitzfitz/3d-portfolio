@@ -24,7 +24,7 @@ export const UNIT_SPHERES: readonly THREE.SphereGeometry[] = LOD_SEGMENTS.map((n
 const VIEW_HEIGHT_PX = 802;
 const VIEW_FOV_DEG = 58;
 /** Pixels per unit of tangent at the screen centre: (H / 2) / tan(fov / 2). */
-const FOCAL_PX = VIEW_HEIGHT_PX / 2 / Math.tan((VIEW_FOV_DEG * Math.PI) / 360);
+export const FOCAL_PX = VIEW_HEIGHT_PX / 2 / Math.tan((VIEW_FOV_DEG * Math.PI) / 360);
 
 /**
  * How far a level's silhouette may sag inside the true limb, in pixels. A
