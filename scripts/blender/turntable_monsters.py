@@ -22,7 +22,7 @@
 # rig JSON: --rig, else src/data/<name>Rig.json, else next to the glb),
 # each layer alpha-testing the strand mask at layer / N, plus a gravity
 # droop growing with the square of the height (0.6 x the length at the tip); the cards alpha-test at their _FUR.x.
-# The face shot of a final glb frames the eyes, jaw and goo (_MOTION parts).
+# The face shot of a final glb frames its face's _MOTION parts (FACE_IDS).
 #
 # Output per monster <name> (the glb's basename):
 #   DIR/<name>_a030.png, _a120, _a210, _a300 (azimuth about glTF +Y from the
@@ -64,7 +64,9 @@ RES = int(OPT.get("res", 1024))
 LENS = 50
 SCALE_AZ = 70             # the scale shot's azimuth: both models near broadside
 FACE_PARTS = ("Eye", "Brow", "Teeth", "Goo", "Mouth", "Drool")   # objects the face shot frames
-FACE_IDS = (3, 4, 5, 6, 8)        # a final glb's _MOTION parts the face shot frames (eyes, jaw, goo)
+# a final glb's _MOTION parts the face shot frames: the saucer's eyes, jaw and
+# goo; the tardigrade's mouth tube, eyes, drool and teeth
+FACE_IDS = {"saucer": (3, 4, 5, 6, 8), "tardigrade": (9, 11, 12, 14)}
 LOD = int(OPT.get("lod", 0))
 SHOTS = set(OPT["shots"].split(",")) if "shots" in OPT else None
 
@@ -463,7 +465,7 @@ for glb in GLBS:
             mo = [0.0] * (len(o.data.vertices) * 4)
             o.data.attributes["_MOTION"].data.foreach_get("color", mo)
             face_pts += [o.matrix_world @ v.co for v in o.data.vertices
-                         if round(mo[4 * v.index] * 16 - 0.5) in FACE_IDS]
+                         if round(mo[4 * v.index] * 16 - 0.5) in FACE_IDS.get(name, FACE_IDS["saucer"])]
     if any("_LOD" in o.name for o in objs) and OPT.get("fur-shells", "1") != "0":
         objs = objs + list(fur_preview(objs, rig_for(glb, name)))
     want = (lambda s: SHOTS is None or s in SHOTS)

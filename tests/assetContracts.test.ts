@@ -667,9 +667,9 @@ describe("dormant monsters", () => {
     for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-lab/${m}.glb`)).toBe(true);
   });
 
-  it("the lab monsters stay inside their download budgets (saucer 1,600 KB by R11, tardigrade 700 KB)", () => {
+  it("the lab monsters stay inside their download budgets (1,600 KB each: R11, R15)", () => {
     expect(labKb("saucer")).toBeLessThanOrEqual(1600);
-    expect(labKb("tardigrade")).toBeLessThanOrEqual(700);
+    expect(labKb("tardigrade")).toBeLessThanOrEqual(1600);
   });
 });
 
@@ -937,5 +937,268 @@ describe("saucer (saucer.glb)", () => {
 
   it("stays inside its 1,600 KB download budget (R11)", () => {
     expect(labKb("saucer")).toBeLessThanOrEqual(1600);
+  });
+});
+
+describe("tardigrade (tardigrade.glb)", () => {
+  // The tardigrade (scripts/blender/gen_tardigrade.py, whose header holds the
+  // full contract). Dormant: optimized into public/models-lab for the combat
+  // stage, which draws each LOD's two primitives as one InstancedMesh per
+  // material (2 draw calls for a group) and plays every move in the vertex
+  // shader from _MOTION, _FUR and src/data/tardigradeRig.json.
+  const lab = () => load("tardigrade", "public/models-lab");
+  const rig = () => JSON.parse(readFileSync("src/data/tardigradeRig.json", "utf8"));
+  const MATS = ["TardigradeBaked", "TardigradeFur"];
+  // 0 body, 1–8 legs (front-left 1, front-right 2, … back-right 8), 9 mouth tube, 10 crystals, 11 eyes,
+  // 12 drool, 13 body/fur-host drips, 14 teeth (task-4 supplement)
+  const PART_IDS = 15;
+  const slot = (id: number) => (id + 0.5) / 16;
+  const partOf = (x: number) => {
+    const id = Math.round(x * 16 - 0.5);
+    return id >= 0 && id < PART_IDS && Math.abs(x - slot(id)) <= 0.01 ? id : -1;
+  };
+  const lod = async (k: 0 | 1) => node(await lab(), `Tardigrade_LOD${k}`);
+  const prim = (n: Node, material: string) => {
+    const p = n.getMesh()!.listPrimitives().find((q) => q.getMaterial()?.getName() === material);
+    if (!p) throw new Error(`${n.getName()}: no ${material} primitive`);
+    return p;
+  };
+  const elements = (p: Primitive, semantic: string) => {
+    const a = p.getAttribute(semantic);
+    if (!a) throw new Error(`no ${semantic}`);
+    const out: number[][] = [];
+    for (let i = 0; i < a.getCount(); i++) out.push(a.getElement(i, []));
+    return out;
+  };
+  const tris = (n: Node) => n.getMesh()!.listPrimitives()
+    .reduce((s, p) => s + (p.getIndices()?.getCount() ?? p.getAttribute("POSITION")!.getCount()) / 3, 0);
+  const world = (n: Node, p: Primitive) => {
+    const m = n.getWorldMatrix();
+    return elements(p, "POSITION").map(([x, y, z]) => [0, 1, 2].map((r) => m[r] * x + m[4 + r] * y + m[8 + r] * z + m[12 + r]));
+  };
+  const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  it("has two LOD nodes, each one mesh of the baked and fur primitives", async () => {
+    const doc = await lab();
+    for (const k of [0, 1] as const) {
+      const mesh = (await lod(k)).getMesh();
+      expect(mesh, `LOD${k}`).not.toBeNull();
+      expect(mesh!.listPrimitives().map((p) => p.getMaterial()?.getName()).sort()).toEqual(MATS);
+    }
+    expect(nodeNames(doc).filter((n) => n.startsWith("Tardigrade_LOD"))).toEqual(["Tardigrade_LOD0", "Tardigrade_LOD1"]);
+  });
+
+  it("stays inside its triangle budget: LOD0 <= 14000, LOD1 <= 4000 (R15)", async () => {
+    expect(tris(await lod(0))).toBeLessThanOrEqual(14000);
+    expect(tris(await lod(1))).toBeLessThanOrEqual(4000);
+  });
+
+  it("is about 3x the ship: longest extent 6.5–7.5, the fur counted", async () => {
+    const b = bounds(await lab());
+    const longest = Math.max(...[0, 1, 2].map((i) => b.max[i] - b.min[i]));
+    expect(longest).toBeGreaterThanOrEqual(6.5);
+    expect(longest).toBeLessThanOrEqual(7.5);
+  });
+
+  it("has exactly the two materials, no extensions; the fur alpha-tests at 0.01", async () => {
+    const doc = await lab();
+    expect(materialNames(doc)).toEqual(MATS);
+    for (const m of MATS) expect(textureSet(doc, m).extensions, m).toEqual([]);
+    expect(textureSet(doc, "TardigradeFur").alpha).toBe("MASK");
+    expect(doc.getRoot().listMaterials().find((m) => m.getName() === "TardigradeFur")!.getAlphaCutoff()).toBeCloseTo(0.01, 3);
+    const baked = textureSet(doc, "TardigradeBaked");
+    expect([baked.base, baked.metalRough, baked.normal]).toEqual([true, true, true]);
+    expect(baked.alpha).toBe("OPAQUE");
+    expect(textureSet(doc, "TardigradeFur").base).toBe(true);
+  });
+
+  it("COLOR_0 zones on TardigradeBaked: R (mouth glow) and G (crystals) each > 0 and < 15%, B = 0", async () => {
+    for (const k of [0, 1] as const) {
+      const col = elements(prim(await lod(k), "TardigradeBaked"), "COLOR_0");
+      const share = (c: number) => col.filter((e) => e[c] > 0.5).length / col.length;
+      for (const c of [0, 1, 2]) for (const e of col) expect([0, 1]).toContain(Math.round(e[c] * 100) / 100);
+      for (const [c, z] of [[0, "R"], [1, "G"]] as const) {
+        expect(share(c), `LOD${k} ${z}`).toBeGreaterThan(0);
+        expect(share(c), `LOD${k} ${z}`).toBeLessThan(0.15);
+      }
+      expect(share(2), `LOD${k} B`).toBe(0);
+    }
+  });
+
+  it("_MOTION.x is a part slot on every vertex, and LOD0 has all 15 parts", async () => {
+    const seen = new Set<number>();
+    for (const k of [0, 1] as const) {
+      for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
+        for (const e of elements(p, "_MOTION")) {
+          const id = partOf(e[0]);
+          expect(id, `LOD${k} ${p.getMaterial()?.getName()} x=${e[0]}`).toBeGreaterThanOrEqual(0);
+          for (const v of e) {
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(1);
+          }
+          if (k === 0) seen.add(id);
+        }
+      }
+    }
+    for (let id = 0; id < PART_IDS; id++) expect(seen.has(id), `part ${id}`).toBe(true);
+  });
+
+  it("_MOTION.y runs along the body axis, tail 0 -> mouth 1", async () => {
+    const n = await lod(0);
+    const p = prim(n, "TardigradeBaked");
+    const mo = elements(p, "_MOTION"), pos = world(n, p);
+    const body = pos.map((v, i) => [v[2], mo[i][1]]).filter((_, i) => partOf(mo[i][0]) === 0);
+    const front = body.reduce((a, b) => (b[0] > a[0] ? b : a));
+    const back = body.reduce((a, b) => (b[0] < a[0] ? b : a));
+    expect(front[1]).toBeGreaterThan(0.85);
+    expect(back[1]).toBeLessThan(0.1);
+    // the mouth tube sits at the front of the axis
+    const tube = mo.filter((e) => partOf(e[0]) === 9).map((e) => e[1]);
+    expect(Math.min(...tube)).toBeGreaterThan(0.8);
+  });
+
+  it("_MOTION.z is the leg weight: 0 off the legs, hip 0 -> claw tip 1 on each leg", async () => {
+    for (const k of [0, 1] as const) {
+      const max = new Map<number, number>();
+      for (const p of (await lod(k)).getMesh()!.listPrimitives()) {
+        for (const e of elements(p, "_MOTION")) {
+          const id = partOf(e[0]);
+          if (id >= 1 && id <= 8) max.set(id, Math.max(max.get(id) ?? 0, e[2]));
+          else if (id !== 13) expect(e[2], `LOD${k} part ${id} z`).toBe(0);
+        }
+      }
+      for (let id = 1; id <= 8; id++) expect(max.get(id), `LOD${k} leg ${id}`).toBeGreaterThan(0.95);
+    }
+  });
+
+  it("drips (13) carry the host's axial y at their root in _MOTION.z (within 0.05)", async () => {
+    // Honest check: each drip's root vertices (its own y near 0) against the
+    // axial y of the nearest body-part vertex (the lock card or skin it hangs from).
+    const n = await lod(0);
+    const host: { pos: number[]; y: number }[] = [];
+    const roots: { pos: number[]; z: number }[] = [];
+    for (const p of n.getMesh()!.listPrimitives()) {
+      const mo = elements(p, "_MOTION"), pos = world(n, p);
+      for (let i = 0; i < mo.length; i++) {
+        const id = partOf(mo[i][0]);
+        if (id === 0) host.push({ pos: pos[i], y: mo[i][1] });
+        if (id === 13 && mo[i][1] < 0.05) roots.push({ pos: pos[i], z: mo[i][2] });
+      }
+    }
+    expect(roots.length).toBeGreaterThan(0);
+    for (const r of roots) {
+      const near = host.reduce((a, b) => (dist(b.pos, r.pos) < dist(a.pos, r.pos) ? b : a));
+      expect(dist(near.pos, r.pos), "drip root near its host").toBeLessThan(0.25);
+      expect(Math.abs(near.y - r.z)).toBeLessThanOrEqual(0.05);
+    }
+  });
+
+  it("the fur carries _FUR in [0,1]; cards (COLOR_0 R) on LOD0 only, in the atlas's lock half", async () => {
+    const r = rig();
+    expect(r.furAtlas.shells).toEqual([0, 0, 0.5, 1]);
+    expect(r.furAtlas.locks).toEqual([0.5, 0, 1, 1]);
+    expect(r.furAtlas.lockVariants).toBeGreaterThan(0);
+    for (const k of [0, 1] as const) {
+      const p = prim(await lod(k), "TardigradeFur");
+      for (const e of elements(p, "_FUR")) {
+        expect(e).toHaveLength(2);
+        for (const v of e) {
+          expect(v).toBeGreaterThanOrEqual(0);
+          expect(v).toBeLessThanOrEqual(1);
+        }
+      }
+      const col = elements(p, "COLOR_0"), uv = elements(p, "TEXCOORD_0");
+      let cards = 0;
+      for (let i = 0; i < col.length; i++) {
+        expect(col[i][1] + col[i][2]).toBe(0);
+        if (col[i][0] < 0.5) continue;
+        cards++;
+        expect(uv[i][0]).toBeGreaterThanOrEqual(0.5);
+        expect(uv[i][0]).toBeLessThanOrEqual(1);
+        expect(uv[i][1]).toBeGreaterThanOrEqual(0);
+        expect(uv[i][1]).toBeLessThanOrEqual(1);
+      }
+      if (k === 0) expect(cards, "LOD0 cards").toBeGreaterThan(0);
+      else expect(cards, "LOD1 cards").toBe(0);
+    }
+  });
+
+  it("the fur moves with the body: every fur vertex is part 0", async () => {
+    for (const k of [0, 1] as const) {
+      for (const e of elements(prim(await lod(k), "TardigradeFur"), "_MOTION")) expect(partOf(e[0])).toBe(0);
+    }
+  });
+
+  it("the fur atlas's shell half stays clear of the alpha cutoff after compression", async () => {
+    const doc = await lab();
+    const fur = doc.getRoot().listMaterials().find((m) => m.getName() === "TardigradeFur")!;
+    const img = Buffer.from(fur.getBaseColorTexture()!.getImage()!);
+    const { data, info } = await sharp(img).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let min = 255;
+    for (let y = 0; y < info.height; y++) {
+      for (let x = 0; x < info.width / 2; x++) min = Math.min(min, data[(y * info.width + x) * info.channels + 3]);
+    }
+    expect(min / 255).toBeGreaterThan(2 * fur.getAlphaCutoff());
+  });
+
+  it("the rig's mouth is at the front: within 0.3 of the bounds' +Z face", async () => {
+    const r = rig();
+    const b = bounds(await lab());
+    expect(r.mouth).toHaveLength(3);
+    expect(b.max[2] - r.mouth[2]).toBeGreaterThanOrEqual(0);
+    expect(b.max[2] - r.mouth[2]).toBeLessThanOrEqual(0.3);
+    for (const i of [0, 1]) {
+      expect(r.mouth[i]).toBeGreaterThanOrEqual(b.min[i]);
+      expect(r.mouth[i]).toBeLessThanOrEqual(b.max[i]);
+    }
+    // the mouth tube is at the rig's mouth
+    const n = await lod(0);
+    const p = prim(n, "TardigradeBaked");
+    const mo = elements(p, "_MOTION");
+    const near = world(n, p).filter((_, i) => partOf(mo[i][0]) === 9).map((v) => dist(v, r.mouth));
+    expect(Math.min(...near)).toBeLessThanOrEqual(0.6);
+  });
+
+  it("the 8 hips mirror in pairs across x = 0 (within 0.05), left (+X) first", () => {
+    const h: number[][] = rig().hips;
+    expect(h).toHaveLength(8);
+    for (let k = 0; k < 8; k += 2) {
+      const [l, r] = [h[k], h[k + 1]];
+      expect(l[0], `hip ${k + 1} on +X`).toBeGreaterThan(0);
+      expect(Math.abs(l[0] + r[0]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(l[1] - r[1]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(l[2] - r[2]), `pair ${k / 2}`).toBeLessThanOrEqual(0.05);
+    }
+    // front to back
+    for (let k = 2; k < 8; k += 2) expect(h[k][2]).toBeLessThan(h[k - 2][2]);
+  });
+
+  it("the curl: axis tail -> mouth, and a curlCentre the axis closes into a ball around (2π)", () => {
+    const r = rig();
+    const { tail, mouth } = r.axis;
+    const L = dist(tail, mouth);
+    expect(mouth[2]).toBeGreaterThan(tail[2]);
+    const mid = [0, 1, 2].map((i) => (tail[i] + mouth[i]) / 2);
+    const c: number[] = r.curlCentre;
+    const off = [0, 1, 2].map((i) => c[i] - mid[i]);
+    // bending the axis (length L) through 2π makes a circle of radius L / 2π
+    // about curlCentre: it sits that far from the axis's middle, square to
+    // the axis, on the belly side
+    expect(Math.hypot(...off)).toBeCloseTo(L / (2 * Math.PI), 3);
+    const ax = [0, 1, 2].map((i) => (mouth[i] - tail[i]) / L);
+    expect(Math.abs(off[0] * ax[0] + off[1] * ax[1] + off[2] * ax[2])).toBeLessThan(1e-3);
+    expect(off[1]).toBeLessThan(0);
+  });
+
+  it("the rig has the fur's length and shell count, and a LOD distance", () => {
+    const r = rig();
+    expect(r.furMaxLength).toBeGreaterThan(0);
+    expect(r.furShells).toBeGreaterThanOrEqual(8);
+    expect(r.furShells).toBeLessThanOrEqual(24);
+    expect(r.lod1Distance).toBeGreaterThan(0);
+  });
+
+  it("stays inside its 1,600 KB download budget (R15)", () => {
+    expect(labKb("tardigrade")).toBeLessThanOrEqual(1600);
   });
 });
