@@ -740,7 +740,7 @@ describe("saucer (saucer.glb)", () => {
     for (const m of MATS) expect(textureSet(doc, m).extensions, m).toEqual([]);
     expect(textureSet(doc, "SaucerDome").alpha).toBe("BLEND");
     expect(textureSet(doc, "SaucerFur").alpha).toBe("MASK");
-    // R14: a stock viewer shows the fur base whole; the game raises the cutoff per shell
+    // R14/R14a: a stock viewer cuts the lock cards (its unremapped fur base may show lock holes); the game raises the cutoff per shell
     expect(doc.getRoot().listMaterials().find((m) => m.getName() === "SaucerFur")!.getAlphaCutoff()).toBeCloseTo(0.01, 3);
     const baked = textureSet(doc, "SaucerBaked");
     expect([baked.base, baked.metalRough, baked.normal]).toEqual([true, true, true]);
@@ -852,6 +852,37 @@ describe("saucer (saucer.glb)", () => {
       expect(uv[i][1]).toBeLessThanOrEqual(1);
     }
     expect(cards).toBeGreaterThan(0);
+  });
+
+  it("the fur atlas's shell half stays clear of the alpha cutoff after compression (round 4)", async () => {
+    // The shells' strand mask is floored over SaucerFur's 0.01 cutoff, so the
+    // remapped fur base never cuts; lossy WebP alpha must not pull it under.
+    const doc = await lab();
+    const fur = doc.getRoot().listMaterials().find((m) => m.getName() === "SaucerFur")!;
+    const img = Buffer.from(fur.getBaseColorTexture()!.getImage()!);
+    const { data, info } = await sharp(img).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let min = 255;
+    for (let y = 0; y < info.height; y++) {
+      for (let x = 0; x < info.width / 2; x++) min = Math.min(min, data[(y * info.width + x) * info.channels + 3]);
+    }
+    expect(min / 255).toBeGreaterThan(2 * fur.getAlphaCutoff());
+  });
+
+  it("LOD1 keeps the rim slime smears whole, not decimated to their outline (round 4)", async () => {
+    // The smears are part 9 with _MOTION.y = 0 (static); their drips ramp y.
+    const smearTris = async (k: 0 | 1) => {
+      const p = prim(await lod(k), "SaucerBaked");
+      const mo = elements(p, "_MOTION"), idx = p.getIndices()!;
+      let n = 0;
+      for (let t = 0; t < idx.getCount(); t += 3) {
+        const vs = [0, 1, 2].map((c) => mo[idx.getScalar(t + c)]);
+        if (vs.every((e) => partOf(e[0]) === 9 && e[1] === 0)) n++;
+      }
+      return n;
+    };
+    const [t0, t1] = [await smearTris(0), await smearTris(1)];
+    expect(t0).toBeGreaterThan(0);
+    expect(t1 / t0).toBeGreaterThan(0.6);
   });
 
   it("the rig's muzzle is under the saucer, inside the bounds, at the cannon", async () => {

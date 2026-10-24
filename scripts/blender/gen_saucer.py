@@ -83,22 +83,22 @@
 #     normal (1536) + emissive (512: the porthole lenses, warm amber) (R11).
 #   - "SaucerDome": alphaMode BLEND, no maps (clear glass), the outer shell
 #     only (draw FrontSide).
-#   - "SaucerFur": alphaMode MASK, alphaCutoff 0.01 (R14: a stock viewer
-#     shows the base whole; the game raises it per shell), double-sided (the
-#     cards), baseColor (1024 x 512) + normal (512 x 256), one atlas:
+#   - "SaucerFur": alphaMode MASK, alphaCutoff 0.01 (R14; the game raises it
+#     per shell), double-sided (the cards), baseColor (1024 x 512) + normal
+#     (512 x 256), one atlas:
 #       - the left half (rig furAtlas.shells) is the shells' tiling strand
-#         mask: alpha the strand height (floored at 0.015, just over the
-#         cutoff, so a stock viewer shows the base whole), RGB the strand
-#         colour root (dark) to tip, one repeat per 0.34 u (4 x 4 clumps of
-#         ~0.085). The fur
+#         mask: alpha the strand height (floored at 0.03, ~5/255 over the
+#         cutoff, so lossy WebP alpha and mips keep the remapped base whole),
+#         RGB the strand colour root (dark) to tip, one repeat per 0.34 u
+#         (4 x 4 clumps of ~0.085). The fur
 #         base's TEXCOORD_0 is unbounded (tiling) coordinates: the shells and
 #         the base sample (fract(u) x 0.5, fract(v)) (take the gradients from
 #         the unwrapped uv, so the mips do not seam);
 #       - the right half (rig furAtlas.locks) holds 4 lock variants side by
 #         side (v 0 root -> 1 tip): a card's TEXCOORD_0 points into it as is.
 #         Outside a lock alpha is 0, so even a stock viewer cuts a card to
-#         its lock (where a stock viewer's base tiles over this half it
-#         shows the locks' coverage).
+#         its lock (R14a: where a stock viewer's unremapped base tiles over
+#         this half it shows the locks' coverage as holes; accepted).
 #   COLOR_0 is a zone mask, never a colour (a stock glTF viewer multiplies it
 #   into the base colour, as the spec says; the game's material must not,
 #   like ProjectProbes.tsx; turntable_monsters.py routes it out). Each
@@ -145,14 +145,16 @@
 #     gooTop, gooBottom; glTF, origin-relative), muzzle, portholes (16),
 #     portholeOrder "+Z toward +X", eyeRadius, bodySpan (R13: the glTF y range
 #     the body weight is linear over), jawAxis, furMaxLength,
-#     furShells, lod1Distance (where LOD1's 90th-percentile geometric error
-#     projects to one pixel at the game's resting view, sphereLod.ts's 58 deg
-#     on 802 px).
+#     furShells, lod1Distance (where LOD1's 90th-percentile geometric error,
+#     over LOD0 less the cards and card drips LOD1 drops, projects to one
+#     pixel at the game's resting view, sphereLod.ts's 58 deg on 802 px).
 #   LOD1 is LOD0 decimated part by part (no cards), its open-boundary and
 #   material-edge vertices (and on the band its UV-seam vertices) held fixed,
 #   so it stays closed and the stencil keeps its borders; it shares LOD0's
-#   maps. The body's skin carries the sculpt's smooth analytic normals
-#   (custom normals), so its shading does not depend on the game mesh's
+#   maps. The rim's slime smears are not decimated (their raised middle would
+#   collapse under the rim), only thinned row by row on the wall. The
+#   body's skin carries the sculpt's smooth analytic normals (custom
+#   normals), so its shading does not depend on the game mesh's
 #   triangulation (and its mouth cutter's meridians start half a segment
 #   round, so the exact boolean never meets coplanar edges at x = 0).
 #   Lock-card vertices carry the skin's normal (custom normals); the
@@ -330,10 +332,13 @@ def smear_decal(bm, pts, cols, per_seg, rnd):
             row.append(bm.verts.new(q + side * (e * w * 0.5) + n * (0.0025 + h)))
         rows.append(row)
     faces = []
+    lrow = bm.faces.layers.int.get("srow")       # (the game mesh: its row + 1, so LOD1 can thin the rows)
     for i in range(len(rows) - 1):
         for k in range(cols - 1):
             f = bm.faces.new((rows[i][k], rows[i][k + 1], rows[i + 1][k + 1], rows[i + 1][k]))
             f.material_index = SLIME
+            if lrow is not None:
+                f[lrow] = i + 1
             faces.append(f)
     for f in faces:
         f.normal_update()
@@ -569,7 +574,7 @@ class LowSink:
 
     def __init__(self):
         bm = self.bm = bmesh.new()
-        for k in ("bk", "part", "zone", "shg", "shi", "shk", "por", "prim", "grp", "card"):
+        for k in ("bk", "part", "zone", "shg", "shi", "shk", "por", "prim", "grp", "card", "srow"):
             bm.faces.layers.int.new(k)
         for k in ("wgt", "flen", "wet", "cardf", "thin", "hostw"):
             bm.verts.layers.float.new(k)
@@ -1750,8 +1755,10 @@ BAKE, NBAKE = 2 * TEX, 2 * NTEX     # supersampled bakes, box-filtered down
 EXPLODE = 7.0          # each bake group moved this far apart along Blender X
 FOCAL_PX = 802 / 2 / math.tan(math.radians(58) / 2)    # sphereLod.ts's reference view
 LOD1_RATIO = {"hull": 0.2, "hull_in": 0.2, "band": 0.28, "frame": 1.0, "lens": 1.0, "spike": 0.5, "turret": 0.35,
-              "barrel": 0.45, "bore": 1.0, "skin": 0.26, "mouth": 0.26, "tooth": 0.5, "tongue": 0.4, "slime": 0.4, "goo": 0.5,
-              "eye": 0.36, "spot": 1.0, "dome": 0.3, "fur": 0.3}
+              "barrel": 0.45, "bore": 1.0, "skin": 0.26, "mouth": 0.26, "tooth": 0.5, "tongue": 0.4, "slime": 0.3, "goo": 0.5,
+              "eye": 0.36, "spot": 1.0, "dome": 0.3, "fur": 0.3,
+              "smear": 1.0}      # the rim's slime decal: rows thinned on the wall instead (thin_smears);
+#                                  its drips ("slime") went 0.4 -> 0.3 in round 4 to pay for it
 GL2BL = ml.GL2BL
 
 
@@ -2201,7 +2208,8 @@ def protect_group(ob, near_slime=None):
         for v in bm.verts:
             if any(f[lpart] == P_DRIP for f in v.link_faces):
                 continue
-            if near_slime.find(v.co)[2] is not None and near_slime.find(v.co)[2] < 0.1:
+            d = near_slime.find(v.co)[2]
+            if d is not None and d < 0.1:
                 keep.add(v.index)
     bm.free()
     vg = ob.vertex_groups.new(name="keep")
@@ -2210,10 +2218,179 @@ def protect_group(ob, near_slime=None):
     return len(keep)
 
 
+# LOD1 drops a smear row whose vertices lie this close to the run between its
+# kept neighbours: along their normal (any dip stays inside the 0.004 lift and
+# the 0.0025 rest height, so nothing sinks under the rim) and across it
+SMEAR_TOL_N, SMEAR_TOL_T = 0.003, 0.005
+SMEAR_TOL_UV = 1.0 / TEX   # (a texel of the albedo)
+
+
+def thin_smears(bm):
+    """LOD1's rim slime (round 4): not decimated (a collapse took the lens's
+    raised middle columns, so only its flush edges showed: a lime outline
+    round grey rim), but thinned along its length. Every smear keeps all 4
+    vertices across; a row is dropped only where each of them lies close to
+    the straight run between the rows kept either side (SMEAR_TOL_N/_T: on
+    the wall), so the lip, the start cap and the bulb into the drip keep
+    LOD0's rows and nothing dips under the rim; nor across a UV seam (the
+    merged face would span two islands). Then the lip corner and the start
+    cap (smear_corners, smear_cap). Returns (face rows before, face rows
+    after, rows moved onto the corner)."""
+    lrow, lgrp = bm.faces.layers.int["srow"], bm.faces.layers.int["grp"]
+    uvl = bm.loops.layers.uv["UVMap"]
+    smears = {}
+    for f in bm.faces:
+        if f[lrow]:
+            smears.setdefault(f[lgrp], []).append(f)
+    before = after = snapped = 0
+    gone = []
+    bm.normal_update()
+    for g in sorted(smears):
+        frow = {}                      # vertex -> the face rows it touches
+        for f in smears[g]:
+            for v in f.verts:
+                frow.setdefault(v, set()).add(f[lrow] - 1)
+        last = max(f[lrow] for f in smears[g])          # = the number of face rows
+        # vertex rows: row r is shared by face rows r - 1 and r; row 0 only by face row 0
+        rows = [[] for _ in range(last + 1)]
+        for v, rs in frow.items():
+            r = max(rs) if len(rs) == 2 else (0 if rs == {0} else last if rs == {last - 1} else None)
+            assert r is not None, (g, rs)
+            rows[r].append(v)
+        assert all(len(r) == len(rows[0]) for r in rows), (g, [len(r) for r in rows])
+        row_of = {v: r for r, vs in enumerate(rows) for v in vs}
+
+        def chain(v, a, b):
+            """v's column from row a to row b, along the strip's edges."""
+            out = [v]
+            for r in range(a + 1, b + 1):
+                v = next(e.other_vert(v) for e in v.link_edges if row_of.get(e.other_vert(v)) == r)
+                out.append(v)
+            return out
+
+        def uv(v, *frs):
+            """v's UV in the given face rows, or None where a seam splits it."""
+            us = [lp[uvl].uv.copy() for lp in v.link_loops if lp.face[lrow] - 1 in frs]
+            return us[0] if us and all((u - us[0]).length < 1e-6 for u in us) else None
+
+        def fits(a, b, tn=SMEAR_TOL_N, tt=SMEAR_TOL_T, tu=SMEAR_TOL_UV):
+            for v in rows[a]:
+                ch = chain(v, a, b)
+                s = [0.0]
+                for p, q in zip(ch, ch[1:]):
+                    s.append(s[-1] + (q.co - p.co).length)
+                ua, ub = uv(ch[0], a), uv(ch[-1], b - 1)
+                for k in range(1, len(ch) - 1):
+                    d = ch[k].co - ch[0].co.lerp(ch[-1].co, s[k] / s[-1])
+                    dn = abs(d.dot(ch[k].normal))
+                    if dn > tn or (d - ch[k].normal * d.dot(ch[k].normal)).length > tt:
+                        return False
+                    # (and never across a UV seam, nor off the island's run:
+                    # a merged face would sample other texels, which streaked
+                    # the wall in round 4's first try)
+                    uk = uv(ch[k], a + k - 1, a + k)
+                    if uk is None or ua is None or ub is None or \
+                            (uk - ua.lerp(ub, s[k] / s[-1])).length > tu:
+                        return False
+            return True
+
+        keep, a = [0], 0
+        for j in range(1, last):
+            if not fits(a, j + 1):
+                keep.append(j)
+                a = j
+        keep.append(last)
+        snapped += smear_corners(rows, keep)
+        smear_cap(rows)
+        drop = sorted(set(range(last + 1)) - set(keep))
+        before += last
+        after += len(keep) - 1
+        for r in drop:
+            vs = set(rows[r])
+            gone += [e for v in rows[r] for e in v.link_edges if e.other_vert(v) in vs]
+    if gone:
+        bmesh.ops.dissolve_edges(bm, edges=list(dict.fromkeys(gone)), use_verts=True, use_face_split=False)
+    return before, after, snapped
+
+
+def _rest(vs):
+    """A smear row's rest centre (glTF): the midpoint of its two flush edge
+    vertices (the pair furthest apart)."""
+    a, b = max(((p, q) for i, p in enumerate(vs) for q in vs[i + 1:]), key=lambda pq: (pq[0].co - pq[1].co).length)
+    return gl((a.co + b.co) * 0.5)
+
+
+def smear_corners(rows, keep):
+    """LOD1: where the straight run between two kept smear rows passes under
+    a convex corner of the rim's lip (its top edge, RIM[3], fell between two
+    of LOD0's rows, so the lip poked through the slime's edges as a kink),
+    move the nearer row onto the corner, its lens turned to the corner's
+    bisecting normal. No triangles added. Returns the rows moved."""
+    prof = [Vector(q) for q in RIM[1:6][::-1]]           # hull_surface's order: outside on the left
+
+    def left(d):
+        return Vector((-d.y, d.x)).normalized()
+
+    moved = 0
+    for i in range(1, len(prof) - 1):
+        P = prof[i]
+        nb = (left(P - prof[i - 1]) + left(prof[i + 1] - P)).normalized()
+        if left(P - prof[i - 1]).cross(left(prof[i + 1] - P)) > 0:
+            continue                                       # (a concave corner: the slime bridges it)
+        for a, b in zip(keep, keep[1:]):
+            ma, mb_ = _rest(rows[a]), _rest(rows[b])
+            ra, rb = Vector((math.hypot(ma.x, ma.z), ma.y)), Vector((math.hypot(mb_.x, mb_.z), mb_.y))
+            ab = rb - ra
+            u = (P - ra).dot(ab) / ab.length_squared
+            # (the rows rest 0.0025 off the surface and LOD1 lifts them 0.004
+            # more: a corner closer than 0.0015 under the edges counts as through)
+            if not 0.05 < u < 0.95 or (P - (ra + ab * u)).dot(left(ab)) < 0.0025:
+                continue
+            cand = [(r, (rr - P).length) for r, rr in ((a, ra), (b, rb)) if 0 < r < keep[-1]]
+            if not cand:
+                continue
+            s = min(cand, key=lambda c: c[1])[0]
+            m = ma if s == a else mb_
+            q, n = hull_surface(m)
+            radial = Vector((q.x, 0, q.z)).normalized()
+            Pw = radial * P.x + Vector((0, P.y, 0))
+            nw = (radial * nb.x + Vector((0, nb.y, 0))).normalized()
+            for v in rows[s]:
+                vg = gl(v.co)
+                h = (vg - q).dot(n)
+                v.co = bl(Pw + (vg - q - n * h) + nw * h)
+            moved += 1
+            break
+    return moved
+
+
+def smear_cap(rows):
+    """LOD1: the smear's start as a rounded cap (LOD0's 4-vertex first row is
+    a quarter of the width with its full lens height: a pointed nub). Row 0's
+    vertices go onto a half-ellipse from row 1 out to row 0, the outer two flush,
+    the inner two at half of row 1's lens height. No triangles added."""
+    r1 = rows[1]
+    a, b = max(((p, q) for i, p in enumerate(r1) for q in r1[i + 1:]), key=lambda pq: (pq[0].co - pq[1].co).length)
+    c1, side, W = (a.co + b.co) * 0.5, (b.co - a.co).normalized(), (b.co - a.co).length * 0.5
+    q, n = hull_surface(gl(c1))
+    n = GL2BL @ n
+    ridge = max((v.co - c1).dot(n) for v in r1)
+    fwd = _rest(rows[0])
+    fwd = bl(fwd) - c1
+    fwd = (fwd - n * fwd.dot(n))
+    L = fwd.length                  # (as far out as LOD0's start: the hull's baked contact shadow sits under it)
+    fwd.normalize()
+    r0 = sorted(rows[0], key=lambda v: v.co.dot(side))
+    for v, phi, h in zip(r0, (150, 105, 75, 30), (0.0, 0.5, 0.5, 0.0)):
+        ph = math.radians(phi)
+        v.co = c1 + side * (W * math.cos(ph)) + fwd * (L * math.sin(ph)) + n * (ridge * h)
+
+
 def lod1_from(lod0):
     """LOD1: LOD0 without its cards, each piece decimated on its own, its
     UV-seam, boundary and material-edge vertices held fixed (protect_group),
-    so the islands keep their borders and nothing opens."""
+    so the islands keep their borders and nothing opens; the rim's slime
+    smears are not decimated but thinned row by row (thin_smears)."""
     mb.activate(lod0)
     bpy.ops.object.duplicate()
     ob = bpy.context.object
@@ -2228,6 +2405,7 @@ def lod1_from(lod0):
     gone = np.nonzero(card | np.isin(part, (P_DRIP_T, P_DRIP_B)))[0]
     bmesh.ops.delete(bm, geom=[bm.faces[i] for i in gone], context="FACES")
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    print("saucer: LOD1 rim slime face rows %d -> %d, %d rows onto the lip's corner" % thin_smears(bm))
     # the rim's slime rides a little proud (the rim under it is coarser here)
     lp = bm.faces.layers.int["part"]
     slime_v = {v for f in bm.faces if f[lp] == P_DRIP for v in f.verts}
@@ -2254,7 +2432,10 @@ def lod1_from(lod0):
         mi = np.zeros(len(pm.polygons), np.int32)
         pm.polygons.foreach_get("material_index", mi)
         names = [("dome" if m == 1 else BAKES[b]) for b, m in zip(bk, mi) if m != 2]
-        parts.append((max(set(names), key=names.count) if names else "fur", part))
+        name = max(set(names), key=names.count) if names else "fur"
+        if attr_np(pm, "srow", len(pm.polygons), dtype=np.int32).any():
+            name = "smear"              # (thinned above, not decimated)
+        parts.append((name, part))
     for name, part in parts:
         r = LOD1_RATIO.get(name, 0.4)
         if r < 1.0:
@@ -2345,7 +2526,10 @@ def final_material_fur(img_fur, img_fur_n):
     t.image = img_fur
     nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
     # alphaMode MASK at cutoff 0.01 (R14): 1 - (alpha < 0.01). A stock viewer
-    # then shows the fur base whole; the game raises the cutoff per shell
+    # cuts the lock cards to their locks; its fur base, tiling unremapped over
+    # the whole atlas, shows lock-coverage holes where it wraps onto the locks
+    # half (accepted, R14a: the game remaps the base and its shells into
+    # furAtlas.shells, floored over the cutoff, and raises the cutoff per shell)
     lt = nt.nodes.new("ShaderNodeMath")
     lt.operation = "LESS_THAN"
     nt.links.new(t.outputs["Alpha"], lt.inputs[0])
@@ -2538,7 +2722,7 @@ def final_stage():
     img_em = mb.to_image("saucer_emissive", em)
     img_nrm = mb.to_image("saucer_normal", nrm, noncolor=True)
     shell = mb.fur_strand_texture(FUR_TEX, SEED + 5, clump_cells=4, clump=0.6, r_px=(1.5, 2.8), strands=30000,
-                                  taper=0.2, base=0.25, flyaway=0.25, root=(0.045, 0.12, 0.028), floor=0.015,
+                                  taper=0.2, base=0.25, flyaway=0.25, root=(0.045, 0.12, 0.028), floor=0.03,
                                   tip=(0.105, 0.235, 0.050), tip_hi=(0.17, 0.32, 0.075))
     locks, lock_n = mb.fur_lock_atlas(FUR_TEX, FUR_TEX, LOCK_VARIANTS, SEED + 8)
     fur_rgba = np.concatenate([shell, locks], 1)                  # (rows, 2 x FUR_TEX, 4)
@@ -2600,10 +2784,17 @@ def final_stage():
         bm.free()
         return t
 
+    # Measured on what LOD1 stands in for: not LOD0's cards, nor the part 10/11
+    # drips hanging from them, which LOD1 drops (round 3; counted as misses
+    # they put it at 14.7). It sits above round 2's 10.3 because the rim and
+    # wall round the slime are held at LOD0's shape (protect_group), so the
+    # hull's fixed ratio collapses the rest of it harder.
     t1 = bvh_of(lod1)
     card0 = attr_np(lod0.data, "card", len(lod0.data.polygons), dtype=np.int32)
-    on_card = {vi for p in lod0.data.polygons if card0[p.index] for vi in p.vertices}
-    errs = sorted((t1.find_nearest(v.co)[0] - v.co).length for v in lod0.data.vertices if v.index not in on_card)
+    part0 = attr_np(lod0.data, "part", len(lod0.data.polygons), dtype=np.int32)
+    dropped = card0.astype(bool) | np.isin(part0, (P_DRIP_T, P_DRIP_B))
+    skip = {vi for p in lod0.data.polygons if dropped[p.index] for vi in p.vertices}
+    errs = sorted((t1.find_nearest(v.co)[0] - v.co).length for v in lod0.data.vertices if v.index not in skip)
     e90 = errs[int(len(errs) * 0.9)]
     lod1_distance = round(e90 * FOCAL_PX / 1.0, 1)
     print("saucer: LOD1 error p90 %.4f max %.4f -> lod1Distance %.1f" % (e90, errs[-1], lod1_distance))
@@ -2612,7 +2803,7 @@ def final_stage():
     for o in (lod0, lod1):
         o.data.transform(Matrix.Translation(-com_bl))
         o.data.update()
-        for a in ("bk", "part", "zone", "shg", "shi", "shk", "por", "prim", "grp", "card", "wgt", "flen", "wet",
+        for a in ("bk", "part", "zone", "shg", "shi", "shk", "por", "prim", "grp", "card", "srow", "wgt", "flen", "wet",
                   "cardf", "thin", "vpart", "vpor", "vgrp"):
             if a in o.data.attributes:
                 o.data.attributes.remove(o.data.attributes[a])
