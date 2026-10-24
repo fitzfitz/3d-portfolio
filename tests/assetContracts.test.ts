@@ -50,6 +50,81 @@ function triangles(doc: Document, material?: string): number {
   return n;
 }
 
+/**
+ * UV overlaps on one primitive, rasterised at texel centres (res x res):
+ * within-island folds (two triangles of one UV island on a texel) and
+ * cross-island overlaps. An island is the triangles joined through shared
+ * (position, uv) vertices; islands whose UV vertex sets are identical are
+ * deliberate shares (repeated parts baked once) and may overlap each other.
+ */
+function uvOverlaps(p: Primitive, res: number, m?: number[]) {
+  const get = (sem: string) => {
+    const a = p.getAttribute(sem)!;
+    const out: number[][] = [];
+    for (let i = 0; i < a.getCount(); i++) out.push(a.getElement(i, []));
+    return out;
+  };
+  const pos = get("POSITION"), uv = get("TEXCOORD_0"), idx = p.getIndices()!;
+  const wpos = m ? pos.map(([x, y, z]) => [0, 1, 2].map((r) => m[r] * x + m[4 + r] * y + m[8 + r] * z + m[12 + r])) : pos;
+  const nt = idx.getCount() / 3;
+  const weld = new Map<string, number>();
+  const vid = pos.map((q, i) => {
+    const k = `${q.map((v) => Math.round(v * 1e4)).join(",")}|${uv[i].map((v) => Math.round(v * 1e6)).join(",")}`;
+    if (!weld.has(k)) weld.set(k, weld.size);
+    return weld.get(k)!;
+  });
+  const parent = Array.from({ length: nt }, (_, i) => i);
+  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const byVert = new Map<number, number>();
+  for (let t = 0; t < nt; t++) {
+    for (let c = 0; c < 3; c++) {
+      const v = vid[idx.getScalar(3 * t + c)];
+      const o = byVert.get(v);
+      if (o === undefined) byVert.set(v, t);
+      else parent[find(t)] = find(o);
+    }
+  }
+  const isl = Array.from({ length: nt }, (_, t) => find(t));
+  const sets = new Map<number, Set<string>>();
+  for (let t = 0; t < nt; t++) {
+    const s_ = sets.get(isl[t]) ?? new Set<string>();
+    for (let c = 0; c < 3; c++) s_.add(uv[idx.getScalar(3 * t + c)].map((v) => Math.round(v * 1e5)).join(","));
+    sets.set(isl[t], s_);
+  }
+  const sig = new Map<number, string>([...sets].map(([k, v]) => [k, [...v].sort().join(";")]));
+  const owner = new Int32Array(res * res).fill(-1);
+  const folds = new Map<number, number>();
+  let cross = 0;
+  for (let t = 0; t < nt; t++) {
+    const q = [0, 1, 2].map((c) => uv[idx.getScalar(3 * t + c)].map((v) => v * res - 0.5));
+    const [[ax, ay], [bx, by], [cx, cy]] = q;
+    const d = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+    if (Math.abs(d) < 1e-12) continue;
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(res - 1, Math.ceil(Math.max(ax, bx, cx)));
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy))), y1 = Math.min(res - 1, Math.ceil(Math.max(ay, by, cy)));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const w1 = ((x - ax) * (cy - ay) - (cx - ax) * (y - ay)) / d;
+        const w2 = ((bx - ax) * (y - ay) - (x - ax) * (by - ay)) / d;
+        if (w1 <= 1e-6 || w2 <= 1e-6 || 1 - w1 - w2 <= 1e-6) continue;
+        const o = owner[y * res + x];
+        if (o >= 0 && o !== t) {
+          if (isl[o] === isl[t]) folds.set(isl[t], (folds.get(isl[t]) ?? 0) + 1);
+          else if (sig.get(isl[o]) !== sig.get(isl[t])) cross++;
+        }
+        owner[y * res + x] = t;
+      }
+    }
+  }
+  // each folding island: its texels and its triangles' mean (world) position
+  const foldIslands = [...folds].map(([i, texels]) => {
+    const ts = isl.map((v, t) => (v === i ? t : -1)).filter((t) => t >= 0);
+    const c = [0, 1, 2].map((k) => ts.reduce((s_, t) => s_ + [0, 1, 2].reduce((a, cc) => a + wpos[idx.getScalar(3 * t + cc)][k], 0) / 3, 0) / ts.length);
+    return { texels, tris: ts.length, centre: c };
+  });
+  return { cross, foldIslands };
+}
+
 function bounds(doc: Document) {
   const root = doc.getRoot();
   return getBounds(root.getDefaultScene() ?? root.listScenes()[0]);
@@ -935,6 +1010,20 @@ describe("saucer (saucer.glb)", () => {
     }
   });
 
+  it("the baked atlas has no UV overlaps but deliberate shares; one known crown fold is allowed", async () => {
+    const n = await lod(0);
+    const { cross, foldIslands } = uvOverlaps(prim(n, "SaucerBaked"), 1024, n.getWorldMatrix());
+    expect(cross, "cross-island overlaps").toBe(0);
+    // The one known fold (found in Task 4's round-2 review) is a small skin
+    // island on the crown, high on the head (72 triangles); the saucer is
+    // frozen, so it is allowed explicitly. Folds of <= 2 texels are edge
+    // precision after quantization (the body's 546-triangle island shows 1).
+    const real = foldIslands.filter((f) => f.texels > 2);
+    const crown = real.filter((f) => f.centre[1] > 0.9 && f.tris <= 80);
+    expect(real.length - crown.length, JSON.stringify(foldIslands)).toBe(0);
+    expect(crown.length).toBeLessThanOrEqual(1);
+  });
+
   it("stays inside its 1,600 KB download budget (R11)", () => {
     expect(labKb("saucer")).toBeLessThanOrEqual(1600);
   });
@@ -1244,6 +1333,14 @@ describe("tardigrade (tardigrade.glb)", () => {
     expect(r.furShells).toBeGreaterThanOrEqual(8);
     expect(r.furShells).toBeLessThanOrEqual(24);
     expect(r.lod1Distance).toBeGreaterThan(0);
+  });
+
+  it("the baked atlas has no UV folds and no overlaps but deliberate shares (round 2)", async () => {
+    // (round 1 found the mouth tube's lip folded onto the throat's floor: its glow showed on the lip)
+    const n = await lod(0);
+    const { cross, foldIslands } = uvOverlaps(prim(n, "TardigradeBaked"), 1024, n.getWorldMatrix());
+    expect(cross, "cross-island overlaps").toBe(0);
+    expect(foldIslands, "within-island folds").toEqual([]);
   });
 
   it("stays inside its 1,600 KB download budget (R15)", () => {

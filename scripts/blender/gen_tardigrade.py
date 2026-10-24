@@ -68,11 +68,14 @@
 # lock cards: every v3 lock (the approved shaggy outline: laid along the
 # body's curve, higher rows over lower ones, then hanging to near the belly
 # line), plus a few over the rump: on the laid part 2-3 chains of short
-# shingled tufts (each tuft its own lock texture, a faded root and a frayed,
-# wet, darker tip, rising off the one before it, its width, spin and lift
+# shingled tufts (each tuft its own lock texture: a root that narrows to a
+# ragged point in coverage, every strand starting on its own line, so the
+# alpha test never cuts a straight root edge; a frayed, wet, darker tip;
+# each root under the previous tuft's body, its width, spin, flow and lift
 # jittered), then down the straight hanging part a ribbon and a fin across
-# it; textured by clump_atlas (ragged strand-broken sides), with gaps round
-# the crystals' roots. LOD1 keeps the outline with a few merged fringe cards
+# it; two staggered rows of short tufts combed forward over the coat's front
+# edge (the hairline); textured by clump_atlas (ragged strand-broken sides),
+# with gaps round the crystals' roots. LOD1 keeps the outline with a few merged fringe cards
 # (R17: every 4 neighbouring locks of a row as one card down their hanging
 # ends, its u across all 4 lock variants).
 # The shells are not in the file. Raw-material provenance: every map is
@@ -399,7 +402,7 @@ K_TOP, K_BOT = 14, 20  # the game mesh body's columns over the coat (hem to hem)
 LOW_RINGS = 48
 CRYSTAL_GAP = 0.22     # bare skin round each crystal's root (the coat parts round it)
 LEG_FRAMES = {}         # leg id -> (hip, direction, reach), the layout's (the same at every resolution)
-TUFT_STEP, TUFT_LEN = 0.52, 0.76   # a laid lock's shingled tufts: their spacing and length along it
+TUFT_STEP, TUFT_LEN = 0.52, 0.92   # a laid lock's shingled tufts: their spacing and length along it
 CARD_STEP = 0.65       # the most a lock card's row spacing may be on the laid part (it lies 0.05+ off the skin)
 DRIP_ON_LOCK = (0.76, 0.74, 0.78, 0.72, 0.80)   # where along its lock a drip may hang, best first
 
@@ -813,7 +816,7 @@ def coat_len(p):
         return 0.0, 0.0
     d_hem = d_ang * radius(z)
     d_cry = min((p - c).length for c in CRYSTAL_ROOTS) - CRYSTAL_GAP
-    ramp = smoothstep(0.0, 0.2, d_hem) * smoothstep(0.0, 0.22, COAT_Z1 - z) * smoothstep(0.0, 0.16, d_cry) * \
+    ramp = smoothstep(0.0, 0.2, d_hem) * smoothstep(0.0, 0.08, COAT_Z1 - z) * smoothstep(0.0, 0.16, d_cry) * \
         smoothstep(-HALF + 0.02, -HALF + 0.35, z)
     flank = 1 - abs(math.sin(theta_of(p)))
     return (0.22 + 0.08 * flank) * ramp, 0.25 + 0.6 * (1 - smoothstep(0.0, 0.7, d_hem))
@@ -861,14 +864,14 @@ def high_tube(bm, M):
     bm.normal_update()
 
 
-def low_drop(bm, top, length, r, sway=(0, 0, 0)):
+def low_drop(bm, top, length, r, sway=(0, 0, 0), ring=8, ks=(0.0, 0.6, 0.8, 0.9, 0.97, 1.0)):
     """The game mesh's drop of slime (ml.drip's shape): 8 sides, its
     centreline sampled densest round the bulb (round 1: 4 even samples
     faceted it)."""
     s_ = Vector(sway)
-    pts = [Vector(top) + ml.G * length * k + s_ * k * k for k in (0.0, 0.6, 0.8, 0.9, 0.97, 1.0)]
+    pts = [Vector(top) + ml.G * length * k + s_ * k * k for k in ks]
     return ml.sweep(bm, pts, lambda t: r * (0.5 + 0.3 * t) + r * 0.85 * math.exp(-((t - 0.9) / 0.13) ** 2),
-                    ring=8, per_seg=1, mi=SLIME, cap=3)
+                    ring=ring, per_seg=1, mi=SLIME, cap=3)
 
 
 def low_fang(bm, base, d, w, h, spin, sides):
@@ -958,7 +961,7 @@ def build(R, S):
             elif hi:
                 ml.drip(bm, top, length, 0.05, SLIME, sway, ring=ring, per_seg=per, cap=cap)
             else:
-                low_drop(bm, top, length, 0.05, sway)
+                low_drop(bm, top, length, 0.05, sway, ring=10)      # (the face's: 10 sides)
     S.done("Tardigrade_Drool", bm)
     meta["mouth"] = MOUTH_TIP.copy()
 
@@ -1144,7 +1147,7 @@ def build(R, S):
             if hi:
                 ml.drip(dbm, top, length, 0.045, SLIME, ring=ring, per_seg=per, cap=cap)
             else:
-                low_drop(dbm, top, length, 0.045)
+                low_drop(dbm, top, length, 0.045, ks=(0.0, 0.65, 0.86, 0.96, 1.0))
     if hi:
         S.done("Tardigrade_Fur", fb, smooth_angle=85)
     S.done("Tardigrade_Drips", dbm)
@@ -1291,7 +1294,7 @@ def bore_recipe(N):
     k = N.m("MAXIMUM", N.mul(wall, 0.75, N.mapr(ly, 0.064, 0.09)), floor)    # (the walls' glow stops at the floor)
     glow = N.mix(k, (0.30, 0.04, 0.70), (0.25, 0.85, 1.0))
     glow = N.mix(N.mul(N.mapr(swirl, 0.55, 0.75), floor), glow, (0.85, 0.98, 1.0))
-    glow = N.scale(glow, N.mul(N.add(0.12, N.mul(k, 0.80)), N.sub(1.0, N.mul(ridge, N.mul(N.sub(1.0, floor), 0.3)))))
+    glow = N.scale(glow, N.add(0.12, N.mul(k, 0.80)))      # (round 2: no ridge in the glow, it banded)
     return dict(albedo=col, rough=N.add(0.10, N.mul(ridge, 0.1)), metal=0.0,
                 height=N.add(N.mul(ridge, 0.0012), N.mul(n, 0.0005)), emit=glow)
 
@@ -1682,8 +1685,14 @@ def unwrap_baked(ob, body_grp):
         if not (fg[f.index] == body_grp and BAKES[bk[f.index]] == "skin"):
             continue
         a_c = body_a(gl(f.calc_center_median()))
-        for lp in f.loops:
-            u, v = body_uv(gl(lp.vert.co), a_c)
+        uvs = [body_uv(gl(lp.vert.co), a_c) for lp in f.loops]
+        for lp, (u, v) in zip(f.loops, uvs):
+            g_ = gl(lp.vert.co)
+            if g_.z > SNOUT_Z - 1e-5 and math.hypot(g_.x, g_.y - centre_y(SNOUT_Z)) < 1e-4:
+                # (the snout cap's pole: per face, just past its ring, so its
+                # fan never folds onto itself in the atlas; round 2's UV test)
+                others = [q for l_, q in zip(f.loops, uvs) if l_ is not lp]
+                u, v = sum(q[0] for q in others) / len(others), others[0][1] + 0.03
             lp[uvl].uv = (u * k_skin, v * k_skin)
     ubm.to_mesh(me)
     ubm.free()
@@ -1777,8 +1786,9 @@ def clump_atlas(w, h, variants, seed, root, tip, wet):
             xc = x0 + (x1 - x0) * spread + wob(3, 0.02, 2.0) * spread
             hw0 = 0.5 / n_sub * 1.25
             taper = np.clip(1 - V / L, 0, 1) ** 0.55
-            hw_l = hw0 * taper * (1 + wob(4, 0.28, 6.0))
-            hw_r = hw0 * taper * (1 + wob(4, 0.28, 6.0))
+            root_w = 0.2 + 0.8 * _ss(0.0, 0.24, V) ** 0.6       # (round 2: the root narrows, in coverage)
+            hw_l = hw0 * taper * root_w * (1 + wob(4, 0.28, 6.0))
+            hw_r = hw0 * taper * root_w * (1 + wob(4, 0.28, 6.0))
             dx = X - xc
             hw = np.maximum(np.where(dx < 0, hw_l, hw_r), 1e-4)
             u = np.clip(dx / hw, -1, 1)
@@ -1788,14 +1798,21 @@ def clump_atlas(w, h, variants, seed, root, tip, wet):
             g0 = rng.uniform(0.18, 0.85, n_str)
             gl_ = rng.uniform(0.02, 0.09, n_str) * (lin > 0.5)
             si = np.clip(((u + 1) / 2 * n_str).astype(int), 0, n_str - 1)
-            on = (V < s_len[si]) & ~((V > g0[si]) & (V < g0[si] + gl_[si]))
+            # every strand starts on its own line, the outer ones later: the
+            # root is a ragged point, never a straight full-width edge that
+            # the alpha test cuts (round 2)
+            s_st = rng.uniform(0.0, 0.1, n_str) + 0.2 * lin ** 1.2 * rng.uniform(0.4, 1.0, n_str)
+            on = (V > s_st[si]) & (V < s_len[si]) & ~((V > g0[si]) & (V < g0[si] + gl_[si]))
             a = np.clip(1 - np.abs(dx) / hw, 0, 1) ** 0.3 * on
             better = a > alpha
             across = np.where(better, u, across)
             alpha = np.maximum(alpha, a)
-        body_half = 0.42 * (1 - 0.3 * _ss(0.0, 0.2, V))
+        body_half = 0.42 * (1 - 0.3 * _ss(0.0, 0.2, V)) * _ss(0.02, 0.2, V) ** 0.7
         fade = np.clip((0.22 - V) / 0.12, 0, 1)
-        alpha = np.maximum(alpha, np.clip(1 - np.abs(X - 0.5) / body_half, 0, 1) ** 0.3 * fade)
+        n_col = 24
+        b_st = rng.uniform(0.02, 0.12, n_col + 1) + 0.12 * np.abs(np.linspace(-1, 1, n_col + 1))
+        b_on = V > b_st[np.clip((X * n_col).astype(int), 0, n_col)]
+        alpha = np.maximum(alpha, np.clip(1 - np.abs(X - 0.5) / np.maximum(body_half, 1e-4), 0, 1) ** 0.3 * fade * b_on)
         for _ in range(9):                       # flyaways
             xs, v0, vl, sl = rng.uniform(0.06, 0.94), rng.uniform(0.2, 0.8), rng.uniform(0.05, 0.16), \
                 rng.uniform(-0.08, 0.08)
@@ -1805,7 +1822,7 @@ def clump_atlas(w, h, variants, seed, root, tip, wet):
         phase = (X * n_fine + rng.uniform()) % 1.0
         prof = np.sin(np.pi * phase)
         shade = rng.uniform(0.9, 1.08, n_fine + 1)[np.clip((X * n_fine).astype(int), 0, n_fine)]
-        a = alpha * (0.8 + 0.2 * prof) * _ss(0.0, 0.16, V)       # (a long root fade: a tuft's root never shows an edge)
+        a = alpha * (0.8 + 0.2 * prof) * (0.35 + 0.65 * _ss(0.0, 0.16, V))
         a = np.where(a > 0.04, a, 0.0)
         wetm = _ss(0.6, 0.92, V)[..., None]
         col = root + (tip - root) * np.clip(V / 0.6, 0, 1)[..., None] ** 0.8
@@ -1896,13 +1913,20 @@ def add_cards(ob, cards, rng_):
                 if s1 - s0 < 0.2:
                     continue
                 k_var = 0 if centre else rng_.randrange(LOCK_VARIANTS)
-                spin = math.radians(rng_.uniform(-14, 14))
+                spin = math.radians(rng_.uniform(-22, 22))
+                flow = math.radians(rng_.uniform(-13, 13))     # (round 2: not all combed one way)
                 w = width * sw * rng_.uniform(0.85, 1.2) * 0.5
                 lifts = (0.012, 0.05 + 0.025 * (j % 2) + rng_.uniform(0.0, 0.02))
                 rows, uv_of = [], {}
+                p_root, n_root = row_at(fine, s0 / length)
                 for end, (sa, lf) in enumerate(((s0, lifts[0]), (s1, lifts[1]))):
                     t = sa / length
                     p, n = row_at(fine, t)
+                    if end and t <= th:     # the tip swung about the root's normal (flow), at its height
+                        sp, sn = onto_body(p)
+                        h = (p - sp).dot(sn)
+                        sp2, sn2 = onto_body(p_root + Matrix.Rotation(flow, 3, n_root) @ (p - p_root))
+                        p, n = sp2 + sn2 * h, sn2
                     q2, _ = row_at(fine, min(1.0, t + 0.02))
                     q1, _ = row_at(fine, max(0.0, t - 0.02))
                     tan = (q2 - q1).normalized()
@@ -1944,6 +1968,41 @@ def add_cards(ob, cards, rng_):
                         normals[v] = (nb + wb * (0.6 * (2 * ci - 1))).normalized() if layer == 0 else nb
                     rows.append(pair)
                 n_quads += _quad_strip(bm, rows, uv_of, {}, layers, normals, None)
+    # the hairline (round 2): two staggered rows of short tufts along the
+    # coat's front edge, combed forward over it, so it frays into the head
+    # instead of ending on the fur base's straight edge
+    rh = random.Random(SEED + 12)
+    n_hair = 0
+    for zr, stag in ((COAT_Z1 - 0.1, 0.0), (COAT_Z1 - 0.3, 0.5)):
+        th_h = hem(zr)
+        span_ = math.pi - 2 * th_h
+        n_t = int(span_ * radius(zr) / 0.2)
+        for k in range(n_t):
+            th0 = th_h + span_ * (k + 0.25 + 0.5 * stag + rh.uniform(-0.2, 0.2)) / n_t
+            if any((surface(zr, th0) - c_).length < CRYSTAL_GAP + 0.12 for c_ in CRYSTAL_ROOTS):
+                continue
+            zt = zr + rh.uniform(0.28, 0.4)
+            tht = th0 + (-0.07 if th0 < math.pi / 2 else 0.07) * rh.uniform(0.5, 1.5)
+            k_var = rh.randrange(LOCK_VARIANTS)
+            w = rh.uniform(0.09, 0.13)
+            spin = math.radians(rh.uniform(-20, 20))
+            rows, uv_of = [], {}
+            for end, (z_, t_, lf) in enumerate(((zr, th0, 0.015), (zt, tht, 0.05 + rh.uniform(0, 0.03)))):
+                p, n = surface_n(z_, t_)
+                q = p + n * lf
+                tan = (surface(zt, tht) - surface(zr, th0)).normalized()
+                side = tan.cross(n).normalized()
+                wdir = Matrix.Rotation(spin, 3, n) @ side
+                pb, wb, nb = bl(q), (GL2BL.to_3x3() @ wdir).normalized(), (GL2BL.to_3x3() @ n).normalized()
+                ww = w * (1.0 if end == 0 else 0.75)
+                pair = [vert(pb - wb * ww, end, q, 0.5 + 0.3 * end), vert(pb + wb * ww, end, q, 0.5 + 0.3 * end)]
+                for ci, v in enumerate(pair):
+                    uv_of[v] = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * end)
+                    normals[v] = (nb + wb * (0.6 * (2 * ci - 1))).normalized()
+                rows.append(pair)
+            n_quads += _quad_strip(bm, rows, uv_of, {}, layers, normals, None)
+            n_hair += 1
+    print("tardigrade: hairline tufts: %d" % n_hair)
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
@@ -1979,7 +2038,8 @@ def add_fringe(ob, cards):
                 polys = [card_polyline(c) for c in grp]
                 th = sum(c["t_hang"] for c in grp) / len(grp)
                 length = sum(L for _, L in polys) / len(grp)
-                ts = [t for t in (th - 0.7 / length, th - 0.35 / length, th, 1.0) if t > 0.02]
+                jit = ((g // 4 * 7 + row * 3 + (side > 0)) % 5) / 5.0           # (a staggered top, round 2)
+                ts = [t for t in (th - (0.55 + 0.3 * jit) / length, th - 0.3 / length, th, 1.0) if t > 0.02]
                 if th > 0.97:
                     ts = [t for t in ts if t < th] + [1.0]
                 rows, uv_of = [], {}
@@ -1991,6 +2051,8 @@ def add_fringe(ob, cards):
                     a_dir = ml.perp(span, n)
                     a_dir = a_dir.normalized() if a_dir.length > 1e-4 else Vector((0, 0, 1))
                     half = 0.5 * span.length + 0.5 * grp[0]["r0"] * 2.1 * (0.6 + 0.4 * (1 - t))
+                    if t == ts[0]:
+                        half *= 0.35        # (its top tapers: a ragged edge, not a tablecloth hem)
                     pb, wb, nb = bl(p + n * 0.02), (GL2BL.to_3x3() @ a_dir).normalized(), (GL2BL.to_3x3() @ n).normalized()
                     pair = []
                     for ci, sg in enumerate((-1, 1)):
