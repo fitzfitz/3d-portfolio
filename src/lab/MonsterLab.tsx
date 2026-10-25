@@ -94,8 +94,14 @@ export interface LabReadings { calls: number; triangles: number; programs: numbe
 /** The debug hook's shape (tests/e2e/monsterlab.probe.mjs). */
 export interface MonsterLabHook {
   ready: boolean;
-  /** One frame's numbers: the renderer's counters and what the instance counts submitted, snapshotted in the same onAfterRender. */
-  stats(): { calls: number; triangles: number; programs: number; diagnostics: number; submittedCalls: number; submittedTriangles: number; counts: number[] };
+  /**
+   * One frame's numbers, all snapshotted in the same onAfterRender: the renderer's totals (calls, triangles),
+   * what the monster meshes themselves drew that frame (monsterCalls, monsterTriangles, from their own
+   * onBefore/onAfterRender deltas, so culled meshes are not counted and no other frame is involved),
+   * and what the instance counts submitted.
+   */
+  stats(): { calls: number; triangles: number; monsterCalls: number; monsterTriangles: number; programs: number; diagnostics: number; submittedCalls: number; submittedTriangles: number; counts: number[] };
+  /** Mesh metadata with `count` from the last snapshot (one frame behind the live instance count). */
   instances(): { name: string; model: string; lod: number; part: string; count: number; triangles: number }[];
   setState(s: string): void;
   setLayout(l: string): void;
@@ -219,7 +225,7 @@ function LabScene({ store, readings }: SceneProps) {
   const live = useRef({
     hidden: false, solo: null as MonsterKind | null, aimOverride: null as THREE.Vector3 | null,
     stateStart: 0, cycleStart: 0, lastState: settings.state, cutExposure: true, frames: 0,
-    calls: 0, triangles: 0, curl: 0,
+    calls: 0, triangles: 0, monsterCalls: 0, monsterTriangles: 0, curl: 0,
   });
   const submitted = useMemo(() => createSubmittedSnapshot(meshes.length), [meshes]);
   const poses = useMemo(() => ({
@@ -250,13 +256,29 @@ function LabScene({ store, readings }: SceneProps) {
 
   // The renderer's counters for the scene's own render (PostFX renders it in a pass; see PerfSampler).
   useEffect(() => {
+    const L = live.current;
     const prev = scene.onAfterRender;
+    const prevBefore = scene.onBeforeRender;
+    // The monsters' own draws, as renderer-counter deltas around each mesh (same frame as the totals).
+    let mCalls = 0, mTriangles = 0, c0 = 0, t0 = 0;
+    scene.onBeforeRender = () => { mCalls = 0; mTriangles = 0; };
+    const saved = meshes.map((m) => [m.mesh.onBeforeRender, m.mesh.onAfterRender] as const);
+    meshes.forEach((m) => {
+      m.mesh.onBeforeRender = () => { c0 = gl.info.render.calls; t0 = gl.info.render.triangles; };
+      m.mesh.onAfterRender = () => { mCalls += gl.info.render.calls - c0; mTriangles += gl.info.render.triangles - t0; };
+    });
     scene.onAfterRender = () => {
-      live.current.calls = gl.info.render.calls;
-      live.current.triangles = gl.info.render.triangles;
+      L.calls = gl.info.render.calls;
+      L.triangles = gl.info.render.triangles;
+      L.monsterCalls = mCalls;
+      L.monsterTriangles = mTriangles;
       snapshotSubmitted(meshes, submitted);
     };
-    return () => { scene.onAfterRender = prev; };
+    return () => {
+      scene.onAfterRender = prev;
+      scene.onBeforeRender = prevBefore;
+      meshes.forEach((m, i) => { m.mesh.onBeforeRender = saved[i][0]; m.mesh.onAfterRender = saved[i][1]; });
+    };
   }, [scene, gl, meshes, submitted]);
 
   useFrame((state, delta) => {
@@ -344,7 +366,7 @@ function LabScene({ store, readings }: SceneProps) {
     const hook: MonsterLabHook = {
       ready: window.__monsterLab?.ready ?? false,
       stats: () => ({
-        calls: L.calls, triangles: L.triangles,
+        calls: L.calls, triangles: L.triangles, monsterCalls: L.monsterCalls, monsterTriangles: L.monsterTriangles,
         submittedCalls: submitted.calls, submittedTriangles: submitted.triangles, counts: Array.from(submitted.counts),
         programs: gl.info.programs?.length ?? 0,
         diagnostics: (gl.info.programs ?? []).filter((p) => (p as unknown as { diagnostics?: unknown }).diagnostics).length,

@@ -157,12 +157,11 @@ async function open(page, query) {
   await nextFrames(page, 12);
 }
 
-/** Stats with the monsters hidden (the baseline) and shown, and what the instance counts submit. */
+/**
+ * One frame's stats with the monsters shown. The monster draw calls and triangles come from the monster
+ * meshes' own render hooks in the same frame as the submitted counts, so nothing is compared across frames.
+ */
 async function measure(page) {
-  await lab(page, () => window.__monsterLab.setHidden(true));
-  await nextFrames(page, 6);
-  const base = await lab(page, () => window.__monsterLab.stats());
-  await lab(page, () => window.__monsterLab.setHidden(false));
   await nextFrames(page, 6);
   const shown = await lab(page, () => window.__monsterLab.stats());
   // The instance counts and submitted totals come with `shown`, snapshotted in the same render as its calls and triangles.
@@ -171,9 +170,9 @@ async function measure(page) {
   const bodies = (model) => meshes.filter((m) => m.model === model && m.part === "body").reduce((n, m) => n + m.count, 0);
   const levels = (model) => new Set(meshes.filter((m) => m.model === model && m.count > 0).map((m) => m.lod));
   return {
-    base, shown,
-    calls: shown.calls - base.calls,
-    triangles: shown.triangles - base.triangles,
+    shown,
+    calls: shown.monsterCalls,
+    triangles: shown.monsterTriangles,
     submittedCalls: shown.submittedCalls,
     submittedTriangles: shown.submittedTriangles,
     saucers: bodies("saucer"), tardigrades: bodies("tardigrade"),
@@ -225,6 +224,19 @@ function coverage(shown, hidden, x, y) {
 export default function run() {
   return withPage({ label: "monsterlab" }, async (page, checks) => {
     const table = [];
+
+    // Focused mode for flake hunting: MONSTERLAB_LOOP=N repeats only `spread far lod=auto` N times and reports each count.
+    const loop = Number(process.env.MONSTERLAB_LOOP) || 0;
+    if (loop > 0) {
+      for (let i = 1; i <= loop; i++) {
+        await open(page, { layout: "spread", preset: "far", lod: "auto", state: "idle", seed: "7" });
+        const m = await measure(page);
+        checks.check(`loop ${i}/${loop}: spread far lod=auto, drawn == submitted`,
+          m.triangles === m.submittedTriangles && m.calls === m.submittedCalls, row(m));
+        checks.note(`loop ${i}`, `calls ${m.calls}/${m.submittedCalls}, triangles ${m.triangles}/${m.submittedTriangles}`);
+      }
+      return;
+    }
 
     // --- every layout under both presets ---
     for (const layout of LAYOUTS) {

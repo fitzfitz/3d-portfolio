@@ -156,8 +156,9 @@ describe("the lab stays out of the game", () => {
 });
 
 describe("the submitted snapshot", () => {
-  const meshes = [{ mesh: { count: 3 }, triangles: 100 }, { mesh: { count: 0 }, triangles: 50 }, { mesh: { count: 2 }, triangles: 10 }];
+  const fixture = () => [{ mesh: { count: 3, visible: true }, triangles: 100 }, { mesh: { count: 0, visible: true }, triangles: 50 }, { mesh: { count: 2, visible: true }, triangles: 10 }];
   it("captures counts, calls and triangles together, in place", () => {
+    const meshes = fixture();
     const out = createSubmittedSnapshot(meshes.length);
     const r = snapshotSubmitted(meshes, out);
     expect(r).toBe(out);
@@ -166,12 +167,20 @@ describe("the submitted snapshot", () => {
     expect(out.triangles).toBe(320);
   });
   it("does not follow later count changes until the next snapshot", () => {
+    const meshes = fixture();
     const out = snapshotSubmitted(meshes, createSubmittedSnapshot(meshes.length));
     meshes[0].mesh.count = 0;
     expect(out.triangles).toBe(320);
     snapshotSubmitted(meshes, out);
     expect(out.triangles).toBe(20);
     expect(out.calls).toBe(1);
-    meshes[0].mesh.count = 3;
+  });
+  it("counts a hidden mesh as 0 (it is not drawn)", () => {
+    const meshes = fixture();
+    meshes[0].mesh.visible = false;
+    const out = snapshotSubmitted(meshes, createSubmittedSnapshot(meshes.length));
+    expect([...out.counts]).toEqual([0, 0, 2]);
+    expect(out.calls).toBe(1);
+    expect(out.triangles).toBe(20);
   });
 });

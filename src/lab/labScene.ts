@@ -293,9 +293,9 @@ export function tardigradeLabPose(state: LabState, t: number, phase: number, red
 
 /** The instance counts and triangles one render submitted, snapshotted together (see snapshotSubmitted). */
 export interface SubmittedSnapshot {
-  /** Per-mesh `count` at the render, in mesh order (preallocated; length is the mesh count). */
+  /** Per-mesh `count` at the render (0 for a hidden mesh), in mesh order (preallocated; length is the mesh count). */
   counts: Int32Array;
-  /** Meshes with a non-zero count: the draw calls the instance counts submit. */
+  /** Visible meshes with a non-zero count: the draw calls the instance counts submit. */
   calls: number;
   /** Sum of count x triangles: the triangles the instance counts submit. */
   triangles: number;
@@ -304,15 +304,16 @@ export interface SubmittedSnapshot {
 export const createSubmittedSnapshot = (meshCount: number): SubmittedSnapshot => ({ counts: new Int32Array(meshCount), calls: 0, triangles: 0 });
 
 /**
- * Writes the meshes' instance counts into `out`, in place (no allocation: it runs in every render).
+ * Writes the meshes' instance counts into `out`, in place; a mesh that is not visible counts as 0 (it is not drawn) (no allocation: it runs in every render).
  * Called from the same onAfterRender that reads the renderer's counters, so drawn and submitted
  * numbers come from one frame (the probe used to read them in separate evaluates, across frames).
  */
-export function snapshotSubmitted(meshes: ReadonlyArray<{ mesh: { count: number }; triangles: number }>, out: SubmittedSnapshot): SubmittedSnapshot {
+export function snapshotSubmitted(meshes: ReadonlyArray<{ mesh: { count: number; visible?: boolean }; triangles: number }>, out: SubmittedSnapshot): SubmittedSnapshot {
   let calls = 0, triangles = 0;
   const n = Math.min(meshes.length, out.counts.length);
   for (let i = 0; i < n; i++) {
-    const c = meshes[i].mesh.count;
+    const m = meshes[i].mesh;
+    const c = m.visible === false ? 0 : m.count;
     out.counts[i] = c;
     if (c > 0) { calls++; triangles += c * meshes[i].triangles; }
   }
