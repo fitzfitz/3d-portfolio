@@ -405,7 +405,17 @@ def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.
     (just above the material's 0.01 cutoff, so a stock viewer never punches
     holes in the fur base that tiles over this half; the game's card test
     starts higher). (Round 3: 0, so a stock viewer cuts the cards to their
-    locks too; the shell half carries a floor instead, see fur_strand_texture.)"""
+    locks too; the shell half carries a floor instead, see fur_strand_texture.)
+
+    Side edges (Gate B fix B): no long side is a straight line the alpha
+    test cuts. Every clump's two edges wobble independently along the lock,
+    its alpha ramps down softly over the outer part of its width, and there
+    each strand fades on its own (its own reach and alpha, the gaps between
+    strands opening first), so the rising test along the lock (lock_x) eats
+    the sides strand by strand; the outer strands end short of the clump's
+    tip, a few flyaways stray past the sides, and the root mass stays inside
+    the card (its edge columns stepped), so a card's geometric edge never
+    shows."""
     rng = np.random.default_rng(seed)
     vw = w // variants
     x = (np.arange(vw) + 0.5) / vw
@@ -414,12 +424,30 @@ def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.
     rgba = np.zeros((h, w, 4), np.float32)
     nrm = np.zeros((h, w, 3), np.float32)
     root, tip, wet = (np.array(c, np.float32) for c in (root, tip, wet))
+
+    def wob(n, amp, f0):
+        out = np.zeros_like(V)
+        for _ in range(n):
+            out += np.sin(2 * np.pi * f0 * rng.uniform(0.6, 1.7) * V + rng.uniform(0, 2 * np.pi))
+        return out * amp / np.sqrt(n)
+
+    def soft(e, width):
+        """0 at e <= 0 (the edge) easing to 1 at e >= width (smoothstep)."""
+        s = np.clip(e / width, 0, 1)
+        return s * s * (3 - 2 * s)
+
+    n_str = 46                               # fine strands across a lock cell
+    col_of = np.clip((X * n_str).astype(int), 0, n_str)
     for k in range(variants):
         n_cl = (3, 4, 5, 6)[k % 4]
         split = rng.uniform(0.26, 0.36)
         span = 0.84
         alpha = np.zeros_like(X)
         across = np.zeros_like(X)            # -1..1 across the clump the texel is in (for the round shading)
+        edge = np.zeros_like(X)              # 0 in a clump's core -> 1 at its side edge
+        reach = rng.uniform(0.62, 1.0, n_str + 1)[col_of]      # each strand's own reach toward an edge
+        s_alpha = rng.uniform(0.3, 1.0, n_str + 1)[col_of]   # and its own alpha there
+        s_end = rng.uniform(0.0, 1.0, n_str + 1)[col_of]      # how short it stops when it is an outer strand
         for j in range(n_cl):
             x0 = 0.5 + span * ((j + 0.5) / n_cl - 0.5) * 0.55
             x1 = 0.5 + span * ((j + 0.5) / n_cl - 0.5) * rng.uniform(1.0, 1.25)
@@ -430,29 +458,52 @@ def fur_lock_atlas(w, h, variants, seed, root=(0.028, 0.08, 0.02), tip=(0.13, 0.
             w_root = span / n_cl * 1.35
             taper = np.clip(1 - np.clip((V - split) / (L - split), 0, 1), 0, 1) ** 0.75
             half = 0.5 * w_root * np.where(V < split, 1.0 + 0.25 * (split - V) / split, taper)
-            d = np.abs(X - xc) / np.maximum(half, 1e-4)
-            a = np.clip(1 - d, 0, 1) ** 0.35 * (V < L)
+            dx = X - xc
+            # each side its own wobble, so neither edge is a straight line
+            half = half * (1 + np.where(dx < 0, wob(4, 0.16, 5.0), wob(4, 0.16, 5.0)))
+            u = np.clip(dx / np.maximum(half, 1e-4), -1, 1)
+            d = np.abs(dx) / np.maximum(half * reach, 1e-4)
+            # outer strands stop short of the clump's tip: a ragged, not cut, end
+            ends = L * (1 - 0.3 * np.abs(u) ** 1.5 * s_end)
+            a = np.clip(0.15 + 0.85 * soft(1 - d, 0.55), 0, 1) * (d < 1) * (V < ends)
             better = a > alpha
-            across = np.where(better, np.clip((X - xc) / np.maximum(half, 1e-4), -1, 1), across)
+            across = np.where(better, u, across)
+            edge = np.where(better, np.clip((np.abs(u) - 0.35) / 0.65, 0, 1), edge)
             alpha = np.maximum(alpha, a)
-        # the root is one solid mass across the lock's width
-        # (rounded shoulders: its width eases in as it rises into the clumps)
-        body_half = 0.5 * span * 1.05 * (1 - 0.35 * np.clip(V / split, 0, 1) ** 2)
+        # the root is one solid mass across the lock's width (rounded
+        # shoulders: its width eases in as it rises into the clumps), kept
+        # inside the card, its edge columns stepped strand by strand
+        body_half = 0.5 * span * 0.95 * (1 - 0.35 * np.clip(V / split, 0, 1) ** 2) * (1 + wob(3, 0.05, 4.0))
         fade = np.clip((split - V) / (0.45 * split), 0, 1)
-        body = np.clip(1 - np.abs(X - 0.5) / body_half, 0, 1) ** 0.3 * fade
+        bd = np.abs(X - 0.5) / np.maximum(body_half * (0.74 + 0.26 * reach), 1e-4)
+        body = np.clip(0.15 + 0.85 * soft(1 - bd, 0.45), 0, 1) * (bd < 1) * fade
+        b_edge = np.clip((np.abs(X - 0.5) / np.maximum(body_half, 1e-4) - 0.5) / 0.5, 0, 1)
+        edge = np.where(body > alpha, b_edge, edge)
         alpha = np.maximum(alpha, body)
         # strands: fine parallel lines with their own shade, and fraying ends
-        n_str = 46
         xs = np.sort(rng.uniform(0.1, 0.9, 16))
         phase = (X * n_str * 1.0 + rng.uniform(0, 1)) % 1.0
         strand_profile = np.sin(np.pi * phase)
-        shade_of = rng.uniform(0.75, 1.15, n_str + 1)[np.clip((X * n_str).astype(int), 0, n_str)]
+        shade_of = rng.uniform(0.75, 1.15, n_str + 1)[col_of]
         fray = np.zeros_like(X)
         for xsi in xs:
             Ls = rng.uniform(0.78, 0.97)
             line = np.clip(1 - np.abs(X - xsi) * vw / 0.9, 0, 1) * (V < Ls) * (V > Ls - 0.22)
             fray = np.maximum(fray, line * 0.65 * np.clip((Ls - V) / 0.08, 0, 1))
-        a = np.maximum(alpha * (0.82 + 0.18 * strand_profile), fray * (alpha < 0.5))
+        # flyaways: single strands leaving a side, slanting out past it
+        for _ in range(7):
+            sgn = rng.choice((-1.0, 1.0))
+            v0, vl = rng.uniform(0.12, 0.7), rng.uniform(0.12, 0.26)
+            x0_ = 0.5 + sgn * rng.uniform(0.18, 0.3)
+            xf = x0_ + sgn * rng.uniform(0.06, 0.16) * np.clip((V - v0) / vl, 0, 1) ** 1.3
+            xf = np.clip(xf, 0.04, 0.96)
+            line = np.clip(1 - np.abs(X - xf) * vw / 0.8, 0, 1) * (V > v0) * (V < v0 + vl)
+            fray = np.maximum(fray, line * 0.55 * np.clip((v0 + vl - V) / 0.06, 0, 1))
+        # in the core the strands barely show in alpha; toward a side the gaps
+        # between them open first and each strand keeps its own alpha
+        sep = 0.18 + 0.72 * edge
+        a = alpha * (1 - sep * (1 - strand_profile)) * (1 - edge * (1 - s_alpha))
+        a = np.maximum(a, fray * (alpha < 0.5))
         a = a * np.clip(V / 0.07, 0, 1) ** 0.6           # the root edge fades in
         a = np.where(a > 0.03, a, background)
         t = np.clip(V, 0, 1)[..., None]

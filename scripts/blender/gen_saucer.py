@@ -66,9 +66,12 @@
 # draws N times outward, alpha-testing a tiling strand/clump mask, plus lock
 # cards (LOD0 only): the approved blockout's shaggy outline, ~310 of its v3
 # tuft spines (the crown, every tuft of the tentacles' backs and the arms),
-# each a crossed pair of drooping cards textured as a hair lock (a solid
-# root splitting into 3-6 tapering strand clumps, fraying at the tip, fine
-# parallel strands in its colour and normal maps). The shells are not in
+# each drooping cards textured as a hair lock (a solid root splitting into
+# 3-6 tapering strand clumps with ragged, strand-by-strand sides, fraying at
+# the tip, fine parallel strands in its colour and normal maps): a crossed
+# fin and ribbon on the tentacles and arms, a star of three narrower,
+# twisting crossing cards on the crown (Gate B fix B: no stacked flat
+# sheets at grazing angles). The shells are not in
 # the file. Raw-material provenance: every map is generated here
 # (Cycles bakes of the node fields below, and the numpy strand mask in
 # monster_bake.fur_strand_texture); no image, scan or add-on is used.
@@ -158,7 +161,8 @@
 #   triangulation (and its mouth cutter's meridians start half a segment
 #   round, so the exact boolean never meets coplanar edges at x = 0).
 #   Lock-card vertices carry the skin's normal (custom normals); the
-#   ribbon's are turned out across its width, so each lock shades round.
+#   ribbon's are turned out across its width, so each lock shades round
+#   (a crown card's by the part of its width that lies along the skin).
 #   Blender 5.1's glTF importer mis-orders meshes with two custom attributes
 #   (_MOTION and _FUR) by hash seed; turntable_monsters.py reads them itself.
 #
@@ -2085,16 +2089,64 @@ def lock_x(t):
     return 0.04 + 0.3 * t ** 2.0
 
 
+CROSS_NEAR = 0.1        # card rows this close are neighbours whose planes must cross (Gate B fix B)
+SPIN_TRIES = 12         # candidate spins per crown lock
+STAR = (math.radians(-60), 0.0, math.radians(60))   # a crown lock's three cards, about it from the fin
+STAR_W = 0.8            # each star card's width, of round 4's fin and ribbon
+
+
+def crown_cards(rc, spine, frames, laid):
+    """A crown lock's cards as (angle about the lock from its fin, twist
+    root -> tip, width factor, offset off the lock's axis along the card's
+    own normal, in widths). Round 4's fin and ribbon (a wide card lying flat
+    along the skin, its neighbours' alike) shingled into stacked flat sheets
+    at grazing angles. Now every crown lock, the hairline's and the crown
+    edge's included, is a star of three narrower crossing cards 60 deg apart,
+    each pushed a little off the axis (so they never meet on one line) and
+    twisting along the lock, 18-38 deg (each card a little differently);
+    its spin is the one of SPIN_TRIES whose card planes, row by row, lie least
+    parallel to its neighbours' already laid (`laid`, appended to)."""
+    tw = math.radians(rc.uniform(18, 38)) * rc.choice((-1, 1))
+    dev = [math.radians(rc.uniform(-8, 8)) for _ in STAR]
+    off = [rc.uniform(-0.12, 0.12) for _ in STAR]
+    near = [(q, m) for pts, nrm in laid for q, m in zip(pts, nrm)
+            if any((q - p).length < CROSS_NEAR for p in spine)]
+    rows_t = (0.0, 0.36, 0.7, 1.0)
+
+    def planes(spin):
+        out = []
+        for k, a0 in enumerate(STAR):
+            for i, (tan, _, fin) in enumerate(frames):
+                wdir = Matrix.Rotation(spin + a0 + (tw + dev[k]) * rows_t[i], 3, tan) @ fin
+                out.append((spine[i], tan.cross(wdir).normalized()))
+        return out
+
+    best = None
+    for _ in range(SPIN_TRIES):
+        spin = math.radians(rc.uniform(-30, 30))
+        pl = planes(spin)
+        score = max([abs(m.dot(nm)) for p, nm in pl for q, m in near if (q - p).length < CROSS_NEAR] + [0.0])
+        if best is None or score < best[0]:
+            best = (score, spin, pl)
+    _, spin, pl = best
+    laid.append(([p for p, _ in pl], [m for _, m in pl]))
+    return [(spin + a0, tw + dev[k], STAR_W, off[k]) for k, a0 in enumerate(STAR)]
+
+
 def add_cards(ob, cards, drip_tips, rng_):
     """Lock cards along the approved blockout's clumps (its v3 tuft spines):
-    each clump becomes a crossed pair of 4-row cards (a fin standing on the
-    skin and a ribbon across it) that rises, slumps and droops exactly as the
+    each clump becomes 4-row cards that rise, slump and droop exactly as the
     tuft did, wide at the root and pointed at the tip, so the shaggy v3
-    outline comes back from any side. The mask runs along the lock (its
-    strands stretched 2.5x down its length) and the alpha test rises toward
-    the tip (lock_x), so a lock frays into its strands. Normals are the
-    skin's (the ribbon's turned out across its width, so it shades round).
-    Every clump a drip hangs from is a lock, so no drip floats."""
+    outline comes back from any side: on the tentacles and arms a crossed
+    pair (a fin standing on the skin and a ribbon across it), on the crown a
+    star of three narrower crossing cards, each twisting along the lock and
+    spun so its planes cross its neighbours' (crown_cards; Gate B fix B).
+    The mask runs along the lock (its strands stretched 2.5x down its
+    length) and the alpha test rises toward the tip (lock_x), so a lock
+    frays into its strands. Normals are the skin's (the ribbon's turned out
+    across its width, so it shades round; a crown card's by the part of its
+    width along the skin). Every clump a drip hangs from is a lock, so no
+    drip floats."""
     me = ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -2115,6 +2167,18 @@ def add_cards(ob, cards, drip_tips, rng_):
     pick = forced + pick_from(lambda c: c["zone"] == "crown" and c["hem_d"] < 0.14, 0.06, 0.04)
     pick += pick_from(lambda c: c["zone"] == "crown", 0.072, 0.05)
     pick += pick_from(lambda c: c["zone"] != "crown", 0.012, 0.01)     # every tuft of v3's arms (round 2)
+    # Gate B fix B: the crown's cards read as stacked flat sheets at grazing
+    # angles (neighbouring fins and ribbons parallel, each card a plane, the
+    # ribbons shingled flat along the skin). Every crown lock, along the
+    # hairline and the crown's edge too, is now a star of three narrower
+    # crossing cards, each twisting along its length, the lock spun so its
+    # planes cross its neighbours' (crown_cards). Their own seeded stream: the
+    # pick, the spins and the variants keep theirs, so the tentacle and arm
+    # cards are unchanged.
+    rc = random.Random(SEED + 14)
+    laid = []          # the crown cards so far: (row points, row plane normals)
+    laid_old = []      # the same measure for round 4's untwisted fin and ribbon (the log's before/after)
+    n_cross = 0
     for _, c in pick:
         n = (GL2BL.to_3x3() @ c["n"]).normalized()
         dense_gl, Td = lock_curve(c["spine"], c["n"])
@@ -2126,18 +2190,35 @@ def add_cards(ob, cards, drip_tips, rng_):
             j = min(range(len(Td)), key=lambda q: abs(Td[q] - t))
             spine.append(dense[j])
         width = c["radius"] * (2.1 if c["zone"] == "crown" else 2.9)
-        spin = math.radians(rng_.uniform(-20, 20))
+        spin = math.radians(rng_.uniform(-20, 20))    # (drawn on the crown too: rng_ keeps its order)
         drip_lock = any((c["spine"][-1] - q).length < 1e-6 for q in drip_tips)
-        for layer in range(2):              # 0: the fin, 1: the ribbon across it
-            k_var = 0 if drip_lock else rng_.randrange(LOCK_VARIANTS)
+        frames = []
+        for i, p in enumerate(spine):
+            tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
+            side = tan.cross(n)
+            side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
+            frames.append((tan, side, tan.cross(side).normalized()))
+        crown = c["zone"] == "crown"
+        if crown:
+            cards_ = crown_cards(rc, spine, frames, laid)
+            laid_old.append(([p for _ in range(2) for p in spine], [
+                tan.cross(Matrix.Rotation(spin, 3, tan) @ (fin if k == 0 else side)).normalized()
+                for k in range(2) for tan, side, fin in frames]))
+            n_cross += len(cards_) - 2
+        else:              # the tentacles and arms: the fin and ribbon as before
+            cards_ = [(spin, 0.0, 1.0, 0.0), (spin, 0.0, 1.0, 0.0)]
+        for layer, (ang, twist, wk, off) in enumerate(cards_):  # tentacles: 0 the fin, 1 the ribbon
+            k_var = 0 if drip_lock and layer < 2 else rng_.randrange(LOCK_VARIANTS) if layer < 2 else \
+                rc.randrange(LOCK_VARIANTS)
             rows = []
             for i, p in enumerate(spine):
-                tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
-                side = tan.cross(n)
-                side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
-                fin = tan.cross(side).normalized()
-                wdir = Matrix.Rotation(spin, 3, tan) @ (fin if layer == 0 else side)
-                w = width * (0.55 + 0.45 * (1.0 - rows_t[i])) * 0.5    # (the texture tapers the clumps)
+                tan, side, fin = frames[i]
+                if crown:
+                    wdir = Matrix.Rotation(ang + twist * rows_t[i], 3, tan) @ fin
+                    p = p + tan.cross(wdir).normalized() * (off * width)
+                else:
+                    wdir = Matrix.Rotation(spin, 3, tan) @ (fin if layer == 0 else side)
+                w = width * wk * (0.55 + 0.45 * (1.0 - rows_t[i])) * 0.5    # (the texture tapers the clumps)
                 rows.append(([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, wdir))
             for i in range(3):
                 (a0, a1), _, _ = rows[i]
@@ -2160,7 +2241,10 @@ def add_cards(ob, cards, drip_tips, rng_):
                     # width, so it shades round like the blockout's tufts (the
                     # fin's width axis is nearly the normal itself: round 3
                     # left it on the skin's normal)
-                    normals[v] = n if layer == 0 else (n + across * (0.75 * e)).normalized()
+                    if crown:      # the same, by how far the card's width lies along the skin
+                        normals[v] = (n + (across - n * across.dot(n)) * (0.75 * e)).normalized()
+                    else:
+                        normals[v] = n if layer == 0 else (n + across * (0.75 * e)).normalized()
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
@@ -2170,9 +2254,26 @@ def add_cards(ob, cards, drip_tips, rng_):
         if lp.vertex_index in vn:
             cn[li] = tuple(vn[lp.vertex_index])
     me.normals_split_custom_set(cn)
-    print("saucer: lock cards: %d clumps (%d hold a drip), crown %d, arms %d" % (
-        len(pick), len(forced), sum(c["zone"] == "crown" for _, c in pick), sum(c["zone"] != "crown" for _, c in pick)))
+    print("saucer: lock cards: %d clumps (%d hold a drip), crown %d (+%d crossing cards), arms %d" % (
+        len(pick), len(forced), sum(c["zone"] == "crown" for _, c in pick), n_cross,
+        sum(c["zone"] != "crown" for _, c in pick)))
+    for name, ld in (("round 4 (fin and ribbon, no twist)", laid_old), ("now", laid)):
+        ang = sorted(math.degrees(math.acos(min(1.0, s))) for s in cross_scores(ld))
+        print("saucer: crown card rows, angle to the nearest neighbouring lock's plane, %s: min %.1f, "
+              "p5 %.1f, median %.1f deg; %d of %d rows under 10 deg" % (
+                  name, ang[0], ang[len(ang) // 20], ang[len(ang) // 2], sum(a < 10 for a in ang), len(ang)))
     return len(pick)
+
+
+def cross_scores(laid):
+    """Per crown card row: the largest |cos| between its plane and any other
+    lock's card plane within CROSS_NEAR (1 = stacked parallel)."""
+    out = []
+    for a, (pts, nrm) in enumerate(laid):
+        for p, m in zip(pts, nrm):
+            out.append(max([abs(m.dot(m2)) for b, (pts2, nrm2) in enumerate(laid) if b != a
+                            for q, m2 in zip(pts2, nrm2) if (q - p).length < CROSS_NEAR] + [0.0]))
+    return out
 
 
 def protect_group(ob, near_slime=None):

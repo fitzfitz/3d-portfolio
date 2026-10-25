@@ -105,9 +105,10 @@ describe("splitFurGeometry on the shipped glbs (R19)", () => {
 
   // Triangle counts of the R19 split (task-5-report: saucer cards 3,708 of
   // 4,174 on LOD0, none on LOD1; tardigrade 2,948 of 4,026, LOD1's merged
-  // fringe 288 of 690).
+  // fringe 288 of 690). Gate B fix B: the saucer's 123 crown locks gained a
+  // third crossing card each (+738), so 4,446 of 4,912.
   const EXPECTED: Record<string, [number, number]> = {
-    Saucer_LOD0: [466, 3708], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 2948], Tardigrade_LOD1: [402, 288],
+    Saucer_LOD0: [466, 4446], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 2948], Tardigrade_LOD1: [402, 288],
   };
   for (const model of ["saucer", "tardigrade"]) {
     it(`${model}: every fur splits cleanly into its base and its cards`, async () => {
