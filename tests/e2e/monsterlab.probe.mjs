@@ -165,16 +165,17 @@ async function measure(page) {
   await lab(page, () => window.__monsterLab.setHidden(false));
   await nextFrames(page, 6);
   const shown = await lab(page, () => window.__monsterLab.stats());
-  const meshes = await lab(page, () => window.__monsterLab.instances());
-  const live = meshes.filter((m) => m.count > 0);
+  // The instance counts and submitted totals come with `shown`, snapshotted in the same render as its calls and triangles.
+  const meta = await lab(page, () => window.__monsterLab.instances());
+  const meshes = meta.map((m, i) => ({ ...m, count: shown.counts[i] }));
   const bodies = (model) => meshes.filter((m) => m.model === model && m.part === "body").reduce((n, m) => n + m.count, 0);
   const levels = (model) => new Set(meshes.filter((m) => m.model === model && m.count > 0).map((m) => m.lod));
   return {
     base, shown,
     calls: shown.calls - base.calls,
     triangles: shown.triangles - base.triangles,
-    submittedCalls: live.length,
-    submittedTriangles: live.reduce((n, m) => n + m.count * m.triangles, 0),
+    submittedCalls: shown.submittedCalls,
+    submittedTriangles: shown.submittedTriangles,
     saucers: bodies("saucer"), tardigrades: bodies("tardigrade"),
     saucerLods: [...levels("saucer")].sort(), tardigradeLods: [...levels("tardigrade")].sort(),
   };

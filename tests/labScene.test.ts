@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   LAB_STATES, PRESET_DISTANCE, SPREAD_SPACING, heroKind, labQuery, layoutFraming, layoutPlacements, parseLabQuery, placementMatrix,
-  saucerLabPose, tardigradeLabPose,
+  saucerLabPose, tardigradeLabPose, createSubmittedSnapshot, snapshotSubmitted,
 } from "../src/lab/labScene";
 import { AU } from "../src/constants";
 import type { SaucerPose } from "../src/utils/monsters/saucerMaterial";
@@ -152,5 +152,26 @@ describe("the lab stays out of the game", () => {
     const vite = readFileSync("vite.config.ts", "utf8");
     expect(vite).not.toMatch(/monster-lab/);
     expect(vite).not.toMatch(/rollupOptions\s*:\s*\{[^}]*input/s);
+  });
+});
+
+describe("the submitted snapshot", () => {
+  const meshes = [{ mesh: { count: 3 }, triangles: 100 }, { mesh: { count: 0 }, triangles: 50 }, { mesh: { count: 2 }, triangles: 10 }];
+  it("captures counts, calls and triangles together, in place", () => {
+    const out = createSubmittedSnapshot(meshes.length);
+    const r = snapshotSubmitted(meshes, out);
+    expect(r).toBe(out);
+    expect([...out.counts]).toEqual([3, 0, 2]);
+    expect(out.calls).toBe(2);
+    expect(out.triangles).toBe(320);
+  });
+  it("does not follow later count changes until the next snapshot", () => {
+    const out = snapshotSubmitted(meshes, createSubmittedSnapshot(meshes.length));
+    meshes[0].mesh.count = 0;
+    expect(out.triangles).toBe(320);
+    snapshotSubmitted(meshes, out);
+    expect(out.triangles).toBe(20);
+    expect(out.calls).toBe(1);
+    meshes[0].mesh.count = 3;
   });
 });

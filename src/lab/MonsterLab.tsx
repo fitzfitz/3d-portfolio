@@ -29,7 +29,7 @@ import {
 } from "../utils/monsters/tardigradeMaterial";
 import { buildSaucer, buildTardigrade, type LabMesh } from "./labMonsters";
 import {
-  CYCLE_SECONDS, LAB_STATES, clusterCentre, labQuery, heroKind, layoutFraming, layoutPlacements, monsterPhases, parseLabQuery,
+  CYCLE_SECONDS, LAB_STATES, clusterCentre, createSubmittedSnapshot, snapshotSubmitted, labQuery, heroKind, layoutFraming, layoutPlacements, monsterPhases, parseLabQuery,
   placementMatrix, saucerLabPose, tardigradeLabPose, type LabSettings, type MonsterKind,
 } from "./labScene";
 import LabPanel from "./LabPanel";
@@ -94,7 +94,8 @@ export interface LabReadings { calls: number; triangles: number; programs: numbe
 /** The debug hook's shape (tests/e2e/monsterlab.probe.mjs). */
 export interface MonsterLabHook {
   ready: boolean;
-  stats(): { calls: number; triangles: number; programs: number; diagnostics: number };
+  /** One frame's numbers: the renderer's counters and what the instance counts submitted, snapshotted in the same onAfterRender. */
+  stats(): { calls: number; triangles: number; programs: number; diagnostics: number; submittedCalls: number; submittedTriangles: number; counts: number[] };
   instances(): { name: string; model: string; lod: number; part: string; count: number; triangles: number }[];
   setState(s: string): void;
   setLayout(l: string): void;
@@ -220,6 +221,7 @@ function LabScene({ store, readings }: SceneProps) {
     stateStart: 0, cycleStart: 0, lastState: settings.state, cutExposure: true, frames: 0,
     calls: 0, triangles: 0, curl: 0,
   });
+  const submitted = useMemo(() => createSubmittedSnapshot(meshes.length), [meshes]);
   const poses = useMemo(() => ({
     saucer: { phase: 0, look: new THREE.Vector3(), aim: new THREE.Vector3(), chase: -1, fire: 0, hit: 0, defeat: 0, blink: 0 } as SaucerPose,
     tardigrade: { phase: 0, swim: 0, charge: 0, recoil: 0, hit: 0, curl: 0 } as TardigradePose,
@@ -252,9 +254,10 @@ function LabScene({ store, readings }: SceneProps) {
     scene.onAfterRender = () => {
       live.current.calls = gl.info.render.calls;
       live.current.triangles = gl.info.render.triangles;
+      snapshotSubmitted(meshes, submitted);
     };
     return () => { scene.onAfterRender = prev; };
-  }, [scene, gl]);
+  }, [scene, gl, meshes, submitted]);
 
   useFrame((state, delta) => {
     const L = live.current;
@@ -341,10 +344,12 @@ function LabScene({ store, readings }: SceneProps) {
     const hook: MonsterLabHook = {
       ready: window.__monsterLab?.ready ?? false,
       stats: () => ({
-        calls: L.calls, triangles: L.triangles, programs: gl.info.programs?.length ?? 0,
+        calls: L.calls, triangles: L.triangles,
+        submittedCalls: submitted.calls, submittedTriangles: submitted.triangles, counts: Array.from(submitted.counts),
+        programs: gl.info.programs?.length ?? 0,
         diagnostics: (gl.info.programs ?? []).filter((p) => (p as unknown as { diagnostics?: unknown }).diagnostics).length,
       }),
-      instances: () => meshes.map((m) => ({ name: m.mesh.name, model: m.model, lod: m.lod, part: m.part, count: m.mesh.count, triangles: m.triangles })),
+      instances: () => meshes.map((m, i) => ({ name: m.mesh.name, model: m.model, lod: m.lod, part: m.part, count: submitted.counts[i], triangles: m.triangles })),
       setState: (v) => store.set({ state: v as LabSettings["state"], cycle: false }),
       setLayout: (v) => store.set({ layout: v as LabSettings["layout"] }),
       setPreset: (v) => store.set({ preset: v as LabSettings["preset"] }),
@@ -404,7 +409,7 @@ function LabScene({ store, readings }: SceneProps) {
       },
     };
     window.__monsterLab = hook;
-  }, [store, gl, camera, controls, meshes, matrices, placements, inverseRotations, centre, poses, tmp]);
+  }, [store, gl, camera, controls, meshes, submitted, matrices, placements, inverseRotations, centre, poses, tmp]);
 
   return (
     <group ref={groupRef} position={centre}>
