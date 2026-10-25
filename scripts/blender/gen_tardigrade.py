@@ -76,10 +76,14 @@
 # it; two staggered rows of short tufts combed forward over the coat's front
 # edge (the hairline) and a staggered row down the spine, rooted just across
 # it and combed outward and back down each side at the shells' top (Gate B
-# fix C: the parting read as a bald stripe from above); textured by
-# clump_atlas (ragged strand-broken sides), parting round the crystals: the
-# shells shorten into each crystal's root over a long, ragged ramp (Gate B
-# fix C; the fur base's hole round a root is under the crystal). LOD1 keeps
+# fix C: the parting read as a bald stripe from above; fix E: narrow, dense
+# and overlapping, shortened rather than dropped beside a crystal), and a
+# ring of short tufts round each crystal's root, combed outward (fix E);
+# textured by clump_atlas (ragged strand-broken sides). Round the crystals
+# the shells are short fur right up to the root, thickening over a long,
+# ragged ramp, and close to the skin only under the crystal (fix E: the fur
+# base runs on under it, no hole; fix C's ramp from 0 left a crater). On the
+# flank the tufts barely cross (fix E: no light V-strokes at a120). LOD1 keeps
 # the outline with a few merged fringe cards (R17: every 4 neighbouring locks
 # of a row as one card down their hanging ends, its u across all 4 lock
 # variants, its top full width with each lock starting at its own height).
@@ -144,9 +148,10 @@
 #         thickness / 0.9 along the inward normal; the eyes 0).
 #   _FUR (vec2, [0, 1]), on TardigradeFur only:
 #     x on the fur base = the fur's length there / furMaxLength (0 at the
-#         coat's edges: the hem, behind the head, round each crystal's root
-#         (rising over ~0.25-0.6 from it, raggedly), so the shells close onto
-#         the skin there; longest on the flanks);
+#         coat's edges: the hem, behind the head, and under each crystal,
+#         so the shells close onto the skin there; short (0.45 x) from the
+#         crystal's side, rising over ~0.25-0.6 from it, raggedly; longest on
+#         the flanks);
 #         on a lock card vertex = the alpha-test height along the card
 #         (lock_x: 0.04 at its root rising to 0.34 at its tip, per tuft on
 #         the laid part; the texture carries the shape);
@@ -406,13 +411,16 @@ FUR_TILE = 0.8         # world units per repeat of the strand mask (4 x 4 clumps
 THIN_D = 0.9           # thickness (glTF units) at which _MOTION.w reaches 0
 K_TOP, K_BOT = 14, 20  # the game mesh body's columns over the coat (hem to hem) and under the belly
 LOW_RINGS = 48
-CRYSTAL_GAP = 0.22     # bare skin round each crystal's root (the coat parts round it)
+CRYSTAL_GAP = 0.22     # the hairline tufts' clearance round a crystal's root (+ 0.12)
 # the spine's tufts (Gate B fix C): rows of (root offset across the spine in
 # degrees, first z, first side), every SPINE_STEP back to SPINE_Z0, sides alternating
 SPINE_ROWS = ((2.5, COAT_Z1 - 0.45, 1),)
-SPINE_STEP, SPINE_Z0 = 0.1, -2.8
-CRYSTAL_HOLE = 0.12    # the fur base's hole round a crystal's root: under the crystal (radius 0.15-0.21), hidden
+RING_TUFTS = 10         # (Gate B fix E) short tufts round each crystal's root, combed outward
+SPINE_STEP, SPINE_Z0 = 0.05, -2.8   # (Gate B fix E: 0.1 -> 0.05, the tufts narrower: they overlap, no skin between)
+CRYSTAL_HOLE = 0.12    # the spine tufts' clearance round a crystal's root is this + 0.12 (the crystal: radius 0.15-0.21)
+CRYSTAL_IN = 0.1       # (Gate B fix E) the shells close to the skin within this of a crystal's root: under it, hidden
 GAP_RAMP = 0.42        # the shells grow out of a crystal's gap over this (+-~40%, ragged) (Gate B fix C)
+GAP_SHORT = 0.45       # (Gate B fix E) ... from short fur (this x the local length) right up to the crystal's root
 LEG_FRAMES = {}         # leg id -> (hip, direction, reach), the layout's (the same at every resolution)
 TUFT_STEP, TUFT_LEN = 0.52, 0.92   # a laid lock's shingled tufts: their spacing and length along it
 CARD_STEP = 0.65       # the most a lock card's row spacing may be on the laid part (it lies 0.05+ off the skin)
@@ -815,8 +823,11 @@ def coat_angle(p):
 
 
 def is_coat(p):
+    """(Gate B fix E: the fur base runs on under the crystals, no hole: a hole
+    cut face by face left open edges up to 0.3 from a root, outside the
+    crystal, where the shells had to close to the skin: a dark pit.)"""
     d_ang, z = coat_angle(p)
-    return d_ang > 0 and z < COAT_Z1 and min((p - c).length for c in CRYSTAL_ROOTS) >= CRYSTAL_HOLE
+    return d_ang > 0 and z < COAT_Z1
 
 
 def gap_reach(p):
@@ -829,51 +840,36 @@ def gap_reach(p):
     return GAP_RAMP * (1 + 0.28 * math.sin(3 * phi + 1.9 * i) + 0.14 * math.sin(7 * phi + 0.7 + 2.3 * i))
 
 
-def coat_len(p, d_gap):
+def coat_len(p, d_root):
     """(shell length, wetness) of the fur base at p: longest on the flanks,
-    closing to the skin at the hem, behind the head, at the edge of each
-    crystal's gap (d_gap: the distance to it) and at the tail's tip; wetter
-    toward the hem. (Gate B fix C: the gap's ramp starts at the fur base's
-    own edge round the crystal, 0 there, and is long and ragged. It ran
-    from the crystal's root over 0.16, so the gap's edge vertices stood at
-    up to full length and the shells' edges stacked into contour bands.)"""
+    closing to the skin at the hem, behind the head and at the tail's tip;
+    wetter toward the hem. Round each crystal (d_root: the distance to the
+    nearest root) the fur is short (GAP_SHORT) right up to the crystal and
+    thickens over a long, ragged ramp; it closes to the skin only under the
+    crystal (CRYSTAL_IN). (Gate B fix C: the ramp ran from 0 at the fur
+    base's edge round a crystal; fix E: that left a short-furred crater
+    where the crystal's shadow lay as a dark, hard-edged pit.)"""
     d_ang, z = coat_angle(p)
     if d_ang <= 0:
         return 0.0, 0.0
     d_hem = d_ang * radius(z)
+    d_gap = max(0.0, d_root - CRYSTAL_IN)
+    gap = smoothstep(0.0, 0.07, d_gap) * (GAP_SHORT + (1 - GAP_SHORT) * smoothstep(0.0, gap_reach(p), d_gap))
     ramp = smoothstep(0.0, 0.2, d_hem) * smoothstep(0.0, 0.08, COAT_Z1 - z) * \
-        smoothstep(0.0, gap_reach(p), d_gap) * smoothstep(-HALF + 0.02, -HALF + 0.35, z)
+        gap * smoothstep(-HALF + 0.02, -HALF + 0.35, z)
     flank = 1 - abs(math.sin(theta_of(p)))
     return (0.22 + 0.08 * flank) * ramp, 0.25 + 0.6 * (1 - smoothstep(0.0, 0.7, d_hem))
 
 
-def _seg_dist(p, a, b):
-    ab = b - a
-    u = max(0.0, min(1.0, (p - a).dot(ab) / max(ab.length_squared, 1e-12)))
-    return (a + ab * u - p).length
-
-
 def body_after(bm, span, info):
     """The coat's skin splits off into the fur base (prim 2), its shell
-    length and wetness per vertex (the crystals' gaps measured from the fur
-    base's edge round them)."""
+    length and wetness per vertex."""
     F, V = bm.faces.layers.int, bm.verts.layers.float
     for f in span.faces():
         if is_coat(f.calc_center_median()):
             f[F["prim"]] = 2
-    gap_edges = []
-    for f in span.faces():
-        if f[F["prim"]] != 2:
-            continue
-        for e in f.edges:
-            if len(e.link_faces) == 2 and any(g[F["prim"]] != 2 for g in e.link_faces):
-                mid = (e.verts[0].co + e.verts[1].co) / 2
-                if min((mid - c).length for c in CRYSTAL_ROOTS) < CRYSTAL_GAP + 0.4:
-                    gap_edges.append((e.verts[0].co.copy(), e.verts[1].co.copy()))
     for v in span.verts():
-        d_gap = min([_seg_dist(v.co, a, b) for a, b in gap_edges] +
-                    [max(0.0, (v.co - c).length - CRYSTAL_HOLE) for c in CRYSTAL_ROOTS])
-        v[V["flen"]], v[V["wet"]] = coat_len(v.co, d_gap)
+        v[V["flen"]], v[V["wet"]] = coat_len(v.co, min((v.co - c).length for c in CRYSTAL_ROOTS))
 
 
 def high_tube(bm, M):
@@ -1924,6 +1920,7 @@ def add_cards(ob, cards, rng_):
     layers = (F, V, VI, uvl)
     normals = {}
     n_quads = 0
+    rlen = random.Random(SEED + 15)        # (Gate B fix E) the lower flank's tuft lengths
 
     def vert(pb, t, p, wetv):
         v = bm.verts.new(pb)
@@ -1956,15 +1953,27 @@ def add_cards(ob, cards, rng_):
                 if s1 - s0 < 0.2:
                     continue
                 k_var = 0 if centre else rng_.randrange(LOCK_VARIANTS)
-                # (Gate B fix C: the lower flank's rows +-16 deg, not +-22: their
-                # crossed tufts read as light V-strokes at a120; one draw either way)
-                sp_max = 16 if c["row"] in (2, 3) else 22
+                # (Gate B fix C, then fix E: on the flank the crossed tufts met
+                # tip to tip in light V-strokes at a120. They are mostly the long
+                # laid chains of rows 0-1 running down the side, so fix C's
+                # rows 2-3 missed them. By where the tuft's root lies: on the
+                # back (60+ deg above the side) spin +-22 deg and flow +-13 as
+                # before; down the flank (35- deg) +-7 and +-4, so the tufts there
+                # hardly cross; and there each tuft's length is varied (its own
+                # stream), so their tips do not line up into Vs. Spin and flow
+                # stay one draw each from rng_, so the layout is unchanged)
+                p_root, n_root = row_at(fine, s0 / length)
+                elev = 90 - abs(math.degrees(theta_of(p_root)) - 90)
+                k_back = smoothstep(35, 60, elev)
+                sp_max, fl_max = 7 + 15 * k_back, 4 + 9 * k_back
                 spin = math.radians(rng_.uniform(-sp_max, sp_max))
-                flow = math.radians(rng_.uniform(-13, 13))     # (round 2: not all combed one way)
+                flow = math.radians(rng_.uniform(-fl_max, fl_max))     # (round 2: not all combed one way)
                 w = width * sw * rng_.uniform(0.85, 1.2) * 0.5
                 lifts = (0.012, 0.05 + 0.025 * (j % 2) + rng_.uniform(0.0, 0.02))
+                k_len = rlen.uniform(0.72, 1.12)
+                if k_back < 1:
+                    s1 = min(s0 + (s1 - s0) * (k_len + (1 - k_len) * k_back), laid + 0.25, length)
                 rows, uv_of = [], {}
-                p_root, n_root = row_at(fine, s0 / length)
                 for end, (sa, lf) in enumerate(((s0, lifts[0]), (s1, lifts[1]))):
                     t = sa / length
                     p, n = row_at(fine, t)
@@ -2060,10 +2069,9 @@ def add_cards(ob, cards, rng_):
     # (and a little back) down its own side, as the hairline's, so no skin
     # stripe shows; they part round the crystals' gaps
     def shell_len(z_, t_):
-        """The fur base's shell length at (z_, t_) (its crystals' gaps as
-        body_after's, from their roots)."""
+        """The fur base's shell length at (z_, t_) (as body_after's)."""
         q = surface(z_, t_)
-        return coat_len(q, min(max(0.0, (q - c_).length - CRYSTAL_HOLE) for c_ in CRYSTAL_ROOTS))[0]
+        return coat_len(q, min((q - c_).length for c_ in CRYSTAL_ROOTS))[0]
 
     rsp = random.Random(SEED + 13)
     n_spine = 0
@@ -2079,24 +2087,59 @@ def add_cards(ob, cards, rng_):
             zt = zr - reach * math.sin(psi)
             tht = th0 - side * reach * math.cos(psi) / radius(zr)
             k_var = rsp.randrange(LOCK_VARIANTS)
-            w = rsp.uniform(0.11, 0.15)
+            # (Gate B fix E: 0.11-0.15 read as slabs up close; narrower, the
+            # lock texture's ragged strand clumps read as strands)
+            w = rsp.uniform(0.06, 0.085)
             spin = math.radians(rsp.uniform(-14, 14))
             # (lifted into the shells' top, as the locks' tufts: the spine's
             # shells stand up to 0.22 tall and bury tufts at the hairline's
             # lift; by the shells' own length there, so where they shorten
             # into a crystal's gap no tuft stands out over them)
-            lift = tuple(max(0.015, (0.4 + rsp.uniform(0, 0.12)) * shell_len(z_, t_) if e == 0 else
-                             (0.66 + rsp.uniform(0, 0.16)) * shell_len(z_, t_))
-                         for e, (z_, t_) in enumerate(((zr, th0), (zt, tht))))
+            f_lift = (0.4 + rsp.uniform(0, 0.12), 0.66 + rsp.uniform(0, 0.16))     # (root, tip) x the shells' length
             z -= SPINE_STEP * rsp.uniform(0.7, 1.3)
             side = side if rsp.random() < 0.25 else -side        # (mostly alternating, not a regular zigzag)
-            # (clear of the crystals: they stand 0.15-0.21 thick on their roots)
-            if any((surface(z_, t_) - c_).length < CRYSTAL_HOLE + 0.12 for c_ in CRYSTAL_ROOTS
-                   for z_, t_ in ((zr, th0), ((zr + zt) / 2, (th0 + tht) / 2), (zt, tht))):
+            # (clear of the crystals: they stand 0.15-0.21 thick on their roots;
+            # Gate B fix E: a tuft that would reach one is shortened, not
+            # dropped, so the spine between close-set crystals is not bare)
+            for k_r in (1.0, 0.7, 0.45):
+                zt_, tht_ = zr + (zt - zr) * k_r, th0 + (tht - th0) * k_r
+                if not any((surface(z_, t_) - c_).length < CRYSTAL_HOLE + 0.12 for c_ in CRYSTAL_ROOTS
+                           for z_, t_ in ((zr, th0), ((zr + zt_) / 2, (th0 + tht_) / 2), (zt_, tht_))):
+                    break
+            else:
                 continue
-            n_quads += short_tuft(zr, th0, zt, tht, lift[1], k_var, w, spin, lift_root=lift[0])
+            n_quads += short_tuft(zr, th0, zt_, tht_, max(0.015, f_lift[1] * shell_len(zt_, tht_)), k_var, w, spin,
+                                  lift_root=max(0.015, f_lift[0] * shell_len(zr, th0)))
             n_spine += 1
     print("tardigrade: spine tufts: %d" % n_spine)
+    # (Gate B fix E) round each crystal: short tufts rooted just outside it and
+    # combed outward (a little swirled), lying in the shells' top, so the fur
+    # parts round the crystal right up to its root instead of thinning into a
+    # hollow; clear of the other crystals
+    rcr = random.Random(SEED + 16)
+    n_ring = 0
+    for ci, (zc, off) in enumerate(CRYSTALS):
+        thc = math.radians(90 + off)
+        rad = radius(zc)
+        phi0 = rcr.uniform(0, TAU)
+        for k in range(RING_TUFTS):
+            phi = phi0 + TAU * (k + rcr.uniform(-0.2, 0.2)) / RING_TUFTS
+            r0, reach = rcr.uniform(0.2, 0.24), rcr.uniform(0.26, 0.38)
+            swirl = phi + math.radians(rcr.uniform(-25, 25))
+            zr, th0 = zc + r0 * math.cos(phi), thc + r0 * math.sin(phi) / rad
+            zt, tht = zr + reach * math.cos(swirl), th0 + reach * math.sin(swirl) / rad
+            k_var = rcr.randrange(LOCK_VARIANTS)
+            w = rcr.uniform(0.055, 0.075)
+            spin = math.radians(rcr.uniform(-14, 14))
+            lift = (max(0.015, rcr.uniform(0.4, 0.5) * shell_len(zr, th0)),
+                    max(0.015, rcr.uniform(0.66, 0.8) * shell_len(zt, tht)))
+            if coat_angle(surface(zt, tht))[0] <= 0.1 or any(
+                    (surface(z_, t_) - c_).length < (0.18 if j == ci else CRYSTAL_HOLE + 0.12)
+                    for j, c_ in enumerate(CRYSTAL_ROOTS) for z_, t_ in ((zr, th0), (zt, tht))):
+                continue
+            n_quads += short_tuft(zr, th0, zt, tht, lift[1], k_var, w, spin, lift_root=lift[0])
+            n_ring += 1
+    print("tardigrade: crystal ring tufts: %d" % n_ring)
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
