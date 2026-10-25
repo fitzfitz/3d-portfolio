@@ -1077,8 +1077,8 @@ describe("tardigrade (tardigrade.glb)", () => {
     expect(nodeNames(doc).filter((n) => n.startsWith("Tardigrade_LOD"))).toEqual(["Tardigrade_LOD0", "Tardigrade_LOD1"]);
   });
 
-  it("stays inside its triangle budget: LOD0 <= 14000, LOD1 <= 4000 (R15)", async () => {
-    expect(tris(await lod(0))).toBeLessThanOrEqual(14000);
+  it("stays inside its triangle budget: LOD0 <= 15000, LOD1 <= 4000 (R15; R23 for Gate B fix C's spine tufts)", async () => {
+    expect(tris(await lod(0))).toBeLessThanOrEqual(15000);
     expect(tris(await lod(1))).toBeLessThanOrEqual(4000);
   });
 

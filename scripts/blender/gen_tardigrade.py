@@ -74,10 +74,15 @@
 # each root under the previous tuft's body, its width, spin, flow and lift
 # jittered), then down the straight hanging part a ribbon and a fin across
 # it; two staggered rows of short tufts combed forward over the coat's front
-# edge (the hairline); textured by clump_atlas (ragged strand-broken sides),
-# with gaps round the crystals' roots. LOD1 keeps the outline with a few merged fringe cards
-# (R17: every 4 neighbouring locks of a row as one card down their hanging
-# ends, its u across all 4 lock variants).
+# edge (the hairline) and a staggered row down the spine, rooted just across
+# it and combed outward and back down each side at the shells' top (Gate B
+# fix C: the parting read as a bald stripe from above); textured by
+# clump_atlas (ragged strand-broken sides), parting round the crystals: the
+# shells shorten into each crystal's root over a long, ragged ramp (Gate B
+# fix C; the fur base's hole round a root is under the crystal). LOD1 keeps
+# the outline with a few merged fringe cards (R17: every 4 neighbouring locks
+# of a row as one card down their hanging ends, its u across all 4 lock
+# variants, its top full width with each lock starting at its own height).
 # The shells are not in the file. Raw-material provenance: every map is
 # generated here (Cycles bakes of the node fields below, and the numpy
 # strand masks of monster_bake); no image, scan or add-on is used.
@@ -139,8 +144,9 @@
 #         thickness / 0.9 along the inward normal; the eyes 0).
 #   _FUR (vec2, [0, 1]), on TardigradeFur only:
 #     x on the fur base = the fur's length there / furMaxLength (0 at the
-#         coat's edges: the hem, behind the head, round each crystal's root,
-#         so the shells close onto the skin there; longest on the flanks);
+#         coat's edges: the hem, behind the head, round each crystal's root
+#         (rising over ~0.25-0.6 from it, raggedly), so the shells close onto
+#         the skin there; longest on the flanks);
 #         on a lock card vertex = the alpha-test height along the card
 #         (lock_x: 0.04 at its root rising to 0.34 at its tip, per tuft on
 #         the laid part; the texture carries the shape);
@@ -401,6 +407,12 @@ THIN_D = 0.9           # thickness (glTF units) at which _MOTION.w reaches 0
 K_TOP, K_BOT = 14, 20  # the game mesh body's columns over the coat (hem to hem) and under the belly
 LOW_RINGS = 48
 CRYSTAL_GAP = 0.22     # bare skin round each crystal's root (the coat parts round it)
+# the spine's tufts (Gate B fix C): rows of (root offset across the spine in
+# degrees, first z, first side), every SPINE_STEP back to SPINE_Z0, sides alternating
+SPINE_ROWS = ((2.5, COAT_Z1 - 0.45, 1),)
+SPINE_STEP, SPINE_Z0 = 0.1, -2.8
+CRYSTAL_HOLE = 0.12    # the fur base's hole round a crystal's root: under the crystal (radius 0.15-0.21), hidden
+GAP_RAMP = 0.42        # the shells grow out of a crystal's gap over this (+-~40%, ragged) (Gate B fix C)
 LEG_FRAMES = {}         # leg id -> (hip, direction, reach), the layout's (the same at every resolution)
 TUFT_STEP, TUFT_LEN = 0.52, 0.92   # a laid lock's shingled tufts: their spacing and length along it
 CARD_STEP = 0.65       # the most a lock card's row spacing may be on the laid part (it lies 0.05+ off the skin)
@@ -804,33 +816,64 @@ def coat_angle(p):
 
 def is_coat(p):
     d_ang, z = coat_angle(p)
-    return d_ang > 0 and z < COAT_Z1 and min((p - c).length for c in CRYSTAL_ROOTS) >= CRYSTAL_GAP
+    return d_ang > 0 and z < COAT_Z1 and min((p - c).length for c in CRYSTAL_ROOTS) >= CRYSTAL_HOLE
 
 
-def coat_len(p):
+def gap_reach(p):
+    """(Gate B fix C) How far the shells take to grow out of the nearest
+    crystal's gap: GAP_RAMP, wobbling round the crystal, so the ramp's
+    contours are ragged, not rings."""
+    i, c = min(enumerate(CRYSTAL_ROOTS), key=lambda ic: (p - ic[1]).length)
+    d = p - c
+    phi = math.atan2(d.x, d.z)
+    return GAP_RAMP * (1 + 0.28 * math.sin(3 * phi + 1.9 * i) + 0.14 * math.sin(7 * phi + 0.7 + 2.3 * i))
+
+
+def coat_len(p, d_gap):
     """(shell length, wetness) of the fur base at p: longest on the flanks,
-    closing to the skin at the hem, behind the head, round each crystal's
-    root and at the tail's tip; wetter toward the hem."""
+    closing to the skin at the hem, behind the head, at the edge of each
+    crystal's gap (d_gap: the distance to it) and at the tail's tip; wetter
+    toward the hem. (Gate B fix C: the gap's ramp starts at the fur base's
+    own edge round the crystal, 0 there, and is long and ragged. It ran
+    from the crystal's root over 0.16, so the gap's edge vertices stood at
+    up to full length and the shells' edges stacked into contour bands.)"""
     d_ang, z = coat_angle(p)
     if d_ang <= 0:
         return 0.0, 0.0
     d_hem = d_ang * radius(z)
-    d_cry = min((p - c).length for c in CRYSTAL_ROOTS) - CRYSTAL_GAP
-    ramp = smoothstep(0.0, 0.2, d_hem) * smoothstep(0.0, 0.08, COAT_Z1 - z) * smoothstep(0.0, 0.16, d_cry) * \
-        smoothstep(-HALF + 0.02, -HALF + 0.35, z)
+    ramp = smoothstep(0.0, 0.2, d_hem) * smoothstep(0.0, 0.08, COAT_Z1 - z) * \
+        smoothstep(0.0, gap_reach(p), d_gap) * smoothstep(-HALF + 0.02, -HALF + 0.35, z)
     flank = 1 - abs(math.sin(theta_of(p)))
     return (0.22 + 0.08 * flank) * ramp, 0.25 + 0.6 * (1 - smoothstep(0.0, 0.7, d_hem))
 
 
+def _seg_dist(p, a, b):
+    ab = b - a
+    u = max(0.0, min(1.0, (p - a).dot(ab) / max(ab.length_squared, 1e-12)))
+    return (a + ab * u - p).length
+
+
 def body_after(bm, span, info):
     """The coat's skin splits off into the fur base (prim 2), its shell
-    length and wetness per vertex."""
+    length and wetness per vertex (the crystals' gaps measured from the fur
+    base's edge round them)."""
     F, V = bm.faces.layers.int, bm.verts.layers.float
     for f in span.faces():
         if is_coat(f.calc_center_median()):
             f[F["prim"]] = 2
+    gap_edges = []
+    for f in span.faces():
+        if f[F["prim"]] != 2:
+            continue
+        for e in f.edges:
+            if len(e.link_faces) == 2 and any(g[F["prim"]] != 2 for g in e.link_faces):
+                mid = (e.verts[0].co + e.verts[1].co) / 2
+                if min((mid - c).length for c in CRYSTAL_ROOTS) < CRYSTAL_GAP + 0.4:
+                    gap_edges.append((e.verts[0].co.copy(), e.verts[1].co.copy()))
     for v in span.verts():
-        v[V["flen"]], v[V["wet"]] = coat_len(v.co)
+        d_gap = min([_seg_dist(v.co, a, b) for a, b in gap_edges] +
+                    [max(0.0, (v.co - c).length - CRYSTAL_HOLE) for c in CRYSTAL_ROOTS])
+        v[V["flen"]], v[V["wet"]] = coat_len(v.co, d_gap)
 
 
 def high_tube(bm, M):
@@ -1913,7 +1956,10 @@ def add_cards(ob, cards, rng_):
                 if s1 - s0 < 0.2:
                     continue
                 k_var = 0 if centre else rng_.randrange(LOCK_VARIANTS)
-                spin = math.radians(rng_.uniform(-22, 22))
+                # (Gate B fix C: the lower flank's rows +-16 deg, not +-22: their
+                # crossed tufts read as light V-strokes at a120; one draw either way)
+                sp_max = 16 if c["row"] in (2, 3) else 22
+                spin = math.radians(rng_.uniform(-sp_max, sp_max))
                 flow = math.radians(rng_.uniform(-13, 13))     # (round 2: not all combed one way)
                 w = width * sw * rng_.uniform(0.85, 1.2) * 0.5
                 lifts = (0.012, 0.05 + 0.025 * (j % 2) + rng_.uniform(0.0, 0.02))
@@ -1971,6 +2017,25 @@ def add_cards(ob, cards, rng_):
     # the hairline (round 2): two staggered rows of short tufts along the
     # coat's front edge, combed forward over it, so it frays into the head
     # instead of ending on the fur base's straight edge
+    def short_tuft(zr, th0, zt, tht, lift_tip, k_var, w, spin, lift_root=0.015):
+        """One short tuft card (one quad) from (zr, th0) on the skin to
+        (zt, tht), its root and tip lifted, its own lock texture."""
+        rows, uv_of = [], {}
+        for end, (z_, t_, lf) in enumerate(((zr, th0, lift_root), (zt, tht, lift_tip))):
+            p, n = surface_n(z_, t_)
+            q = p + n * lf
+            tan = (surface(zt, tht) - surface(zr, th0)).normalized()
+            side = tan.cross(n).normalized()
+            wdir = Matrix.Rotation(spin, 3, n) @ side
+            pb, wb, nb = bl(q), (GL2BL.to_3x3() @ wdir).normalized(), (GL2BL.to_3x3() @ n).normalized()
+            ww = w * (1.0 if end == 0 else 0.75)
+            pair = [vert(pb - wb * ww, end, q, 0.5 + 0.3 * end), vert(pb + wb * ww, end, q, 0.5 + 0.3 * end)]
+            for ci, v in enumerate(pair):
+                uv_of[v] = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * end)
+                normals[v] = (nb + wb * (0.6 * (2 * ci - 1))).normalized()
+            rows.append(pair)
+        return _quad_strip(bm, rows, uv_of, {}, layers, normals, None)
+
     rh = random.Random(SEED + 12)
     n_hair = 0
     for zr, stag in ((COAT_Z1 - 0.1, 0.0), (COAT_Z1 - 0.3, 0.5)):
@@ -1986,23 +2051,52 @@ def add_cards(ob, cards, rng_):
             k_var = rh.randrange(LOCK_VARIANTS)
             w = rh.uniform(0.09, 0.13)
             spin = math.radians(rh.uniform(-20, 20))
-            rows, uv_of = [], {}
-            for end, (z_, t_, lf) in enumerate(((zr, th0, 0.015), (zt, tht, 0.05 + rh.uniform(0, 0.03)))):
-                p, n = surface_n(z_, t_)
-                q = p + n * lf
-                tan = (surface(zt, tht) - surface(zr, th0)).normalized()
-                side = tan.cross(n).normalized()
-                wdir = Matrix.Rotation(spin, 3, n) @ side
-                pb, wb, nb = bl(q), (GL2BL.to_3x3() @ wdir).normalized(), (GL2BL.to_3x3() @ n).normalized()
-                ww = w * (1.0 if end == 0 else 0.75)
-                pair = [vert(pb - wb * ww, end, q, 0.5 + 0.3 * end), vert(pb + wb * ww, end, q, 0.5 + 0.3 * end)]
-                for ci, v in enumerate(pair):
-                    uv_of[v] = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * end)
-                    normals[v] = (nb + wb * (0.6 * (2 * ci - 1))).normalized()
-                rows.append(pair)
-            n_quads += _quad_strip(bm, rows, uv_of, {}, layers, normals, None)
+            n_quads += short_tuft(zr, th0, zt, tht, 0.05 + rh.uniform(0, 0.03), k_var, w, spin)
             n_hair += 1
     print("tardigrade: hairline tufts: %d" % n_hair)
+    # the spine (Gate B fix C): from above, the parting between the left and
+    # right lock rows read as a bald grainy stripe. Staggered rows of short
+    # tufts down it, each rooted just across the spine and combed outward
+    # (and a little back) down its own side, as the hairline's, so no skin
+    # stripe shows; they part round the crystals' gaps
+    def shell_len(z_, t_):
+        """The fur base's shell length at (z_, t_) (its crystals' gaps as
+        body_after's, from their roots)."""
+        q = surface(z_, t_)
+        return coat_len(q, min(max(0.0, (q - c_).length - CRYSTAL_HOLE) for c_ in CRYSTAL_ROOTS))[0]
+
+    rsp = random.Random(SEED + 13)
+    n_spine = 0
+    for off, z_top, side0 in SPINE_ROWS:
+        z, side = z_top, side0
+        while z > SPINE_Z0:
+            zr = z + rsp.uniform(-0.03, 0.03)
+            th0 = math.pi / 2 + side * math.radians(off + rsp.uniform(-1.5, 3.5))
+            reach = rsp.uniform(0.42, 0.56)
+            # combed outward and back, each at its own angle (the same angle
+            # every step stacked them into rungs)
+            psi = math.radians(rsp.uniform(8, 42))
+            zt = zr - reach * math.sin(psi)
+            tht = th0 - side * reach * math.cos(psi) / radius(zr)
+            k_var = rsp.randrange(LOCK_VARIANTS)
+            w = rsp.uniform(0.11, 0.15)
+            spin = math.radians(rsp.uniform(-14, 14))
+            # (lifted into the shells' top, as the locks' tufts: the spine's
+            # shells stand up to 0.22 tall and bury tufts at the hairline's
+            # lift; by the shells' own length there, so where they shorten
+            # into a crystal's gap no tuft stands out over them)
+            lift = tuple(max(0.015, (0.4 + rsp.uniform(0, 0.12)) * shell_len(z_, t_) if e == 0 else
+                             (0.66 + rsp.uniform(0, 0.16)) * shell_len(z_, t_))
+                         for e, (z_, t_) in enumerate(((zr, th0), (zt, tht))))
+            z -= SPINE_STEP * rsp.uniform(0.7, 1.3)
+            side = side if rsp.random() < 0.25 else -side        # (mostly alternating, not a regular zigzag)
+            # (clear of the crystals: they stand 0.15-0.21 thick on their roots)
+            if any((surface(z_, t_) - c_).length < CRYSTAL_HOLE + 0.12 for c_ in CRYSTAL_ROOTS
+                   for z_, t_ in ((zr, th0), ((zr + zt) / 2, (th0 + tht) / 2), (zt, tht))):
+                continue
+            n_quads += short_tuft(zr, th0, zt, tht, lift[1], k_var, w, spin, lift_root=lift[0])
+            n_spine += 1
+    print("tardigrade: spine tufts: %d" % n_spine)
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
@@ -2019,8 +2113,11 @@ def add_cards(ob, cards, rng_):
 def add_fringe(ob, cards):
     """R17: LOD1's coat outline. Per lock row and side, every 4 neighbouring
     locks merge into one card down their laid end and hanging part (its u
-    spans all 4 lock variants of the atlas, so it draws 4 locks), 2-3 quads
-    each; COLOR_0 R = 1 like LOD0's cards. Returns its triangle count."""
+    spans all 4 lock variants of the atlas, so it draws 4 locks); COLOR_0
+    R = 1 like LOD0's cards. Its top row is full width, and each lock starts
+    at its own height (Gate B fix C): the laid end is a fan of n + 2
+    triangles (the corners and each lock's centre on top, its v from 0
+    there), the hanging part one quad. Returns its triangle count."""
     me = ob.data
     bm = bmesh.new()
     bm.from_mesh(me)
@@ -2029,44 +2126,79 @@ def add_fringe(ob, cards):
     VI = bm.verts.layers.int
     uvl = bm.loops.layers.uv["UVMap"]
     normals = {}
-    n_quads = 0
+    n_tris = 0
+
+    def frame(polys, grp, t):
+        """(centre, normal, across, half width) of a merged card at t."""
+        pts = [row_at(rs, min(t, 1.0)) for rs, _ in polys]
+        p = sum((q for q, _ in pts), Vector()) / len(pts)
+        n = sum((q for _, q in pts), Vector()).normalized()
+        span = pts[-1][0] - pts[0][0] if len(pts) > 1 else Vector((0, 0, 0.2))
+        a_dir = ml.perp(span, n)
+        a_dir = a_dir.normalized() if a_dir.length > 1e-4 else Vector((0, 0, 1))
+        return p, n, a_dir, 0.5 * span.length + 0.5 * grp[0]["r0"] * 2.1 * (0.6 + 0.4 * (1 - t))
+
+    def fvert(t, f, frm, n_grp, v_tex):
+        """A card vertex at t, a fraction f across (0 left .. 1 right): its
+        u is that fraction of the group's lock variants, its v v_tex."""
+        p, n, a_dir, half = frm
+        pb, wb, nb = bl(p + n * 0.02), (GL2BL.to_3x3() @ a_dir).normalized(), (GL2BL.to_3x3() @ n).normalized()
+        v = bm.verts.new(pb + wb * ((2 * f - 1) * half))
+        v[VI["vpart"]] = P_BODY
+        v[V["ay"]] = axial(p)
+        v[V["cardf"]] = lock_x(t)
+        v[V["wet"]] = min(1.0, 0.5 * (0.6 + 0.6 * t))
+        v[V["thin"]] = 1.0
+        uv_of[v] = (0.5 + 0.5 * (0.005 + 0.99 * f) * n_grp / 4, v_tex)
+        normals[v] = nb
+        return v
+
+    def tri(vs):
+        f = bm.faces.new(vs)
+        f.smooth = True
+        f[F["prim"]], f[F["card"]], f[F["part"]], f[F["bk"]] = 2, 1, P_BODY, BAKE_IDS["fur"]
+        f.material_index = 1
+        for lp in f.loops:
+            lp[uvl].uv = uv_of[lp.vert]
+
+    rj = random.Random(SEED + 14)
+    uv_of = {}
     for row in range(5):
         for side in (1, -1):
             mine = sorted((c for c in cards if c["row"] == row and c["side"] == side), key=lambda c: -c["pts"][0].z)
             for g in range(0, len(mine), 4):
                 grp = mine[g:g + 4]
+                n_g = len(grp)
                 polys = [card_polyline(c) for c in grp]
                 th = sum(c["t_hang"] for c in grp) / len(grp)
                 length = sum(L for _, L in polys) / len(grp)
-                jit = ((g // 4 * 7 + row * 3 + (side > 0)) % 5) / 5.0           # (a staggered top, round 2)
-                ts = [t for t in (th - (0.55 + 0.3 * jit) / length, th - 0.3 / length, th, 1.0) if t > 0.02]
-                if th > 0.97:
-                    ts = [t for t in ts if t < th] + [1.0]
-                rows, uv_of = [], {}
-                for t in ts:
-                    pts = [row_at(rs, min(t, 1.0)) for rs, _ in polys]
-                    p = sum((q for q, _ in pts), Vector()) / len(pts)
-                    n = sum((q for _, q in pts), Vector()).normalized()
-                    span = pts[-1][0] - pts[0][0] if len(pts) > 1 else Vector((0, 0, 0.2))
-                    a_dir = ml.perp(span, n)
-                    a_dir = a_dir.normalized() if a_dir.length > 1e-4 else Vector((0, 0, 1))
-                    half = 0.5 * span.length + 0.5 * grp[0]["r0"] * 2.1 * (0.6 + 0.4 * (1 - t))
-                    if t == ts[0]:
-                        half *= 0.35        # (its top tapers: a ragged edge, not a tablecloth hem)
-                    pb, wb, nb = bl(p + n * 0.02), (GL2BL.to_3x3() @ a_dir).normalized(), (GL2BL.to_3x3() @ n).normalized()
-                    pair = []
-                    for ci, sg in enumerate((-1, 1)):
-                        v = bm.verts.new(pb + wb * (sg * half))
-                        v[VI["vpart"]] = P_BODY
-                        v[V["ay"]] = axial(p)
-                        v[V["cardf"]] = lock_x(t)
-                        v[V["wet"]] = min(1.0, 0.5 * (0.6 + 0.6 * t))
-                        v[V["thin"]] = 1.0
-                        uv_of[v] = (0.5 + 0.5 * (0.005 + 0.99 * ci) * len(grp) / 4, 0.015 + 0.97 * min(t, 1.0) ** 0.8)
-                        normals[v] = nb
-                        pair.append(v)
-                    rows.append(pair)
-                n_quads += _quad_strip(bm, rows, uv_of, {"mi": 1}, (F, V, VI, uvl), normals, None)
+                # (Gate B fix C) the top: full width, and each lock (a column
+                # of the card, one atlas variant) starts at its own height,
+                # its v from its own root there (round 2 pinched the top row
+                # to 35%: herringbone chevrons). Its top row: the two corners
+                # and each lock's centre; down to where the locks hang, the
+                # hanging part one quad, as before
+                t_b = min(th, 1.0)
+                tops = [max(0.02, t_b - rj.uniform(0.4, 0.9) / length) for _ in range(n_g)]
+                top = []
+                for k, (f, t) in enumerate([(0.0, None)] + [((k + 0.5) / n_g, tops[k]) for k in range(n_g)] + [(1.0, None)]):
+                    if t is None:          # a corner: just under its neighbouring lock's top
+                        t = min(t_b - 0.05 / length, (tops[0] if f == 0.0 else tops[-1]) + 0.12 / length)
+                    top.append(fvert(t, f, frame(polys, grp, t), n_g, 0.015))
+                fb_ = frame(polys, grp, t_b)
+                v_b = 0.015 + 0.97 * t_b ** 0.8
+                b0, b1 = fvert(t_b, 0.0, fb_, n_g, v_b), fvert(t_b, 1.0, fb_, n_g, v_b)
+                m = len(top) // 2
+                for i in range(len(top) - 1):
+                    tri((top[i], top[i + 1], b0 if i < m else b1))
+                tri((top[m], b1, b0))
+                n_tris += len(top)
+                if th < 0.97:          # the hanging part
+                    fe = frame(polys, grp, 1.0)
+                    e0, e1 = fvert(1.0, 0.0, fe, n_g, 0.985), fvert(1.0, 1.0, fe, n_g, 0.985)
+                    tri((b0, b1, e1))
+                    tri((b0, e1, e0))
+                    n_tris += 2
     bm.verts.index_update()
     vn = {v.index: nn for v, nn in normals.items()}
     bm.to_mesh(me)
@@ -2076,7 +2208,7 @@ def add_fringe(ob, cards):
         if lp.vertex_index in vn:
             cn[li] = tuple(vn[lp.vertex_index])
     me.normals_split_custom_set(cn)
-    return 2 * n_quads
+    return n_tris
 
 
 def protect_group(ob, seams=True):
