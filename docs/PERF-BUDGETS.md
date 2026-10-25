@@ -590,3 +590,26 @@ run that drew under 20 frames a second). Results and method:
 `docs/superpowers/specs/2026-10-22-memory-budget-design.md`. The GPU process
 sits ~600 MB above the ledger: Chrome's compositing, the canvas's swap chain
 and driver copies, which the ledger cannot see.
+
+## Space monsters (not yet in a scene)
+
+The saucer alien and the tardigrade (branch `feat/space-monsters`) exist only in the dev-only lab (`/monster-lab.html`); no game scene imports them, so **no ceiling above changes**. The combat stage re-baselines these numbers with the owner's graphics-first rule. Figures are from the glbs, the lab's `renderer.info` (GPU backend, 1512x802) and the Task 5/6 reports.
+
+| | Saucer | Tardigrade |
+|---|---|---|
+| LOD0 triangles | 13,910 (body 9,112, dome 624, fur base 466, cards 3,708) | 13,816 (body 9,790, fur base 1,078, cards 2,948) |
+| LOD1 triangles | 3,968 (body 3,576, dome 186, fur base 206, no cards) | 3,500 (body 2,810, fur base 402, cards 288) |
+| LOD switch (u) | 12.1 | 15.4 |
+| Draw calls per LOD in use (R19) | LOD0 4, LOD1 3 | 3 (both levels) |
+| Shader programs | 3 (body, dome, fur; cards share the fur program) | 2 (body, fur) |
+| glb size (meshopt + KTX2) | 1,469 KB | 1,311 KB |
+
+Fight of 6 saucers + 2 tardigrades, triangles submitted (fur shells thin out with distance: 16, 12, 8, 4, 1):
+
+| Camera | Calls | Triangles |
+|---|---|---|
+| near, 6 u (LOD0, 16 shells) | 7 | 185,372 |
+| mid, 11 u (LOD0, 8 / 12 shells) | 7 | 154,380 |
+| far, 30 u (LOD1, 4 shells) | 6 | 36,928 |
+
+Five monster programs in all. For scale, the deep-space baseline is 264k triangles against a 303k ceiling, so a near fight is a combat-stage cost to be budgeted, not absorbed. The lab's own default fight camera (about 11 u out) reads 147,620 triangles in 7 calls.

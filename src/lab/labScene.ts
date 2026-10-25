@@ -17,6 +17,10 @@ export const LAB_LAYOUTS = ["fight", "spread", "overlap"] as const;
 export const LAB_STATES = ["idle", "look", "fire", "chase", "hit", "defeat", "swim", "charge", "recoil", "curl"] as const;
 export const LAB_LODS = ["0", "1", "auto"] as const;
 
+/** Camera: the layout's own, or a close hero shot of one monster (solo, ship hidden, eyes on the camera). */
+export const LAB_CAMS = ["default", "hero-saucer", "hero-tardigrade"] as const;
+export type LabCam = (typeof LAB_CAMS)[number];
+
 export type LabPreset = (typeof LAB_PRESETS)[number];
 export type LabLayout = (typeof LAB_LAYOUTS)[number];
 export type LabState = (typeof LAB_STATES)[number];
@@ -28,6 +32,7 @@ export interface LabSettings {
   state: LabState;
   lod: LabLod;
   seed: number;
+  cam: LabCam;
   reducedMotion: boolean;
   /** Cycle through every state, CYCLE_SECONDS each (the default for a first look). */
   cycle: boolean;
@@ -66,6 +71,7 @@ export function parseLabQuery(search: string, prefersReducedMotion = false): Lab
     state: pick(LAB_STATES, q.get("state"), "idle"),
     lod: pick(LAB_LODS, q.get("lod"), "auto"),
     seed: Number.isFinite(seed) && q.has("seed") ? Math.floor(seed) : 1,
+    cam: pick(LAB_CAMS, q.get("cam"), "default"),
     reducedMotion: rm === null ? prefersReducedMotion : rm === "1" || rm === "true",
     // A first look cycles; naming a state (or cycle=0) holds it.
     cycle: cycle === null ? !q.has("state") : cycle === "1" || cycle === "true",
@@ -75,7 +81,7 @@ export function parseLabQuery(search: string, prefersReducedMotion = false): Lab
 /** The query for `s` (the page keeps its URL in step, so a view can be shared). */
 export function labQuery(s: LabSettings): string {
   return new URLSearchParams({
-    preset: s.preset, layout: s.layout, state: s.state, lod: s.lod, seed: String(s.seed),
+    preset: s.preset, layout: s.layout, state: s.state, lod: s.lod, seed: String(s.seed), cam: s.cam,
     rm: s.reducedMotion ? "1" : "0", cycle: s.cycle ? "1" : "0",
   }).toString();
 }
@@ -148,8 +154,30 @@ export function layoutPlacements(layout: LabLayout): Placement[] {
   ];
 }
 
-/** The default camera for a layout, the sun kept out of frame where the layout allows. */
-export function layoutFraming(layout: LabLayout): LabFraming {
+/** The monster a hero camera shows (null for the default camera). */
+export function heroKind(cam: LabCam): MonsterKind | null {
+  return cam === "hero-saucer" ? "saucer" : cam === "hero-tardigrade" ? "tardigrade" : null;
+}
+
+/** Where a hero camera stands and looks, in the monster's own frame (+Z is its gaze), and the layout it needs. */
+const HERO = {
+  saucer: { eye: [1.25, 0.8, 3.3], at: [0, 0.2, 0.2] },
+  tardigrade: { eye: [-3.4, 1.3, 6.2], at: [0, -0.3, 0.6] },
+} as const;
+
+/**
+ * The default camera for a layout, the sun kept out of frame where the layout allows;
+ * or, with a hero cam, a close three-quarter view of the first monster of that kind
+ * in the fight (the ship stand-in hidden, so its eyes follow the camera).
+ */
+export function layoutFraming(layout: LabLayout, cam: LabCam = "default"): LabFraming {
+  const kind = heroKind(cam);
+  if (kind) {
+    const p = layoutPlacements("fight").find((q) => q.kind === kind)!;
+    const m = placementMatrix(p);
+    const h = HERO[kind];
+    return { camera: new THREE.Vector3().fromArray(h.eye).applyMatrix4(m), target: new THREE.Vector3().fromArray(h.at).applyMatrix4(m), ship: false };
+  }
   if (layout === "overlap") return { camera: v(1.2, 1.6, 7.5), target: v(0.3, 0.2, -1), ship: false };
   // From the sun's side, so the ring is lit; at 1 AU the sun sits inside the ring's span.
   if (layout === "spread") return { camera: v(-700, 160, 140), target: ORIGIN.clone(), ship: true };

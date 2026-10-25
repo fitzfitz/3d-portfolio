@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
-  LAB_STATES, PRESET_DISTANCE, SPREAD_SPACING, labQuery, layoutPlacements, parseLabQuery, placementMatrix,
+  LAB_STATES, PRESET_DISTANCE, SPREAD_SPACING, heroKind, labQuery, layoutFraming, layoutPlacements, parseLabQuery, placementMatrix,
   saucerLabPose, tardigradeLabPose,
 } from "../src/lab/labScene";
 import { AU } from "../src/constants";
@@ -20,15 +20,39 @@ const toCamera = new THREE.Vector3(0.6, 0.2, 1), toShip = new THREE.Vector3(-0.1
 
 describe("the lab's query", () => {
   it("defaults to a first look: near, fight, auto LOD, cycling the states", () => {
-    expect(parseLabQuery("")).toEqual({ preset: "near", layout: "fight", state: "idle", lod: "auto", seed: 1, reducedMotion: false, cycle: true });
+    expect(parseLabQuery("")).toEqual({ preset: "near", layout: "fight", state: "idle", lod: "auto", seed: 1, cam: "default", reducedMotion: false, cycle: true });
     expect(parseLabQuery("", true).reducedMotion).toBe(true);
   });
   it("takes every control from the query, holds a named state, and falls back on nonsense", () => {
     const s = parseLabQuery("?preset=far&layout=spread&state=curl&lod=0&seed=42&rm=1");
-    expect(s).toEqual({ preset: "far", layout: "spread", state: "curl", lod: "0", seed: 42, reducedMotion: true, cycle: false });
+    expect(s).toEqual({ preset: "far", layout: "spread", state: "curl", lod: "0", seed: 42, cam: "default", reducedMotion: true, cycle: false });
     expect(parseLabQuery("?state=curl&cycle=1").cycle).toBe(true);
     expect(parseLabQuery("?preset=mars&layout=x&state=dance&lod=2&seed=abc")).toMatchObject({ preset: "near", layout: "fight", state: "idle", lod: "auto", seed: 1 });
     expect(parseLabQuery(`?${labQuery(s)}`)).toEqual(s);
+  });
+});
+
+describe("the lab's hero cameras", () => {
+  it("cam= takes hero-saucer / hero-tardigrade, falls back to default, and round-trips", () => {
+    expect(parseLabQuery("?cam=hero-saucer").cam).toBe("hero-saucer");
+    expect(parseLabQuery("?cam=hero-tardigrade").cam).toBe("hero-tardigrade");
+    expect(parseLabQuery("?cam=nope").cam).toBe("default");
+    const s = parseLabQuery("?cam=hero-saucer&state=fire");
+    expect(parseLabQuery(`?${labQuery(s)}`)).toEqual(s);
+  });
+  it("a hero camera stands a few units from the first monster of its kind, in front of it, with the ship hidden", () => {
+    for (const [cam, kind, max] of [["hero-saucer", "saucer", 6], ["hero-tardigrade", "tardigrade", 12]] as const) {
+      const f = layoutFraming("fight", cam);
+      const p = layoutPlacements("fight").find((q) => q.kind === kind)!;
+      expect(heroKind(cam)).toBe(kind);
+      expect(f.ship).toBe(false);
+      expect(f.camera.distanceTo(p.position)).toBeLessThan(max);
+      expect(f.camera.distanceTo(f.target)).toBeGreaterThan(1);
+      const gaze = new THREE.Vector3(0, 0, 1).applyQuaternion(new THREE.Quaternion().setFromRotationMatrix(placementMatrix(p)));
+      expect(f.camera.clone().sub(p.position).dot(gaze), "camera is on the monster's gaze side").toBeGreaterThan(0);
+    }
+    expect(layoutFraming("fight").ship).toBe(true);
+    expect(heroKind("default")).toBeNull();
   });
 });
 

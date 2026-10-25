@@ -29,7 +29,7 @@ import {
 } from "../utils/monsters/tardigradeMaterial";
 import { buildSaucer, buildTardigrade, type LabMesh } from "./labMonsters";
 import {
-  CYCLE_SECONDS, LAB_STATES, clusterCentre, labQuery, layoutFraming, layoutPlacements, monsterPhases, parseLabQuery,
+  CYCLE_SECONDS, LAB_STATES, clusterCentre, labQuery, heroKind, layoutFraming, layoutPlacements, monsterPhases, parseLabQuery,
   placementMatrix, saucerLabPose, tardigradeLabPose, type LabSettings, type MonsterKind,
 } from "./labScene";
 import LabPanel from "./LabPanel";
@@ -193,7 +193,7 @@ function LabScene({ store, readings }: SceneProps) {
     m.decompose(new THREE.Vector3(), q, new THREE.Vector3());
     return q.invert();
   }), [matrices]);
-  const framing = useMemo(() => layoutFraming(settings.layout), [settings.layout]);
+  const framing = useMemo(() => layoutFraming(settings.layout, settings.cam), [settings.layout, settings.cam]);
   /** Where the exposure is metered: the monsters' mean distance from the sun. */
   const meter = useMemo(() => placements.reduce((d, p) => d + p.position.clone().add(centre).length(), 0) / placements.length,
     [placements, centre]);
@@ -288,10 +288,11 @@ function LabScene({ store, readings }: SceneProps) {
     if (!L.hidden) {
       const group = groupRef.current;
       tmp.ship.copy(centre);
+      const soloKind = L.solo ?? heroKind(s.cam);
       const solos = { saucer: false, tardigrade: false };
       for (let i = 0; i < placements.length; i++) {
         const p = placements[i];
-        if (L.solo && (p.kind !== L.solo || solos[p.kind])) continue;
+        if (soloKind && (p.kind !== soloKind || solos[p.kind])) continue;
         solos[p.kind] = true;
         tmp.world.copy(p.position).add(centre);
         const distance = camera.position.distanceTo(tmp.world);

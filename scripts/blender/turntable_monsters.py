@@ -1,7 +1,8 @@
 # Cycles turntable stills of the space monsters: look checks A and B.
 #   $BLENDER --background --python scripts/blender/turntable_monsters.py -- --out=DIR \
 #       [--glb=assets-src/saucer.glb] [--with-ship] [--samples=64] [--res=1024] \
-#       [--lod=0|1] [--fur-shells=N] [--no-cards] [--rig=PATH] [--shots=a030,face,...]
+#       [--lod=0|1] [--fur-shells=N] [--no-cards] [--rig=PATH] [--shots=a030,face,...] \
+#       [--tint=skin:spot:band]
 #
 # Look-dev only: renders are never shipped or committed (pass a scratch DIR).
 # Without --glb it renders every monster glb found in assets-src/ (saucer,
@@ -23,6 +24,12 @@
 # each layer alpha-testing the strand mask at layer / N, plus a gravity
 # droop growing with the square of the height (0.6 x the length at the tip); the cards alpha-test at their _FUR.x.
 # The face shot of a final glb frames its face's _MOTION parts (FACE_IDS).
+#
+# --tint=skin:spot:band tints a final saucer as the game does per instance
+# (src/utils/monsters/saucerMaterial.ts): the albedo is multiplied by
+# mix(1, skin, mask.r) * mix(1, spot, mask.g) * mix(1, band, mask.b), mask
+# being COLOR_0. Each zone is a LINEAR rgb "r,g,b"; the values are saucerTint(seed)
+# from src/utils/monsters/monsterTint.ts. Gate B renders it for three seeds.
 #
 # Output per monster <name> (the glb's basename):
 #   DIR/<name>_a030.png, _a120, _a210, _a300 (azimuth about glTF +Y from the
@@ -69,6 +76,7 @@ FACE_PARTS = ("Eye", "Brow", "Teeth", "Goo", "Mouth", "Drool")   # objects the f
 FACE_IDS = {"saucer": (3, 4, 5, 6, 8), "tardigrade": (9, 11, 12, 14)}
 LOD = int(OPT.get("lod", 0))
 SHOTS = set(OPT["shots"].split(",")) if "shots" in OPT else None
+TINT = [tuple(float(c) for c in z.split(",")) for z in OPT["tint"].split(":")] if "tint" in OPT else None
 
 
 def lin(h):
@@ -254,8 +262,28 @@ def untint(objs):
                 continue
             node = inp.links[0].from_node
             tex = next((lk.from_node for s_ in node.inputs for lk in s_.links if lk.from_node.type == "TEX_IMAGE"), None)
-            if tex is not None:
+            mask = next((lk.from_node for s_ in node.inputs for lk in s_.links
+                         if lk.from_node.type in ("VERTEX_COLOR", "ATTRIBUTE")), None)
+            if tex is not None and TINT and mask is not None:
+                apply_tint(nt, tex, mask, inp)
+            elif tex is not None:
                 nt.links.new(tex.outputs["Color"], inp)
+
+
+def apply_tint(nt, tex, mask, inp):
+    """albedo * mix(1, skin, R) * mix(1, spot, G) * mix(1, band, B)."""
+    sep = nt.nodes.new("ShaderNodeSeparateColor")
+    nt.links.new(mask.outputs["Color"], sep.inputs["Color"])
+    prev = tex.outputs["Color"]
+    for zone, channel in zip(TINT, ("Red", "Green", "Blue")):
+        mix = nt.nodes.new("ShaderNodeMix")
+        mix.data_type = "RGBA"
+        mix.blend_type = "MULTIPLY"
+        mix.inputs["B"].default_value = (*zone, 1)
+        nt.links.new(sep.outputs[channel], mix.inputs["Factor"])
+        nt.links.new(prev, mix.inputs["A"])
+        prev = mix.outputs["Result"]
+    nt.links.new(prev, inp)
 
 
 def pick_lod(objs):
