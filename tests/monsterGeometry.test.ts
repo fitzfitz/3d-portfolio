@@ -109,8 +109,10 @@ describe("splitFurGeometry on the shipped glbs (R19)", () => {
   // third crossing card each (+738), so 4,446 of 4,912. Gate B fix C: the
   // tardigrade's 30 spine tufts (+60), so 3,008 of 4,086; LOD1's fringe tops
   // are a fan per card (each lock starting at its own height), 396 of 798.
+  // Gate B round 2, part D: the saucer's 58 broadest-looking crown locks are
+  // four strips instead of a three-card star (+348), so 4,794 of 5,260.
   const EXPECTED: Record<string, [number, number]> = {
-    Saucer_LOD0: [466, 4446], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 3008], Tardigrade_LOD1: [402, 396],
+    Saucer_LOD0: [466, 4794], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 3008], Tardigrade_LOD1: [402, 396],
   };
   for (const model of ["saucer", "tardigrade"]) {
     it(`${model}: every fur splits cleanly into its base and its cards`, async () => {
