@@ -105,6 +105,33 @@ function subsetGeometry(g: THREE.BufferGeometry, tris: readonly number[]): THREE
   return out;
 }
 
+/** The LOD switch's band (Gate B fix A2): up to LOD1 above D × (1 + this), back to LOD0 below D × (1 - this). */
+export const LOD_HYSTERESIS = 0.08;
+
+/** One monster's LOD level, kept by the caller from frame to frame (the hysteresis needs the last one). */
+export interface MonsterLodState { lod: 0 | 1 }
+export const createLodState = (lod: 0 | 1 = 0): MonsterLodState => ({ lod });
+
+/**
+ * The LOD level for a monster `distance` away, with a band around the
+ * switch distance `d1` so orbiting across it never flips back and forth:
+ * LOD1 above d1 × 1.08, LOD0 below d1 × 0.92, and the `previous` level
+ * between. With no `previous`, the plain threshold at d1. Pure.
+ */
+export function chooseLod(distance: number, previous: 0 | 1 | undefined, d1: number): 0 | 1 {
+  if (previous === undefined) return distance >= d1 ? 1 : 0;
+  if (previous === 0) return distance > d1 * (1 + LOD_HYSTERESIS) ? 1 : 0;
+  return distance < d1 * (1 - LOD_HYSTERESIS) ? 0 : 1;
+}
+
+/** The level index a monster draws at: the hysteresis when the caller keeps a state (updated here), else the plain threshold; always 0 with one level. */
+export function pickLod(levels: number, distance: number, d1: number, state?: MonsterLodState): 0 | 1 {
+  if (levels < 2) return 0;
+  if (!state) return chooseLod(distance, undefined, d1);
+  state.lod = chooseLod(distance, state.lod, d1);
+  return state.lod;
+}
+
 /** Starts a frame: every mesh draws nothing until monsters are added. */
 export function beginMonsterFrame(meshes: readonly THREE.InstancedMesh[]): void {
   for (let i = 0; i < meshes.length; i++) meshes[i].count = 0;
@@ -128,7 +155,11 @@ export function claimSlot(mesh: THREE.InstancedMesh, matrix: THREE.Matrix4): num
   return i;
 }
 
-/** Writes a fur slot's shell: index `shell` of `shells`. */
+/**
+ * Writes a fur slot's shell: index `shell` of `shells`. `shells` is the
+ * (continuous) shell count: the shader fades the outermost shell by its
+ * fractional part (monsterShading.ts shellFade), so it may be fractional.
+ */
 export function writeShell(mesh: THREE.InstancedMesh, i: number, shell: number, shells: number): void {
   const a = mesh.geometry.getAttribute("monsterShell") as THREE.InstancedBufferAttribute | undefined;
   if (!a) return;

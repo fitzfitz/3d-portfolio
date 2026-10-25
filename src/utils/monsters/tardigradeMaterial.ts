@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { TOKSVIG_FRAGMENT } from "../../components/canvas/toksvig";
 import {
-  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
+  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCountSmooth, furVertexHeader, glslFloat, glslVec, injectShader,
   monsterVertexMain, patchFurFragment, shareMonsterUniforms, translucencyHeader,
 } from "./monsterShading";
-import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInstances";
+import { claimSlot, clamp01, pickLod, writeShell, writeSlot, wrap01, type MonsterLodState } from "./monsterInstances";
 
 /**
  * The tardigrade's instanced materials and motion (space monsters, Task 5).
@@ -177,13 +177,13 @@ export function writeTardigradeInstance(mesh: THREE.InstancedMesh, i: number, po
 
 /**
  * Adds one tardigrade to this frame (between beginMonsterFrame and
- * endMonsterFrame): its LOD level at rig.lod1Distance, its body slot, one
+ * endMonsterFrame): its LOD level at rig.lod1Distance (hysteresis with `lodState`), its body slot, one
  * cards slot and one fur-base slot per shell, at `matrix`. A full mesh drops
  * it. Allocates nothing.
  */
 export function addTardigrade(lods: readonly TardigradeLod[], rig: TardigradeRig, matrix: THREE.Matrix4, distance: number,
-  pose: TardigradePose): void {
-  const lod = lods[distance >= rig.lod1Distance && lods.length > 1 ? 1 : 0];
+  pose: TardigradePose, lodState?: MonsterLodState): void {
+  const lod = lods[pickLod(lods.length, distance, rig.lod1Distance, lodState)];
   const i = claimSlot(lod.body, matrix);
   if (i < 0) return;
   writeTardigradeInstance(lod.body, i, pose);
@@ -194,12 +194,13 @@ export function addTardigrade(lods: readonly TardigradeLod[], rig: TardigradeRig
       writeShell(lod.cards, c, 0, 1);
     }
   }
-  const n = furShellCount(distance, rig.furMaxLength, rig.furShells);
+  const c = furShellCountSmooth(distance, rig.furMaxLength, rig.furShells);
+  const n = Math.ceil(c);
   for (let s = 0; s < n; s++) {
     const j = claimSlot(lod.fur, matrix);
     if (j < 0) return;
     writeTardigradeInstance(lod.fur, j, pose);
-    writeShell(lod.fur, j, s, n);
+    writeShell(lod.fur, j, s, c);
   }
 }
 

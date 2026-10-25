@@ -106,6 +106,47 @@ function blownShare(shown, mask) {
  */
 const RM_POSE_PX = { look: 772, fire: 21305, chase: 471, hit: 43556, defeat: 26656, charge: 2320, recoil: 20463, curl: 26205 };
 
+/**
+ * Gate B fix A1: the dome is clear glass. The measure: through the middle of
+ * the dome (a disc of DOME_DISC of its on-screen radius), over the pixels
+ * where the alien (or its fur) shows with the dome hidden, the frame with the
+ * dome keeps at least DOME_KEEP of the luminance and of the contrast
+ * (standard deviation of luminance) the dome-hidden frame has (and the luminance does not rise by more than that:
+ * a milky veil lifts the blacks). Same camera,
+ * pose (reduced motion holds it) and light, so only the glass differs. The
+ * dome's bright rim and sun glint are outside the disc or add contrast.
+ */
+const DOME_DISC = 0.45;
+const DOME_KEEP = 0.85;
+
+/** Luminance mean and standard deviation of `a` over `mask` (indices of pixels). */
+function lumaStats(a, mask) {
+  let sum = 0, sq = 0;
+  for (const p of mask) {
+    const i = p * 3;
+    const y = 0.2126 * a.data[i] + 0.7152 * a.data[i + 1] + 0.0722 * a.data[i + 2];
+    sum += y;
+    sq += y * y;
+  }
+  const mean = sum / mask.length;
+  return { mean, std: Math.sqrt(Math.max(0, sq / mask.length - mean * mean)), n: mask.length };
+}
+
+/** Pixels inside the disc (x, y, r) where `shown` differs from `bg` (the alien is there). */
+function discMask(shown, bg, [x, y, r]) {
+  const out = [];
+  const { width: w, height: h } = shown;
+  for (let py = Math.max(0, Math.floor(y - r)); py <= Math.min(h - 1, Math.ceil(y + r)); py++) {
+    for (let px = Math.max(0, Math.floor(x - r)); px <= Math.min(w - 1, Math.ceil(x + r)); px++) {
+      if ((px - x) ** 2 + (py - y) ** 2 > r * r) continue;
+      const i = (py * w + px) * 3;
+      const d = Math.abs(shown.data[i] - bg.data[i]) + Math.abs(shown.data[i + 1] - bg.data[i + 1]) + Math.abs(shown.data[i + 2] - bg.data[i + 2]);
+      if (d > 24) out.push(py * w + px);
+    }
+  }
+  return out;
+}
+
 const lab = (page, fn, ...args) => page.evaluate(fn, ...args);
 
 async function open(page, query) {
@@ -294,6 +335,27 @@ export default function run() {
         `${(off * 100).toFixed(0)}% monster with the ${m.kind} unposed`);
     }
     await lab(page, () => window.__monsterLab.setSolo(null));
+
+    // --- Gate B A1: the dome is clear glass ---
+    await open(page, { layout: "fight", preset: "near", lod: "0", state: "idle", seed: "7", rm: "1", cam: "hero-saucer" });
+    await nextFrames(page, 12);
+    const withDome = await shot(page, "dome-shown");
+    await lab(page, () => window.__monsterLab.setDomeHidden(true));
+    await nextFrames(page, 6);
+    const noDome = await shot(page, "dome-hidden");
+    await lab(page, () => { window.__monsterLab.setDomeHidden(false); window.__monsterLab.setHidden(true); });
+    await nextFrames(page, 6);
+    const empty = await shot(page);
+    await lab(page, () => window.__monsterLab.setHidden(false));
+    const disc = await lab(page, () => window.__monsterLab.domeDisc());
+    const mask = discMask(noDome, empty, [disc[0], disc[1], disc[2] * DOME_DISC]);
+    const sA = lumaStats(withDome, mask), sB = lumaStats(noDome, mask);
+    const keepL = sA.mean / sB.mean, keepC = sA.std / sB.std;
+    checks.note("dome clarity", `disc (${disc.map((v) => v.toFixed(0)).join(", ")}), ${mask.length} alien px; luminance ${sA.mean.toFixed(1)} vs ${sB.mean.toFixed(1)} `
+      + `(${(keepL * 100).toFixed(1)}%), contrast ${sA.std.toFixed(1)} vs ${sB.std.toFixed(1)} (${(keepC * 100).toFixed(1)}%)`);
+    checks.check("dome: the alien shows through its centre (enough pixels measured)", mask.length > 2000, `${mask.length} px`);
+    checks.check(`dome: through the centre the alien's luminance stays within ${(1 - DOME_KEEP) * 100}% of the dome-hidden frame (a milky veil lifts it)`, Math.abs(keepL - 1) <= 1 - DOME_KEEP, `${(keepL * 100).toFixed(1)}%`);
+    checks.check(`dome: through the centre the alien keeps ≥ ${DOME_KEEP * 100}% of its contrast`, keepC >= DOME_KEEP, `${(keepC * 100).toFixed(1)}%`);
 
     // --- R22: the glow is exposure-compensated (far must not blow out) ---
     // Reduced motion holds each pose at full strength, so the frame is

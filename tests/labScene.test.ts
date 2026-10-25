@@ -129,6 +129,15 @@ describe("the lab's timed poses", () => {
   });
 });
 
+describe("the lab uses the LOD hysteresis", () => {
+  it("MonsterLab keeps one LOD state per placement and hands it to both add functions", () => {
+    const src = readFileSync("src/lab/MonsterLab.tsx", "utf8");
+    expect(src).toMatch(/createLodState/);
+    expect(src).toMatch(/addSaucer\([^)]*lodStates\[i\]\)/);
+    expect(src).toMatch(/addTardigrade\([^)]*lodStates\[i\]\)/);
+  });
+});
+
 describe("the lab stays out of the game", () => {
   const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
     const p = join(dir, f);

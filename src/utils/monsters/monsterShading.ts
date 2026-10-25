@@ -183,9 +183,11 @@ export const FUR_ROOT_SHADE = 0.7;
  * After `#include <common>` in a fur vertex shader. The fur primitive is
  * drawn once per shell (InstancedMesh count = monsters × shells): each
  * instance carries `monsterShell` = (shell index s, this monster's shell
- * count n). Shell s sits s/n of the fur's length out along the normal,
- * drooping and flowing at the tips; the cards (COLOR_0 R) draw only at shell
- * 0, and shells at or past n collapse to a point.
+ * count n, continuous). Shell s sits s/n of the fur's length out along the
+ * normal, drooping and flowing at the tips; the cards (COLOR_0 R) draw only
+ * at shell 0, and shells at or past n collapse to a point. The outermost
+ * drawn shell (s > n - 1) fades by n - s (shellFade): its alpha cutoff rises
+ * to 1.01 as the fade goes to 0, so it thins to nothing instead of popping.
  */
 export function furVertexHeader(furMaxLength: number): string {
   return /* glsl */ `
@@ -197,13 +199,15 @@ void monsterFurShell( inout vec3 p, vec3 n, float phase ) {
   float card = step( 0.5, monsterMask.r );
   float shells = max( monsterShell.y, 1.0 );
   float h = monsterShell.x / shells;
+  float fade = clamp( shells - monsterShell.x, 0.0, 1.0 );
   float len = monsterFur.x * MONSTER_FUR_LENGTH * ( 1.0 - card );
   vec3 flow = vec3( sin( uTime * 1.7 + phase + p.x * 4.0 ), 0.0, cos( uTime * 1.3 + phase + p.z * 4.0 ) ) * ( ${glslFloat(FUR_FLOW)} * uMotion );
   vec3 droop = vec3( 0.0, - ${glslFloat(FUR_DROOP)}, 0.0 ) + flow;
   p += ( n * h + droop * h * h ) * len;
-  if ( monsterShell.x > shells - 0.5 || ( card > 0.5 && monsterShell.x > 0.5 ) ) p = vec3( 0.0 );
+  if ( fade <= 0.0 || ( card > 0.5 && monsterShell.x > 0.5 ) ) p = vec3( 0.0 );
   float wet = monsterFur.y;
-  vMonsterFur = vec4( card, h, wet, card > 0.5 ? monsterFur.x : h * ( 1.0 + ${glslFloat(FUR_CLUMP)} * wet ) );
+  float cut = h * ( 1.0 + ${glslFloat(FUR_CLUMP)} * wet );
+  vMonsterFur = vec4( card, h, wet, card > 0.5 ? monsterFur.x : mix( 1.01, cut, fade ) );
 }
 `;
 }
@@ -268,31 +272,35 @@ if ( diffuseColor.a < monsterCut ) discard;`;
 
 /** The widest gap between two shells, in pixels at the game's resting view, once the fur thins. */
 export const FUR_SHELL_GAP_PX = 2;
-/** The shell counts the fur thins through (with the rig's furShells on top, and 1, the undercoat alone). */
-const SHELL_STEPS = [4, 8, 12] as const;
-
 /** The fur's full depth on screen, in pixels, at `distance` (sphereLod.ts's resting view: 58° on 802 px). */
 export function furShellPx(distance: number, furMaxLength: number): number {
   return (furMaxLength * FOCAL_PX) / Math.max(distance, 1e-3);
 }
 
 /**
- * How many shells (the base included) a monster's fur draws at `distance`.
- * The steps keep the gap between shells at or under FUR_SHELL_GAP_PX once
- * the fur thins (wider gaps read as stacked contour bands): every shell
- * while the fur is deeper than 12 × 2 px, then 12, 8 and 4, and the
- * undercoat alone once the whole fur is under 2 px deep. LOD1's fur base
- * thins the same way (the saucer's fur is still ~14 px deep at its
+ * How many shells (the base included) a monster's fur draws at `distance`,
+ * continuous: the count that keeps the gap between shells at or under
+ * FUR_SHELL_GAP_PX (wider gaps read as stacked contour bands), from the
+ * rig's furShells at close range down to 1 (the undercoat alone) once the
+ * whole fur is under 2 px deep. Draw ceil() of it; the outermost shell fades
+ * by the fractional part (shellFade), so shells never pop in or out. LOD1's
+ * fur base thins the same way (the saucer's fur is still ~14 px deep at its
  * lod1Distance, so dropping every shell there would pop the silhouette).
  */
-export function furShellCount(distance: number, furMaxLength: number, maxShells: number): number {
-  const px = furShellPx(distance, furMaxLength);
-  if (px <= FUR_SHELL_GAP_PX) return 1;
-  for (let i = 0; i < SHELL_STEPS.length; i++) {
-    const n = SHELL_STEPS[i];
-    if (n < maxShells && px / n <= FUR_SHELL_GAP_PX) return n;
-  }
-  return maxShells;
+export function furShellCountSmooth(distance: number, furMaxLength: number, maxShells: number): number {
+  const c = furShellPx(distance, furMaxLength) / FUR_SHELL_GAP_PX;
+  return c < 1 ? 1 : c > maxShells ? maxShells : c;
+}
+
+/**
+ * The TS mirror of the shader's shell fade: shell `index` of a monster
+ * whose (continuous) shell count is `count` is fully there while index + 1 ≤
+ * count, fades over the last fraction, and is gone at index ≥ count. The sum
+ * over the drawn shells equals `count`, so the coverage is continuous.
+ */
+export function shellFade(index: number, count: number): number {
+  const f = count - index;
+  return f < 0 ? 0 : f > 1 ? 1 : f;
 }
 
 /**

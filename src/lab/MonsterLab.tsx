@@ -21,9 +21,9 @@ import {
   stepExposure, targetExposure,
 } from "../utils/sunLight";
 import { MONSTER_UNIFORMS } from "../utils/monsters/monsterShading";
-import { beginMonsterFrame, endMonsterFrame } from "../utils/monsters/monsterInstances";
+import { beginMonsterFrame, createLodState, endMonsterFrame } from "../utils/monsters/monsterInstances";
 import { saucerTint, type SaucerTint } from "../utils/monsters/monsterTint";
-import { addSaucer, saucerMuzzle, type SaucerPose, type SaucerRig } from "../utils/monsters/saucerMaterial";
+import { addSaucer, saucerBoundsMargin, saucerMuzzle, type SaucerPose, type SaucerRig } from "../utils/monsters/saucerMaterial";
 import {
   addTardigrade, tardigradeCurlPoint, type TardigradePose, type TardigradeRig,
 } from "../utils/monsters/tardigradeMaterial";
@@ -104,6 +104,10 @@ export interface MonsterLabHook {
   setReducedMotion(v: boolean): void;
   setCycle(v: boolean): void;
   setHidden(v: boolean): void;
+  /** Hides only the saucers' glass (the dome-clarity probe compares with and without it). */
+  setDomeHidden(v: boolean): void;
+  /** The first saucer's dome on screen: centre x, y and radius, in CSS px (the radius from the dome's own bounds, without the motion margin). */
+  domeDisc(): [number, number, number];
   setSolo(k: MonsterKind | null): void;
   setCamera(position: number[], target: number[]): void;
   /** Frames the solo monster for the mirror check; `posed` false puts the saucer's barrel back to its rest aim. */
@@ -203,6 +207,8 @@ function LabScene({ store, readings }: SceneProps) {
     return out;
   }, [placements, settings.seed]);
   const phases = useMemo(() => monsterPhases(settings.seed, placements.length), [settings.seed, placements]);
+  /** One LOD state per placement: the hysteresis band needs each monster's last level (fresh per layout). */
+  const lodStates = useMemo(() => placements.map(() => createLodState()), [placements]);
   const lodSets = useMemo(() => ({
     saucer: { "0": [saucer.lods[0]], "1": [saucer.lods[1]], auto: saucer.lods },
     tardigrade: { "0": [tardigrade.lods[0]], "1": [tardigrade.lods[1]], auto: tardigrade.lods },
@@ -304,11 +310,11 @@ function LabScene({ store, readings }: SceneProps) {
           const pose = saucerLabPose(st, ts, phases[i], s.reducedMotion, tmp.toTarget, tmp.toShip, poses.saucer);
           if (L.aimOverride) pose.aim.copy(L.aimOverride);
           if (i === firstOf(placements, "saucer")) poses.lastAim.copy(pose.aim);
-          addSaucer(lodSets.saucer[s.lod], SAUCER_RIG, matrices[i], distance, pose, tints[i]);
+          addSaucer(lodSets.saucer[s.lod], SAUCER_RIG, matrices[i], distance, pose, tints[i], lodStates[i]);
         } else {
           const pose = tardigradeLabPose(st, ts, phases[i], s.reducedMotion, poses.tardigrade);
           if (i === firstOf(placements, "tardigrade")) L.curl = pose.curl;
-          addTardigrade(lodSets.tardigrade[s.lod], TARDIGRADE_RIG, matrices[i], distance, pose);
+          addTardigrade(lodSets.tardigrade[s.lod], TARDIGRADE_RIG, matrices[i], distance, pose, lodStates[i]);
         }
       }
       if (group) group.updateMatrixWorld();
@@ -347,6 +353,19 @@ function LabScene({ store, readings }: SceneProps) {
       setReducedMotion: (v) => store.set({ reducedMotion: v }),
       setCycle: (v) => store.set({ cycle: v }),
       setHidden: (v) => { L.hidden = v; },
+      setDomeHidden: (v) => { for (const m of meshes) if (m.part === "dome") m.mesh.visible = !v; },
+      domeDisc: () => {
+        const i = firstOf(placements, "saucer");
+        const g = saucer.lods[0].dome.geometry;
+        if (i < 0 || !g.boundingSphere) return [NaN, NaN, NaN];
+        const c = g.boundingSphere.center, r = g.boundingSphere.radius - saucerBoundsMargin(SAUCER_RIG);
+        const [x, y] = project(c, i);
+        // the radius on screen: a point r to the camera's right of the centre
+        const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+        const e = c.clone().applyMatrix4(matrices[i]).add(centre).addScaledVector(right, r).project(camera);
+        const rect = gl.domElement.getBoundingClientRect();
+        return [x, y, Math.abs((e.x + 1) / 2 * rect.width + rect.left - x)];
+      },
       setSolo: (k) => { L.solo = k; if (!k) L.aimOverride = null; },
       setCamera: (position, target) => {
         camera.position.set(position[0], position[1], position[2]).add(centre);

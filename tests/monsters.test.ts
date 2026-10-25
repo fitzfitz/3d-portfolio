@@ -6,9 +6,11 @@ import {
   SAUCER_BAND_PAINTS, SAUCER_SKIN_HUE, SAUCER_SPOT_HUE, saucerTint,
 } from "../src/utils/monsters/monsterTint";
 import {
-  FUR_SHELL_GAP_PX, MONSTER_UNIFORMS, furAtlasUv, furShellCount, furShellPx, injectShader,
+  FUR_SHELL_GAP_PX, MONSTER_UNIFORMS, furAtlasUv, furShellCountSmooth, furShellPx, injectShader, shellFade,
 } from "../src/utils/monsters/monsterShading";
-import { beginMonsterFrame, endMonsterFrame, prepareMonsterGeometry, splitFurGeometry } from "../src/utils/monsters/monsterInstances";
+import {
+  LOD_HYSTERESIS, beginMonsterFrame, chooseLod, createLodState, endMonsterFrame, prepareMonsterGeometry, splitFurGeometry,
+} from "../src/utils/monsters/monsterInstances";
 import {
   AIM_PITCH_MAX, AIM_PITCH_MIN, EYE_PITCH_MAX, EYE_YAW_MAX, PORTHOLE_DIM, PORTHOLE_IDLE, PORTHOLE_TRAIL,
   SAUCER_FIRE_JAW, SAUCER_FIRE_LEAN, SAUCER_HIT_SQUASH, SAUCER_INSTANCE_ATTRIBUTES, addSaucer, createSaucerMaterials,
@@ -422,9 +424,9 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
     expect([lods[0].body.count, lods[1].body.count, lods[1].dome.count]).toEqual([1, 2, 2]);
     expect(lods[0].cards!.count).toBe(1); // the LOD1 saucers have no cards to draw
     expect(lods[1].cards).toBeNull();
-    const far = furShellCount(r.lod1Distance + 0.01, r.furMaxLength, r.furShells);
-    expect(lods[1].fur.count).toBe(far + furShellCount(500, r.furMaxLength, r.furShells));
-    expect(slot(lods[1].fur, "monsterShell", 0)).toEqual([0, far]);
+    const farC = furShellCountSmooth(r.lod1Distance + 0.01, r.furMaxLength, r.furShells), far = Math.ceil(farC);
+    expect(lods[1].fur.count).toBe(far + 1);
+    expect(slot(lods[1].fur, "monsterShell", 0)[1]).toBeCloseTo(farC, 5);
     beginMonsterFrame(all);
     expect(all.every((m) => m.count === 0)).toBe(true);
   });
@@ -452,7 +454,7 @@ describe("addSaucer / addTardigrade: per-instance LOD and the shell layout", () 
     expect(lods[0].fur.count).toBe(r.furShells);
     expect(slot(lods[0].fur, "monsterShell", r.furShells - 1)).toEqual([r.furShells - 1, r.furShells]);
     expect(slot(lods[0].fur, "tardigradePose", 3)[2]).toBe(0.5);
-    expect(lods[1].fur.count).toBe(furShellCount(r.lod1Distance + 1, r.furMaxLength, r.furShells));
+    expect(lods[1].fur.count).toBe(Math.ceil(furShellCountSmooth(r.lod1Distance + 1, r.furMaxLength, r.furShells)));
     // R19: cards once per tardigrade on either level (LOD1 keeps its merged fringe cards)
     expect([lods[0].cards!.count, lods[1].cards!.count]).toEqual([1, 1]);
     expect(slot(lods[0].cards!, "monsterShell", 0)).toEqual([0, 1]);
@@ -546,30 +548,6 @@ describe("furAtlasUv: the shells sample only the atlas's shell half, inset again
     // a footprint under one texel still insets a whole texel (bilinear at mip 0 reads half of one each side)
     furAtlasUv(0, 0, r, 1024, 512, 0.25, out);
     expect(out.u).toBeCloseTo(r[0] + 1 / 1024, 9);
-  });
-});
-
-describe("furShellCount: the shells thin with distance", () => {
-  it("draws every shell up close and thins in steps, never leaving a gap over FUR_SHELL_GAP_PX once thinned", () => {
-    for (const rig of [saucerRig(), tardigradeRig()]) {
-      const { furMaxLength: len, furShells: max } = rig;
-      expect(furShellCount(1, len, max)).toBe(max);
-      let last = max;
-      for (let d = 1; d < 400; d += 0.5) {
-        const n = furShellCount(d, len, max);
-        expect(n).toBeLessThanOrEqual(last);
-        expect([1, 4, 8, 12, max]).toContain(n);
-        if (n < max && n > 1) expect(furShellPx(d, len) / n).toBeLessThanOrEqual(FUR_SHELL_GAP_PX + 1e-9);
-        last = n;
-      }
-      expect(furShellCount(1000, len, max)).toBe(1); // the undercoat only, once the fur is under 2 px deep
-    }
-  });
-
-  it("keeps shells past the LOD1 switch while the fur is still several pixels deep", () => {
-    const r = saucerRig();
-    expect(furShellPx(r.lod1Distance, r.furMaxLength)).toBeGreaterThan(8);
-    expect(furShellCount(r.lod1Distance, r.furMaxLength, r.furShells)).toBeGreaterThan(1);
   });
 });
 
@@ -873,5 +851,143 @@ describe("reduced motion (R20): decorative motion stops, state poses still apply
     expect(throatEmissiveScale(1)).toBe(THROAT_GAIN); // the glow has no motion term at all
     for (const t of TIMES) expect(crystalGlow(t, 0.37, 0)).toBe(CRYSTAL_GLOW);
     expect(new Set(TIMES.map((t) => crystalGlow(t, 0.37, 1).toFixed(6))).size).toBeGreaterThan(1);
+  });
+});
+
+// ------------------------------------------- Gate B fix A2: LOD and shell pops ---
+
+describe("chooseLod: hysteresis on the LOD switch", () => {
+  const D = 12.1;
+  it("leaves LOD0 above D × 1.08 and returns below D × 0.92, and holds inside the band", () => {
+    expect(LOD_HYSTERESIS).toBe(0.08);
+    expect(chooseLod(D * 1.08 - 1e-6, 0, D)).toBe(0);
+    expect(chooseLod(D * 1.08 + 1e-6, 0, D)).toBe(1);
+    expect(chooseLod(D * 0.92 + 1e-6, 1, D)).toBe(1);
+    expect(chooseLod(D * 0.92 - 1e-6, 1, D)).toBe(0);
+    expect(chooseLod(D, 0, D)).toBe(0);
+    expect(chooseLod(D, 1, D)).toBe(1);
+  });
+
+  it("never flip-flops: jitter anywhere inside the band switches nothing, and each full swing switches exactly twice", () => {
+    for (const start of [0, 1] as const) {
+      const state = createLodState(start);
+      let flips = 0;
+      for (let k = 0; k < 400; k++) {
+        const d = D * (1 + 0.079 * Math.sin(k * 0.7)); // inside (0.92, 1.08) throughout
+        const next = chooseLod(d, state.lod, D);
+        if (next !== state.lod) flips++;
+        state.lod = next;
+      }
+      expect(flips, `started on LOD${start}`).toBe(0);
+    }
+    const state = createLodState(0);
+    let flips = 0;
+    for (let k = 0; k < 2000; k++) {
+      const d = D * (1 + 0.4 * Math.sin((2 * Math.PI * 6 * k) / 2000)); // six wide swings through D and back
+      const next = chooseLod(d, state.lod, D);
+      if (next !== state.lod) flips++;
+      state.lod = next;
+    }
+    expect(flips).toBe(12); // two per swing
+  });
+
+  it("without a previous level it is the plain threshold at D", () => {
+    expect(chooseLod(D - 0.01, undefined, D)).toBe(0);
+    expect(chooseLod(D, undefined, D)).toBe(1);
+  });
+
+  it("addSaucer / addTardigrade with a state keep their level inside the band, and write it back", () => {
+    const at = new THREE.Matrix4();
+    const sr = saucerRig(), tr = tardigradeRig();
+    for (const [name, D2, run] of [
+      ["saucer", sr.lod1Distance, (d: number, st: ReturnType<typeof createLodState>) => {
+        const lods = saucerLods(2, sr.furShells);
+        beginMonsterFrame(saucerMeshes(lods));
+        addSaucer(lods, sr, at, d, saucerPose(), saucerTint(1), st);
+        return lods[1].body.count;
+      }],
+      ["tardigrade", tr.lod1Distance, (d: number, st: ReturnType<typeof createLodState>) => {
+        const lods = tardigradeLods(2, tr.furShells);
+        beginMonsterFrame(lods.flatMap((l) => [l.body, l.fur, l.cards!]));
+        addTardigrade(lods, tr, at, d, tardigradePose(), st);
+        return lods[1].body.count;
+      }],
+    ] as const) {
+      const st = createLodState();
+      expect(run(D2 * 1.05, st), `${name}: inside the band from near`).toBe(0);
+      expect(run(D2 * 1.1, st), `${name}: past the band`).toBe(1);
+      expect(st.lod).toBe(1);
+      expect(run(D2 * 0.95, st), `${name}: inside the band from far`).toBe(1);
+      expect(run(D2 * 0.9, st), `${name}: back under the band`).toBe(0);
+      expect(st.lod).toBe(0);
+    }
+  });
+});
+
+describe("furShellCountSmooth / shellFade: the shell count is continuous", () => {
+  it("is monotone non-increasing in distance, in [1, max], and continuous (a small step in distance never jumps)", () => {
+    for (const rig of [saucerRig(), tardigradeRig()]) {
+      const { furMaxLength: len, furShells: max } = rig;
+      expect(furShellCountSmooth(1, len, max)).toBe(max);
+      expect(furShellCountSmooth(1000, len, max)).toBe(1);
+      let last = max, biggest = 0;
+      for (let d = 1; d < 600; d += 0.01) {
+        const c = furShellCountSmooth(d, len, max);
+        expect(c).toBeLessThanOrEqual(last + 1e-12);
+        expect(c).toBeGreaterThanOrEqual(1);
+        biggest = Math.max(biggest, last - c);
+        last = c;
+      }
+      expect(biggest, "largest drop in the count over a 0.01 u step").toBeLessThan(0.05);
+    }
+  });
+
+  it("keeps the gap between shells at the gap budget once the fur thins", () => {
+    for (const rig of [saucerRig(), tardigradeRig()]) {
+      for (let d = 1; d < 400; d += 0.5) {
+        const c = furShellCountSmooth(d, rig.furMaxLength, rig.furShells);
+        if (c > 1 && c < rig.furShells) expect(furShellPx(d, rig.furMaxLength) / c).toBeLessThanOrEqual(FUR_SHELL_GAP_PX + 1e-9);
+      }
+    }
+  });
+
+  it("only the outermost drawn shell fades, by the fractional part of the count; shell 0 and cards never do", () => {
+    expect(shellFade(0, 1)).toBe(1);
+    expect(shellFade(0, 1.2)).toBe(1);
+    expect(shellFade(1, 2.25)).toBe(1);
+    expect(shellFade(2, 2.25)).toBeCloseTo(0.25, 12);
+    expect(shellFade(3, 2.25)).toBe(0); // past the count: not drawn
+    expect(shellFade(15, 16)).toBe(1);
+  });
+
+  it("the shell coverage (the sum of the fades) equals the count: no pop at any threshold, one-shell steps included", () => {
+    const rig = saucerRig();
+    const coverage = (c: number) => { let sum = 0; for (let s = 0; s < Math.ceil(c); s++) sum += shellFade(s, c); return sum; };
+    let last = coverage(furShellCountSmooth(1, rig.furMaxLength, rig.furShells)), biggest = 0;
+    for (let d = 1; d < 400; d += 0.01) {
+      const c = furShellCountSmooth(d, rig.furMaxLength, rig.furShells);
+      expect(coverage(c)).toBeCloseTo(c, 9);
+      biggest = Math.max(biggest, last - coverage(c));
+      last = coverage(c);
+    }
+    expect(biggest, "largest drop in coverage over a 0.01 u step (an old one-shell pop was 1)").toBeLessThan(0.05);
+  });
+
+  it("addSaucer draws ceil(count) shells and writes the continuous count into monsterShell.y (no new attribute slot)", () => {
+    const r = saucerRig();
+    const lods = saucerLods(2, r.furShells);
+    const all = saucerMeshes(lods);
+    const d = 14; // LOD1, a fractional count
+    const c = furShellCountSmooth(d, r.furMaxLength, r.furShells);
+    expect(c % 1).not.toBe(0);
+    beginMonsterFrame(all);
+    addSaucer(lods, r, new THREE.Matrix4(), d, saucerPose(), saucerTint(1), createLodState(1));
+    expect(lods[1].fur.count).toBe(Math.ceil(c));
+    const last = slot(lods[1].fur, "monsterShell", Math.ceil(c) - 1);
+    expect(last[0]).toBe(Math.ceil(c) - 1);
+    expect(last[1]).toBeCloseTo(c, 5);
+    expect(shellFade(last[0], last[1])).toBeCloseTo(c % 1, 5);
+    expect(Object.keys(SAUCER_INSTANCE_ATTRIBUTES.fur)).toEqual(["saucerPose", "monsterShell"]);
+    expect(SAUCER_INSTANCE_ATTRIBUTES.fur.monsterShell).toBe(2);
   });
 });

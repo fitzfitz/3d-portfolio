@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { TOKSVIG_FRAGMENT } from "../../components/canvas/toksvig";
 import type { SaucerTint } from "./monsterTint";
 import {
-  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCount, furVertexHeader, glslFloat, glslVec, injectShader,
+  MONSTER_VERTEX_COMMON, TRANSLUCENCY_FRAGMENT, furReach, furShellCountSmooth, furVertexHeader, glslFloat, glslVec, injectShader,
   monsterVertexMain, patchFurFragment, shareMonsterUniforms, translucencyHeader,
 } from "./monsterShading";
-import { claimSlot, clamp01, writeShell, writeSlot, wrap01 } from "./monsterInstances";
+import { claimSlot, clamp01, pickLod, writeShell, writeSlot, wrap01, type MonsterLodState } from "./monsterInstances";
 
 /**
  * The saucer alien's instanced materials and motion (space monsters, Task 5).
@@ -128,8 +128,24 @@ const SWIRL_SPLIT = 1.2;      // the eyes' swirl phases differ, so held still th
 /** Warm wrap-lit share of the light through the thin skin (green skin × warm → yellow-green). */
 const SKIN_SSS: readonly number[] = [1.0, 0.8, 0.4];
 const SKIN_SSS_AMOUNT = 0.9;
-/** The dome's edge opacity (glass reflects more at grazing angles). */
-const DOME_RIM = 0.55;
+/**
+ * The dome is clear glass (Gate B fix A1). The glTF's 0.16 alpha over a
+ * diffuse white lit by the sun veiled the alien in milk (the blend adds
+ * alpha × the lit colour at every pixel), so the patch sets its own terms:
+ *  - DOME_CLEAR: the opacity at the centre;
+ *  - DOME_BODY: the share of the diffuse light that is drawn (glass reflects
+ *    nearly all of its light as specular and Fresnel, not as a white diffuse);
+ *  - the Fresnel term (1 - facing)^3 raises the opacity by DOME_RIM and
+ *    adds a faint cool reflection of space, DOME_REFLECT × DOME_SPACE
+ *    (scaled by the lit colour, so it follows the exposure like all lit matter);
+ *  - the sun's specular is un-premultiplied: the opacity rises to its
+ *    luminance, so the glint stays crisp instead of fading by the glass's alpha.
+ */
+const DOME_CLEAR = 0.07;
+const DOME_BODY = 0.12;
+const DOME_RIM = 0.6;
+const DOME_REFLECT = 2.6;
+const DOME_SPACE: readonly number[] = [0.45, 0.7, 1.0];
 
 /**
  * How far any saucer vertex can reach past its primitive's rest bounding
@@ -245,14 +261,15 @@ export function writeSaucerInstance(mesh: THREE.InstancedMesh, i: number, pose: 
 
 /**
  * Adds one saucer to this frame (between beginMonsterFrame and
- * endMonsterFrame): picks its LOD level at rig.lod1Distance, claims its body
+ * endMonsterFrame): picks its LOD level at rig.lod1Distance (with the hysteresis band when `lodState`, the
+ * caller's per-monster state, is given), claims its body
  * and dome slots, one cards slot (shell 0 of 1) and one fur-base slot per
- * shell (furShellCount by distance), placing each at `matrix`. A full mesh
+ * shell (ceil of furShellCountSmooth by distance; the outermost fades), placing each at `matrix`. A full mesh
  * drops the saucer. Allocates nothing.
  */
 export function addSaucer(lods: readonly SaucerLod[], rig: SaucerRig, matrix: THREE.Matrix4, distance: number,
-  pose: SaucerPose, tint: SaucerTint): void {
-  const lod = lods[distance >= rig.lod1Distance && lods.length > 1 ? 1 : 0];
+  pose: SaucerPose, tint: SaucerTint, lodState?: MonsterLodState): void {
+  const lod = lods[pickLod(lods.length, distance, rig.lod1Distance, lodState)];
   const i = claimSlot(lod.body, matrix);
   if (i < 0) return;
   writeSaucerInstance(lod.body, i, pose, tint);
@@ -264,12 +281,13 @@ export function addSaucer(lods: readonly SaucerLod[], rig: SaucerRig, matrix: TH
       writeShell(lod.cards, c, 0, 1);
     }
   }
-  const n = furShellCount(distance, rig.furMaxLength, rig.furShells);
+  const c = furShellCountSmooth(distance, rig.furMaxLength, rig.furShells);
+  const n = Math.ceil(c);
   for (let s = 0; s < n; s++) {
     const j = claimSlot(lod.fur, matrix);
     if (j < 0) return;
     writeSaucerInstance(lod.fur, j, pose, tint);
-    writeShell(lod.fur, j, s, n);
+    writeShell(lod.fur, j, s, c);
   }
 }
 
@@ -538,10 +556,19 @@ uniform float uExposureComp;${sss}`, "after");
   dome.vertexColors = false;
   dome.onBeforeCompile = (shader) => {
     shareMonsterUniforms(shader); // the dome draws no emissive, but all five materials share the same uniform objects
-    const fs = injectShader(shader.fragmentShader, "#include <common>", `const float SAUCER_DOME_RIM = ${glslFloat(DOME_RIM)};`, "after");
+    const fs = injectShader(shader.fragmentShader, "#include <common>", `const float SAUCER_DOME_CLEAR = ${glslFloat(DOME_CLEAR)};
+const float SAUCER_DOME_BODY = ${glslFloat(DOME_BODY)};
+const float SAUCER_DOME_RIM = ${glslFloat(DOME_RIM)};
+const float SAUCER_DOME_REFLECT = ${glslFloat(DOME_REFLECT)};
+const vec3 SAUCER_DOME_SPACE = ${glslVec(DOME_SPACE)};`, "after");
     shader.fragmentShader = injectShader(fs, "#include <opaque_fragment>", `{
   float monsterFacing = abs( dot( normalize( normal ), normalize( vViewPosition ) ) );
-  diffuseColor.a = mix( diffuseColor.a, 1.0, SAUCER_DOME_RIM * pow( 1.0 - monsterFacing, 3.0 ) );
+  float monsterFresnel = pow( 1.0 - monsterFacing, 3.0 );
+  vec3 monsterGlint = totalSpecular;
+  outgoingLight = totalDiffuse * SAUCER_DOME_BODY + monsterGlint + totalEmissiveRadiance
+    + totalDiffuse * SAUCER_DOME_SPACE * ( SAUCER_DOME_REFLECT * monsterFresnel );
+  diffuseColor.a = clamp( SAUCER_DOME_CLEAR + SAUCER_DOME_RIM * monsterFresnel
+    + dot( monsterGlint, vec3( 0.2126, 0.7152, 0.0722 ) ), 0.0, 1.0 );
 }`, "before");
   };
   dome.customProgramCacheKey = () => "saucerDome:v1";
