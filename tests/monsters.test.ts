@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import { readFileSync } from "node:fs";
+import { exposureCompensation } from "../src/utils/sunLight";
 import {
   SAUCER_BAND_PAINTS, SAUCER_SKIN_HUE, SAUCER_SPOT_HUE, saucerTint,
 } from "../src/utils/monsters/monsterTint";
@@ -192,6 +193,19 @@ describe("createSaucerMaterials / createTardigradeMaterials: flags and program k
       expect(sh.uniforms.uMotion).toBe(MONSTER_UNIFORMS.uMotion);
     }
     expect(MONSTER_UNIFORMS.uMotion.value).toBe(1);
+  });
+
+  it("R22: every material shares the game's exposureCompensation object, and the glow terms multiply by it", () => {
+    const s = saucerMaterials(), t = tardigradeMaterials();
+    for (const m of [s.body, s.dome, s.fur, t.body, t.fur]) {
+      expect(standard(m).uniforms.uExposureComp).toBe(exposureCompensation);
+    }
+    // the two emissive patches (saucer porthole, tardigrade throat and crystals) carry the factor
+    for (const m of [s.body, t.body]) {
+      const fs = standard(m).fragmentShader;
+      expect(fs).toContain("uniform float uExposureComp;");
+      expect(fs).toMatch(/totalEmissiveRadiance \*= [^;]*uExposureComp/);
+    }
   });
 });
 

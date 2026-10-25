@@ -263,6 +263,9 @@ function LabScene({ store, readings }: SceneProps) {
     } else {
       const e = stepExposure(gl.toneMappingExposure, targetExposure(meter), delta, s.reducedMotion);
       gl.toneMappingExposure = e;
+      // Unconditional: the lab always runs PostFX (the game passes !isLowPerf,
+      // GlobalCanvas), so the post pass exposes and the compensation is 1/exposure.
+      // The monsters' emissives (R22) read it.
       setExposureCompensation(e, true);
     }
 

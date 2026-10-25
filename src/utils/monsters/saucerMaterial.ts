@@ -523,9 +523,10 @@ vMonsterGlow = monsterPart( monsterMotion.x ) == 0 ? saucerPortholeGlow( monster
     vs = injectShader(vs, "#include <beginnormal_vertex>", main.beginnormal, "after");
     shader.vertexShader = injectShader(vs, "#include <begin_vertex>", main.begin, "after");
     let fs = injectShader(shader.fragmentShader, "#include <common>", `varying vec3 vMonsterTint;
-varying float vMonsterGlow;${sss}`, "after");
+varying float vMonsterGlow;
+uniform float uExposureComp;${sss}`, "after");
     fs = injectShader(fs, "#include <color_fragment>", "diffuseColor.rgb *= vMonsterTint;", "after");
-    fs = injectShader(fs, "#include <emissivemap_fragment>", `totalEmissiveRadiance *= vMonsterGlow * ${glslFloat(PORTHOLE_GAIN)};`, "after");
+    fs = injectShader(fs, "#include <emissivemap_fragment>", `totalEmissiveRadiance *= vMonsterGlow * ${glslFloat(PORTHOLE_GAIN)} * uExposureComp;`, "after");
     fs = injectShader(fs, "#include <lights_physical_fragment>", TOKSVIG_FRAGMENT, "before");
     shader.fragmentShader = injectShader(fs, "#include <lights_fragment_begin>", TRANSLUCENCY_FRAGMENT, "after");
   };
@@ -536,6 +537,7 @@ varying float vMonsterGlow;${sss}`, "after");
   dome.side = THREE.FrontSide;
   dome.vertexColors = false;
   dome.onBeforeCompile = (shader) => {
+    shareMonsterUniforms(shader); // the dome draws no emissive, but all five materials share the same uniform objects
     const fs = injectShader(shader.fragmentShader, "#include <common>", `const float SAUCER_DOME_RIM = ${glslFloat(DOME_RIM)};`, "after");
     shader.fragmentShader = injectShader(fs, "#include <opaque_fragment>", `{
   float monsterFacing = abs( dot( normalize( normal ), normalize( vViewPosition ) ) );

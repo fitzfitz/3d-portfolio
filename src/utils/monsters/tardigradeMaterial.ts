@@ -363,8 +363,9 @@ export function createTardigradeMaterials(body: THREE.MeshStandardMaterial, fur:
     let vs = injectShader(shader.vertexShader, "#include <common>", MONSTER_VERTEX_COMMON + tardigradeVertexHeader(rig, true) + tardigradeDeform(true), "after");
     vs = injectShader(vs, "#include <beginnormal_vertex>", main.beginnormal, "after");
     shader.vertexShader = injectShader(vs, "#include <begin_vertex>", main.begin, "after");
-    let fs = injectShader(shader.fragmentShader, "#include <common>", `varying float vMonsterGlow;${sss}`, "after");
-    fs = injectShader(fs, "#include <emissivemap_fragment>", "totalEmissiveRadiance *= vMonsterGlow;", "after");
+    let fs = injectShader(shader.fragmentShader, "#include <common>", `varying float vMonsterGlow;
+uniform float uExposureComp;${sss}`, "after");
+    fs = injectShader(fs, "#include <emissivemap_fragment>", "totalEmissiveRadiance *= vMonsterGlow * uExposureComp;", "after");
     fs = injectShader(fs, "#include <lights_physical_fragment>", TOKSVIG_FRAGMENT, "before");
     shader.fragmentShader = injectShader(fs, "#include <lights_fragment_begin>", TRANSLUCENCY_FRAGMENT, "after");
   };

@@ -20,6 +20,11 @@ import { withPage, nextFrames, settle, BASE_URL } from "./harness.mjs";
 //  - reduced motion (R20): for each state, two frames 0.8 s apart are
 //    pixel-identical (decorative motion stopped), while the state's pose
 //    still differs from idle (swim excepted: it is decorative only);
+//  - R22 (emissives are exposure-compensated): at Neptune the exposure is
+//    ~1,350x, so an uncompensated glow bloomed into white blobs. In the
+//    `charge` and `chase` states the share of the monsters' own pixels that
+//    are near-white (all channels > 245) must stay close to the near preset's
+//    (see BLOWN_* and blownShare below);
 //  - the TS mirrors agree with the GPU (best effort): the saucer's
 //    saucerMuzzle point, aimed well off its rest aim, and the tardigrade's
 //    curled axis point (tardigradeCurlPoint) each land on the monster in the
@@ -39,6 +44,67 @@ const SAUCER_CALLS = { 0: 4, 1: 3 };
 const TARDIGRADE_CALLS = 3;
 /** States whose pose is decorative only (R20): identical to idle under reduced motion. */
 const DECORATIVE_ONLY = new Set(["swim"]);
+
+/**
+ * R22 guard. The measure: of the pixels the monsters cover at 1 AU (frame
+ * with them minus the same frame with them hidden, summed channel difference
+ * > 24, dilated 8 px for the bloom), the share that is near-white (R, G and B
+ * all > 245), compared with the same pixels at 30 AU. The camera and layout
+ * are identical, so the mask is the same; only the light differs. (At 30 AU
+ * the hidden-vs-shown difference spans the whole frame, since the bloom and
+ * exposure react to the glow, so the far mask can not be taken there.) A
+ * white-cyan blob is a lot of near-white pixels; a compensated glow stays
+ * coloured, so the share is similar at 1 AU and at 30 AU. Calibration is in the report
+ * (task-6-report.md, fix round 1). The far share must stay within
+ * BLOWN_MARGIN (absolute) of the near share, and under BLOWN_MAX.
+ */
+const BLOWN_CHANNEL = 245;
+const BLOWN_MARGIN = 0.005;
+const BLOWN_MAX = 0.01;
+const GUARD_STATES = ["charge", "chase"];
+
+/** The monsters' pixels: frame with them differs from the one without, dilated by `grow` px (the glow's bloom). */
+function footprint(shown, hidden, grow = 8) {
+  const { width: w, height: h } = shown;
+  const hit = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) {
+    const i = p * 3;
+    const d = Math.abs(shown.data[i] - hidden.data[i]) + Math.abs(shown.data[i + 1] - hidden.data[i + 1])
+      + Math.abs(shown.data[i + 2] - hidden.data[i + 2]);
+    if (d > 24) hit[p] = 1;
+  }
+  const rows = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!hit[y * w + x]) continue;
+    for (let dx = Math.max(0, x - grow); dx <= Math.min(w - 1, x + grow); dx++) rows[y * w + dx] = 1;
+  }
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!rows[y * w + x]) continue;
+    for (let dy = Math.max(0, y - grow); dy <= Math.min(h - 1, y + grow); dy++) out[dy * w + x] = 1;
+  }
+  return out;
+}
+
+/** Near-white pixels (all channels > BLOWN_CHANNEL) inside `mask`. */
+function blownShare(shown, mask) {
+  let cover = 0, white = 0;
+  for (let p = 0; p < mask.length; p++) {
+    if (!mask[p]) continue;
+    cover++;
+    const i = p * 3;
+    if (shown.data[i] > BLOWN_CHANNEL && shown.data[i + 1] > BLOWN_CHANNEL && shown.data[i + 2] > BLOWN_CHANNEL) white++;
+  }
+  return { cover, white, share: cover ? white / cover : 0 };
+}
+
+/**
+ * Pixels that differ from idle under reduced motion, as measured on the lab
+ * (fight, near, LOD0, 1512x802-class viewport; task-6-report.md). Each state
+ * must keep at least 40% of its own value, so a heavily damped pose fails
+ * (a single flat 200 was too weak for look and chase).
+ */
+const RM_POSE_PX = { look: 772, fire: 21305, chase: 471, hit: 43556, defeat: 26656, charge: 2320, recoil: 20463, curl: 26205 };
 
 const lab = (page, fn, ...args) => page.evaluate(fn, ...args);
 
@@ -191,7 +257,8 @@ export default function run() {
       if (DECORATIVE_ONLY.has(state)) {
         checks.check(`reduced motion, ${state}: decorative only, so it matches idle`, vsIdle === 0, `${vsIdle} pixels differ from idle`);
       } else {
-        checks.check(`reduced motion, ${state}: the pose still shows (differs from idle)`, vsIdle > 200, `${vsIdle} pixels differ from idle`);
+        const min = Math.round(RM_POSE_PX[state] * 0.4);
+        checks.check(`reduced motion, ${state}: the pose still shows (differs from idle)`, vsIdle > min, `${vsIdle} pixels differ from idle (need > ${min}, 40% of the measured ${RM_POSE_PX[state]})`);
       }
     }
 
@@ -200,6 +267,10 @@ export default function run() {
       { kind: "saucer", posed: "fire", unposed: "fire", what: "saucerMuzzle (aimed)" },
       { kind: "tardigrade", posed: "curl", unposed: "idle", what: "tardigradeCurlPoint (curled)" },
     ];
+    // Set reduced motion explicitly (not left over from the state loop above):
+    // the mirrors compare held poses, so any timed motion would move the
+    // geometry between the posed, unposed and hidden frames.
+    await lab(page, () => window.__monsterLab.setReducedMotion(true));
     for (const m of MIRRORS) {
       const frame = async (state, posed, name) => {
         await lab(page, (k, s, p) => { window.__monsterLab.setSolo(k); window.__monsterLab.setState(s); window.__monsterLab.frameMirror(p); },
@@ -223,5 +294,32 @@ export default function run() {
         `${(off * 100).toFixed(0)}% monster with the ${m.kind} unposed`);
     }
     await lab(page, () => window.__monsterLab.setSolo(null));
+
+    // --- R22: the glow is exposure-compensated (far must not blow out) ---
+    // Reduced motion holds each pose at full strength, so the frame is
+    // deterministic (the chase held on, the throat fully charged).
+    const blown = {}, masks = {};
+    for (const preset of PRESETS) {
+      await open(page, { layout: "fight", preset, lod: "0", state: "idle", seed: "7", rm: "1" });
+      for (const state of GUARD_STATES) {
+        await lab(page, (s) => window.__monsterLab.setState(s), state);
+        await nextFrames(page, 14);
+        const shown = await shot(page, `r22-${preset}-${state}`);
+        await lab(page, () => window.__monsterLab.setHidden(true));
+        await nextFrames(page, 6);
+        const hidden = await shot(page);
+        await lab(page, () => window.__monsterLab.setHidden(false));
+        await nextFrames(page, 4);
+        if (preset === "near") masks[state] = footprint(shown, hidden);
+        blown[`${preset}-${state}`] = blownShare(shown, masks[state]);
+      }
+    }
+    for (const state of GUARD_STATES) {
+      const near = blown[`near-${state}`], far = blown[`far-${state}`];
+      const fmt = (b) => `${(b.share * 100).toFixed(2)}% (${b.white} of ${b.cover} px)`;
+      checks.note(`R22 ${state}`, `near-white share of the monsters' pixels: near ${fmt(near)}, far ${fmt(far)}`);
+      checks.check(`R22, ${state}: far glow is not blown out (near-white share within ${BLOWN_MARGIN * 100}% of near, under ${BLOWN_MAX * 100}%)`,
+        far.share <= near.share + BLOWN_MARGIN && far.share <= BLOWN_MAX, `near ${fmt(near)}, far ${fmt(far)}`);
+    }
   });
 }
