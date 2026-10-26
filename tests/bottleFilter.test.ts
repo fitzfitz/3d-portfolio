@@ -44,6 +44,13 @@ describe("contact details", () => {
     "go to www.example",
     "my site is example.com",
     "try fitz.dev or foo.net",
+    "kunjungi situs saya contoh.id",
+    "find me at fitz.me",
+    "EXAMPLE.COM",
+    "VISIT EXAMPLE.COM NOW",
+    "+62-812-34-56-7890",
+    "0812-34-56-7890",
+    "0812.34.56.7890",
     "hxxp://example",
     "hxxps example",
     "example[.]com",
@@ -80,7 +87,11 @@ describe("contact details", () => {
     expect(reason("love it.My favorite")).toBe("ok");
     expect(reason("bagus.Id suka")).toBe("ok");
     expect(reason("ok.to be honest")).toBe("ok");
-    expect(reason("Hello.Com on in")).toBe("ok"); // uppercase TLD is not a bare domain
+    // Sentence-case "Hello.Com" is a missing space; only lowercase-TLD or ALL-CAPS tokens are domains.
+    expect(reason("Hello.Com on in")).toBe("ok");
+    expect(reason("Nice.In my opinion again")).toBe("ok");
+    expect(reason("I have 1 000 000 000 coins")).toBe("ok");
+    expect(reason("Born 05-06-2026 10:30")).toBe("ok");
   });
 
   it("rejects over-long raw input before normalising", () => {

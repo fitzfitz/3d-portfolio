@@ -24,24 +24,34 @@ export function bottleReasonMessage(reason: BottleRejectReason): string {
   return MESSAGES[reason];
 }
 
-// Only unambiguous TLDs: word-like ones (in, to, me, my, us, id, co, de, cc...) would hit
-// "Nice.In my opinion". Links using them are still caught by http(s)/www./email.
+// Excludes very common English-word TLDs (in, to, is, it, at, be, so, no, on, us, de): they
+// would hit "ok.to" / "Nice.In". Links using them are still caught by http(s)/www./email.
 const TLDS =
-  "com|net|org|io|dev|app|xyz|info|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
+  "com|net|org|io|dev|app|xyz|info|me|my|id|co|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
 
 const URL_RE = /(?:https?:\/\/|ftp:\/\/|www\.|hxxps?)\S*/i;
-// TLD must be lowercase in the original text (so "Hello.Com" after a typo is not a domain).
-const DOMAIN_RE = new RegExp(`\\b[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*\\.(?:${TLDS})\\b`);
+// A bare domain counts when the TLD is all lowercase, or the whole token is all uppercase.
+// Sentence-case ("Nice.In", "Hello.Com") is a missing space after a full stop, not a domain.
+const DOMAIN_LOWER_RE = new RegExp(`\\b[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*\\.(?:${TLDS})\\b`);
+const DOMAIN_UPPER_RE = new RegExp(`\\b[A-Z0-9-]+(?:\\.[A-Z0-9-]+)*\\.(?:${TLDS.toUpperCase()})\\b`);
 const OBFUSCATED_RE = /\[\.\]|\(dot\)|\bdot (?:com|net|org|io|id|co)\b/i;
 const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const HANDLE_RE = /(?:^|[^\w])@[\w.]{2,}/;
-// Date shapes (dd-mm-yyyy, yyyy.mm.dd, optionally with a time) are not phone numbers.
-const DATE_RE = /(?<!\d)\d{1,4}[-./]\d{1,2}[-./]\d{1,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?(?!\d)/g;
-// Plausible phone: leading +, or leading 0 with 9+ digits, or 10+ digits (separators allowed).
+// Real date shapes only (valid day/month): dd-mm-yyyy or yyyy-mm-dd, optional time. Strict, so
+// phone-like "0812-34-56-7890" is not mistaken for a date.
+const DM = "(?:0?[1-9]|1[0-2])";
+const DD = "(?:0?[1-9]|[12]\\d|3[01])";
+const DATE_RE = new RegExp(
+  `(?<!\\d)(?:${DD}[-./]${DM}[-./]\\d{4}|\\d{4}[-./]${DM}[-./]${DD})(?:[ T]\\d{1,2}:\\d{2}(?::\\d{2})?)?(?!\\d)`,
+  "g",
+);
+// Plausible phone: leading + (7+ digits), leading 0 with 9+ digits, 10+ contiguous digits, or
+// the US 3-3-4 shape. "1 000 000 000" is a number, not a phone.
 const PHONE_RES = [
   /\+\d(?:[\s().-]*\d){6,}/,
-  /(?<!\d)0(?:[\s().-]*\d){8,}/,
-  /\d(?:[\s().-]*\d){9,}/,
+  /(?<!\d[\s().-]{0,3})0(?:[\s().-]*\d){8,}/,
+  /\d{10,}/,
+  /(?<!\d)\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)/,
 ];
 
 const LEET: Record<string, string> = {
@@ -60,7 +70,7 @@ function normalise(raw: string): string {
 function hasContact(text: string): boolean {
   const noDates = text.replace(DATE_RE, " ");
   return (
-    URL_RE.test(text) || EMAIL_RE.test(text) || HANDLE_RE.test(text) || DOMAIN_RE.test(text) ||
+    URL_RE.test(text) || EMAIL_RE.test(text) || HANDLE_RE.test(text) || DOMAIN_LOWER_RE.test(text) || DOMAIN_UPPER_RE.test(text) ||
     OBFUSCATED_RE.test(text) || PHONE_RES.some((re) => re.test(noDates))
   );
 }
