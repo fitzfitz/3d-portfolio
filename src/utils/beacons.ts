@@ -28,6 +28,31 @@ export const SPAWN_KEEP_OUT = 15;
 /** Most beacons the scene renders, and the most the API serves. */
 export const BEACON_LIMIT = 40;
 
+/**
+ * A message in a bottle as the API serves it (GET /beacons). `text` passed
+ * src/utils/bottleFilter.ts on the Worker; render it as plain text only.
+ */
+export interface Bottle {
+  id: string;
+  x: number; y: number; z: number;
+  text: string;
+  /** Drop time, epoch ms. */
+  at: number;
+  /** ISO 3166 alpha-2 from Cloudflare's edge, or null when unknown. */
+  country: string | null;
+}
+
+/** Most bottles the API serves (newest first), and the most the scene shows besides the visitor's own. */
+export const BOTTLE_LIMIT = 30;
+/** Bottles one pilot may leave in any 24 hours. */
+export const BOTTLE_DAILY_CAP = 5;
+/**
+ * Why a drop was refused with 429 (body `{ error: "rate", reason, retryAfter }`,
+ * retryAfter in seconds): `wait` is the per-pilot 10-minute window, `daily`
+ * the BOTTLE_DAILY_CAP, `busy` the cap across all pilots.
+ */
+export type BottleRateReason = "wait" | "daily" | "busy";
+
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isCoord = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const inBounds = (x: number, y: number, z: number) => Math.hypot(x, y, z) <= VALIDATION_RADIUS;
@@ -40,15 +65,23 @@ const isPhrase = (v: unknown): v is number => Number.isInteger(v) && (v as numbe
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * Validates a drop request. Shared by the client (before sending) and the
- * Worker (on receipt), so the two can never disagree about what is allowed.
+ * Validates where a drop lands: inside the system and away from the spawn
+ * pad, rounded to 0.1. Shared by the client (before sending) and the Worker
+ * (on receipt), so the two can never disagree about what is allowed.
  */
-export function validateDrop(body: unknown): { ok: true; drop: BeaconDrop } | { ok: false } {
+export function validatePosition(body: unknown): { ok: true; pos: { x: number; y: number; z: number } } | { ok: false } {
   if (!isObj(body)) return { ok: false };
-  const { x, y, z, phrase } = body;
-  if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z) || !isPhrase(phrase)) return { ok: false };
+  const { x, y, z } = body;
+  if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z)) return { ok: false };
   if (Math.hypot(x - SPAWN.x, y - SPAWN.y, z - SPAWN.z) < SPAWN_KEEP_OUT) return { ok: false };
-  return { ok: true, drop: { x: round1(x), y: round1(y), z: round1(z), phrase } };
+  return { ok: true, pos: { x: round1(x), y: round1(y), z: round1(z) } };
+}
+
+/** Validates a legacy phrase drop: a position (validatePosition) and a BEACON_PHRASES index. */
+export function validateDrop(body: unknown): { ok: true; drop: BeaconDrop } | { ok: false } {
+  const p = validatePosition(body);
+  if (!p.ok || !isPhrase((body as Record<string, unknown>).phrase)) return { ok: false };
+  return { ok: true, drop: { ...p.pos, phrase: (body as { phrase: number }).phrase } };
 }
 
 const ID_RE = /^[a-zA-Z0-9-]{1,64}$/;

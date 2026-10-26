@@ -1,28 +1,40 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   handleRequest, rateKey, withListCache, RATE_WINDOW_MS, KEEP_ROWS, GLOBAL_PER_MINUTE,
-  type BeaconStore, type StoredBeacon,
+  type BeaconStore, type DropLimits, type StoredBottle,
 } from "../beacon-api/src/handler";
 
 const ORIGIN = "https://fitzfitz.github.io";
 const NOW = 1_760_000_000_000;
 
-/** In-memory stand-in for the D1 adapter: same contract, no SQL. */
-function memoryStore(): BeaconStore & { rows: StoredBeacon[]; listCalls: number } {
-  const rows: StoredBeacon[] = [];
+type MemRow = StoredBottle & { hidden?: boolean };
+
+/**
+ * In-memory stand-in for the D1 adapter: same contract, no SQL. The real SQL
+ * runs in tests/bottleApi.test.ts.
+ */
+function memoryStore(): BeaconStore & { rows: MemRow[]; listCalls: number } {
+  const rows: MemRow[] = [];
+  const newest = (rs: MemRow[]) => [...rs].sort((a, b) => b.at - a.at);
   const st = {
     rows,
     listCalls: 0,
-    async list(limit: number) { st.listCalls++; return [...rows].sort((a, b) => b.at - a.at).slice(0, limit); },
-    async insertIfAllowed(row: StoredBeacon, keySince: number, globalSince: number, globalMax: number) {
-      if (rows.some((r) => r.ipHash === row.ipHash && r.at >= keySince)) return false;
-      if (rows.filter((r) => r.at >= globalSince).length >= globalMax) return false;
+    async list(limit: number) { st.listCalls++; return newest(rows.filter((r) => !r.hidden)).slice(0, limit); },
+    async insertIfAllowed(row: StoredBottle, l: DropLimits) {
+      if (rows.some((r) => r.ipHash === row.ipHash && r.at >= l.keySince)) return false;
+      if (rows.filter((r) => r.at >= l.globalSince).length >= l.globalMax) return false;
+      if (rows.filter((r) => r.ipHash === row.ipHash && r.at >= l.daySince).length >= l.dayMax) return false;
       rows.push(row);
       return true;
     },
-    async prune(keep: number) {
-      const kept = [...rows].sort((a, b) => b.at - a.at).slice(0, keep);
-      rows.splice(0, rows.length, ...kept);
+    async pilotDrops(ipHash: string, since: number) {
+      return newest(rows.filter((r) => r.ipHash === ipHash && r.at >= since)).map((r) => r.at);
+    },
+    async prune(keep: number, keepSince: number) {
+      const sorted = newest(rows);
+      const cutoff = sorted[keep - 1]?.at;
+      if (cutoff === undefined) return;
+      rows.splice(0, rows.length, ...sorted.filter((r) => r.at >= cutoff || r.at >= keepSince));
     },
   };
   return st;
@@ -50,7 +62,7 @@ describe("POST /beacons", () => {
     const res = await post({ x: 1, y: 2, z: 3, phrase: 1 });
     expect(res.status).toBe(201);
     const { beacon } = await res.json();
-    expect(beacon).toMatchObject({ x: 1, y: 2, z: 3, phrase: 1, at: NOW, country: "ID" });
+    expect(beacon).toMatchObject({ x: 1, y: 2, z: 3, text: "NICE VIEW", phrase: 1, at: NOW, country: "ID" });
     expect(store.rows).toHaveLength(1);
   });
   it("never stores the raw IP, only a salted hash", async () => {
@@ -70,7 +82,7 @@ describe("POST /beacons", () => {
     const { beacon } = await (await post({ x: 1, y: 2, z: 3, phrase: 1 })).json();
     expect(beacon.ipHash).toBeUndefined();
   });
-  it("rejects free text", async () => {
+  it("rejects a phrase that is not an index (legacy body)", async () => {
     expect((await post({ x: 1, y: 2, z: 3, phrase: "HIRE ME" })).status).toBe(400);
     expect(store.rows).toHaveLength(0);
   });
@@ -97,6 +109,9 @@ describe("POST /beacons", () => {
       clock += 60_000;
       await post({ x: 1, y: 2, z: 3, phrase: 1 }, { ip: `10.0.${i >> 8}.${i & 255}` });
     }
+    // Rows younger than a day hold the daily cap and are kept (bottleApi.test.ts).
+    clock += 24 * 3_600_000;
+    await post({ x: 1, y: 2, z: 3, phrase: 1 });
     expect(store.rows.length).toBe(KEEP_ROWS);
   });
 });
@@ -205,7 +220,10 @@ describe("withListCache", () => {
   it("drops the cached list after a successful insert", async () => {
     const cached = withListCache(store, 30_000, () => 0);
     await cached.list(40);
-    await cached.insertIfAllowed({ id: "a", x: 0, y: 0, z: 0, phrase: 0, at: 1, country: null, ipHash: "h" }, 0, 0, 99);
+    await cached.insertIfAllowed(
+      { id: "a", x: 0, y: 0, z: 0, text: "hello", phrase: null, at: 1, country: null, ipHash: "h" },
+      { keySince: 0, globalSince: 0, globalMax: 99, daySince: 0, dayMax: 99 },
+    );
     expect((await cached.list(40))).toHaveLength(1);
   });
 });
