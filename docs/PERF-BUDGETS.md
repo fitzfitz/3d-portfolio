@@ -604,7 +604,7 @@ The saucer alien and the tardigrade (branch `feat/space-monsters`) exist only in
 | Shader programs | 3 (body, dome, fur; cards share the fur program) | 2 (body, fur) |
 | glb size (meshopt geometry, WebP textures via `EXT_texture_webp`) | 1,539 KB | 1,321 KB |
 
-Fight of 6 saucers + 2 tardigrades, triangles submitted (fur shells thin out with distance: 16, 12, 8, 4, 1). These totals were measured before the 2026-10-26 look fixes, about 10% low; re-measure in the combat stage. The last column is a rough corrected estimate from the per-LOD deltas (saucer LOD0 +1,790, tardigrade LOD0 +232 and LOD1 +108, saucer LOD1 unchanged), assuming the fur cards are drawn once rather than per shell, so it is likely a floor:
+Fight of 6 saucers + 2 tardigrades, triangles submitted (fur shells thin out with distance: 16, 12, 8, 4, 1). These totals were measured before the 2026-10-26 look fixes, about 6–7% low; re-measure in the combat stage. The last column is a rough corrected estimate from the per-LOD deltas (saucer LOD0 +1,790, tardigrade LOD0 +232 and LOD1 +108, saucer LOD1 unchanged), assuming the fur cards are drawn once rather than per shell, so it is likely a floor:
 
 | Camera | Calls | Triangles (measured, old) | Estimate now |
 |---|---|---|---|
