@@ -63,6 +63,7 @@ const FIXED_ENTRIES: readonly LogbookEntry[] = [
   { id: "ore", section: "badge", title: "Prospector", hint: "MINE 16 ORE FROM THE BELT (HOLD F)", hintShort: "MINE 16 ORE", plume: true },
   { id: "convoy", section: "badge", title: "Convoy spotter", hint: "WATCH A CONVOY DELIVER UP CLOSE", hintShort: "SPOT A CONVOY", plume: true },
   { id: "shards", section: "badge", title: "Shard hunter", hint: `FIND ${SHARDS_FOR_BADGE} DATA SHARDS`, hintShort: `FIND ${SHARDS_FOR_BADGE} SHARDS`, plume: true },
+  { id: "nest", section: "badge", title: "Nest breaker", hint: "CLEAR THE NEST", hintShort: "CLEAR THE NEST", plume: true },
 ];
 
 /** The logbook for these probes, in play order: a dossier each, then career, contact and the badges. */

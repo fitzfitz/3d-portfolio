@@ -8,6 +8,8 @@ import { CHANGELOG } from "../src/data/changelog";
 import { flight } from "../src/store/flightState";
 import { bodies } from "../src/store/bodies";
 import { worldClock } from "../src/store/worldClock";
+import { combat } from "../src/store/combatState";
+import * as combatModule from "../src/store/combatState";
 
 /**
  * API-shape and behaviour guard for the store split (spec
@@ -23,23 +25,23 @@ const _typesUsed: _TypeExports | null = null;
 const STATE_KEYS = [
   "activeZone", "addOwnBottle", "announceLogbook", "aurumTold", "badges", "beacons", "bottlePanelOpen",
   "breakOrbit", "broadcast", "bumpImpact", "canvasEpoch", "changelogOpen", "changelogSeen", "chartShoutAt",
-  "chartWorld", "charted", "clearChartShout", "closeDossier", "collectShard", "cometNear", "dossierVia",
-  "endWorldEvent", "fuelEmpty", "impactCount", "isLowPerf", "isMuted", "isNearSpawn", "isOrbitCooldown",
+  "chartWorld", "charted", "clearChartShout", "closeDossier", "collectShard", "cometNear", "contacts", "dossierVia",
+  "endWorldEvent", "fuelEmpty", "hullBreachAt", "impactCount", "inNest", "isLowPerf", "isMuted", "isNearSpawn", "isOrbitCooldown",
   "isOrbitLocked", "isTeleporting", "isWarping", "jumpRequest", "legacyCartographer", "liveSky", "liveSkySeen",
-  "logbookLineAt", "logbookOpen", "lowPerfManual", "markChangelogSeen", "openDossier", "openProjectDossier",
+  "logbookLineAt", "logbookOpen", "lowPerfManual", "markChangelogSeen", "markHullBreach", "markNestCleared", "nestClearedAt", "openDossier", "openProjectDossier",
   "ownBeacons", "ownBottles", "padConnected", "pendingLowPerf", "photoMode", "plumeColor", "probeNear",
   "probeSpots", "probeTip", "raceBest", "raceLiveSkyRestore", "raceView", "recordBadge", "reducedMotion", "reducedMotionManual",
   "relocation", "remountCanvas", "requestJump", "scanTarget", "sceneReady", "sendBroadcast", "setActiveZone",
-  "setBeacons", "setBottlePanelOpen", "setChangelogOpen", "setCometNear", "setFuelEmpty", "setLiveSky",
+  "setBeacons", "setBottlePanelOpen", "setChangelogOpen", "setCometNear", "setFuelEmpty", "setInNest", "setLiveSky",
   "setLiveSkySeen", "setLogbookOpen", "setLowPerf", "setMuted", "setNearSpawn", "setOrbitLocked",
   "setPadConnected", "setPhotoMode", "setPlumeColor", "setProbeNear", "setProbeTip", "setRaceBest", "setRaceLiveSkyRestore", "setRaceView",
   "setReducedMotion", "setScanTarget", "setSceneReady", "setShowBottles", "setShowClassicCV", "setWarmingUp",
-  "setWarping", "shardsCollected", "showBottles", "showClassicCV", "startWorldEvent", "tellAurumOnce",
-  "triggerTeleportFlash", "visitedDossiers", "warmingUp", "worldEvent",
+  "setWarping", "setWave", "shardsCollected", "showBottles", "showClassicCV", "startWorldEvent", "tellAurumOnce",
+  "triggerTeleportFlash", "visitedDossiers", "warmingUp", "wave", "worldEvent",
 ];
 
 const MODULE_EXPORTS = [
-  "WEBGL_AVAILABLE", "bodies", "flight", "hasWebGL", "loadBadges", "loadShards",
+  "WEBGL_AVAILABLE", "bodies", "combat", "flight", "hasWebGL", "loadBadges", "loadShards",
   "selectModalOpen", "selectRaceFlying", "selectSceneFrozen", "todayStamp", "useSpaceStore", "wantsResume", "worldClock",
   "worldEventElapsed",
 ];
@@ -104,6 +106,9 @@ describe("store shape (split guard)", () => {
     expect(storeModule.flight).toBe(flight);
     expect(storeModule.bodies).toBe(bodies);
     expect(storeModule.worldClock).toBe(worldClock);
+    expect(storeModule.combat).toBe(combatModule.combat);
+    expect(combat).toBe(combatModule.combat);
+    expect(Object.keys(combat).sort()).toEqual(["breachAt", "clearedAt", "click", "enteredAt", "flashAt", "hits", "inArea", "nest", "towRequest", "warm"]);
     expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "raceHold", "racing", "speed", "x", "y", "z"]);
     expect(Object.keys(flight.input).sort()).toEqual(["ascend", "backward", "beam", "boost", "descend", "forward", "left", "right", "scan", "steer", "thrust"]);
     expect(Object.keys(worldClock)).toEqual(["now"]);
@@ -132,9 +137,12 @@ describe("store shape (split guard)", () => {
         "chartShoutAt": null,
         "charted": [],
         "cometNear": false,
+        "contacts": 0,
         "dossierVia": null,
         "fuelEmpty": false,
+        "hullBreachAt": null,
         "impactCount": 0,
+        "inNest": false,
         "isLowPerf": false,
         "isMuted": false,
         "isNearSpawn": true,
@@ -149,6 +157,7 @@ describe("store shape (split guard)", () => {
         "logbookLineAt": 0,
         "logbookOpen": false,
         "lowPerfManual": false,
+        "nestClearedAt": null,
         "openDossier": null,
         "ownBeacons": [],
         "ownBottles": [],
@@ -178,6 +187,7 @@ describe("store shape (split guard)", () => {
         "showClassicCV": true,
         "visitedDossiers": [],
         "warmingUp": false,
+        "wave": 0,
         "worldEvent": null,
       }
     `);
@@ -254,9 +264,12 @@ describe("store shape (split guard)", () => {
           },
         ],
         "cometNear": false,
+        "contacts": 0,
         "dossierVia": null,
         "fuelEmpty": false,
+        "hullBreachAt": null,
         "impactCount": 0,
+        "inNest": false,
         "isLowPerf": false,
         "isMuted": true,
         "isNearSpawn": true,
@@ -271,6 +284,7 @@ describe("store shape (split guard)", () => {
         "logbookLineAt": 0,
         "logbookOpen": false,
         "lowPerfManual": false,
+        "nestClearedAt": null,
         "openDossier": null,
         "ownBeacons": [
           "b1",
@@ -318,6 +332,7 @@ describe("store shape (split guard)", () => {
           "ruangrapi",
         ],
         "warmingUp": false,
+        "wave": 0,
         "worldEvent": null,
       }
     `);
@@ -519,6 +534,12 @@ describe("store shape (split guard)", () => {
     s().endWorldEvent();
     s().endWorldEvent();
 
+    step("combat");
+    s().setInNest(true); s().setInNest(true);
+    s().setWave(1, 3); s().setWave(1, 3); s().setWave(1, 2);
+    s().markHullBreach(1000); s().markNestCleared(2000);
+    s().setWave(0, 0); s().setInNest(false);
+
     expect(events).toMatchInlineSnapshot(`
       [
         "ambient true",
@@ -698,6 +719,16 @@ describe("store shape (split guard)", () => {
         "set broadcast={"id":20,"text":"FLARE","silent":false,"at":1793016166600}",
         "elapsed 2 null",
         "set worldEvent=null",
+        "-- combat",
+        "set inNest=true",
+        "set contacts=3 wave=1",
+        "set contacts=2",
+        "set hullBreachAt=1000",
+        "set nestClearedAt=2000",
+        "write fitz-logbook=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"},{"id":"comet","at":"2026-10-26"},{"id":"nest","at":"2026-10-26"}]",
+        "set badges=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"},{"id":"comet","at":"2026-10-26"},{"id":"nest","at":"2026-10-26"}]",
+        "set contacts=0 wave=0",
+        "set inNest=false",
       ]
     `);
   });

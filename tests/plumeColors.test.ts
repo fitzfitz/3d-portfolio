@@ -15,6 +15,9 @@ describe("PLUME_COLORS", () => {
     expect(PLUME_COLORS.cartographer).toEqual({ name: "AURUM", hex: "#ffe9a3" });
     expect(PLUME_COLORS.cartographer.hex).not.toBe(PLUME_COLORS.slingshot.hex);
   });
+  it("has CRIMSON for the Nest breaker", () => {
+    expect(PLUME_COLORS.nest).toEqual({ name: "CRIMSON", hex: "#ff3b4a" });
+  });
   it("knows nothing about essentials or unknown ids", () => {
     expect(hasPlumeColour("contact")).toBe(false);
     expect(hasPlumeColour("nope")).toBe(false);

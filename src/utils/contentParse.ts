@@ -19,7 +19,7 @@ import { GATE_SCAN_ID } from "../data/dormantGate";
  */
 export const DESTINATION_IDS: readonly string[] = ["career", "shipyard", "contact"];
 /** The logbook's badge ids (utils/logbook.ts): a project's dossier entry shares their id space. Kept equal by the same test. */
-export const BADGE_IDS: readonly string[] = ["slingshot", "comet", "ring", "ore", "convoy", "shards"];
+export const BADGE_IDS: readonly string[] = ["slingshot", "comet", "ring", "ore", "convoy", "shards", "nest"];
 /**
  * The comets' scan ids (data/smallBodyField.ts COMET_SCAN_IDS), repeated
  * because that module loads the ephemeris, which loads constants.ts. Kept
@@ -35,8 +35,8 @@ export const COMET_IDS: readonly string[] = ["comet_2p", "comet_67p"];
 export const RESERVED_IDS: ReadonlySet<string> = new Set<string>([
   ...DESTINATION_IDS, ...BADGE_IDS, ...BODY_IDS, ...MOON_IDS, ...COMET_IDS,
   ...ASTEROID_COLLIDERS.map((a) => a.id), SUN_COLLIDER.id, GATE_SCAN_ID,
-  // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the race's start gate (utils/raceScene.ts), the visiting comet.
-  "sun", "jellyfish", "race_start", "comet_visitor",
+  // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the race's start gate (utils/raceScene.ts), the visiting comet, the Nest.
+  "sun", "jellyfish", "race_start", "comet_visitor", "the_nest",
 ]);
 /** Families of generated scan ids: buoys (career_<n>), bottles (and the old beacons), live-sky ghosts, comets, scenery asteroids. */
 export const RESERVED_PREFIXES: readonly string[] = ["career_", "bottle_", "beacon_", "ghost_", "comet_", "asteroid_"];

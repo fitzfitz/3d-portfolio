@@ -117,9 +117,9 @@ describe("radio lines", () => {
   });
 });
 
-describe("the logbook stays at 11", () => {
+describe("the logbook stays at 12", () => {
   it("charting never changes logbookCount", () => {
-    expect(logbookCount({ visitedDossiers: [], shardsCollected: [], badges: [] }).total).toBe(11);
+    expect(logbookCount({ visitedDossiers: [], shardsCollected: [], badges: [] }).total).toBe(12);
   });
 
   it("ALL_LINE claims only the badge plumes (the cartographer plume is the survey's)", () => {

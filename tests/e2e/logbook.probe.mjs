@@ -9,7 +9,7 @@ async function desktop(page, checks) {
   await page.evaluate(() => ["fitz-logbook", "fitz-plume", "fitz-dossiers", "fitz-shards", "fitz-charted"].forEach((k) => localStorage.removeItem(k)));
   await page.reload();
   await ready(page);
-  checks.check("fresh tracker shows 0/11 and the first essential", /LOGBOOK 0\/11.*RUANGRAPI/.test(await tracker(page)), await tracker(page));
+  checks.check("fresh tracker shows 0/12 and the first essential", /LOGBOOK 0\/12.*RUANGRAPI/.test(await tracker(page)), await tracker(page));
 
   // Key 1 jumps to probe 1 (ruangrapi); holding F grabs it and its dossier opens.
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -24,7 +24,7 @@ async function desktop(page, checks) {
   await page.keyboard.press("Escape");
   await settle(page, 2500);
   checks.check("the dossier essential is ticked and the tracker advances",
-    /LOGBOOK 1\/11.*FLIGHT-SIM CV/.test(await tracker(page)), await tracker(page));
+    /LOGBOOK 1\/12.*FLIGHT-SIM CV/.test(await tracker(page)), await tracker(page));
   // The closed probe burns away and its PROBE RELOCATING line goes out when
   // the burn ends; let it land first, so it cannot overwrite the badge
   // announcement below. A logbook line yields to a fresh broadcast
@@ -39,7 +39,7 @@ async function desktop(page, checks) {
   checks.check("a recorded badge is announced to screen readers", /SLINGSHOT EARNED/.test(await liveText(page)), await liveText(page));
   await page.evaluate(() => window.__fitz.store.getState().recordBadge("comet"));
   await settle(page, 400);
-  checks.check("badges raise the count", /LOGBOOK 3\/11/.test(await tracker(page)), await tracker(page));
+  checks.check("badges raise the count", /LOGBOOK 3\/12/.test(await tracker(page)), await tracker(page));
 
   // Panel: L opens with focus on the heading; Esc closes; the HUD button opens.
   await page.evaluate(() => document.activeElement?.blur?.());
@@ -118,7 +118,7 @@ async function desktop(page, checks) {
   await ready(page);
   await settle(page, 1000);
   const st = await readStore(page);
-  checks.check("progress survives a reload", st.badges.length === 2 && /LOGBOOK 4\/11/.test(await tracker(page)), await tracker(page));
+  checks.check("progress survives a reload", st.badges.length === 2 && /LOGBOOK 4\/12/.test(await tracker(page)), await tracker(page));
   checks.check("a tampered plume for a locked badge falls back to stock", st.plumeColor === "stock", `plume=${st.plumeColor}`);
   checks.check("a reload announces nothing for old progress", !/LOGBOOK \/\/|TOUR COMPLETE/.test(await liveText(page)), await liveText(page));
 
