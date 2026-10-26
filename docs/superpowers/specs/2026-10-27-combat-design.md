@@ -74,7 +74,7 @@ The owner wants "activity in my universe … battles … achievements" *(owner, 
 
 ### The weapon
 - **Desktop:**
-  - **Left click** fires a plasma bolt from the ship's nose toward the clicked point, inside the fighting area. Outside the Nest, left click keeps making today's plasma crystals. One control, two meanings by place.
+  - **Left click** fires a plasma bolt from the ship's nose toward the clicked point, inside the fighting area. Outside the Nest, left click keeps making today's plasma sparks. One control, two meanings by place.
   - **F (the beam key)** fires while held, inside the fighting area only.
 - **Gamepad:** LB fires while held, inside the fighting area only.
 - **Touch:** the BEAM button reads **FIRE** inside the fighting area and fires while held.
@@ -156,7 +156,7 @@ The owner wants "activity in my universe … battles … achievements" *(owner, 
   - the badge, plume and logbook counts;
   - the placement and clearance tests for the Nest and the buoy.
 - **e2e probe `combat`:**
-  - away from the Nest: no monsters, no models fetched, and left click makes crystals;
+  - away from the Nest: no monsters, no models fetched, and left click makes plasma sparks;
   - fly in: the models load and wave 1 spawns 3 saucers;
   - fire and defeat a saucer;
   - take hits and see the hull drop;
