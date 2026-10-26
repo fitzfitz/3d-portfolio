@@ -1,4 +1,4 @@
-import { beaconRegistry, beaconReport } from "./beacons";
+import { bottleRegistry, bottleReport } from "./beacons";
 import { ghostRegistry, ghostReport } from "./liveSky";
 import { BUOYS } from "../data/careerTrail";
 import { isBodyId } from "../data/bodyIds";
@@ -47,8 +47,8 @@ function hash(id: string): number {
 export function generateScanReport(id: string, gameSeconds = 0): string {
   const ghost = ghostRegistry.get(id);
   if (ghost) return ghostReport(ghost.cc, ghost.ch);
-  const beacon = beaconRegistry.get(id);
-  if (beacon) return beaconReport(beacon, Date.now());
+  const bottle = bottleRegistry.get(id);
+  if (bottle) return bottleReport(bottle.bottle, Date.now(), bottle.own);
   const comet = COMET_REPORTS.get(id);
   if (comet) return comet;
   const buoy = BUOY_REPORTS.get(id);

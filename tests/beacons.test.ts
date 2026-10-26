@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateDrop, beaconVisible, parseBottles, beaconReport, BOTTLE_LIMIT, SPAWN_KEEP_OUT } from "../src/utils/beacons";
+import { validateDrop, bottleVisible, parseBottles, bottleReport, bottleCardMeta, bottleAge, bottleScanId, BOTTLE_LIMIT, SPAWN_KEEP_OUT } from "../src/utils/beacons";
 import { BOTTLE_MAX_CHARS } from "../src/utils/bottleFilter";
 import { SPAWN } from "../src/data/spawn";
 import { BEACON_PHRASES } from "../src/data/beaconPhrases";
@@ -41,8 +41,8 @@ describe("sphere bounds", () => {
   });
   it("draws a beacon only inside the system radius", () => {
     expect(SYSTEM_RADIUS).toBe(3600);
-    expect(beaconVisible({ x: 2080, y: 2080, z: 2080 })).toBe(false); // r 3603, past the 3600 edge
-    expect(beaconVisible({ x: 2070, y: 2070, z: 2070 })).toBe(true); // r 3585
+    expect(bottleVisible({ x: 2080, y: 2080, z: 2080 })).toBe(false); // r 3603, past the 3600 edge
+    expect(bottleVisible({ x: 2070, y: 2070, z: 2070 })).toBe(true); // r 3585
   });
 });
 
@@ -83,22 +83,49 @@ describe("parseBottles", () => {
   });
 });
 
-describe("beaconReport", () => {
+describe("bottleReport", () => {
   const now = 1_760_000_000_000;
   const b = { id: "a", x: 0, y: 0, z: 0, text: "Hello from Jakarta!", at: now, country: "ID" };
-  it("reads the note, where the pilot was from, and how long ago", () => {
-    expect(beaconReport({ ...b, at: now - 3 * 86_400_000 }, now))
-      .toBe('BOTTLE // "Hello from Jakarta!" · PILOT FROM ID · 3 DAYS AGO');
+  it("reads who left it, when, then the note as written", () => {
+    expect(bottleReport({ ...b, at: now - 3 * 86_400_000 }, now))
+      .toBe('SCAN[MESSAGE_BOTTLE] // LEFT 3 DAYS AGO BY A PILOT FROM ID // "Hello from Jakarta!"');
   });
   it("leaves out an unknown origin", () => {
-    expect(beaconReport({ ...b, country: null, at: now - 2 * 3_600_000 }, now))
-      .toBe('BOTTLE // "Hello from Jakarta!" · 2 HOURS AGO');
+    expect(bottleReport({ ...b, country: null, at: now - 2 * 3_600_000 }, now))
+      .toBe('SCAN[MESSAGE_BOTTLE] // LEFT 2 HOURS AGO BY A PILOT // "Hello from Jakarta!"');
   });
-  it("says JUST NOW for a fresh bottle, and copes with clock skew", () => {
-    expect(beaconReport({ ...b, at: now - 30_000 }, now)).toMatch(/JUST NOW$/);
-    expect(beaconReport({ ...b, at: now + 60_000 }, now)).toMatch(/JUST NOW$/);
+  it("tells the pilot their own bottle", () => {
+    expect(bottleReport({ ...b, at: now - 5 * 60_000 }, now, true))
+      .toBe('SCAN[YOUR_BOTTLE] // LEFT 5 MINUTES AGO BY YOU // "Hello from Jakarta!"');
+  });
+  it("keeps markup-like text verbatim (it is only ever rendered as text)", () => {
+    expect(bottleReport({ ...b, text: "<b>x</b>" }, now)).toMatch(/"<b>x<\/b>"$/);
+  });
+});
+
+describe("bottleAge", () => {
+  it("says JUST NOW for a fresh bottle, and copes with clock skew via the callers' clamp", () => {
+    expect(bottleAge(30_000)).toBe("JUST NOW");
+    expect(bottleAge(0)).toBe("JUST NOW");
   });
   it("uses singular units", () => {
-    expect(beaconReport({ ...b, at: now - 86_400_000 }, now)).toMatch(/1 DAY AGO$/);
+    expect(bottleAge(60_000)).toBe("1 MINUTE AGO");
+    expect(bottleAge(3_600_000)).toBe("1 HOUR AGO");
+    expect(bottleAge(86_400_000)).toBe("1 DAY AGO");
+    expect(bottleAge(3 * 86_400_000 + 5)).toBe("3 DAYS AGO");
+  });
+});
+
+describe("bottleCardMeta", () => {
+  const now = 1_760_000_000_000;
+  const b = { id: "a", x: 0, y: 0, z: 0, text: "hi there", at: now - 3 * 86_400_000, country: "ID" };
+  it("gives the country and the age", () => {
+    expect(bottleCardMeta(b, now)).toBe("FROM ID · LEFT 3 DAYS AGO");
+  });
+  it("gives only the age when the country is unknown, and JUST NOW under clock skew", () => {
+    expect(bottleCardMeta({ ...b, country: null, at: now + 60_000 }, now)).toBe("LEFT JUST NOW");
+  });
+  it("names scannables bottle_<id>", () => {
+    expect(bottleScanId("abc")).toBe("bottle_abc");
   });
 });

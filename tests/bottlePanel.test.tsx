@@ -68,6 +68,20 @@ describe("sending a draft", () => {
     expect(d.error).toBeNull();
     expect(draftView(d).hint).toBeNull();
   });
+  it("forgets the failure on Cancel or reopen, but keeps the text", async () => {
+    const failed = draftReducer(typed("Clear skies, pilot!"), await sendDraft("Clear skies, pilot!", async () => fail));
+    expect(failed.error).not.toBeNull();
+    const d = draftReducer(failed, { type: "dismiss" });
+    expect(d.error).toBeNull();
+    expect(d.text).toBe("Clear skies, pilot!");
+    expect(draftView(d).hint).toBeNull();
+    // Nothing to forget: the same draft back, so React skips the render.
+    expect(draftReducer(d, { type: "dismiss" })).toBe(d);
+  });
+  it("keeps a send in flight across a dismiss", () => {
+    const d = draftReducer(draftReducer(typed("Clear skies, pilot!"), { type: "sending" }), { type: "dismiss" });
+    expect(d.sending).toBe(true);
+  });
   it("empties the box once the bottle is away", async () => {
     const sent = await sendDraft("Clear skies, pilot!", async () => ({
       ok: true, bottle: { id: "n1", x: 1, y: 2, z: 3, text: "Clear skies, pilot!", at: 1, country: null },

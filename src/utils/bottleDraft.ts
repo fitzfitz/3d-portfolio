@@ -9,7 +9,7 @@ import { dropFailureMessage, type DropResult } from "./beaconApi";
 export interface Draft {
   text: string;
   sending: boolean;
-  /** The last send's failure, in friendly words; cleared by the next edit. */
+  /** The last send's failure, in friendly words; cleared by the next edit, Cancel or reopening. */
   error: string | null;
 }
 
@@ -17,6 +17,8 @@ export type DraftAction =
   | { type: "edit"; text: string }
   | { type: "sending" }
   | { type: "failed"; error: string }
+  /** Cancel or reopen: the text stays, the last failure goes. */
+  | { type: "dismiss" }
   | { type: "sent" };
 
 export const EMPTY_DRAFT: Draft = { text: "", sending: false, error: null };
@@ -26,6 +28,7 @@ export function draftReducer(d: Draft, a: DraftAction): Draft {
     case "edit": return { ...d, text: a.text, error: null };
     case "sending": return { ...d, sending: true, error: null };
     case "failed": return { ...d, sending: false, error: a.error };
+    case "dismiss": return d.error === null ? d : { ...d, error: null };
     case "sent": return EMPTY_DRAFT;
   }
 }

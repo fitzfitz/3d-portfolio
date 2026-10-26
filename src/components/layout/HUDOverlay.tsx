@@ -20,6 +20,7 @@ import RaceHUD from "./RaceHUD";
 import { openBottlePanel } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import BuoyCard from "./BuoyCard";
+import BottleCard from "./BottleCard";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
@@ -197,6 +198,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {!modalOpen && <ScanRing />}
       {/* Frozen with the scene while docked, so hidden then too. */}
       {!modalOpen && <BuoyCard />}
+      {/* A message in a bottle's read card: only with the bottle API, frozen with the scene while docked. */}
+      {beaconsEnabled && !modalOpen && <BottleCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
       {/* items-start: each row is only as wide as its text. Stretched rows took

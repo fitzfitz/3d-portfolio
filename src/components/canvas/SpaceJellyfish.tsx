@@ -5,7 +5,7 @@ import { useModel } from "../../utils/sceneAssets";
 import { JELLY_PATH, JELLY_LOOP_SECONDS, nearestLoopT } from "../../data/jellyfishPath";
 import { DESTINATIONS } from "../../data/destinations";
 import { guideLines } from "../../data/chatterLines";
-import { isEditableTarget } from "../../hooks/useKeyboardInput";
+import { gameKeyIgnored } from "../../hooks/useKeyboardInput";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -279,15 +279,17 @@ export default function SpaceJellyfish() {
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   // J calls the guide, or sends it back to roaming (spec "Calling it"). Not
-  // while typing, not on key repeat (holding J would flicker it), and not under
-  // a dossier or dock panel, where the touch button is hidden too and the frozen
-  // frame loop would only apply the press after it closes.
+  // while typing, not on key repeat (holding J would flicker it), not while
+  // the bottle panel owns the keys or behind the résumé (gameKeyIgnored, as
+  // App's game keys), and not under a dossier or dock panel, where the touch
+  // button is hidden too and the frozen frame loop would only apply the press
+  // after it closes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "KeyJ" || e.repeat) return;
-      const t = e.target as HTMLElement | null;
-      if (isEditableTarget(t)) return;
-      if (selectModalOpen(useSpaceStore.getState())) return;
+      if (e.code !== "KeyJ") return;
+      const s = useSpaceStore.getState();
+      if (gameKeyIgnored({ target: e.target as HTMLElement | null, repeat: e.repeat, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey }, s)) return;
+      if (selectModalOpen(s)) return;
       requestGuideToggle();
     };
     window.addEventListener("keydown", onKey);

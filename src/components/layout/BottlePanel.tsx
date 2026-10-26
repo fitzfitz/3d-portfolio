@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import { useSpaceStore } from "../../store/spaceStore";
 import { dropBottle } from "../../utils/beaconActions";
 import { EMPTY_DRAFT, draftReducer, draftView, sendDraft } from "../../utils/bottleDraft";
@@ -20,16 +20,31 @@ export default function BottlePanel() {
   const view = draftView(draft);
   const opener = useRef<HTMLElement | null>(null);
 
+  // A failure belongs to the send that failed: reopened, the panel shows the
+  // kept text without it (before paint, so it never flashes).
+  useLayoutEffect(() => {
+    if (open) dispatch({ type: "dismiss" });
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     opener.current = document.activeElement as HTMLElement | null;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); setOpen(false); } };
-    window.addEventListener("keydown", onKey);
+    // Capture phase, stopped there: one Esc closes only this panel, not the
+    // logbook (or anything else) it was opened over.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+    };
+    window.addEventListener("keydown", onKey, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       opener.current?.focus?.();
     };
   }, [open, setOpen]);
+
+  const close = () => { dispatch({ type: "dismiss" }); setOpen(false); };
 
   const send = async () => {
     if (!view.canSend) return;
@@ -45,7 +60,7 @@ export default function BottlePanel() {
   return (
     // Top-aligned on phones so the on-screen keyboard does not cover the box.
     <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-black/50 px-4 pt-[8vh] sm:pt-0 pointer-events-auto"
-      onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
+      onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <form role="dialog" aria-modal="true" aria-labelledby="bottle-title" data-testid="bottle-panel"
         onSubmit={(e) => { e.preventDefault(); void send(); }}
         className="w-full max-w-sm rounded-2xl border border-[#00ff87]/25 bg-[#05040c]/95 p-5 font-mono text-[11px] text-white/80">
@@ -57,6 +72,8 @@ export default function BottlePanel() {
         <label htmlFor="bottle-text" className="sr-only">Your note</label>
         <textarea id="bottle-text" data-testid="bottle-text" autoFocus rows={3}
           value={draft.text} onChange={(e) => dispatch({ type: "edit", text: e.target.value })}
+          // A kept draft continues where it ended: the caret goes to the end, not the start.
+          onFocus={(e) => { const n = e.currentTarget.value.length; e.currentTarget.setSelectionRange(n, n); }}
           onKeyDown={(e) => {
             // Enter sends (line breaks collapse to spaces anyway); the on-screen keyboard shows "Send".
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); }
@@ -75,7 +92,7 @@ export default function BottlePanel() {
           </span>
         </div>
         <div className="mt-3 flex gap-2">
-          <button type="button" data-testid="bottle-cancel" onClick={() => setOpen(false)}
+          <button type="button" data-testid="bottle-cancel" onClick={close}
             className="flex-1 rounded-lg border border-white/5 py-2 text-white/50 hover:text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#00ff87]">
             CANCEL · ESC
           </button>

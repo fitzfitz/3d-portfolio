@@ -49,7 +49,12 @@ export default function LogbookPanel() {
     if (!open) return;
     opener.current = document.activeElement as HTMLElement | null;
     headingRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") useSpaceStore.getState().setLogbookOpen(false); };
+    // The bottle panel opens over the logbook: its Esc closes only itself.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const s = useSpaceStore.getState();
+      if (!s.bottlePanelOpen) s.setLogbookOpen(false);
+    };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);

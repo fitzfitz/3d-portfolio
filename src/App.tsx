@@ -126,6 +126,8 @@ export default function App() {
       if (gameKeyIgnored({ target: e.target as HTMLElement | null, repeat: e.repeat, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey }, s)) return;
       if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
       if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !selectModalOpen(s)) {
+        // Or the "b" itself lands in the panel's text box, focused as it opens.
+        e.preventDefault();
         openBottlePanel();
         return;
       }

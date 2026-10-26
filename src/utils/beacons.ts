@@ -5,8 +5,14 @@ import { BOTTLE_MAX_CHARS } from "./bottleFilter";
 
 export interface BeaconDrop { x: number; y: number; z: number; phrase: number }
 
-/** Live bottles by scannable id ("beacon_<id>"), for scan reports. Written by Beacons.tsx. */
-export const beaconRegistry = new Map<string, Bottle>();
+/** A drawn bottle as the scan reads it: the bottle, and whether this browser left it. */
+export interface BottleEntry { bottle: Bottle; own: boolean }
+
+/** Live bottles by scannable id (bottleScanId), for scan reports. Written by Bottles.tsx. */
+export const bottleRegistry = new Map<string, BottleEntry>();
+
+/** A bottle's scannable id. */
+export const bottleScanId = (id: string): string => `bottle_${id}`;
 
 /**
  * No beacons within this distance of the spawn pad (src/data/spawn.ts): every visitor
@@ -29,12 +35,6 @@ export interface Bottle {
   country: string | null;
 }
 
-/**
- * The scene's name for a bottle until Beacons.tsx becomes Bottles.tsx (plan
- * task 5). The old phrase-index Beacon is gone: the API serves text.
- */
-export type Beacon = Bottle;
-
 /** Most bottles the API serves (newest first), and the most the scene shows besides the visitor's own. */
 export const BOTTLE_LIMIT = 30;
 /**
@@ -45,8 +45,6 @@ export const BOTTLE_LIMIT = 30;
 export const OWN_BOTTLES_KEPT = 10;
 /** The most bottles ever shown at once: the newest BOTTLE_LIMIT plus the visitor's own. */
 export const BOTTLES_SHOWN_MAX = BOTTLE_LIMIT + OWN_BOTTLES_KEPT;
-/** Instance capacity of Beacons.tsx (until task 5 replaces it): every bottle that can be shown. */
-export const BEACON_LIMIT = BOTTLES_SHOWN_MAX;
 /** Bottles one pilot may leave in any 24 hours. */
 export const BOTTLE_DAILY_CAP = 5;
 /**
@@ -60,8 +58,8 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const isCoord = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const inBounds = (x: number, y: number, z: number) => Math.hypot(x, y, z) <= VALIDATION_RADIUS;
 
-/** Beacons drawn and scannable: inside the playable system (the return burn starts at its edge). */
-export function beaconVisible(p: { x: number; y: number; z: number }): boolean {
+/** Bottles drawn and scannable: inside the playable system (the return burn starts at its edge). */
+export function bottleVisible(p: { x: number; y: number; z: number }): boolean {
   return Math.hypot(p.x, p.y, p.z) <= SYSTEM_RADIUS;
 }
 const isPhrase = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < BEACON_PHRASES.length;
@@ -137,7 +135,8 @@ export function mergeBottles(served: readonly Bottle[], own: readonly Bottle[]):
   return [...head, ...all.slice(BOTTLE_LIMIT).filter((b) => ownIds.has(b.id))];
 }
 
-function age(ms: number): string {
+/** How long ago a bottle was left, in the radio's words: "JUST NOW", "1 MINUTE AGO", "3 DAYS AGO". */
+export function bottleAge(ms: number): string {
   const unit = (n: number, u: string) => `${n} ${u}${n === 1 ? "" : "S"} AGO`;
   if (ms < 60_000) return "JUST NOW";
   if (ms < 3_600_000) return unit(Math.floor(ms / 60_000), "MINUTE");
@@ -145,8 +144,19 @@ function age(ms: number): string {
   return unit(Math.floor(ms / 86_400_000), "DAY");
 }
 
-/** The scan readout for a bottle: plain text, never markup. */
-export function beaconReport(b: Bottle, now: number): string {
-  const from = b.country ? ` · PILOT FROM ${b.country}` : "";
-  return `BOTTLE // "${b.text}"${from} · ${age(Math.max(0, now - b.at))}`;
+/**
+ * The scan readout for a bottle (Scanner, through scanReport), in the radio's
+ * voice: who left it and when, then the note in quotes, exactly as written.
+ * Plain text, never markup.
+ */
+export function bottleReport(b: Bottle, now: number, own = false): string {
+  const when = `LEFT ${bottleAge(Math.max(0, now - b.at))}`;
+  const who = own ? "BY YOU" : b.country ? `BY A PILOT FROM ${b.country}` : "BY A PILOT";
+  return `SCAN[${own ? "YOUR_BOTTLE" : "MESSAGE_BOTTLE"}] // ${when} ${who} // "${b.text}"`;
+}
+
+/** The read card's footer (BottleCard): the country, when known, and the age. "FROM ID · LEFT 3 DAYS AGO". */
+export function bottleCardMeta(b: Bottle, now: number): string {
+  const when = `LEFT ${bottleAge(Math.max(0, now - b.at))}`;
+  return b.country ? `FROM ${b.country} · ${when}` : when;
 }
