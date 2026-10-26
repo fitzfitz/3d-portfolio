@@ -5,6 +5,7 @@ import { LOGBOOK, entryDone, isDossierEntry, logbookCount, type LogbookProgress 
 import { PLUME_COLORS } from "../../data/plumeColors";
 import { jumpKey } from "../../data/destinations";
 import { liveSkyUrl } from "../../utils/liveSky";
+import { beaconApiUrl } from "../../utils/apiBase";
 import { ORRERY_NOTE } from "../../utils/realUnits";
 import { BODY_COUNT, SOLAR_BODIES } from "../../data/solarSystem";
 import { isCartographer } from "../../utils/charting";
@@ -12,6 +13,7 @@ import { reopenDossier } from "./reopenDossier";
 import SystemChart from "../dom/SystemChart";
 
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
+const BOTTLES_ENABLED = !!beaconApiUrl();
 
 /**
  * The pilot logbook (spec §4.3): a non-modal sheet (flight keeps running)
@@ -30,6 +32,7 @@ export default function LogbookPanel() {
   const photoMode = useSpaceStore((s) => s.photoMode);
   const showClassicCV = useSpaceStore((s) => s.showClassicCV);
   const liveSky = useSpaceStore((s) => s.liveSky);
+  const showBottles = useSpaceStore((s) => s.showBottles);
   const charted = useSpaceStore((s) => s.charted);
   const legacy = useSpaceStore((s) => s.legacyCartographer);
   const chartedIds = useMemo(() => new Set(charted.map((c) => c.id)), [charted]);
@@ -144,6 +147,19 @@ export default function LogbookPanel() {
             {liveSky ? "ON" : "OFF"}
           </button>
           <p id="livesky-desc" className="mt-1 text-white/40">See other pilots flying now. They see your ship, plume, country and worlds charted.</p>
+        </>
+      )}
+      {BOTTLES_ENABLED && (
+        <>
+          <div className="text-white/40 mt-3 mb-1" id="bottles-label">SHOW BOTTLES</div>
+          {/* A button, not a checkbox: a focused <input> would swallow the flight keys. */}
+          <button type="button" role="switch" aria-checked={showBottles} aria-labelledby="bottles-label"
+            aria-describedby="bottles-desc" data-testid="bottles-toggle"
+            onClick={() => useSpaceStore.getState().setShowBottles(!showBottles)}
+            className={`px-2 py-1 rounded-lg border outline-none focus-visible:ring-1 focus-visible:ring-primary cursor-pointer ${showBottles ? "border-primary/60 text-primary" : "border-white/10 text-white/60"}`}>
+            {showBottles ? "ON" : "OFF"}
+          </button>
+          <p id="bottles-desc" className="mt-1 text-white/40">Notes other pilots left in bottles around the system. Off hides them all for you. You can still leave one (B).</p>
         </>
       )}
       <div className="text-white/40 mt-3 mb-1">THE UNIVERSE</div>

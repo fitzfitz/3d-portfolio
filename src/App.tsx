@@ -32,11 +32,11 @@ import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import { Terminal, FileText, X } from "lucide-react";
 import { useSpaceStore, WEBGL_AVAILABLE, selectModalOpen } from "./store/spaceStore";
 import { useMediaQuery } from "./hooks/useMediaQuery";
-import { useKeyboardInput, isEditableTarget } from "./hooks/useKeyboardInput";
+import { useKeyboardInput, isEditableTarget, gameKeyIgnored } from "./hooks/useKeyboardInput";
 import { useGamepadInput } from "./hooks/useGamepadInput";
-import BeaconPicker from "./components/layout/BeaconPicker";
+import BottlePanel from "./components/layout/BottlePanel";
 import { beaconApiUrl } from "./utils/beaconApi";
-import { loadBeacons, openBeaconPicker } from "./utils/beaconActions";
+import { loadBottles, openBottlePanel } from "./utils/beaconActions";
 import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
@@ -59,7 +59,7 @@ function EngineLoading() {
   );
 }
 
-/** Beacons exist only when an API is configured; read once per page load. */
+/** Bottles (the beacon API) exist only when an API is configured; read once per page load. */
 const BEACONS_ENABLED = !!beaconApiUrl();
 
 /** The spawn card's first line, for the probes in play. */
@@ -97,6 +97,7 @@ export default function App() {
   const setPhotoMode = useSpaceStore((s) => s.setPhotoMode);
   const reducedMotion = useSpaceStore((s) => s.reducedMotion);
   const sceneReady = useSpaceStore((s) => s.sceneReady);
+  const showBottles = useSpaceStore((s) => s.showBottles);
   const isOrbitCooldown = useSpaceStore((s) => s.isOrbitCooldown);
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const padConnected = useSpaceStore((s) => s.padConnected);
@@ -120,14 +121,12 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isEditableTarget(e.target as HTMLElement | null)) return;
       const s = useSpaceStore.getState();
-      if (s.showClassicCV) return;
-      if (s.beaconPickerOpen) return; // its own keys: 1-9 pick, Esc cancels
+      // Not while typing, nor behind the résumé, nor while the bottle panel owns the keys.
+      if (gameKeyIgnored({ target: e.target as HTMLElement | null, repeat: e.repeat, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey }, s)) return;
       if (e.code === "KeyP") { setPhotoMode(!s.photoMode); return; }
       if (e.code === "KeyB" && BEACONS_ENABLED && !s.photoMode && !selectModalOpen(s)) {
-        openBeaconPicker();
+        openBottlePanel();
         return;
       }
       if (e.code === "KeyL" && !s.photoMode && !selectModalOpen(s)) {
@@ -149,10 +148,13 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [setPhotoMode]);
 
-  // The sky's beacons load once the scene is up, off the critical path.
+  // The sky's bottles load once the scene is up, off the critical path, and
+  // only while Show bottles is on: off fetches nothing; turning it on loads them.
   useEffect(() => {
-    if (sceneReady && BEACONS_ENABLED) void loadBeacons();
-    // A pilot who charted all five before AURUM existed hears about it once.
+    if (sceneReady && BEACONS_ENABLED && showBottles) void loadBottles();
+  }, [sceneReady, showBottles]);
+  // A pilot who charted all five before AURUM existed hears about it once.
+  useEffect(() => {
     if (sceneReady) useSpaceStore.getState().tellAurumOnce();
   }, [sceneReady]);
 
@@ -350,7 +352,7 @@ export default function App() {
       <CustomCursor />
       <LogbookPanel />
       <ChangelogPanel />
-      {BEACONS_ENABLED && <BeaconPicker />}
+      {BEACONS_ENABLED && <BottlePanel />}
       {/* Hidden while the logbook or patch-notes sheet is open on a phone: the
           sheet covers them, and unmounting releases any held touch input. */}
       {!photoMode && !showClassicCV && !logbookOpen && !changelogOpen && <TouchControls />}

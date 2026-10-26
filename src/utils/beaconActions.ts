@@ -1,48 +1,52 @@
 import { flight, useSpaceStore } from "../store/spaceStore";
 import { SYSTEM_RADIUS } from "../constants";
-import { BEACON_LIMIT } from "./beacons";
-import { BEACON_PHRASES } from "../data/beaconPhrases";
-import { fetchBeacons, postBeacon } from "./beaconApi";
+import { mergeBottles } from "./beacons";
+import { fetchBottles, postBottle, dropFailureMessage, type DropResult } from "./beaconApi";
 import { resetFlightInput } from "../hooks/useKeyboardInput";
 
 /**
- * Opens the phrase picker. Releases held flight keys first: the picker owns
+ * Opens the bottle panel. Releases held flight keys first: the panel owns
  * the keyboard while open, so a W held when it opened would never see its keyup.
+ * Works with Show bottles off too: hiding bottles never stops writing one.
  */
-export function openBeaconPicker(): void {
+export function openBottlePanel(): void {
   resetFlightInput(flight.input);
-  useSpaceStore.getState().setBeaconPickerOpen(true);
+  useSpaceStore.getState().setBottlePanelOpen(true);
 }
 
-/** Loads the sky's beacons once. Silent on failure: no beacons is a valid sky. */
-export async function loadBeacons(): Promise<void> {
-  const list = await fetchBeacons();
-  useSpaceStore.getState().setBeacons(list);
-}
-
-/** Drops a beacon at the ship's position and reports the outcome on the radio. */
-export async function dropBeacon(phrase: number): Promise<void> {
+/**
+ * Loads the sky's bottles and merges in the visitor's own. Fetches nothing
+ * while Show bottles is off (spec "The visitor setting"). Silent on failure:
+ * an empty sky is a valid sky.
+ */
+export async function loadBottles(): Promise<void> {
+  if (!useSpaceStore.getState().showBottles) return;
+  const list = await fetchBottles();
   const s = useSpaceStore.getState();
-  s.sendBroadcast("BEACON // TRANSMITTING...");
-  // Beacons past the edge are accepted by the Worker but never drawn: clamp onto
+  s.setBeacons(mergeBottles(list, s.ownBottles));
+}
+
+/**
+ * Drops a bottle with `text` where the ship is, and reports the outcome on
+ * the radio. Returns the result so the panel can show a failure beside the
+ * text it keeps.
+ */
+export async function dropBottle(text: string): Promise<DropResult> {
+  useSpaceStore.getState().sendBroadcast("BOTTLE // SENDING...");
+  // Bottles past the edge are accepted by the Worker but never drawn: clamp onto
   // the system sphere (direction preserved) so a drop is always visible.
   const m = Math.hypot(flight.x, flight.y, flight.z);
   const k = m > SYSTEM_RADIUS ? SYSTEM_RADIUS / m : 1;
-  const r = await postBeacon({ x: flight.x * k, y: flight.y * k, z: flight.z * k, phrase });
+  const r = await postBottle({ x: flight.x * k, y: flight.y * k, z: flight.z * k, text });
   const now = useSpaceStore.getState();
   if (r.ok) {
-    now.addOwnBeacon(r.beacon.id);
+    now.addOwnBottle(r.bottle);
     // Shown at once, not on the next fetch: the list is cached for 30s.
-    now.setBeacons([r.beacon, ...now.beacons.filter((b) => b.id !== r.beacon.id)].slice(0, BEACON_LIMIT));
-    now.sendBroadcast(`BEACON DROPPED // "${BEACON_PHRASES[phrase]}" · VISIBLE TO EVERY PILOT WHO PASSES`);
-  } else if (r.reason === "rate") {
-    now.sendBroadcast("BEACON RELAY // ONE BEACON PER PILOT EVERY 10 MINUTES");
-  } else if (r.reason === "invalid") {
-    // The only drop a configured client can make that fails local validation.
-    now.sendBroadcast("BEACON REFUSED // TOO CLOSE TO THE SPAWN PAD. FLY OUT A LITTLE");
-  } else if (r.reason === "refused") {
-    now.sendBroadcast("BEACON REFUSED BY RELAY");
+    const after = useSpaceStore.getState();
+    after.setBeacons(mergeBottles(after.beacons, after.ownBottles));
+    after.sendBroadcast("BOTTLE DROPPED // EVERY PILOT WHO PASSES CAN READ IT");
   } else {
-    now.sendBroadcast("BEACON RELAY OFFLINE // TRY AGAIN LATER");
+    now.sendBroadcast(`BOTTLE // ${dropFailureMessage(r).toUpperCase()}`);
   }
+  return r;
 }

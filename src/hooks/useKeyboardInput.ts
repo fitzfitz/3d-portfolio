@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { flight, useSpaceStore, selectModalOpen, type FlightInput } from "../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen, type FlightInput, type SpaceState } from "../store/spaceStore";
 import { beamState } from "../store/beamState";
 
 type BoolKey = "forward" | "backward" | "left" | "right" | "boost" | "ascend" | "descend" | "scan" | "beam";
@@ -28,6 +28,29 @@ export function isEditableTarget(el: { tagName?: string; isContentEditable?: boo
  */
 export function isModifiedChord(e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean }): boolean {
   return e.metaKey || e.ctrlKey || e.altKey;
+}
+
+type KeyGuardEvent = {
+  target: { tagName?: string; isContentEditable?: boolean } | null;
+  metaKey: boolean; ctrlKey: boolean; altKey: boolean;
+};
+type KeyGuardState = Pick<SpaceState, "showClassicCV" | "bottlePanelOpen">;
+
+/**
+ * True when a keydown must not reach flight input: typing in a field, a
+ * browser chord, the classic résumé (a normal page: Space and the arrows
+ * scroll it), or the bottle panel, which owns the keyboard while open.
+ */
+export function flightKeyIgnored(e: KeyGuardEvent, s: KeyGuardState): boolean {
+  return isEditableTarget(e.target) || isModifiedChord(e) || s.showClassicCV || s.bottlePanelOpen;
+}
+
+/**
+ * True when a keydown must not reach the game's shortcut keys (P, B, L, N,
+ * the number jumps): the flight guards, plus key repeat.
+ */
+export function gameKeyIgnored(e: KeyGuardEvent & { repeat: boolean }, s: KeyGuardState): boolean {
+  return e.repeat || flightKeyIgnored(e, s);
 }
 
 /** Releases every input channel, digital and analog. */
@@ -64,14 +87,9 @@ export function useKeyboardInput() {
     const down = (e: KeyboardEvent) => {
       // keydown only: guarding keyup too would leave a key stuck ON if it's
       // released while focus sits in a form field (e.g. held W, click input, release).
-      const el = e.target as HTMLElement | null;
-      if (isEditableTarget(el) || isModifiedChord(e)) return;
       if (!Object.hasOwn(KEYMAP, e.code)) return;
       const s = useSpaceStore.getState();
-      // The classic résumé is a normal page: Space and the arrows scroll it.
-      if (s.showClassicCV) return;
-      // The beacon picker owns the keyboard: its number keys pick a phrase.
-      if (s.beaconPickerOpen) return;
+      if (flightKeyIgnored({ target: e.target as HTMLElement | null, metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey }, s)) return;
       // In flight, Space would otherwise also "click" whichever button kept
       // focus after a mouse click (e.g. VIEW_CLASSIC_RESUME). With a dossier
       // open the scene is frozen, so leave keys to the dialog's buttons.

@@ -1,23 +1,12 @@
 import { BEACON_PHRASES } from "../data/beaconPhrases";
 import { SYSTEM_RADIUS, VALIDATION_RADIUS } from "../constants";
 import { SPAWN } from "../data/spawn";
-
-/** A visitor's beacon as the API serves it. */
-export interface Beacon {
-  id: string;
-  x: number; y: number; z: number;
-  /** Index into BEACON_PHRASES. */
-  phrase: number;
-  /** Drop time, epoch ms. */
-  at: number;
-  /** ISO 3166 alpha-2 from Cloudflare's edge, or null when unknown. */
-  country: string | null;
-}
+import { BOTTLE_MAX_CHARS } from "./bottleFilter";
 
 export interface BeaconDrop { x: number; y: number; z: number; phrase: number }
 
-/** Live beacons by scannable id ("beacon_<id>"), for scan reports. Written by Beacons.tsx. */
-export const beaconRegistry = new Map<string, Beacon>();
+/** Live bottles by scannable id ("beacon_<id>"), for scan reports. Written by Beacons.tsx. */
+export const beaconRegistry = new Map<string, Bottle>();
 
 /**
  * No beacons within this distance of the spawn pad (src/data/spawn.ts): every visitor
@@ -25,8 +14,6 @@ export const beaconRegistry = new Map<string, Beacon>();
  */
 export const SPAWN_KEEP_OUT = 15;
 
-/** Most beacons the scene renders, and the most the API serves. */
-export const BEACON_LIMIT = 40;
 
 /**
  * A message in a bottle as the API serves it (GET /beacons). `text` passed
@@ -42,8 +29,24 @@ export interface Bottle {
   country: string | null;
 }
 
+/**
+ * The scene's name for a bottle until Beacons.tsx becomes Bottles.tsx (plan
+ * task 5). The old phrase-index Beacon is gone: the API serves text.
+ */
+export type Beacon = Bottle;
+
 /** Most bottles the API serves (newest first), and the most the scene shows besides the visitor's own. */
 export const BOTTLE_LIMIT = 30;
+/**
+ * The visitor's own bottles kept in this browser (fitz-own-bottles), so they
+ * show even once they fall outside the newest BOTTLE_LIMIT. The daily cap is
+ * 5, so 10 is two days' worth at the most.
+ */
+export const OWN_BOTTLES_KEPT = 10;
+/** The most bottles ever shown at once: the newest BOTTLE_LIMIT plus the visitor's own. */
+export const BOTTLES_SHOWN_MAX = BOTTLE_LIMIT + OWN_BOTTLES_KEPT;
+/** Instance capacity of Beacons.tsx (until task 5 replaces it): every bottle that can be shown. */
+export const BEACON_LIMIT = BOTTLES_SHOWN_MAX;
 /** Bottles one pilot may leave in any 24 hours. */
 export const BOTTLE_DAILY_CAP = 5;
 /**
@@ -88,24 +91,50 @@ const ID_RE = /^[a-zA-Z0-9-]{1,64}$/;
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
 /**
- * Parses an API response, which is untrusted: malformed rows are dropped
- * rather than rendered or thrown, and the list is capped at BEACON_LIMIT so a
- * hostile or broken server cannot flood the scene.
+ * Parses an API response (GET /beacons, or `{ beacons: [body.beacon] }` for a
+ * POST), which is untrusted: malformed rows are dropped rather than rendered
+ * or thrown, and the list is capped at `limit` so a hostile or broken server
+ * cannot flood the scene. A legacy row's extra `phrase` key is ignored; a row
+ * with no text (the old API) is not a bottle. The text is kept as served and
+ * only ever rendered as plain text.
  */
-export function parseBeacons(body: unknown): Beacon[] {
+export function parseBottles(body: unknown, limit: number = BOTTLE_LIMIT): Bottle[] {
   if (!isObj(body) || !Array.isArray(body.beacons)) return [];
-  const out: Beacon[] = [];
+  const out: Bottle[] = [];
   for (const r of body.beacons) {
-    if (out.length >= BEACON_LIMIT) break;
-    if (!isObj(r)) continue;
-    const { id, x, y, z, phrase, at, country } = r;
-    if (typeof id !== "string" || !ID_RE.test(id)) continue;
-    if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z) || !isPhrase(phrase)) continue;
-    if (typeof at !== "number" || !Number.isFinite(at)) continue;
-    if (country !== null && (typeof country !== "string" || !COUNTRY_RE.test(country))) continue;
-    out.push({ id, x, y, z, phrase, at, country });
+    if (out.length >= limit) break;
+    const b = parseBottle(r);
+    if (b) out.push(b);
   }
   return out;
+}
+
+/** One untrusted row (from the API or from storage) as a Bottle, or null. */
+export function parseBottle(r: unknown): Bottle | null {
+  if (!isObj(r)) return null;
+  const { id, x, y, z, text, at, country } = r;
+  if (typeof id !== "string" || !ID_RE.test(id)) return null;
+  if (!isCoord(x) || !isCoord(y) || !isCoord(z) || !inBounds(x, y, z)) return null;
+  if (typeof text !== "string" || text.length > BOTTLE_MAX_CHARS * 2 || !text.trim()) return null;
+  if (Array.from(text).length > BOTTLE_MAX_CHARS) return null;
+  if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  if (country !== null && (typeof country !== "string" || !COUNTRY_RE.test(country))) return null;
+  return { id, x, y, z, text, at, country };
+}
+
+/**
+ * What the sky shows (spec "Seeing and reading bottles"): the newest
+ * BOTTLE_LIMIT of everything known, plus the visitor's own bottles even when
+ * they fall outside it. Newest first, each id once. `own` is capped at
+ * OWN_BOTTLES_KEPT by the store, so the result never exceeds BOTTLES_SHOWN_MAX.
+ */
+export function mergeBottles(served: readonly Bottle[], own: readonly Bottle[]): Bottle[] {
+  const byId = new Map<string, Bottle>();
+  for (const b of [...own.slice(0, OWN_BOTTLES_KEPT), ...served]) if (!byId.has(b.id)) byId.set(b.id, b);
+  const all = [...byId.values()].sort((a, b) => b.at - a.at);
+  const ownIds = new Set(own.slice(0, OWN_BOTTLES_KEPT).map((b) => b.id));
+  const head = all.slice(0, BOTTLE_LIMIT);
+  return [...head, ...all.slice(BOTTLE_LIMIT).filter((b) => ownIds.has(b.id))];
 }
 
 function age(ms: number): string {
@@ -116,8 +145,8 @@ function age(ms: number): string {
   return unit(Math.floor(ms / 86_400_000), "DAY");
 }
 
-/** The scan readout for a beacon. */
-export function beaconReport(b: Beacon, now: number): string {
+/** The scan readout for a bottle: plain text, never markup. */
+export function beaconReport(b: Bottle, now: number): string {
   const from = b.country ? ` · PILOT FROM ${b.country}` : "";
-  return `BEACON // "${BEACON_PHRASES[b.phrase]}"${from} · ${age(Math.max(0, now - b.at))}`;
+  return `BOTTLE // "${b.text}"${from} · ${age(Math.max(0, now - b.at))}`;
 }
