@@ -178,13 +178,14 @@ function toGrid(race: Race, now: number, out: Outgoing[]) {
   });
 }
 
-async function go(race: Race, secret: string, out: Outgoing[]) {
+/** GO: stamps and `lastAt` are `goAt`; the message's `now` is the tick's (a late alarm must not skew client clocks). */
+async function go(race: Race, secret: string, now: number, out: Outgoing[]) {
   race.phase = "running";
   const goAt = race.goAt!;
   for (const r of race.racers) {
     r.next = 1;
     r.lastAt = goAt;
-    if (r.pilot !== null) send(out, r.pilot, { t: "rgo", stamp: await startStamp(secret, race, r), now: goAt });
+    if (r.pilot !== null) send(out, r.pilot, { t: "rgo", stamp: await startStamp(secret, race, r), now });
   }
 }
 
@@ -298,7 +299,11 @@ function invite(room: RaceRoom, pilot: string, cc: string | null, now: number): 
 async function ringClaim(room: RaceRoom, pilot: string, i: number, ctx: RaceCtx): Promise<RaceOut> {
   const now = ctx.now;
   const b = bound(room, pilot);
-  if (!b || b.race.phase !== "running") return err(pilot, "ring");
+  const out: Outgoing[] = [];
+  // A late alarm must not let a ring (or a finish) in past the final call or the limit: end the race first.
+  if (b) maybeEnd(b.race, now, out);
+  const refuse = (): RaceOut => ({ out: [...out, { to: pilot, msg: { t: "rerr", reason: "ring" } }] });
+  if (!b || b.race.phase !== "running") return refuse();
   const { race, racer } = b;
   if (i !== racer.next || i > N) return err(pilot, "ring");
   const pose = ctx.poseOf(pilot);
@@ -307,8 +312,9 @@ async function ringClaim(room: RaceRoom, pilot: string, i: number, ctx: RaceCtx)
   if (Math.hypot(pose.p[0] - gx, pose.p[1] - gy, pose.p[2] - gz) > RING_RADIUS + STAMP_POS_MARGIN) return err(pilot, "ring");
   if (!legBelievable(RACE_CENTRES, i - 1, i, now - racer.lastAt)) return err(pilot, "ring");
 
-  const out: Outgoing[] = [];
   const stamp = await signStamp(ctx.secret!, { r: race.id, k: racer.token, i, at: now });
+  // Check, await, set: another claim (or a leave or tick) may have run during the await.
+  if (race.phase !== "running" || racer.next !== i || racer.pilot !== pilot) return err(pilot, "ring");
   racer.next = i + 1;
   racer.lastAt = now;
   send(out, pilot, { t: "rstamp", stamp });
@@ -392,7 +398,7 @@ export async function onRaceTick(room: RaceRoom, ctx: RaceCtx): Promise<RaceOut>
         }
         break;
       case "grid":
-        if (race.goAt! <= now) await go(race, ctx.secret, out);
+        if (race.goAt! <= now) await go(race, ctx.secret, now, out);
         break;
       case "running":
         maybeEnd(race, now, out);
@@ -438,6 +444,10 @@ export async function onRaceUpload(room: RaceRoom, body: unknown, ctx: RaceCtx):
   if (racer.entry) return { status: 409, reason: "duplicate" };
   const lap = await checkLap(ctx.secret, race.id, racer.token, b.stamps, RACE_CENTRES);
   if (!lap.ok) return { status: 400, reason: lap.reason };
+  // Check, await, set: a second upload for this token, or the results tick, may have run during the await.
+  if (race.phase !== "upload") return { status: 409, reason: "phase" };
+  if (ctx.now > race.uploadBy!) return { status: 409, reason: "late" };
+  if (racer.entry) return { status: 409, reason: "duplicate" };
   const entry: ResultEntry = { token: racer.token, cc: racer.cc, timeMs: lap.timeMs, rings: lap.rings, lastAt: lap.lastAt };
   racer.entry = entry;
   return { status: 200, entry, race };

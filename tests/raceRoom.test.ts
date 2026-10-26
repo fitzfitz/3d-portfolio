@@ -454,12 +454,25 @@ describe("rule 9: grid and GO", () => {
     const go = await tick(room, w, goAt);
     for (const [n, p] of ["a", "b", "c"].entries()) {
       const m = one(go, p, "rgo");
-      expect(m.now).toBe(goAt);
+      expect(m.now).toBe(goAt); // this tick ran exactly at goAt; see "a late GO alarm" for ctx.now ≠ goAt
       expect(m.stamp).toMatchObject({ r: room.races[0].id, k: toks[n], i: 0, at: goAt });
       expect(await verifyStamp(SECRET, m.stamp)).toBe(true);
     }
     expect(room.races[0].phase).toBe("running");
     expect(room.races[0].racers.map((r) => [r.next, r.lastAt])).toEqual([[1, goAt], [1, goAt], [1, goAt]]);
+  });
+  it("a late GO alarm: rgo carries the tick's now, the stamp and lastAt stay goAt", async () => {
+    const room = newRaceRoom();
+    const w = world();
+    await send(room, w, "a", { t: "rjoin" });
+    await send(room, w, "a", { t: "rsolo" });
+    const goAt = room.races[0].goAt!;
+    const go = await tick(room, w, goAt + 250);
+    const m = one(go, "a", "rgo");
+    expect(m.now).toBe(goAt + 250);
+    expect(m.stamp.at).toBe(goAt);
+    expect(await verifyStamp(SECRET, m.stamp)).toBe(true);
+    expect(room.races[0].racers[0].lastAt).toBe(goAt);
   });
 });
 
@@ -515,6 +528,39 @@ describe("rule 10: rring", () => {
     expect(race).toMatchObject({ phase: "running", finalEndsAt: last.at + FINAL_CALL_MS });
     expect(race.racers[0].finished).toBe(true);
     expect(types(await ring(room, w, "a", N + 1), "a")).toEqual(["rerr"]);
+  });
+  it("a claim past the final call before any tick is refused, and ends the race (R9)", async () => {
+    const { room, w, goAt, race } = await running(["a", "b"]);
+    const { stamps } = await flyLaps(room, w, goAt, { a: 0 });
+    expect(race.phase).toBe("running");
+    // b is one leg short of the finish when the final call ends; the alarm is late.
+    for (let i = 1; i < N; i++) { w.ctx.now = stamps.a[i - 1].at + 1; await ring(room, w, "b", i); }
+    w.ctx.now = race.finalEndsAt! + 1;
+    const out = await ring(room, w, "b", N);
+    expect(to(out, "b")).toEqual([
+      { t: "rover", race: race.id, uploadBy: race.finalEndsAt! + 1 + UPLOAD_WINDOW_MS, now: race.finalEndsAt! + 1 },
+      { t: "rerr", reason: "ring" },
+    ]);
+    expect(types(out, "a")).toEqual(["rover"]);
+    expect(race.phase).toBe("upload");
+    expect(race.racers[1].finished).toBe(false);
+  });
+  it("a claim past the race limit before any tick is refused, and ends the race (R9)", async () => {
+    const { room, w, goAt, race } = await running(["a", "b"]);
+    w.ctx.now = goAt + RACE_LIMIT_MS + 5;
+    expect(types(await ring(room, w, "a", 1), "a")).toEqual(["rover", "rerr"]);
+    expect(race.phase).toBe("upload");
+  });
+  it("two claims for the same ring at once: exactly one stamp (R8)", async () => {
+    const { room, w, goAt, race } = await running(["a", "b"]);
+    w.ctx.now = goAt + legMs(1);
+    w.at("a", 1);
+    const [x, y] = await Promise.all([
+      onRaceMessage(room, "a", "ID", { t: "rring", i: 1 }, w.ctx),
+      onRaceMessage(room, "a", "ID", { t: "rring", i: 1 }, w.ctx),
+    ]);
+    expect([...types(x.out, "a"), ...types(y.out, "a")].sort()).toEqual(["rerr", "rstamp"]);
+    expect(race.racers[0].next).toBe(2);
   });
   it("a fake finish from the start gate right after GO is refused, with no rfinal", async () => {
     const { room, w, goAt, race } = await running(["a", "b"]);
@@ -617,6 +663,20 @@ describe("rule 12: uploads", () => {
     expect((await onRaceUpload(room, { race: race.id, token: tokens.a, stamps: stamps.a }, w.ctx)).status).toBe(409);
     w.ctx.now = race.uploadBy! + 1;
     expect((await onRaceUpload(room, { race: race.id, token: tokens.b, stamps: [starts.b] }, w.ctx)).status).toBe(409);
+  });
+  it("two uploads for one token at once: exactly one 200, the other 409 duplicate (R8)", async () => {
+    const { room, w, race, tokens, stamps } = await over();
+    const body = { race: race.id, token: tokens.a, stamps: stamps.a };
+    const both = await Promise.all([onRaceUpload(room, body, w.ctx), onRaceUpload(room, body, w.ctx)]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(both.find((r) => r.status === 409)).toEqual({ status: 409, reason: "duplicate" });
+  });
+  it("an upload whose check is still running when results go out gets 409 (R8)", async () => {
+    const { room, w, race, tokens, stamps } = await over();
+    const pending = onRaceUpload(room, { race: race.id, token: tokens.a, stamps: stamps.a }, w.ctx);
+    race.phase = "done"; // what the results tick does while the upload's checkLap is awaited
+    expect(await pending).toEqual({ status: 409, reason: "phase" });
+    expect(race.racers[0].entry).toBeNull();
   });
   it("400 with checkLap's reason for a bad lap", async () => {
     const { room, w, race, tokens, stamps } = await over();
