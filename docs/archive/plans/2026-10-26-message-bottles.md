@@ -4,7 +4,7 @@
 
 **Goal:** replace the fixed-phrase beacons with free-text messages in bottles: filtered, auto-published, at most 30 visible, with a visitor show/hide setting.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-message-bottles-design.md`
+**Spec:** `docs/archive/specs/2026-10-26-message-bottles-design.md`
 
 ## Global constraints
 - The Worker is the filter authority. The client mirrors it from the same module.

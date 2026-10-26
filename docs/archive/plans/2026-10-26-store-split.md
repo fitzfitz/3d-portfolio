@@ -1,6 +1,6 @@
 # Store split: implementation plan
 
-**Spec:** `docs/superpowers/specs/2026-10-26-store-split-design.md`.
+**Spec:** `docs/archive/specs/2026-10-26-store-split-design.md`.
 
 **Goal:** split `src/store/spaceStore.ts` into slices. This is a behaviour-preserving refactor: no consumer edits, an identical store API, and identical persisted keys.
 

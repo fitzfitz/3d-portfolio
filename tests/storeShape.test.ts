@@ -11,7 +11,7 @@ import { worldClock } from "../src/store/worldClock";
 
 /**
  * API-shape and behaviour guard for the store split (spec
- * docs/superpowers/specs/2026-10-26-store-split-design.md). Pinned from the
+ * docs/archive/specs/2026-10-26-store-split-design.md). Pinned from the
  * single-file store before the split: the state keys, the module's named
  * exports, the import-time initial state and writes, and the exact sequence of
  * store notifications and storage writes for a scripted run of every action.

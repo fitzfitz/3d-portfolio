@@ -3,7 +3,7 @@
  * src/utils/beacons.ts on main at 061f9a1, before messages in bottles. Do not
  * update it to match the current client. It stands in for a cached old page
  * still running in a visitor's browser while the new Worker is live (spec
- * docs/superpowers/specs/2026-10-26-message-bottles-design.md, deploy order:
+ * docs/archive/specs/2026-10-26-message-bottles-design.md, deploy order:
  * the Worker ships before the site). tests/legacyBeaconCompat.test.ts feeds it
  * the new Worker's output.
  *

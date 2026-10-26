@@ -4,7 +4,7 @@ The small Cloudflare Worker behind messages in bottles (formerly beacons). A
 visitor can leave a bottle where their ship is, carrying a short free-text
 note, and later visitors see it in space and can read it. The routes and the
 table keep their beacon names. Spec:
-`docs/superpowers/specs/2026-10-26-message-bottles-design.md`.
+`docs/archive/specs/2026-10-26-message-bottles-design.md`.
 
 The site works without this API. With `VITE_BEACON_API` empty, the beacon
 feature does not render at all, and the projects and career come from the
