@@ -109,6 +109,7 @@ describe("bolts", () => {
     for (let i = 0; i < 22; i++) stepBolts(p, 0.05); expect(b.live).toBe(true);   // 154 u
     expect(b.z).toBeCloseTo(154, 9); expect(b.pz).toBeCloseTo(147, 9);
     stepBolts(p, 0.05); expect(b.live).toBe(false);                               // 161 u
+    expect(b.z).toBeCloseTo(160, 9);                                              // the last step stops at the range
     fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6); fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6);
     expect(fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6)).toBeNull(); expect(p.bolts).toHaveLength(2);
   });

@@ -54,17 +54,25 @@ export function fireBolt(
   return null;
 }
 
+/**
+ * Moves one live bolt by `dt` (px..x is the swept segment), stopping at its
+ * range. True when it has flown its range: the caller tests this last
+ * segment for hits before killing it, so a range-ending step still hits.
+ */
+export function advanceBolt(b: Bolt, dt: number): boolean {
+  const step = Math.min(b.speed * dt, b.left);
+  b.px = b.x; b.py = b.y; b.pz = b.z;
+  b.x += b.dx * step; b.y += b.dy * step; b.z += b.dz * step;
+  b.left -= step;
+  return b.left <= 0;
+}
+
 /** Advances every live bolt by `dt`; a bolt dies once it has flown its range. */
 export function stepBolts(p: BoltPool, dt: number): void {
   const bolts = p.bolts;
   for (let i = 0; i < bolts.length; i++) {
     const b = bolts[i];
-    if (!b.live) continue;
-    const step = b.speed * dt;
-    b.px = b.x; b.py = b.y; b.pz = b.z;
-    b.x += b.dx * step; b.y += b.dy * step; b.z += b.dz * step;
-    b.left -= step;
-    if (b.left <= 0) b.live = false;
+    if (b.live && advanceBolt(b, dt)) b.live = false;
   }
 }
 
