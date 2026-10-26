@@ -4,7 +4,11 @@ import * as THREE from "three";
 import { useModel } from "../../utils/sceneAssets";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
-import { flight, useSpaceStore, bodies, selectRaceFlying } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, selectRaceFlying, combat } from "../../store/spaceStore";
+import { markShipTeleport } from "../../store/shipTeleport";
+import { NEST_TOW_POSE } from "../../data/nest";
+import { beamUse } from "../../utils/combat/controls";
+import { padRumble } from "../../utils/padRumble";
 import { shipStartPose, markShipStarted } from "../../store/flightState";
 import { moonPositions } from "../../store/moonState";
 import { moonReach, SOLAR_MOONS } from "../../data/solarMoons";
@@ -26,7 +30,7 @@ import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
-import { clampRaceVelocity, cruiseLimit, freeDistance, raceWarpSpeed } from "../../utils/cruise";
+import { clampRaceVelocity, cruiseLimit, freeDistance, shipWarpSpeed } from "../../utils/cruise";
 import { gridPose } from "../../utils/raceScene";
 import { WARP_LANDMARKS } from "../../utils/warpLandmarks";
 import {
@@ -211,6 +215,7 @@ export default function Spaceship() {
       pos.current.set(x, y, z);
       vel.current.set(0, 0, 0);
       zeroGravity();
+      markShipTeleport();
       flight.x = x; flight.y = y; flight.z = z;
       flight.speed = 0;
     };
@@ -249,6 +254,8 @@ export default function Spaceship() {
       useSpaceStore.getState().bumpImpact();
     }
   };
+  /** The last `combat.hits` seen: a change is a Nest hull hit to feel. */
+  const seenHits = useRef(combat.hits);
   const edgeCut = useRef(false);
   const warpSpeed = useRef(WARP_SPEED);
   // False until the pilot's first input. Until then the parked ship keeps its
@@ -318,6 +325,7 @@ export default function Spaceship() {
     // the nose left the ship inside the lock radius.
     const out = escapePosition(pos.current, lockedCenter.current, escapeRadius.current);
     pos.current.set(out.x, out.y, out.z);
+    markShipTeleport();
     vel.current.subVectors(pos.current, lockedCenter.current).setLength(ESCAPE_SPEED);
     zeroGravity();
   }, [isOrbitLocked]);
@@ -500,6 +508,7 @@ export default function Spaceship() {
       hasFlown.current = true;
       flight.hasFlown = true;
       snapCamera.current = true;
+      markShipTeleport();
       store.triggerTeleportFlash();
     }
     if (placed || flight.raceHold) {
@@ -584,9 +593,40 @@ export default function Spaceship() {
         hasFlown.current = true;
         flight.hasFlown = true;
         snapCamera.current = true;
+        markShipTeleport();
         useSpaceStore.setState({ isOrbitCooldown: false });
         store.triggerTeleportFlash();
       }
+    }
+
+    // The Nest's breach tow (NestDirector asks): like a jump, to just past the
+    // buoy, nose on the Nest, at rest.
+    if (combat.towRequest) {
+      combat.towRequest = false;
+      pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
+      vel.current.set(0, 0, 0);
+      zeroGravity();
+      angle.current = NEST_TOW_POSE.yaw;
+      pitch.current = NEST_TOW_POSE.pitch;
+      turnVelocity.current = 0;
+      pitchVel.current = 0;
+      warpSpeed.current = WARP_SPEED;
+      hasFlown.current = true;
+      flight.hasFlown = true;
+      snapCamera.current = true;
+      markShipTeleport();
+      store.triggerTeleportFlash();
+    }
+
+    // A Nest hull hit (NestDirector bumps combat.hits, throttled to one per
+    // 0.25 s): a shake (the camera skips it under reduced motion), the impact
+    // thump and a pad rumble. Not impact(): no gravity or warp side effects,
+    // and no bumpImpact, which would also fire the radio's impact line (C3).
+    if (combat.hits !== seenHits.current) {
+      seenHits.current = combat.hits;
+      shake.current = 0.5;
+      soundManager.impact();
+      padRumble();
     }
 
     // 0. Pre-flight auto-aim. A visitor reads the spawn banner for a while
@@ -659,7 +699,8 @@ export default function Spaceship() {
     const nose = noseDirection(angle.current, pitch.current);
 
     // Tractor beam (spec §6): off in warp; the nose is its origin and axis.
-    beamState.active = input.beam && !warpActive;
+    // In the Nest's fighting area the same key fires the plasma gun instead (NestDirector).
+    beamState.active = input.beam && !warpActive && beamUse(combat.inArea) === "beam";
     beamState.ox = pos.current.x + nose.x * 1.3; beamState.oy = pos.current.y + nose.y * 1.3; beamState.oz = pos.current.z + nose.z * 1.3;
     beamState.dx = nose.x; beamState.dy = nose.y; beamState.dz = nose.z;
     if (!beamState.active) beamState.oreStreak = 0;
@@ -688,8 +729,9 @@ export default function Spaceship() {
         const q = probePos[PROBES[i].id], c = CRUISE_SPHERES[n++];
         c.x = q.x; c.y = q.y; c.z = q.z; c.r = PROBE_RADIUS;
       }
-      // Racers are held to the base warp speed (raceWarpSpeed): the same top speed for every pilot.
-      warpSpeed.current = raceWarpSpeed(warpSpeed.current, flight.racing, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
+      // Racers are held to the base warp speed: the same top speed for every
+      // pilot. So is warp in the Nest's fighting area (shipWarpSpeed).
+      warpSpeed.current = shipWarpSpeed(warpSpeed.current, flight.racing, combat.inArea, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
       const warp = cruiseCap(warpSpeed.current, SPACE_DRAG, dt);
       vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {

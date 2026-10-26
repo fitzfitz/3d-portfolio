@@ -14,7 +14,7 @@ import {
 } from "../src/utils/combat/constants";
 import type { AimTarget, V3 } from "../src/utils/combat/types";
 import { createHull, damageHull, regenHull, restoreAfterBreach } from "../src/utils/combat/hull";
-import { createBoltPool, fireBolt, stepBolts, clearBolts, segmentHitsSphere } from "../src/utils/combat/bolts";
+import { advanceBolt, createBoltPool, fireBolt, clearBolts, segmentHitsSphere, type BoltPool } from "../src/utils/combat/bolts";
 import { aimAssist, leadAim, spreadDir, clickAimPoint } from "../src/utils/combat/aim";
 import { inNestArea, clickUse, beamUse, beamLabel } from "../src/utils/combat/controls";
 import { mulberry32 } from "../src/utils/mulberry32";
@@ -106,10 +106,12 @@ describe("bolts", () => {
   });
   it("a ship bolt lives for 160 u; the pool never grows", () => {
     const p = createBoltPool(2); const b = fireBolt(p, "ship", 0, 0, 0, 0, 0, 1, 140, 160, 1)!;
-    for (let i = 0; i < 22; i++) stepBolts(p, 0.05); expect(b.live).toBe(true);   // 154 u
+    for (let i = 0; i < 22; i++) expect(advanceBolt(b, 0.05)).toBe(false);       // 154 u
     expect(b.z).toBeCloseTo(154, 9); expect(b.pz).toBeCloseTo(147, 9);
-    stepBolts(p, 0.05); expect(b.live).toBe(false);                               // 161 u
+    expect(advanceBolt(b, 0.05)).toBe(true);                                      // 161 u: spent
     expect(b.z).toBeCloseTo(160, 9);                                              // the last step stops at the range
+    expect(b.pz).toBeCloseTo(154, 9);                                             // its last segment is still there to test
+    b.live = false;                                                               // the caller kills it after testing
     fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6); fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6);
     expect(fireBolt(p, "enemy", 0, 0, 0, 1, 0, 0, 48, 120, 6)).toBeNull(); expect(p.bolts).toHaveLength(2);
   });
@@ -134,12 +136,15 @@ describe("bolts", () => {
     clearBolts(p);
     expect(p.bolts.some((b) => b.live)).toBe(false);
   });
-  it("a dead bolt does not move", () => {
-    const p = createBoltPool(1);
+  it("a freed slot is reused by the next bolt, with a fresh range", () => {
+    const p: BoltPool = createBoltPool(1);
     const b = fireBolt(p, "ship", 0, 0, 0, 0, 0, 1, 140, 160, 1)!;
+    advanceBolt(b, 0.05);
     clearBolts(p);
-    stepBolts(p, 0.05);
-    expect(b.z).toBe(0);
+    expect(b.live).toBe(false);
+    const c = fireBolt(p, "enemy", 5, 0, 0, 1, 0, 0, 48, 120, 6)!;
+    expect(c).toBe(b);
+    expect([c.live, c.owner, c.x, c.px, c.z, c.left]).toEqual([true, "enemy", 5, 5, 0, 120]);
   });
 });
 

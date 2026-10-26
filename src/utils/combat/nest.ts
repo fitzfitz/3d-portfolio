@@ -297,8 +297,10 @@ export function stepNest(
   const mdt = n.frozen ? 0 : dt;
   const sv = inp.shipVel;
   const shipR = SHIP_HIT_R + BOLT_R;
-  // 6. Damage stops at a breach (the fight is over).
-  let breached = false;
+  // 6. The ship takes damage only inside the fighting area and never while
+  // racing (C15): outside, an enemy bolt or the jet passes through it
+  // harmlessly. Damage also stops at a breach (the fight is over).
+  let harmless = !inArea;
   const bolts = n.bolts.bolts;
   for (let i = 0; i < bolts.length; i++) {
     const b = bolts[i];
@@ -312,14 +314,14 @@ export function stepNest(
         if (k < ns ? hitSaucer(n.saucers[k]) : hitTardigrade(n.tardigrades[k - ns])) ev.defeats++;
         continue;
       }
-    } else if (!breached && boltHits(b.px, b.py, b.pz, b.x, b.y, b.z, ship.x, ship.y, ship.z, sv.x, sv.y, sv.z, dt, shipR)) {
+    } else if (!harmless && boltHits(b.px, b.py, b.pz, b.x, b.y, b.z, ship.x, ship.y, ship.z, sv.x, sv.y, sv.z, dt, shipR)) {
       b.live = false;
-      if (hurt(n, b.damage, ev)) breached = true;
+      if (hurt(n, b.damage, ev)) harmless = true;
       continue;
     }
     if (spent) b.live = false;
   }
-  if (!breached) {
+  if (!harmless) {
     for (let i = 0; i < n.tardigrades.length; i++) {
       const t = n.tardigrades[i];
       if (!t.alive || t.phase !== "jet") continue;

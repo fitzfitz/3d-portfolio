@@ -67,15 +67,6 @@ export function advanceBolt(b: Bolt, dt: number): boolean {
   return b.left <= 0;
 }
 
-/** Advances every live bolt by `dt`; a bolt dies once it has flown its range. */
-export function stepBolts(p: BoltPool, dt: number): void {
-  const bolts = p.bolts;
-  for (let i = 0; i < bolts.length; i++) {
-    const b = bolts[i];
-    if (b.live && advanceBolt(b, dt)) b.live = false;
-  }
-}
-
 /** Kills every bolt, or only one owner's. */
 export function clearBolts(p: BoltPool, owner?: BoltOwner): void {
   const bolts = p.bolts;

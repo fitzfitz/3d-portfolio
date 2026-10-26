@@ -547,6 +547,58 @@ describe("the Nest: the hull", () => {
   });
 });
 
+describe("the Nest: no damage outside the fighting area or while racing (C15)", () => {
+  /** An enemy bolt 1 u above the ship, flying down through it. */
+  const boltAtShip = (n: NestState, ship: V3) =>
+    fireBolt(n.bolts, "enemy", ship.x, ship.y + 1, ship.z, 0, -1, 0, ENEMY_BOLT_SPEED, ENEMY_BOLT_RANGE, ENEMY_BOLT_DAMAGE)!;
+
+  it("an enemy bolt through the ship outside the fighting area does no damage and flies on", () => {
+    const { n, inp, at, step, startFight } = setup();
+    startFight();
+    n.frozen = true;
+    at(NEST_LEASH_R + 5);
+    const b = boltAtShip(n, inp.ship);
+    const e = step();
+    expect(e.inArea).toBe(false);
+    expect(n.hull.hp).toBe(100);
+    expect(e.feedback).toBe(false);
+    expect(b.live).toBe(true);
+    // The same bolt inside the area hits (the control).
+    at(60);
+    const b2 = boltAtShip(n, inp.ship);
+    expect(step().inArea).toBe(true);
+    expect(n.hull.hp).toBe(100 - ENEMY_BOLT_DAMAGE);
+    expect(b2.live).toBe(false);
+  });
+
+  it("racing through the middle of the Nest, an enemy bolt does no damage", () => {
+    const { n, inp, at, step, startFight } = setup();
+    startFight();
+    n.frozen = true;
+    at(30);
+    inp.racing = true;
+    boltAtShip(n, inp.ship);
+    const e = step();
+    expect(e.inArea).toBe(false);
+    expect(n.hull.hp).toBe(100);
+  });
+
+  it("the jet does no damage outside the fighting area", () => {
+    const { n, inp, rnd, ev, at, run } = setup();
+    at(NEST_LEASH_R + 5);
+    debugStartWave(n, 3, inp, rnd, ev);
+    for (const s of n.saucers) { hitSaucer(s); hitSaucer(s); hitSaucer(s); }
+    const ship = inp.ship;
+    const t = n.tardigrades[0];
+    t.phase = "jet"; t.phaseT = 0;
+    t.x = ship.x - 30; t.y = ship.y; t.z = ship.z;
+    t.jx = ship.x - 26; t.jy = ship.y; t.jz = ship.z; t.jdx = 1; t.jdy = 0; t.jdz = 0;
+    const tally = run(0.5);
+    expect(n.hull.hp).toBe(100);
+    expect(tally.feedback).toBe(0);
+  });
+});
+
 describe("the Nest: pause, debug and pools", () => {
   it("paused changes nothing (Review Focus 2)", () => {
     const { n, inp, run, step, startFight } = setup();

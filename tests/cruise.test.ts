@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise, raceWarpSpeed, clampRaceVelocity,
+  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise, raceWarpSpeed, clampRaceVelocity, shipWarpSpeed,
 } from "../src/utils/cruise";
 import { SUN_RADIUS, SYSTEM_RADIUS, SHIP_WARP_SPEED } from "../src/constants";
 import { BODY_REACH, bodyById } from "../src/data/solarSystem";
@@ -57,6 +57,21 @@ describe("raceWarpSpeed", () => {
     for (const [cur, limit] of [[39, 468], [200, 468], [466, 468], [400, 39], [39, 39]]) {
       expect(raceWarpSpeed(cur, false, limit, DT)).toBe(stepCruise(cur, limit, DT));
     }
+  });
+});
+
+describe("shipWarpSpeed (C5: the Nest's fighting area holds warp like a race)", () => {
+  it("in the fighting area, warp holds at 39 u/s however open the space", () => {
+    for (const [cur, limit] of [[39, 468], [200, 468], [39, 39 * 12]]) {
+      expect(shipWarpSpeed(cur, false, true, limit, DT)).toBe(SHIP_WARP_SPEED);
+    }
+  });
+  it("racing holds it too; neither racing nor in the area, it builds with the free space", () => {
+    expect(shipWarpSpeed(200, true, false, 468, DT)).toBe(SHIP_WARP_SPEED);
+    for (const [cur, limit] of [[39, 468], [200, 468], [400, 39]]) {
+      expect(shipWarpSpeed(cur, false, false, limit, DT)).toBe(stepCruise(cur, limit, DT));
+    }
+    expect(shipWarpSpeed(39, false, false, 468, DT)).toBeGreaterThan(SHIP_WARP_SPEED);
   });
 });
 

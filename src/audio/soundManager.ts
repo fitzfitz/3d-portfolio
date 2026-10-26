@@ -225,6 +225,10 @@ class SoundManager {
   oreTick() {
     this.blip("triangle", 1500, 0.035, 0.03);
   }
+  /** The Nest's plasma gun firing: a short falling sawtooth (once per frame that fired) */
+  plasmaShot() {
+    this.blip("sawtooth", 880, 0.08, 0.035, 330);
+  }
   /** Logbook badge earned: bright three-note rise */
   badge() {
     [784, 988, 1318].forEach((f, i) => setTimeout(() => this.blip("triangle", f, 0.12, 0.07), i * 70));
