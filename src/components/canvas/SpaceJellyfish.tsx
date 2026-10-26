@@ -10,7 +10,7 @@ import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
-import { flight, useSpaceStore, bodies, selectModalOpen, selectRaceFlying } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, selectModalOpen } from "../../store/spaceStore";
 import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
@@ -24,8 +24,7 @@ import type { LogbookProgress } from "../../utils/logbook";
 import { GuideRadio } from "../../utils/guideRadio";
 import { takeGuideToggle, requestGuideToggle, setGuideActive } from "../../utils/guideToggle";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
-import { NEST_CENTRE } from "../../data/nest";
-import { NEST_LEASH_R } from "../../utils/combat/constants";
+import { guideOfferBlocked, nestKeepOut } from "../../utils/jellyNest";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
 import { soundManager } from "../../audio/soundManager";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
@@ -193,7 +192,7 @@ export default function SpaceJellyfish() {
     () => [
       ...SOLAR_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size * ZONE_FACTOR + JELLY_RADIUS, body: b.size + JELLY_RADIUS })),
       // The Nest's fighting area (C9): fixed, after the bodies (the frame loop updates only theirs).
-      { x: NEST_CENTRE[0], y: NEST_CENTRE[1], z: NEST_CENTRE[2], r: NEST_LEASH_R + JELLY_RADIUS, body: NEST_LEASH_R + JELLY_RADIUS },
+      nestKeepOut(),
     ], []);
   /** The guide's target (spec, build ruling R1) and the logbook progress it reads, reused every frame. */
   const target = useMemo(createWaypointTarget, []);
@@ -406,7 +405,7 @@ export default function SpaceJellyfish() {
     const now = Date.now();
     const lastLine = store.broadcast;
     const radioBusy = (lastLine !== null && now - lastLine.at < RADIO_BUSY_S * 1000) || now < store.logbookLineAt;
-    fi.blocked = selectModalOpen(store) || selectRaceFlying(store) || store.photoMode || store.showClassicCV || radioBusy || store.inNest;
+    fi.blocked = guideOfferBlocked(store, radioBusy);
 
     stepJellyFrame(frame, fi, frameDt);
     // The touch GUIDE button's pressed state; notifies only on a change.

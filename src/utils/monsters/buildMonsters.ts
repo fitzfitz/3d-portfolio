@@ -37,7 +37,7 @@ export interface BuiltTardigrade { lods: TardigradeLod[]; meshes: MonsterMesh[] 
 function lodPrimitives(scene: THREE.Object3D, node: string): Map<string, THREE.Mesh> {
   scene.updateMatrixWorld(true);
   const root = scene.getObjectByName(node);
-  if (!root) throw new Error(`monster lab: no node ${node} in the glb`);
+  if (!root) throw new Error(`monsters: no node ${node} in the glb`);
   const out = new Map<string, THREE.Mesh>();
   root.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -48,7 +48,7 @@ function lodPrimitives(scene: THREE.Object3D, node: string): Map<string, THREE.M
 
 function piece(prims: Map<string, THREE.Mesh>, material: string): THREE.Mesh {
   const m = prims.get(material);
-  if (!m) throw new Error(`monster lab: no ${material} primitive`);
+  if (!m) throw new Error(`monsters: no ${material} primitive`);
   return m;
 }
 

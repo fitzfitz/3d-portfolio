@@ -10,6 +10,9 @@ describe("generateScanReport", () => {
   it("reports the career station by its scan label", () => {
     expect(generateScanReport("career")).toMatch(/^SCAN\[STATION_CAREER\] \/\/ .*DOCK/);
   });
+  it("reports the Nest", () => {
+    expect(generateScanReport("the_nest")).toBe("SCAN[THE_NEST] // HOSTILE LIFEFORMS · ENTER AT YOUR OWN RISK · F OR CLICK TO FIRE");
+  });
   it("reports the shipyard and the dormant gate", () => {
     expect(generateScanReport("shipyard")).toBe("SCAN[DRYDOCK_01] // CRANE RUNNING. ENGINE PLUMES ARE REFITTED HERE. DOCK TO OPEN THE HANGAR");
     expect(generateScanReport("dormant_gate")).toBe("SCAN[UNKNOWN_STRUCTURE] // ORIGIN UNKNOWN // DORMANT // NO RESPONSE TO HAIL");

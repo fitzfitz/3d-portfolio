@@ -15,9 +15,8 @@ import {
 import { nestPaused } from "../../utils/combat/nestRadio";
 import { saucerMuzzleWorld, tardigradeMouthWorld } from "../../utils/combat/monsterFrame";
 import type { NestSink, V3 } from "../../utils/combat/types";
-import { MONSTER_UNIFORMS } from "../../utils/monsters/monsterShading";
-import type { SaucerRig } from "../../utils/monsters/saucerMaterial";
-import type { TardigradeRig } from "../../utils/monsters/tardigradeMaterial";
+// The rig types only (Ruling C16): the renderer and its materials load on demand (nest/NestGate.tsx).
+import type { SaucerRig, TardigradeRig } from "../../utils/monsters/monsterRig";
 import saucerRigJson from "../../data/saucerRig.json";
 import tardigradeRigJson from "../../data/tardigradeRig.json";
 
@@ -68,6 +67,11 @@ function readShip(): void {
  * reacts to `combat.hits` and `combat.towRequest`. Allocation-free.
  */
 export default function NestDirector() {
+  // A remounted canvas (the classic-résumé round trip) starts a fresh track:
+  // the module-level one would otherwise sweep the ship's hit sphere from
+  // where the last canvas left it (Ruling C17). Before the dev-only effect.
+  useEffect(() => { track.has = false; }, []);
+
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     const n = combat.nest;
@@ -79,7 +83,8 @@ export default function NestDirector() {
       formation: () => { readShip(); debugFormation(n, inp.ship, inp.nose); },
       resume: () => { n.frozen = false; },
       setHull: (hp) => { n.hull.hp = hp; },
-      motion: () => MONSTER_UNIFORMS.uMotion.value,
+      // Through the renderer's own handle (a lazily loaded chunk): NaN until it loads.
+      motion: () => fitzDebug.nestRender?.motion() ?? NaN,
     };
     return () => { fitzDebug.nest = null; };
   }, []);
@@ -96,7 +101,8 @@ export default function NestDirector() {
     inp.lowPerf = s.isLowPerf;
     inp.warm = combat.warm;
     inp.fireHeld = flight.input.beam;
-    inp.click = takeClick(combat, clickAim);
+    // Dropped while paused; held through the fire cooldown (C18).
+    inp.click = takeClick(combat, clickAim, inp.paused, dt);
     stepNest(combat.nest, inp, dt, Math.random, SINK, ev);
     const nowMs = Date.now();
     applyNestEvents(combat, ev, FX, performance.now() / 1000, nowMs);

@@ -98,9 +98,18 @@ export function noseFrom(heading: number, pitch: number, out: V3): V3 {
   return out;
 }
 
-/** A pending click's aim point into `out` (consumed), else null. */
-export function takeClick(c: NestCombat, out: V3): V3 | null {
+/**
+ * A pending click's aim point into `out` (consumed), else null. A click
+ * while the fight is paused is dropped (`paused`). One inside the fire
+ * cooldown stays pending, as the one queued click (a later click only moves
+ * its aim), and is taken on the step whose cooldown ends (stepNest counts
+ * `fireIn` down by `dt` before it fires), so a fast clicker loses no shot
+ * (Ruling C18).
+ */
+export function takeClick(c: NestCombat, out: V3, paused = false, dt = 0): V3 | null {
   if (!c.click.pending) return null;
+  if (paused) { c.click.pending = false; return null; }
+  if (c.nest.fireIn - dt > 1e-9) return null;
   c.click.pending = false;
   out.x = c.click.x; out.y = c.click.y; out.z = c.click.z;
   return out;

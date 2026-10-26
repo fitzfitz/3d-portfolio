@@ -6,8 +6,8 @@
  * world up. Allocation-free: module scratch only.
  */
 import * as THREE from "three";
-import { saucerMuzzle, type SaucerRig } from "../monsters/saucerMaterial";
-import type { TardigradeRig } from "../monsters/tardigradeMaterial";
+// The rig maths only (Ruling C16): the materials load with the Nest's renderer, on demand.
+import { saucerMuzzle, type SaucerRig, type TardigradeRig } from "../monsters/monsterRig";
 import type { Saucer } from "./saucerAi";
 import type { Tardigrade } from "./tardigradeAi";
 import type { V3 } from "./types";

@@ -251,6 +251,63 @@ describe("the director: nose, click and rumour", () => {
     expect(takeClick(c, out)).toBeNull();
   });
 
+  it("a click during the fire cooldown stays pending and fires when it ends; one queued click at most (C18)", () => {
+    const { c, ev, fx, log, inp, rnd, at } = setup();
+    at(30); // inside the fighting area, no fight needed to fire
+    const aim = v(0, 0, 0);
+    let now = 0;
+    const frame = () => {
+      now += DT;
+      inp.click = takeClick(c, aim, inp.paused, DT);
+      stepNest(c.nest, inp, DT, rnd, sink, ev);
+      applyNestEvents(c, ev, fx, now, now * 1000);
+    };
+    const click = (x: number) => { c.click.pending = true; c.click.x = x; c.click.y = C.y; c.click.z = C.z; };
+    const shipBolts = () => c.nest.bolts.bolts.filter((b) => b.live && b.owner === "ship");
+    // A first click fires at once.
+    click(C.x - 100);
+    frame();
+    expect(log.plasmaShot).toBe(1);
+    expect(c.click.pending).toBe(false);
+    // Two more clicks inside the 0.2 s cooldown: one stays queued (the latest aim), nothing fires yet.
+    frame(); frame();
+    click(C.x - 200);
+    frame();
+    click(C.x - 300);
+    expect(c.click.pending).toBe(true);
+    let frames = 0;
+    while (log.plasmaShot < 2 && frames < 60) { frame(); frames++; }
+    expect(log.plasmaShot).toBe(2);
+    // It fired when the cooldown ended (12 frames of 1/60 s after the first shot), not later.
+    expect(frames + 4).toBeLessThanOrEqual(Math.ceil(0.2 / DT) + 1);
+    expect(c.click.pending).toBe(false);
+    // Toward the queued (latest) click's point: −x from the ship.
+    const last = shipBolts().sort((a, b) => b.left - a.left)[0];
+    expect(last.dx).toBeLessThan(-0.99);
+    // Nothing else was queued: no third shot.
+    for (let k = 0; k < 30; k++) frame();
+    expect(log.plasmaShot).toBe(2);
+  });
+
+  it("a click while the fight is paused is dropped, not fired on resume (C18)", () => {
+    const { c, ev, fx, log, inp, rnd, at } = setup();
+    at(30);
+    const aim = v(0, 0, 0);
+    const frame = () => {
+      inp.click = takeClick(c, aim, inp.paused, DT);
+      stepNest(c.nest, inp, DT, rnd, sink, ev);
+      applyNestEvents(c, ev, fx, 0, 0);
+    };
+    inp.paused = true;
+    c.click.pending = true; c.click.x = C.x - 100; c.click.y = C.y; c.click.z = C.z;
+    frame();
+    expect(c.click.pending).toBe(false);
+    inp.paused = false;
+    for (let k = 0; k < 10; k++) frame();
+    expect(log.plasmaShot).toBe(0);
+    expect(c.nest.bolts.bolts.some((b) => b.live)).toBe(false);
+  });
+
   it("the rumour goes out once per page, silent, when due", () => {
     const r = { told: false };
     const { fx, log } = fakeEffects();

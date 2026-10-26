@@ -8,6 +8,8 @@ import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
 import NestDirector from "./NestDirector";
+import NestBuoy from "./nest/NestBuoy";
+import NestGate from "./nest/NestGate";
 import TractorBeam from "./TractorBeam";
 import ProjectProbes from "./ProjectProbes";
 import SpacePlanets from "./SpacePlanets";
@@ -647,6 +649,10 @@ function GlobalCanvas() {
             <Spaceship />
             {/* After Spaceship: it reads this frame's ship telemetry. */}
             <NestDirector />
+            {/* The Nest's warning buoy (always; the career buoys' program) and its
+                load gate: the monsters and effects load within 200 u, on demand */}
+            <NestBuoy />
+            <NestGate />
             <TractorBeam />
             {/* The three project probes: grabbed by the beam, so after it */}
             <ProjectProbes />
