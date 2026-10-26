@@ -27,7 +27,16 @@ export function bottleReasonMessage(reason: BottleRejectReason): string {
 // Excludes very common English-word TLDs (in, to, is, it, at, be, so, no, on, us, de): they
 // would hit "ok.to" / "Nice.In". Links using them are still caught by http(s)/www./email.
 const TLDS =
-  "com|net|org|io|dev|app|xyz|info|me|my|id|co|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
+  "com|net|org|io|dev|app|xyz|info|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
+
+// Ambiguous TLDs double as words after a missing space ("it.my", "thanks.me"), so they count
+// only at the very end of the note (trailing .!?) allowed) or directly before "/" or ":".
+// Accepted edge case: "fine.id" at the end of a note reads as a domain.
+const AMBIG = "me|my|id|co";
+const AMBIG_END = "(?=[/:]|[.!?)\\s]*$)";
+const LABELS = "[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*";
+const DOMAIN_AMBIG_RE = new RegExp(`\\b${LABELS}\\.(?:${AMBIG})\\b${AMBIG_END}`);
+const DOMAIN_AMBIG_UPPER_RE = new RegExp(`\\b[A-Z0-9-]+(?:\\.[A-Z0-9-]+)*\\.(?:${AMBIG.toUpperCase()})\\b${AMBIG_END}`);
 
 const URL_RE = /(?:https?:\/\/|ftp:\/\/|www\.|hxxps?)\S*/i;
 // A bare domain counts when the TLD is all lowercase, or the whole token is all uppercase.
@@ -71,6 +80,7 @@ function hasContact(text: string): boolean {
   const noDates = text.replace(DATE_RE, " ");
   return (
     URL_RE.test(text) || EMAIL_RE.test(text) || HANDLE_RE.test(text) || DOMAIN_LOWER_RE.test(text) || DOMAIN_UPPER_RE.test(text) ||
+    DOMAIN_AMBIG_RE.test(text) || DOMAIN_AMBIG_UPPER_RE.test(text) ||
     OBFUSCATED_RE.test(text) || PHONE_RES.some((re) => re.test(noDates))
   );
 }

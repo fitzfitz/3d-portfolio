@@ -46,6 +46,10 @@ describe("contact details", () => {
     "try fitz.dev or foo.net",
     "kunjungi situs saya contoh.id",
     "find me at fitz.me",
+    "fitz.me/about",
+    "lihat contoh.co.id",
+    "site: fitz.me",
+    "fine.id", // accepted edge case: ends the note, so it reads as a domain
     "EXAMPLE.COM",
     "VISIT EXAMPLE.COM NOW",
     "+62-812-34-56-7890",
@@ -90,6 +94,11 @@ describe("contact details", () => {
     // Sentence-case "Hello.Com" is a missing space; only lowercase-TLD or ALL-CAPS tokens are domains.
     expect(reason("Hello.Com on in")).toBe("ok");
     expect(reason("Nice.In my opinion again")).toBe("ok");
+    expect(reason("love it.my favorite")).toBe("ok");
+    expect(reason("thanks.me too")).toBe("ok");
+    expect(reason("Hi.my name is")).toBe("ok");
+    expect(reason("I like it.id is nice")).toBe("ok");
+    expect(reason("so fun.co wow")).toBe("ok");
     expect(reason("I have 1 000 000 000 coins")).toBe("ok");
     expect(reason("Born 05-06-2026 10:30")).toBe("ok");
   });
