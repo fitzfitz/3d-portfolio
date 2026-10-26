@@ -111,7 +111,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("keeps the import-time state and writes with empty storage", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const { m, events } = await freshStore();
     expect(events).toMatchInlineSnapshot(`
       [
@@ -182,7 +182,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("keeps the import-time state and writes with every key stored", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const legacy = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at: "2025-01-02" }));
     const { m, events } = await freshStore({
       "fitz-sound-muted": "1",
@@ -304,7 +304,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("runs the import-time effects in order: legacy write, ambient switch, changelog write", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const legacy = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at: "2025-01-02" }));
     const { events } = await freshStore({
       "fitz-reduced-motion": "1",
@@ -318,7 +318,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("flips the orbit cooldown at exactly 1800 ms and the teleport flash at exactly 380 ms", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const { m } = await freshStore();
     const s = () => m.useSpaceStore.getState();
     s().breakOrbit();
@@ -336,7 +336,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("does not notify (an empty set() still notifies) when setActiveZone, setWarping and setNearSpawn get the same value", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const { m } = await freshStore();
     const s = () => m.useSpaceStore.getState();
     let notified = 0;
@@ -369,7 +369,7 @@ describe("store shape (split guard)", () => {
   });
 
   it("keeps the order of notifications, writes and timers for every action", async () => {
-    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const { m, events, watch } = await freshStore();
     const s = () => m.useSpaceStore.getState();
     const step = (label: string) => events.push(`-- ${label}`);
@@ -503,8 +503,8 @@ describe("store shape (split guard)", () => {
         "set isOrbitLocked=true",
         "write fitz-logbook=[{"id":"contact","at":"2026-10-26"}]",
         "set badges=[{"id":"contact","at":"2026-10-26"}]",
-        "set logbookLineAt=1792990804500",
-        "set broadcast={"id":1,"text":"LOGBOOK // CONTACT PORTAL REACHED","silent":false,"at":1792990800000}",
+        "set logbookLineAt=1793016004500",
+        "set broadcast={"id":1,"text":"LOGBOOK // CONTACT PORTAL REACHED","silent":false,"at":1793016000000}",
         "-- break orbit",
         "set activeZone=null isOrbitCooldown=true isOrbitLocked=false",
         "set ",
@@ -535,7 +535,7 @@ describe("store shape (split guard)", () => {
         "set ",
         "set dossierVia=null openDossier=null",
         "set canvasEpoch=1",
-        "set logbookLineAt=1792990811000",
+        "set logbookLineAt=1793016011000",
         "set isOrbitCooldown=false",
         "-- panels",
         "set logbookOpen=true",
@@ -591,17 +591,17 @@ describe("store shape (split guard)", () => {
         "set ",
         "set isTeleporting=false",
         "-- badge after a fresh broadcast, and plume",
-        "set broadcast={"id":2,"text":"payoff","silent":false,"at":1792990804600}",
+        "set broadcast={"id":2,"text":"payoff","silent":false,"at":1793016004600}",
         "write fitz-logbook=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"}]",
         "set badges=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"}]",
         "write fitz-logbook=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"},{"id":"comet","at":"2026-10-26"}]",
         "set badges=[{"id":"contact","at":"2026-10-26"},{"id":"career","at":"2026-10-26"},{"id":"slingshot","at":"2026-10-26"},{"id":"comet","at":"2026-10-26"}]",
-        "set broadcast={"id":3,"text":"flavour","silent":true,"at":1792990804600}",
-        "set logbookLineAt=1792990815500",
-        "set logbookLineAt=1792990820000",
-        "set broadcast={"id":4,"text":"LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]","silent":false,"at":1792990811000}",
-        "set broadcast={"id":5,"text":"LOGBOOK // CAREER DOSSIER READ","silent":false,"at":1792990811000}",
-        "set broadcast={"id":6,"text":"LOGBOOK // COMET CHASER EARNED — ICE PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]","silent":false,"at":1792990815500}",
+        "set broadcast={"id":3,"text":"flavour","silent":true,"at":1793016004600}",
+        "set logbookLineAt=1793016015500",
+        "set logbookLineAt=1793016020000",
+        "set broadcast={"id":4,"text":"LOGBOOK // SLINGSHOT EARNED — GOLD PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]","silent":false,"at":1793016011000}",
+        "set broadcast={"id":5,"text":"LOGBOOK // CAREER DOSSIER READ","silent":false,"at":1793016011000}",
+        "set broadcast={"id":6,"text":"LOGBOOK // COMET CHASER EARNED — ICE PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]","silent":false,"at":1793016015500}",
         "write fitz-plume="slingshot"",
         "set plumeColor="slingshot"",
         "-- chart every body",
@@ -625,41 +625,41 @@ describe("store shape (split guard)", () => {
         "set charted=[{"id":"mercury","at":"2026-10-26"},{"id":"venus","at":"2026-10-26"},{"id":"earth","at":"2026-10-26"},{"id":"mars","at":"2026-10-26"},{"id":"ceres","at":"2026-10-26"},{"id":"jupiter","at":"2026-10-26"},{"id":"saturn","at":"2026-10-26"},{"id":"uranus","at":"2026-10-26"},{"id":"neptune","at":"2026-10-26"}]",
         "write fitz-aurum-told=1",
         "set aurumTold=true",
-        "write fitz-charted-shout=1792990824600",
-        "set chartShoutAt=1792990824600",
-        "set logbookLineAt=1792990829100",
-        "set broadcast={"id":7,"text":"WORLD CHARTED 1/9 — MERCURY: THE SMALLEST PLANET, AND THE FASTEST AROUND THE SUN","silent":false,"at":1792990824600}",
-        "set logbookLineAt=1792990833600",
-        "set logbookLineAt=1792990838100",
-        "set logbookLineAt=1792990842600",
-        "set logbookLineAt=1792990847100",
-        "set logbookLineAt=1792990851600",
-        "set logbookLineAt=1792990856100",
-        "set logbookLineAt=1792990860600",
-        "set logbookLineAt=1792990865100",
-        "set logbookLineAt=1792990869600",
-        "set logbookLineAt=1792990874100",
-        "set broadcast={"id":8,"text":"interrupt","silent":false,"at":1792990826600}",
-        "set broadcast={"id":9,"text":"WORLD CHARTED 3/9 — EARTH: THE ONLY WORLD KNOWN TO HOLD LIFE AND SURFACE OCEANS","silent":false,"at":1792990833600}",
-        "set broadcast={"id":10,"text":"WORLD CHARTED 2/9 — VENUS: THE HOTTEST PLANET: A RUNAWAY GREENHOUSE UNDER SULFURIC-ACID CLOUDS","silent":false,"at":1792990833600}",
-        "set broadcast={"id":11,"text":"WORLD CHARTED 4/9 — MARS: IRON-OXIDE DUST GIVES IT ITS RED","silent":false,"at":1792990838100}",
-        "set broadcast={"id":12,"text":"WORLD CHARTED 5/9 — CERES: THE LARGEST BODY IN THE ASTEROID BELT: ROUND, BUT NOT A PLANET","silent":false,"at":1792990842600}",
-        "set broadcast={"id":13,"text":"WORLD CHARTED 6/9 — JUPITER: MORE MASSIVE THAN ALL THE OTHER PLANETS TOGETHER, TWICE OVER","silent":false,"at":1792990847100}",
-        "set broadcast={"id":14,"text":"WORLD CHARTED 7/9 — SATURN: LESS DENSE THAN WATER (0.69 G/CM³)","silent":false,"at":1792990851600}",
-        "set broadcast={"id":15,"text":"WORLD CHARTED 8/9 — URANUS: IT ROLLS AROUND THE SUN ON ITS SIDE","silent":false,"at":1792990856100}",
-        "set broadcast={"id":16,"text":"WORLD CHARTED 9/9 — NEPTUNE: METHANE GAS GIVES THE BLUE","silent":false,"at":1792990860600}",
-        "set broadcast={"id":17,"text":"SYSTEM SURVEY COMPLETE — EVERY WORLD CHARTED. YOU HOLD THE TITLE CARTOGRAPHER.","silent":false,"at":1792990865100}",
-        "set broadcast={"id":18,"text":"AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR","silent":false,"at":1792990869600}",
+        "write fitz-charted-shout=1793016024600",
+        "set chartShoutAt=1793016024600",
+        "set logbookLineAt=1793016029100",
+        "set broadcast={"id":7,"text":"WORLD CHARTED 1/9 — MERCURY: THE SMALLEST PLANET, AND THE FASTEST AROUND THE SUN","silent":false,"at":1793016024600}",
+        "set logbookLineAt=1793016033600",
+        "set logbookLineAt=1793016038100",
+        "set logbookLineAt=1793016042600",
+        "set logbookLineAt=1793016047100",
+        "set logbookLineAt=1793016051600",
+        "set logbookLineAt=1793016056100",
+        "set logbookLineAt=1793016060600",
+        "set logbookLineAt=1793016065100",
+        "set logbookLineAt=1793016069600",
+        "set logbookLineAt=1793016074100",
+        "set broadcast={"id":8,"text":"interrupt","silent":false,"at":1793016026600}",
+        "set broadcast={"id":9,"text":"WORLD CHARTED 3/9 — EARTH: THE ONLY WORLD KNOWN TO HOLD LIFE AND SURFACE OCEANS","silent":false,"at":1793016033600}",
+        "set broadcast={"id":10,"text":"WORLD CHARTED 2/9 — VENUS: THE HOTTEST PLANET: A RUNAWAY GREENHOUSE UNDER SULFURIC-ACID CLOUDS","silent":false,"at":1793016033600}",
+        "set broadcast={"id":11,"text":"WORLD CHARTED 4/9 — MARS: IRON-OXIDE DUST GIVES IT ITS RED","silent":false,"at":1793016038100}",
+        "set broadcast={"id":12,"text":"WORLD CHARTED 5/9 — CERES: THE LARGEST BODY IN THE ASTEROID BELT: ROUND, BUT NOT A PLANET","silent":false,"at":1793016042600}",
+        "set broadcast={"id":13,"text":"WORLD CHARTED 6/9 — JUPITER: MORE MASSIVE THAN ALL THE OTHER PLANETS TOGETHER, TWICE OVER","silent":false,"at":1793016047100}",
+        "set broadcast={"id":14,"text":"WORLD CHARTED 7/9 — SATURN: LESS DENSE THAN WATER (0.69 G/CM³)","silent":false,"at":1793016051600}",
+        "set broadcast={"id":15,"text":"WORLD CHARTED 8/9 — URANUS: IT ROLLS AROUND THE SUN ON ITS SIDE","silent":false,"at":1793016056100}",
+        "set broadcast={"id":16,"text":"WORLD CHARTED 9/9 — NEPTUNE: METHANE GAS GIVES THE BLUE","silent":false,"at":1793016060600}",
+        "set broadcast={"id":17,"text":"SYSTEM SURVEY COMPLETE — EVERY WORLD CHARTED. YOU HOLD THE TITLE CARTOGRAPHER.","silent":false,"at":1793016065100}",
+        "set broadcast={"id":18,"text":"AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR","silent":false,"at":1793016069600}",
         "set aurumTold=false",
         "write fitz-aurum-told=1",
         "set aurumTold=true",
-        "set logbookLineAt=1792990951100",
-        "set broadcast={"id":19,"text":"AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR","silent":false,"at":1792990946600}",
+        "set logbookLineAt=1793016151100",
+        "set broadcast={"id":19,"text":"AURUM PLUME UNLOCKED // FIT IT IN THE SHIPYARD HANGAR","silent":false,"at":1793016146600}",
         "write fitz-charted-shout=null",
         "set chartShoutAt=null",
         "-- world event",
         "set worldEvent={"kind":"flare","id":1,"startedAt":10}",
-        "set broadcast={"id":20,"text":"FLARE","silent":false,"at":1792990966600}",
+        "set broadcast={"id":20,"text":"FLARE","silent":false,"at":1793016166600}",
         "elapsed 2 null",
         "set worldEvent=null",
       ]
