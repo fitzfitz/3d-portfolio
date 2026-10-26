@@ -70,6 +70,8 @@ const CODE_LEN = 6;
 const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 const HEX32 = /^[0-9a-f]{32}$/;
 const SIG_RE = new RegExp(`^[0-9a-f]{${SIG_HEX}}$`);
+/** Race ids: no `|`, so a stamp payload splits one way only. */
+export const RACE_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 
 export const isInviteCode = (s: unknown): s is string => typeof s === "string" && CODE_RE.test(s);
 
@@ -128,10 +130,16 @@ export function parseRaceClient(raw: unknown): RaceClientMessage | null {
   }
 }
 
-function stampFrom(v: unknown): Stamp | null {
-  if (!v || typeof v !== "object") return null;
+/**
+ * A stamp's shape, or null: a race id of [A-Za-z0-9-] (so the `|`-joined
+ * payload stays unambiguous), a 32-hex token, a ring index, a finite time and
+ * a SIG_HEX signature. Used for server messages and for uploaded stamps.
+ */
+export function parseStamp(v: unknown): Stamp | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
   const s = v as Record<string, unknown>;
-  if (!str(s.r) || !str(s.k) || !nonNegInt(s.i) || !finite(s.at) || typeof s.sig !== "string" || !SIG_RE.test(s.sig)) return null;
+  if (typeof s.r !== "string" || !RACE_ID_RE.test(s.r) || typeof s.k !== "string" || !HEX32.test(s.k)
+    || !nonNegInt(s.i) || !finite(s.at) || typeof s.sig !== "string" || !SIG_RE.test(s.sig)) return null;
   return { r: s.r, k: s.k, i: s.i, at: s.at, sig: s.sig };
 }
 
@@ -156,11 +164,11 @@ export function parseRaceServer(raw: unknown): RaceServerMessage | null {
       return str(o.race) && KINDS.includes(o.kind as string) && nonNegInt(o.slot) && finite(o.goAt) && finite(o.now)
         ? { t: "rgrid", race: o.race, kind: o.kind as RaceKind, slot: o.slot, goAt: o.goAt, now: o.now } : null;
     case "rgo": {
-      const stamp = stampFrom(o.stamp);
+      const stamp = parseStamp(o.stamp);
       return stamp && finite(o.now) ? { t: "rgo", stamp, now: o.now } : null;
     }
     case "rstamp": {
-      const stamp = stampFrom(o.stamp);
+      const stamp = parseStamp(o.stamp);
       return stamp ? { t: "rstamp", stamp } : null;
     }
     case "rfinal":
@@ -192,10 +200,11 @@ export function parseRaceServer(raw: unknown): RaceServerMessage | null {
 export const stampPayload = (s: Omit<Stamp, "sig">): string => `${s.r}|${s.k}|${s.i}|${s.at}`;
 
 /** Same approach as hmacHex in beacon-api/src/handler.ts (WebCrypto exists in Workers, browsers and Node 20+). */
-async function hmacHex(key: string, text: string): Promise<string> {
-  const enc = new TextEncoder();
-  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(text));
+const hmacKey = (secret: string): Promise<CryptoKey> =>
+  crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+
+async function hmacHex(key: CryptoKey, text: string): Promise<string> {
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text));
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -207,14 +216,18 @@ function equalConstTime(a: string, b: string): boolean {
 }
 
 export async function signStamp(secret: string, s: Omit<Stamp, "sig">): Promise<Stamp> {
-  const sig = (await hmacHex(secret, stampPayload(s))).slice(0, SIG_HEX);
+  const sig = (await hmacHex(await hmacKey(secret), stampPayload(s))).slice(0, SIG_HEX);
   return { r: s.r, k: s.k, i: s.i, at: s.at, sig };
 }
 
-export async function verifyStamp(secret: string, s: Stamp): Promise<boolean> {
+async function verifyWith(key: CryptoKey, s: Stamp): Promise<boolean> {
   if (typeof s.sig !== "string") return false;
-  const want = (await hmacHex(secret, stampPayload(s))).slice(0, SIG_HEX);
+  const want = (await hmacHex(key, stampPayload(s))).slice(0, SIG_HEX);
   return equalConstTime(want, s.sig);
+}
+
+export async function verifyStamp(secret: string, s: Stamp): Promise<boolean> {
+  return verifyWith(await hmacKey(secret), s);
 }
 
 // ---- lap and path checks ---------------------------------------------------
@@ -222,6 +235,17 @@ export async function verifyStamp(secret: string, s: Stamp): Promise<boolean> {
 /** Ring i's centre: the finish (i === centres.length) is ring 0 again. */
 const gateOf = (centres: Centres, i: number) => centres[i % centres.length];
 const dist = (a: readonly number[], b: readonly number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+/**
+ * The speed rule: ring `from` to ring `to` in `dtMs` is no faster than warp
+ * allows (ring edge to ring edge, less SPEED_SLACK_S). checkLap applies it to
+ * uploaded stamps and the race room before it signs one.
+ */
+export function legBelievable(centres: Centres, from: number, to: number, dtMs: number): boolean {
+  const need = Math.max(0, dist(gateOf(centres, from), gateOf(centres, to)) - 2 * RING_RADIUS) / RACE_SPEED - SPEED_SLACK_S;
+  const dt = dtMs / 1000;
+  return dt >= 0 && dt >= need;
+}
 
 /**
  * Whether a racer's stamps are a believable lap: signed by us, for this race
@@ -232,17 +256,18 @@ export async function checkLap(
   secret: string, race: string, token: string, stamps: readonly Stamp[], centres: Centres,
 ): Promise<LapCheck> {
   if (stamps.length === 0 || stamps[0].i !== 0) return { ok: false, reason: "start" };
-  if (stamps.some((s) => s.r !== race || s.k !== token)) return { ok: false, reason: "race" };
-  for (const s of stamps) if (!(await verifyStamp(secret, s))) return { ok: false, reason: "sig" };
   const finish = centres.length;
+  // Cheap rejections before any signature work: a lap holds at most stamps 0..N.
+  if (stamps.length > finish + 1) return { ok: false, reason: "order" };
+  if (stamps.some((s) => s.r !== race || s.k !== token)) return { ok: false, reason: "race" };
+  const key = await hmacKey(secret);
+  for (const s of stamps) if (!(await verifyWith(key, s))) return { ok: false, reason: "sig" };
   for (let n = 0; n < stamps.length; n++) {
     if (stamps[n].i !== n || n > finish) return { ok: false, reason: "order" };
   }
   for (let n = 1; n < stamps.length; n++) {
     const a = stamps[n - 1], b = stamps[n];
-    const dt = (b.at - a.at) / 1000;
-    const need = Math.max(0, dist(gateOf(centres, a.i), gateOf(centres, b.i)) - 2 * RING_RADIUS) / RACE_SPEED - SPEED_SLACK_S;
-    if (dt < 0 || dt < need) return { ok: false, reason: "speed" };
+    if (!legBelievable(centres, a.i, b.i, b.at - a.at)) return { ok: false, reason: "speed" };
   }
   const last = stamps[stamps.length - 1];
   return { ok: true, rings: last.i, timeMs: last.i === finish ? last.at - stamps[0].at : null, lastAt: last.at };

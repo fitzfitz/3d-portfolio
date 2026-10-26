@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  checkLap, checkPath, PATH_RING_SLACK, isInviteCode, newInviteCode, newRaceToken, parseRaceClient, parseRaceServer,
+  checkLap, checkPath, PATH_RING_SLACK, isInviteCode, parseStamp, newInviteCode, newRaceToken, parseRaceClient, parseRaceServer,
   rankResults, signStamp, verifyStamp, type RaceServerMessage, type ResultEntry, type Stamp,
 } from "../src/utils/raceProtocol";
 import { RING_RADIUS } from "../src/data/ringCourse";
@@ -129,6 +129,51 @@ describe("checkLap", () => {
   it("scores a DNF by rings and last stamp time", async () => {
     const stamps = await lap(range(0, 4));
     expect(await checkLap(SECRET, RACE, TOKEN, stamps, CENTRES)).toEqual({ ok: true, rings: 4, timeMs: null, lastAt: stamps[4].at });
+  });
+});
+
+describe("parseStamp", () => {
+  const good: Stamp = { r: RACE, k: TOKEN, i: 2, at: 5.5, sig: "f".repeat(32) };
+  it("accepts a well-formed stamp and copies only its fields", () => {
+    expect(parseStamp(good)).toEqual(good);
+    expect(parseStamp({ ...good, extra: 1 })).toEqual(good);
+    expect(parseStamp({ ...good, r: "A-z-0".repeat(12) + "abcd" })).not.toBeNull();
+  });
+  it("rejects a race id outside [A-Za-z0-9-]{1,64}", () => {
+    for (const r of ["", "race|1", "race 1", "x".repeat(65), 5]) expect(parseStamp({ ...good, r })).toBeNull();
+  });
+  it("rejects a token that is not 32 lowercase hex", () => {
+    for (const k of ["A".repeat(32), "a".repeat(31), "g".repeat(32), "a|" + "a".repeat(30), null]) expect(parseStamp({ ...good, k })).toBeNull();
+  });
+  it("rejects a bad ring, time or signature", () => {
+    for (const i of [-1, 1.5, "2", undefined]) expect(parseStamp({ ...good, i })).toBeNull();
+    for (const at of [Infinity, NaN, "5", null]) expect(parseStamp({ ...good, at })).toBeNull();
+    for (const sig of ["F".repeat(32), "f".repeat(31), "f".repeat(64), 0]) expect(parseStamp({ ...good, sig })).toBeNull();
+  });
+  it("rejects non-objects", () => {
+    for (const v of [null, undefined, "x", 3, [good]]) expect(parseStamp(v)).toBeNull();
+  });
+  it("is what parseRaceServer uses for stamps", () => {
+    expect(parseRaceServer(JSON.stringify({ t: "rstamp", stamp: { ...good, r: "race|1" } }))).toBeNull();
+    expect(parseRaceServer(JSON.stringify({ t: "rgo", stamp: { ...good, k: "A".repeat(32) }, now: 1 }))).toBeNull();
+  });
+});
+
+describe("checkLap's cheap rejections", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("rejects more stamps than a lap holds as order, before any signature work", async () => {
+    const stamps = await lap(range(0, N + 1));
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+    const sign = vi.spyOn(crypto.subtle, "sign");
+    expect(await checkLap(SECRET, RACE, TOKEN, stamps, CENTRES)).toEqual({ ok: false, reason: "order" });
+    expect(importKey).not.toHaveBeenCalled();
+    expect(sign).not.toHaveBeenCalled();
+  });
+  it("imports the HMAC key once per call, not once per stamp", async () => {
+    const stamps = await lap(range(0, N));
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+    expect((await checkLap(SECRET, RACE, TOKEN, stamps, CENTRES)).ok).toBe(true);
+    expect(importKey).toHaveBeenCalledTimes(1);
   });
 });
 
