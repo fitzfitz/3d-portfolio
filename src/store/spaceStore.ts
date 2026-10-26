@@ -2,22 +2,22 @@ import { create, type StateCreator } from "zustand";
 
 import { worldClock } from "./worldClock";
 import { subscribeWithSelector } from "zustand/middleware";
-import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
 import { projects } from "../constants";
 import { PROBES, PROBE_IDS } from "../data/probes";
 import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
-import { isBodyId, type BodyId } from "../data/bodyIds";
+import type { BodyId } from "../data/bodyIds";
 import { destinationById } from "../data/destinations";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
 import { setLowPerfSource } from "../utils/hiResMaps";
-import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
 import {
-  safeGetFlag, safeSetFlag, safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
+  safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
+
 } from "./persist";
+import { createProgressSlice, initialCharted, initialLegacyCartographer, type ProgressSlice } from "./slices/progress";
 import { createSettingsSlice, type SettingsSlice } from "./slices/settings";
 import { createSkySlice, type SkySlice } from "./slices/sky";
 
@@ -47,28 +47,6 @@ export { bodies } from "./bodies";
 export { crystalSlots, type CrystalSlot } from "./crystalSlots";
 export { worldClock } from "./worldClock";
 
-/**
- * Charted bodies from fitz-charted, read once at import (sanitised; the five
- * legacy world ids become their real bodies, charting.ts loadCharted). The
- * key is rewritten in the new ids on the next charting write.
- */
-const rawCharted = safeGetJSON<unknown>("fitz-charted", []);
-const initialCharted = loadCharted(rawCharted);
-/**
- * A pilot whose stored records covered all five legacy worlds earned the title
- * before the real Solar System: they stay cartographers with AURUM at 5/9.
- * Written once, at load, and never cleared (charting.ts LEGACY_CARTOGRAPHER_KEY).
- */
-const initialLegacyCartographer = (() => {
-  if (safeGetFlag(LEGACY_CARTOGRAPHER_KEY, false)) return true;
-  if (!coversLegacyWorlds(rawCharted)) return false;
-  safeSetFlag(LEGACY_CARTOGRAPHER_KEY, true);
-  return true;
-})();
-const initialShout = (() => {
-  const v = safeGetJSON<unknown>("fitz-charted-shout", null);
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-})();
 
 /** The running world event (docs/archive/specs/2026-10-12-world-events-design.md). */
 export interface WorldEventState {
@@ -84,7 +62,7 @@ export interface WorldEventState {
 /** A zustand slice creator over the whole store (zustand's slices pattern; see slices/). */
 export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
 
-export interface SpaceState extends SettingsSlice, SkySlice {
+export interface SpaceState extends ProgressSlice, SettingsSlice, SkySlice {
   activeZone: string | null;
   isOrbitLocked: boolean;
   isOrbitCooldown: boolean;
@@ -96,7 +74,6 @@ export interface SpaceState extends SettingsSlice, SkySlice {
   isNearSpawn: boolean;
   isTeleporting: boolean;
   cometNear: boolean;
-  shardsCollected: number[];
   /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
   broadcast: { id: number; text: string; silent: boolean; at: number } | null;
   impactCount: number;
@@ -104,10 +81,6 @@ export interface SpaceState extends SettingsSlice, SkySlice {
   photoMode: boolean;
   /** A gamepad has reported in (it does only after its first button press). */
   padConnected: boolean;
-  /** Time-trial progress (RingCourse.tsx). Changes only at gates, never per frame. */
-  race: RaceState;
-  /** Best lap in seconds, persisted; null until the first finish. */
-  raceBest: number | null;
   beaconPickerOpen: boolean;
   fuelEmpty: boolean;
   /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
@@ -150,7 +123,6 @@ export interface SpaceState extends SettingsSlice, SkySlice {
   setNearSpawn: (v: boolean) => void;
   triggerTeleportFlash: () => void;
   setCometNear: (v: boolean) => void;
-  collectShard: (i: number) => void;
   /**
    * Shows a line on the radio. `silent` lines (cargo hails, flavour such as
    * the haze and slingshot callouts) are not announced to screen readers:
@@ -161,8 +133,6 @@ export interface SpaceState extends SettingsSlice, SkySlice {
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
   setPadConnected: (v: boolean) => void;
-  setRace: (r: RaceState) => void;
-  setRaceBest: (t: number) => void;
   setBeaconPickerOpen: (v: boolean) => void;
   startWorldEvent: (ev: WorldEventState, line: string) => void;
   endWorldEvent: () => void;
@@ -183,31 +153,6 @@ export interface SpaceState extends SettingsSlice, SkySlice {
    * and logbook lines queue 4.5 s apart.
    */
   announceLogbook: (line: string) => void;
-  /** Bodies charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
-  charted: ChartRecord[];
-  /** Earned the title before the real Solar System (charting.ts LEGACY_CARTOGRAPHER_KEY): cartographer at 5/9, never cleared. */
-  legacyCartographer: boolean;
-  /**
-   * Charts a body on its first scan (Scanner.tsx); a repeat is a no-op.
-   * Persists (in the new ids, so a legacy record is rewritten) and announces through announceLogbook, so
-   * the line queues behind the scan report; the last also announces the survey.
-   */
-  chartWorld: (id: BodyId) => void;
-  /**
-   * When the last body was charted, until the live sky has announced it
-   * (persisted as fitz-charted-shout; see shoutDue). Null when nothing is due.
-   */
-  chartShoutAt: number | null;
-  /** The shout-out went out (or is dropped): stop offering it. */
-  clearChartShout: () => void;
-  /** The AURUM unlock has been on the radio (persisted as fitz-aurum-told). */
-  aurumTold: boolean;
-  /**
-   * Plays AURUM_LINE once for a pilot who already holds the title but never
-   * heard it (charted all five before AURUM existed). App calls it when the
-   * scene is ready; a no-op otherwise.
-   */
-  tellAurumOnce: () => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
 }
@@ -222,6 +167,7 @@ const initialPlume = (() => {
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get, api) => ({
+    ...createProgressSlice(set, get, api),
     ...createSettingsSlice(set, get, api),
     ...createSkySlice(set, get, api),
     activeZone: null,
@@ -270,38 +216,6 @@ export const useSpaceStore = create<SpaceState>()(
       if (get().logbookOpen === v) return;
       set(v ? { logbookOpen: true, changelogOpen: false } : { logbookOpen: false });
     },
-    charted: initialCharted,
-    legacyCartographer: initialLegacyCartographer,
-    chartWorld: (id) => {
-      if (!isBodyId(id) || get().charted.some((c) => c.id === id)) return;
-      const next = [...get().charted, { id, at: todayStamp() }];
-      safeSetJSON("fitz-charted", next);
-      set({ charted: next });
-      get().announceLogbook(chartLine(id, next.length));
-      if (isCartographer(next)) {
-        get().announceLogbook(SURVEY_LINE);
-        get().announceLogbook(AURUM_LINE);
-        safeSetFlag("fitz-aurum-told", true);
-        set({ aurumTold: true });
-        // The live sky tells everyone else, once (Ghosts.tsx).
-        const at = Date.now();
-        safeSetJSON("fitz-charted-shout", at);
-        set({ chartShoutAt: at });
-      }
-    },
-    chartShoutAt: initialShout,
-    aurumTold: safeGetFlag("fitz-aurum-told", false),
-    tellAurumOnce: () => {
-      const s = get();
-      if (s.aurumTold || !isCartographer(s.charted, s.legacyCartographer)) return;
-      s.announceLogbook(AURUM_LINE);
-      safeSetFlag("fitz-aurum-told", true);
-      set({ aurumTold: true });
-    },
-    clearChartShout: () => {
-      safeSetJSON("fitz-charted-shout", null);
-      set({ chartShoutAt: null });
-    },
     changelogOpen: false,
     setChangelogOpen: (v) => {
       if (get().changelogOpen === v) return;
@@ -313,14 +227,11 @@ export const useSpaceStore = create<SpaceState>()(
     isNearSpawn: true,
     isTeleporting: false,
     cometNear: false,
-    shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
     impactCount: 0,
     scanTarget: null,
     photoMode: false,
     padConnected: false,
-    race: { phase: "idle" },
-    raceBest: parseRaceBest(safeGetJSON<unknown>("fitz-race-best", null)),
     beaconPickerOpen: false,
     fuelEmpty: false,
     visitedDossiers: loadVisitedDossiers(),
@@ -415,13 +326,6 @@ export const useSpaceStore = create<SpaceState>()(
       set({ isTeleporting: true });
       teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
     },
-    collectShard: (i) => {
-      const cur = get().shardsCollected;
-      if (cur.includes(i)) return;
-      const next = [...cur, i];
-      set({ shardsCollected: next });
-      safeSetJSON("fitz-shards", next);
-    },
     sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false, at: Date.now() } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
@@ -432,11 +336,6 @@ export const useSpaceStore = create<SpaceState>()(
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
     setPadConnected: (v) => set({ padConnected: v }),
-    setRace: (race) => set({ race }),
-    setRaceBest: (t) => {
-      safeSetJSON("fitz-race-best", t);
-      set({ raceBest: t });
-    },
     setBeaconPickerOpen: (v) => set({ beaconPickerOpen: v }),
   }))
 );
