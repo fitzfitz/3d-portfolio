@@ -1,4 +1,5 @@
-// Re-encodes 3D assets from assets-src/ into public/models/.
+// Re-encodes 3D assets from assets-src/ into public/models/ (and the dormant
+// LAB_MODELS into public/models-lab/).
 // Geometry is NEVER simplified (spec constraint) — only welded, deduped,
 // quantized, and meshopt-compressed (all visually lossless).
 // Fallback if meshopt decoding ever fails at runtime: remove the meshopt()
@@ -8,10 +9,13 @@ import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
 import { dedup, prune, weld, quantize, meshopt, textureCompress } from "@gltf-transform/functions";
 import { MeshoptEncoder } from "meshoptimizer";
 import sharp from "sharp";
-import { statSync, existsSync } from "node:fs";
+import { statSync, existsSync, mkdirSync } from "node:fs";
 
 const SRC = "assets-src";
 const OUT = "public/models";
+// Dormant models: compressed for the game but kept out of public/models, whose
+// every file vite.config.ts packs into the asset packs each visitor downloads.
+const LAB_OUT = "public/models-lab";
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   "meshopt.encoder": MeshoptEncoder,
@@ -25,9 +29,9 @@ const mb = (p) => (statSync(p).size / 1024 / 1024).toFixed(2) + "MB";
 const only = new Set(process.argv.slice(2));
 const wanted = (name) => only.size === 0 || only.has(name);
 
-async function processGlb(name, textureTransforms) {
+async function processGlb(name, textureTransforms, outDir = OUT) {
   const src = `${SRC}/${name}.glb`;
-  const out = `${OUT}/${name}.glb`;
+  const out = `${outDir}/${name}.glb`;
   const doc = await io.read(src);
   await doc.transform(weld(), dedup(), prune(), ...textureTransforms, quantize(), meshopt({ encoder: MeshoptEncoder }));
   await io.write(out, doc);
@@ -50,12 +54,18 @@ const TEXTURE_OPTS = {
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
   probe: { quality: 88 },
+  // The space monsters (saucer, tardigrade) are viewed close up but sit in the
+  // lab folder until a game stage uses them, so they get the probe's q88.
+  saucer: { quality: 88 },
+  tardigrade: { quality: 88 },
 };
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
 const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe"];
-for (const k of MODELS) {
+// Dormant space monsters: output goes to public/models-lab/, never to the packs.
+const LAB_MODELS = ["saucer", "tardigrade"];
+for (const k of [...MODELS, ...LAB_MODELS]) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }
 
@@ -70,6 +80,16 @@ for (const name of MODELS) {
     continue;
   }
   await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })]);
+}
+
+for (const name of LAB_MODELS) {
+  if (!wanted(name)) continue;
+  if (!existsSync(`${SRC}/${name}.glb`)) {
+    console.log(`skip ${name}.glb (not in assets-src)`);
+    continue;
+  }
+  mkdirSync(LAB_OUT, { recursive: true });
+  await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })], LAB_OUT);
 }
 
 // Saturn's, Uranus's and Neptune's seeded maps and Saturn's ring strip

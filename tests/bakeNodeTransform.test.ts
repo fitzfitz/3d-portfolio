@@ -49,4 +49,20 @@ describe("bakeNodeTransform", () => {
     // Height is preserved, only the offset is removed.
     expect(g.boundingBox!.max.y - g.boundingBox!.min.y).toBeCloseTo(4.92, 2);
   });
+
+  it("world: true bakes the mesh's world matrix: GLTFLoader puts a multi-primitive node's transform on a parent Group", () => {
+    const m = quantizedMesh();
+    const node = new THREE.Group();
+    node.position.copy(m.position);
+    node.scale.copy(m.scale);
+    m.position.set(0, 0, 0);
+    m.scale.setScalar(1);
+    node.add(m);
+    node.updateMatrixWorld(true);
+    const g = bakeNodeTransform(m, { world: true });
+    expect(g.getAttribute("position").getY(0)).toBeCloseTo(0.72, 2);
+    expect(g.getAttribute("position").getY(1)).toBeCloseTo(-4.2, 2);
+    // Without it, the parent's quantization transform is lost (the bug Task 5 flagged).
+    expect(bakeNodeTransform(m).getAttribute("position").getY(0)).toBeCloseTo(1, 2);
+  });
 });

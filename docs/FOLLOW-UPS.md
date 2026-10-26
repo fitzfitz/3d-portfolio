@@ -6,6 +6,25 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
+- **Space monsters, for the combat stage** (notes for the stage that wires the
+  saucer and tardigrade into the game, not new work now):
+  - Saucer body vertex attributes: 15 of 16 WebGL2 slots are used. Free one by
+    packing the band as a paint index before adding any attribute.
+  - Material maths: no test ties the GLSL to the TypeScript mirrors. The
+    per-shell pose is re-packed per shell (pack once, copy). Normals are not
+    corrected under the tardigrade's anisotropic hit/recoil scale, or for the
+    goo.
+  - Download packs: the `public/models-lab/` glbs ship in `dist/` as unused
+    loose files (~2.8 MB). Move them into a pack when the game loads them.
+  - e2e affected mapping: `tests/e2e/affected.mjs` assumes the game imports no
+    monster code. Once the game imports `src/utils/monsters`, update the
+    mapping, or add an import-graph test (like `labBoot.test.ts`) that keeps
+    `src/main.tsx` from reaching `src/lab`.
+  - Bounds sweeps: `tests/monsterGeometry.test.ts` uses 30 s timeouts. Watch the
+    first CI run on ubuntu; raise to 60-90 s if needed.
+  - Look polish: the owner closed it at "realistic at normal viewing". Do not
+    reopen close-up look work.
+
 - **Memory, past PR 53** (docs/superpowers/specs/2026-10-22-memory-budget-design.md;
   Chrome's memory-infra dump, 2026-10-23, at 1512×802@2):
   - ~550 MB of the GPU process is Chrome's own for any WebGL page here (a blank
