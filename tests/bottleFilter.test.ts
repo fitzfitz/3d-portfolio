@@ -43,8 +43,13 @@ describe("contact details", () => {
     "http://foo.bar",
     "go to www.example",
     "my site is example.com",
-    "try fitz.dev or foo.co.id",
-    "kunjungi situs saya contoh.id",
+    "try fitz.dev or foo.net",
+    "hxxp://example",
+    "hxxps example",
+    "example[.]com",
+    "example(dot)com",
+    "example dot com",
+    "contoh dot id",
     "mail me a@b.com",
     "hubungi saya di nama.saya@gmail.com",
     "follow @fitzgeral",
@@ -62,6 +67,24 @@ describe("contact details", () => {
     expect(reason("Wait.Then I saw it")).toBe("ok");
     expect(reason("room 12 floor 3 seat 45")).toBe("ok");
     expect(reason("Mr. Smith says hi")).toBe("ok");
+  });
+
+  it("does not flag dates or spaced numbers", () => {
+    expect(reason("Visited on 26-10-2026")).toBe("ok");
+    expect(reason("Posted 2026.10.26 12:30")).toBe("ok");
+    expect(reason("I scored 1 000 000 points")).toBe("ok");
+  });
+
+  it("does not flag a missing space after a full stop", () => {
+    expect(reason("Nice.In my opinion")).toBe("ok");
+    expect(reason("love it.My favorite")).toBe("ok");
+    expect(reason("bagus.Id suka")).toBe("ok");
+    expect(reason("ok.to be honest")).toBe("ok");
+    expect(reason("Hello.Com on in")).toBe("ok"); // uppercase TLD is not a bare domain
+  });
+
+  it("rejects over-long raw input before normalising", () => {
+    expect(reason("a b ".repeat(300))).toBe("too_long");
   });
 });
 
@@ -81,7 +104,7 @@ describe("profanity", () => {
     expect(reason("sh1t happens")).toBe("profanity");
     expect(reason("what a fuck5")).toBe("profanity");
     expect(reason("$hit")).toBe("profanity");
-    expect(reason("fvck")).not.toBe("profanity"); // v is not mapped
+    // Known gap: unmapped lookalikes such as "fvck" are not caught.
     expect(reason("a$$hole")).toBe("profanity");
     expect(reason("b4ngs4t kamu")).toBe("profanity");
     expect(reason("4nj1ng")).toBe("profanity");
@@ -90,6 +113,14 @@ describe("profanity", () => {
 
   it("matches across punctuation boundaries", () => {
     expect(reason("well, shit!")).toBe("profanity");
+  });
+
+  it("allows words removed from the list", () => {
+    expect(reason("I do tai chi")).toBe("ok");
+    expect(reason("my Maine coon cat")).toBe("ok");
+    expect(reason("summa cum laude")).toBe("ok");
+    expect(reason("sakit pantat")).toBe("ok");
+    expect(reason("kamu bodoh")).toBe("profanity");
   });
 
   it("does not flag substrings of longer words", () => {

@@ -12,16 +12,16 @@ export const BOTTLE_PROFANITY_EN: readonly string[] = [
   "slut", "sluts", "whore", "whores",
   "piss", "pissed",
   "nigger", "niggers", "nigga", "niggas", "faggot", "faggots", "fag", "retard", "retarded",
-  "tranny", "spic", "chink", "kike", "coon", "gook", "wetback",
+  "tranny", "spic", "chink", "kike", "gook", "wetback",
   "rape", "raped", "rapist", "nazi",
-  "porn", "cum", "jizz", "blowjob", "handjob", "dildo",
+  "porn", "jizz", "blowjob", "handjob", "dildo",
 ];
 
 export const BOTTLE_PROFANITY_ID: readonly string[] = [
   "anjing", "anjir", "anjrit", "asu", "babi", "bangsat", "bajingan", "brengsek", "keparat",
   "kontol", "memek", "ngentot", "entot", "jancok", "jancuk", "cuk", "pepek", "titit",
-  "pantat", "bego", "goblok", "tolol", "idiot", "bodoh",
-  "sialan", "kampret", "monyet", "setan", "tai", "taik",
+  "bego", "goblok", "tolol", "idiot", "bodoh",
+  "sialan", "kampret", "monyet", "setan", "taik",
   "perek", "jablay", "pelacur", "lonte", "bencong", "banci",
   "ngewe", "coli", "colmek", "bokep",
 ];

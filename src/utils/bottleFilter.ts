@@ -24,15 +24,25 @@ export function bottleReasonMessage(reason: BottleRejectReason): string {
   return MESSAGES[reason];
 }
 
+// Only unambiguous TLDs: word-like ones (in, to, me, my, us, id, co, de, cc...) would hit
+// "Nice.In my opinion". Links using them are still caught by http(s)/www./email.
 const TLDS =
-  "com|net|org|io|dev|co|id|my|app|xyz|info|me|ly|gg|tv|to|us|uk|de|ai|biz|edu|gov|site|online|shop|link|ws|cc|sg|au|in|jp";
+  "com|net|org|io|dev|app|xyz|info|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
 
-const URL_RE = /(?:https?:\/\/|ftp:\/\/|www\.)\S*/i;
-const DOMAIN_RE = new RegExp(`\\b[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:${TLDS})\\b`, "i");
+const URL_RE = /(?:https?:\/\/|ftp:\/\/|www\.|hxxps?)\S*/i;
+// TLD must be lowercase in the original text (so "Hello.Com" after a typo is not a domain).
+const DOMAIN_RE = new RegExp(`\\b[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*\\.(?:${TLDS})\\b`);
+const OBFUSCATED_RE = /\[\.\]|\(dot\)|\bdot (?:com|net|org|io|id|co)\b/i;
 const EMAIL_RE = /[^\s@]+@[^\s@]+\.[^\s@]+/;
 const HANDLE_RE = /(?:^|[^\w])@[\w.]{2,}/;
-// 7+ digits with optional separators between them.
-const PHONE_RE = /\+?\d(?:[\s().-]*\d){6,}/;
+// Date shapes (dd-mm-yyyy, yyyy.mm.dd, optionally with a time) are not phone numbers.
+const DATE_RE = /(?<!\d)\d{1,4}[-./]\d{1,2}[-./]\d{1,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?(?!\d)/g;
+// Plausible phone: leading +, or leading 0 with 9+ digits, or 10+ digits (separators allowed).
+const PHONE_RES = [
+  /\+\d(?:[\s().-]*\d){6,}/,
+  /(?<!\d)0(?:[\s().-]*\d){8,}/,
+  /\d(?:[\s().-]*\d){9,}/,
+];
 
 const LEET: Record<string, string> = {
   "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "$": "s", "@": "a",
@@ -48,7 +58,11 @@ function normalise(raw: string): string {
 }
 
 function hasContact(text: string): boolean {
-  return URL_RE.test(text) || EMAIL_RE.test(text) || HANDLE_RE.test(text) || DOMAIN_RE.test(text) || PHONE_RE.test(text);
+  const noDates = text.replace(DATE_RE, " ");
+  return (
+    URL_RE.test(text) || EMAIL_RE.test(text) || HANDLE_RE.test(text) || DOMAIN_RE.test(text) ||
+    OBFUSCATED_RE.test(text) || PHONE_RES.some((re) => re.test(noDates))
+  );
 }
 
 function hasProfanity(text: string): boolean {
@@ -63,7 +77,7 @@ function isJunk(text: string): boolean {
   if (/(.)\1{5,}/su.test(text)) return true;
   let letters = 0;
   let nonLetters = 0;
-  for (const ch of text) {
+  for (const ch of text.replace(DATE_RE, " ")) { // dates are normal content, not noise
     if (/\s/.test(ch)) continue;
     if (/\p{L}/u.test(ch)) letters++;
     else if (!/\p{Extended_Pictographic}/u.test(ch) && ch !== "️") nonLetters++;
@@ -75,6 +89,7 @@ function isJunk(text: string): boolean {
 }
 
 export function checkBottleText(raw: string): BottleCheck {
+  if (typeof raw === "string" && raw.length > 1000) return { ok: false, reason: "too_long" };
   const text = normalise(typeof raw === "string" ? raw : "");
   const len = Array.from(text).length;
   if (len < BOTTLE_MIN_CHARS) return { ok: false, reason: "too_short" };
