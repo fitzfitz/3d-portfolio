@@ -21,6 +21,24 @@ describe("normalisation", () => {
   });
 });
 
+describe("evasions", () => {
+  it("caps runs of combining marks (zalgo)", () => {
+    const z = "h" + "\u0300\u0301\u0302\u0303\u0304\u0305".repeat(5) + "ello there";
+    const r = checkBottleText(z);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(Array.from(r.text.normalize("NFD")).filter((c) => /\p{M}/u.test(c)).length).toBeLessThanOrEqual(2);
+  });
+  it("folds diacritics for profanity", () => {
+    expect(reason("what the fück is this")).toBe("profanity");
+  });
+  it("keeps legitimate accents and numbers ok", () => {
+    expect(reason("Café au lait in Zürich")).toBe("ok");
+    expect(reason("I found 1 000 000 000 coins")).toBe("ok");
+    expect(reason("Visited here on 26-10-2026")).toBe("ok");
+    expect(reason("Posted 2026.10.26 12:30 today")).toBe("ok");
+  });
+});
+
 describe("length", () => {
   it("rejects under 3 characters after normalising", () => {
     expect(reason("hi")).toBe("too_short");
@@ -70,6 +88,11 @@ describe("contact details", () => {
     "wa 0812.3456.7890",
     "(555) 123 4567 now",
     "hubungi 081234567890",
+    "please call me at 812 3456 7890 thanks a lot",
+    "text me 812.3456.7890 for jobs ok",
+    "wa: 8123 4567 890 hubungi saya ya",
+    "my wa is 81234567 hit me up friend",
+    "visit example。com today",
   ])("rejects %s", (s) => expect(reason(s)).toBe("contact"));
 
   it("does not flag ordinary text with numbers or dots", () => {
@@ -81,8 +104,8 @@ describe("contact details", () => {
   });
 
   it("does not flag dates or spaced numbers", () => {
-    expect(reason("Visited on 26-10-2026")).toBe("ok");
-    expect(reason("Posted 2026.10.26 12:30")).toBe("ok");
+    expect(reason("Visited here on 26-10-2026")).toBe("ok");
+    expect(reason("Posted 2026.10.26 12:30 today")).toBe("ok");
     expect(reason("I scored 1 000 000 points")).toBe("ok");
   });
 

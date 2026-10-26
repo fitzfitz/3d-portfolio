@@ -571,8 +571,9 @@ bottle in the sky** (one more than the beacons), and 1,330 triangles a bottle (a
 shown: the newest 30 plus the visitor's own 10, 53,200 triangles). The glass compiles its own
 program (`messageBottleGlass:v2`: the glint mask, rim and range boost are attributes and
 shared uniforms, so no recompile in flight); the note and cork are a plain textured
-`MeshStandardMaterial`. Both meshes mount inside the scene's Suspense, so `ShaderWarmup`
-compiles them at load whenever Show bottles is on. The bottles exist only with a beacon API
+`MeshStandardMaterial`. Both meshes mount inside the scene's Suspense, so the bottle programs are
+usually compiled at load by `ShaderWarmup`; they compile on first draw instead if Show
+bottles is turned on later or `bottle.glb` arrives after the warm-up. The bottles exist only with a beacon API
 configured, and the budget probes (perf, transition, programs, memory) run without one, so
 no measured state changes. `bottles.probe.mjs` asserts the 2 calls by rendering just the two
 meshes once (42,560 triangles for its 32 bottles). Ceilings changed: none.

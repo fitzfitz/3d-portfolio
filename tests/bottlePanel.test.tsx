@@ -123,6 +123,13 @@ describe("BottlePanel", () => {
   });
 });
 
+describe("BottlePanel, while sending", () => {
+  it("makes the textarea read-only during SENDING so edits are not lost", () => {
+    const src = readFileSync("src/components/layout/BottlePanel.tsx", "utf8");
+    expect(src).toMatch(/<textarea[^>]*readOnly=\{draft\.sending\}/s);
+  });
+});
+
 describe("BottlePanel, touch", () => {
   afterEach(() => vi.unstubAllGlobals());
   it("asks the on-screen keyboard for sentences and a Send key", () => {

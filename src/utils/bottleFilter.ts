@@ -30,7 +30,7 @@ const TLDS =
   "com|net|org|io|dev|app|xyz|info|ly|gg|tv|ai|biz|edu|gov|site|online|shop|link|ws|sg|au|jp|uk";
 
 // Ambiguous TLDs double as words after a missing space ("it.my", "thanks.me"), so they count
-// only at the very end of the note (trailing .!?) allowed) or directly before "/" or ":".
+// only at the very end of the note (trailing .!?, allowed) or directly before "/" or ":".
 // Accepted edge case: "fine.id" at the end of a note reads as a domain.
 const AMBIG = "me|my|id|co";
 const AMBIG_END = "(?=[/:]|[.!?)\\s]*$)";
@@ -61,6 +61,8 @@ const PHONE_RES = [
   /(?<!\d[\s().-]{0,3})0(?:[\s().-]*\d){8,}/,
   /\d{10,}/,
   /(?<!\d)\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?!\d)/,
+  // Indonesian mobile written without the leading 0 (8xx-xxxx-xxxx), 8+ digits.
+  /(?<!\d[\s.-]?)8\d{2,3}[\s.-]?\d{2,4}[\s.-]?\d{3,4}(?!\d)/,
 ];
 
 const LEET: Record<string, string> = {
@@ -72,6 +74,8 @@ function normalise(raw: string): string {
     .normalize("NFKC")
     .replace(/[\t\n\v\f\r]+/g, " ") // line breaks and tabs become spaces before control chars go
     .replace(/[\p{Cc}\p{Cf}]/gu, "") // control + format (zero-width, BOM, soft hyphen, ZWJ...)
+    .replace(/[。｡]/g, ".") // ideographic full stops: "example。com"
+    .replace(/(\p{M}{2})\p{M}+/gu, "$1") // zalgo: cap runs of combining marks
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -85,8 +89,10 @@ function hasContact(text: string): boolean {
   );
 }
 
+// Parked (known gaps): Cyrillic/Greek look-alike letters and letters spaced apart ("f u c k").
 function hasProfanity(text: string): boolean {
-  const mapped = text.toLowerCase().replace(/[01345$@]/g, (c) => LEET[c]);
+  const folded = text.normalize("NFKD").replace(/\p{M}/gu, ""); // "fück" -> "fuck"
+  const mapped = folded.toLowerCase().replace(/[01345$@]/g, (c) => LEET[c]);
   for (const word of mapped.split(/[^a-z]+/)) {
     if (word && BOTTLE_PROFANITY.has(word)) return true;
   }

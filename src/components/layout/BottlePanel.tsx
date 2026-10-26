@@ -70,7 +70,7 @@ export default function BottlePanel() {
           country and how long ago. No links or contact details. One every 10 minutes.
         </p>
         <label htmlFor="bottle-text" className="sr-only">Your note</label>
-        <textarea id="bottle-text" data-testid="bottle-text" autoFocus rows={3}
+        <textarea id="bottle-text" data-testid="bottle-text" autoFocus rows={3} readOnly={draft.sending}
           value={draft.text} onChange={(e) => dispatch({ type: "edit", text: e.target.value })}
           // A kept draft continues where it ended: the caret goes to the end, not the start.
           onFocus={(e) => { const n = e.currentTarget.value.length; e.currentTarget.setSelectionRange(n, n); }}

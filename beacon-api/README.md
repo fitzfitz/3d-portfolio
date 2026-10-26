@@ -107,7 +107,9 @@ UPDATE beacons SET hidden = 1 WHERE id = '…';
 ```
 
 Visitors stop seeing it within about a minute (30 s per isolate, plus 30 s of
-public caching). `hidden = 0` brings it back.
+public caching). `hidden = 0` brings it back. The author still sees their own
+hidden note in their browser (`fitz-own-bottles`). Hiding has no effect until the
+new Worker is deployed (step 2), because the old Worker ignores `hidden`.
 
 ## Live sky
 
