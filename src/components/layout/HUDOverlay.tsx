@@ -153,7 +153,7 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
     if (dryAnnouncedThisSpell) return;
     dryAnnouncedThisSpell = true;
     useSpaceStore.getState().sendBroadcast(
-      "WARP CORE DRY // COLLECT A FUEL CRYSTAL TO RECHARGE — THRUSTERS STILL NOMINAL"
+      "WARP CORE DRY // RELEASE WARP TO RECHARGE — THRUSTERS STILL NOMINAL"
     );
   }, [fuelEmpty]);
 
@@ -261,8 +261,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       </div>
 
       {/* Center Top: Space flight instruction card. Desktop only: on a phone
-          there is no room, and the touch buttons label themselves. */}
-      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 text-[9px] transition-opacity duration-700 pointer-events-auto group-data-[quiet=true]/hud:opacity-0 group-data-[quiet=true]/hud:pointer-events-none">
+          there is no room, and the touch buttons label themselves. Panel keys
+          (L, N, B) live on their own buttons (#55); GUIDE is here because J
+          has no button on desktop. */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 border border-white/5 px-4 py-2.5 rounded-xl hidden md:flex gap-6 whitespace-nowrap text-[9px] transition-opacity duration-700 pointer-events-auto group-data-[quiet=true]/hud:opacity-0 group-data-[quiet=true]/hud:pointer-events-none"
+        data-testid="hud-controls">
         <div className="flex flex-col">
           <span className="text-white/45">PILOT_STEER</span>
           <span className="text-white">{pad ? "LEFT STICK" : isCoarse ? "LEFT JOYSTICK" : "WASD / ARROWS"}</span>
@@ -276,11 +279,6 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         <div className="flex flex-col">
           <span className="text-white/45">WARP_DRIVE</span>
           <span className="text-white">{pad ? "RB" : isCoarse ? "BOOST BUTTON" : "SHIFT"}</span>
-        </div>
-        <div className="w-[1px] bg-white/5" />
-        <div className="flex flex-col">
-          <span className="text-white/45">SPAWN_PLASMA</span>
-          <span className="text-white">{isCoarse ? "TAP VOID" : "CLICK VOID"}</span>
         </div>
         {!isCoarse && (
           <>
@@ -298,6 +296,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <div className="flex flex-col">
               <span className="text-white/45">PHOTO_MODE</span>
               <span className="text-white">{pad ? "Y" : "P"}</span>
+            </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col">
+              <span className="text-white/45">GUIDE</span>
+              <span className="text-white">{pad ? "R3" : "J"}</span>
             </div>
           </>
         )}

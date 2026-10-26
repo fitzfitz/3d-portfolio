@@ -37,8 +37,8 @@ export const flight = {
   } as FlightInput,
   /**
    * Warp fuel, 0..FUEL_MAX. Written by Spaceship's frame loop (continuous
-   * drain while warping) and by FuelCrystals' pickup (discrete refuel on
-   * collection), and read by the HUD/radar rAF loops. Deliberately here
+   * drain while warping, refill while not) and by AsteroidBelt's mining
+   * (ore tops it up), and read by the HUD/radar rAF loops. Deliberately here
    * rather than in the store: it changes every frame while warping, and store
    * state would make that a per-frame React commit, breaking the
    * zero-renders-during-flight guarantee.

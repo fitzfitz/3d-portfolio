@@ -42,9 +42,10 @@ const sightOff = { x: 0, y: 0, z: 0 };
  * every body padded for its drift. Convoy: the body nearest the player that
  * has an approach clearing the other bodies and the sun at their positions
  * through the next 40s (Mercury's rarely clears the sun, so a convoy near it
- * goes to the next body out).
+ * goes to the next body out). `bodiesFrozen` (reduced motion: the bodies hold
+ * still) clears the route against where they are now, not where they would be.
  */
-function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventState; line: string } | null {
+function planEvent(ev: ActiveEvent, ambientNow: number, bodiesFrozen: boolean): { state: WorldEventState; line: string } | null {
   const base = { kind: ev.kind, id: ev.id, startedAt: ev.startedAt };
   if (ev.kind === "flare") return { state: base, line: pick(eventLines.flare) };
 
@@ -60,9 +61,10 @@ function planEvent(ev: ActiveEvent, ambientNow: number): { state: WorldEventStat
   // convoy: the nearest body with a clear route.
   // Every body's position along the route's 40 s, once per plan (not per
   // target, candidate and slot): ROUTE_STEPS × SOLAR_BODIES, xyz.
+  const bodyStep = bodiesFrozen ? 0 : ROUTE_DT;
   for (let s = 0; s < ROUTE_STEPS; s++) {
     for (let i = 0; i < SOLAR_BODIES.length; i++) {
-      const q = bodyPositionAt(SOLAR_BODIES[i], ambientNow + s * ROUTE_DT, routeScratch);
+      const q = bodyPositionAt(SOLAR_BODIES[i], ambientNow + s * bodyStep, routeScratch);
       const o = (s * SOLAR_BODIES.length + i) * 3;
       routeTrack[o] = q.x; routeTrack[o + 1] = q.y; routeTrack[o + 2] = q.z;
     }
@@ -96,6 +98,7 @@ export default function WorldEventDirector() {
   const lastBroadcast = useRef({ id: 0, at: -Infinity });
   const forced = useRef<WorldEventKind | null>(null);
   const lastAmbient = useRef<number | null>(null);
+  const lastGame = useRef<number | null>(null);
   const nextSightAt = useRef(0);
   // Reused every frame so the director step allocates nothing.
   const stepOut = useMemo<DirectorStep>(() => ({ started: null, ended: null }), []);
@@ -114,14 +117,17 @@ export default function WorldEventDirector() {
   useFrame((state) => {
     // The director runs on the bodies' clock (ambient time): comet lines and
     // convoy routes are cleared against body positions on that clock, so the
-    // event must play on it too. It also freezes under reduced motion, as the
-    // bodies do, so an event caught by that setting freezes with the scene.
+    // event must play on it too. Under reduced motion the bodies freeze but
+    // comets and convoys still run (slow movers; the flare never does), so the
+    // director steps on game time instead, and routes are cleared against the
+    // frozen bodies (planEvent's `bodiesFrozen`).
     const elapsed = state.clock.getElapsedTime();
     const ambientNow = ambientTime(elapsed);
-    const dt = ambientStep(lastAmbient.current, ambientNow);
-    lastAmbient.current = ambientNow;
     const now = gameTime(elapsed);
     const s = useSpaceStore.getState();
+    const dt = s.reducedMotion ? ambientStep(lastGame.current, now) : ambientStep(lastAmbient.current, ambientNow);
+    lastAmbient.current = ambientNow;
+    lastGame.current = now;
     const bid = s.broadcast?.id ?? 0;
     if (bid !== lastBroadcast.current.id) { lastBroadcast.current.id = bid; lastBroadcast.current.at = now; }
 
@@ -142,7 +148,7 @@ export default function WorldEventDirector() {
 
     if (step.ended) s.endWorldEvent();
     if (step.started) {
-      const planned = planEvent(step.started, ambientNow);
+      const planned = planEvent(step.started, ambientNow, s.reducedMotion);
       if (planned) s.startWorldEvent(planned.state, planned.line);
       else skipEvent(director); // no clear route: retry shortly, as another kind
     }

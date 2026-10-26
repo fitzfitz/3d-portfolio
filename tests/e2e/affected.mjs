@@ -29,7 +29,7 @@ export const RULES = [
   [/^src\/components\/canvas\/(CareerStation|CareerTrail|guideLine)\b/, () => [...BUDGETS, "career", "careerphone"]],
   [/^src\/components\/canvas\/(Shipyard|DormantGate|PortalRing|SpacePlanets)\b/, () => [...BUDGETS, "shipyard", "contact"]],
   [/^src\/components\/canvas\/(AsteroidBelt|Asteroids)\b/, () => [...BUDGETS, "mechanics", "gameplay"]],
-  [/^src\/components\/canvas\/(FuelCrystals|PlasmaAnomalies|DataShards|Scanner)\b/, () => [...BUDGETS, "fuel", "gameplay"]],
+  [/^src\/components\/canvas\/(PlasmaAnomalies|DataShards|Scanner)\b/, () => [...BUDGETS, "fuel", "gameplay"]],
   [/^src\/components\/canvas\/SpaceJellyfish\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
   // The guide's pure logic (the creature's frame, posture and radio gate); waypointTarget also feeds the HUD, so it stays with ALL.
   [/^src\/(utils\/(jellyGuide|jellyFrame|jellyMood|jellyPosture|guideRadio|guideToggle)|data\/jellyfishPath)\b/, () => [...BUDGETS, "reactions", "jellyguide"]],

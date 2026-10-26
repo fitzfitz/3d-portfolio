@@ -6,7 +6,7 @@ import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { SOLAR_BODIES } from "../../data/solarSystem";
-import { flight, useSpaceStore, bodies, crystalSlots } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
 import { worldToRadar, altitudeCue, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
@@ -156,50 +156,7 @@ export default function RadarMap() {
         ctx.globalAlpha = 1;
       }
 
-      // Fuel crystals: in-range only (3D gate — a horizontal-only
-      // gate here used to draw ~57% of blips farther than RADAR_RANGE with no
-      // altitude cue at all), never rim-clamped. Only crystals inside the
-      // 3D RADAR_RANGE sphere draw, so the radar is the "where is my nearest fuel"
-      // cue without swamping the display with all 40 across the 480 u crystal field.
-      {
-        for (const s of crystalSlots) {
-          if (!s.active) continue;
-          const dx = (s.x - flight.x);
-          const dz = (s.z - flight.z);
-          const dy = (s.y - flight.y);
-          if (Math.hypot(dx, dz, dy) > RADAR_RANGE) continue; // out of range: simply absent
-          const { x: sx, up } = worldToRadar(dx, dz, a);
-          const px = sx * scale;
-          const py = -up * scale;
-          // Re-established every iteration: the chevron below changes
-          // globalAlpha, and without this reset that alpha would bleed into
-          // the NEXT crystal's dot in the loop.
-          ctx.globalAlpha = 0.85;
-          ctx.fillStyle = "#ffd24a";
-          ctx.beginPath();
-          ctx.arc(c + px, c + py, 1.5, 0, Math.PI * 2);
-          ctx.fill();
-          // Relative-altitude chevron, mirroring the planet pass above but
-          // scaled to the crystals' smaller 1.5px blip (vs. 2.4px for
-          // planets — same ~0.625 ratio applied to the apex offset and
-          // half-width). Crystals are never rim-clamped, so this is always
-          // the "not onRim" alpha treatment.
-          const cue = altitudeCue(dy);
-          if (cue.dir !== 0) {
-            ctx.globalAlpha = cue.alpha * 0.9;
-            const by = c + py - cue.dir * 3.75;
-            ctx.beginPath();
-            ctx.moveTo(c + px - 1.5625, by + cue.dir * 1.5625);
-            ctx.lineTo(c + px, by);
-            ctx.lineTo(c + px + 1.5625, by + cue.dir * 1.5625);
-            ctx.closePath();
-            ctx.fill();
-          }
-        }
-        ctx.globalAlpha = 1;
-      }
-
-      // Career buoys: small hollow amber rings (crystals are filled dots), in
+      // Career buoys: small hollow amber rings, in
       // range only and never rim-clamped; the station itself is a destination
       // blip above. The trail climbs out of the plane, so each ring carries
       // the planets' altitude chevron: the next buoy reads as "above".

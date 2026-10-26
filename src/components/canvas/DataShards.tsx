@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { SHARDS, SHARDS_COMPLETE_MESSAGE, shardBroadcast } from "../../data/shards";
+import { SHARDS, SHARDS_COMPLETE_MESSAGE, SHARD_PICKUP_RADIUS, shardBroadcast } from "../../data/shards";
 import { flight, useSpaceStore } from "../../store/spaceStore";
 import { soundManager } from "../../audio/soundManager";
 import { useModel } from "../../utils/sceneAssets";
@@ -98,7 +98,7 @@ export default function DataShards() {
       // (TractorBeam.tsx sets beamState.reel; Spaceship applies it), so their
       // positions never move and the pickup below is unchanged.
       const dist = Math.hypot(flight.x - px, flight.z - pz, flight.y - py);
-      if (dist < 3) {
+      if (dist < SHARD_PICKUP_RADIUS) {
         store.collectShard(i);
         soundManager.pickup();
         const count = useSpaceStore.getState().shardsCollected.length;

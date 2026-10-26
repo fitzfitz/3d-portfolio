@@ -15,7 +15,7 @@ function countLight(o: unknown): void {
 // Lights in this scene are effectively static after mount, and perfStats.lights
 // is a DEV-overlay display value only -- nothing needs it frame-current.
 // Walking the *entire* scene graph (planets, asteroid belt, cargo traffic,
-// comets, shooting stars, jellyfish, data shards, fuel crystals, ...) every
+// comets, shooting stars, jellyfish, data shards, ...) every
 // frame purely to count lights would inject O(scene-node-count) work into
 // the exact frame loop this sampler exists to measure, inflating the p99
 // baselines it produces. So this is throttled to every Nth frame instead of

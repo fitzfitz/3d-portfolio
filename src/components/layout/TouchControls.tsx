@@ -11,6 +11,8 @@ export default function TouchControls() {
   const modalOpen = useSpaceStore(selectModalOpen);
   const scanTarget = useSpaceStore((s) => s.scanTarget);
   const guiding = useSyncExternalStore(subscribeGuideActive, isGuideActive);
+  // The spawn card (App.tsx) covers PHOTO's spot on a phone; it goes as soon as you fly off.
+  const spawnCardUp = useSpaceStore((s) => s.sceneReady && s.isNearSpawn && s.activeZone === null);
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
@@ -171,7 +173,7 @@ export default function TouchControls() {
         ▼ PITCH
       </button>
 
-      {/* Tractor beam: hold to pull crystals and pebbles, or reel toward a shard.
+      {/* Tractor beam: hold to pull pebbles and probes, or reel toward a shard.
           Beside ▼ PITCH, clear of BOOST, so a thumb reaching for boost never beams. */}
       <button
         className="fixed bottom-48 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
@@ -211,6 +213,21 @@ export default function TouchControls() {
       >
         GUIDE
       </button>
+
+      {/* Photo mode: a tap enters it, as P does (Y on a pad). TouchControls
+          unmount in photo mode, so the way out is the tappable PHOTO_MODE
+          label App renders there. Above GUIDE, beside SCAN, clear of BOOST.
+          Hidden while the spawn card is up (it sits over this spot on a phone)
+          and on short screens (a phone held sideways), where this row would
+          reach the classic-résumé button at the top right. */}
+      {!spawnCardUp && <button
+        type="button"
+        className="fixed bottom-80 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20 [@media(max-height:500px)]:hidden"
+        data-testid="touch-photo"
+        onClick={() => useSpaceStore.getState().setPhotoMode(true)}
+      >
+        PHOTO
+      </button>}
 
       {/* Scan button — only shown while a scannable target is in range */}
       {scanTarget !== null && (

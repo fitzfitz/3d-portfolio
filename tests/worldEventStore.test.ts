@@ -23,6 +23,21 @@ describe("world event store", () => {
     expect(useSpaceStore.getState().worldEvent).toBeNull();
     expect(worldEventElapsed("comet")).toBeNull();
   });
+  it("keeps a comet or convoy running, and its clock moving, with reduced motion on", () => {
+    // Reduced motion no longer blocks world events: comets and convoys are slow
+    // movers. Turning the setting on mid-event must not drop the event.
+    for (const kind of ["comet", "convoy"] as const) {
+      useSpaceStore.getState().setReducedMotion(false);
+      useSpaceStore.setState({ worldEvent: null });
+      worldClock.now = 3;
+      useSpaceStore.getState().startWorldEvent({ kind, id: 7, startedAt: 3 }, "x");
+      useSpaceStore.getState().setReducedMotion(true);
+      worldClock.now = 9;
+      expect(useSpaceStore.getState().worldEvent?.kind, kind).toBe(kind);
+      expect(worldEventElapsed(kind), kind).toBe(6);
+    }
+    useSpaceStore.getState().setReducedMotion(false); // also re-enables ambient time
+  });
   it("has radio lines for every event and every body's convoy", () => {
     expect(eventLines.comet.length).toBeGreaterThan(0);
     expect(eventLines.flare.length).toBeGreaterThan(0);

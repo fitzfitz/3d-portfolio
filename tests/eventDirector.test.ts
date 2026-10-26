@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createDirector, stepDirector, endEvent, forceStart, skipEvent, ambientStep, SKIP_RETRY_S,
-  FIRST_EVENT_AT, GAP_MIN, GAP_SPAN, EVENT_DURATION, type DirectorInput, type DirectorStep, type WorldEventKind,
+  FIRST_EVENT_AT, GAP_MIN, GAP_SPAN, EVENT_DURATION, REDUCED_MOTION_KINDS, type DirectorInput, type DirectorStep, type WorldEventKind,
 } from "../src/utils/eventDirector";
 
 const calm: DirectorInput = { dt: 1, paused: false, raceRunning: false, radioBusy: false, reducedMotion: false };
@@ -67,13 +67,42 @@ describe("eventDirector", () => {
     }
   });
 
-  it("starts nothing under reduced motion, but lets an active event end on time", () => {
+  it("still starts events under reduced motion, on schedule, but only comets and convoys", () => {
+    // Reduced motion used to block every event, which left the Comet chaser and
+    // Convoy spotter badges (and the logbook's "all done") out of reach.
+    for (const seed of [1, 7, 42]) {
+      const d = createDirector(lcg(seed));
+      const kinds: WorldEventKind[] = [];
+      let first = -1;
+      for (let n = 0; n < 20000; n++) {
+        const st = stepDirector(d, { ...calm, dt: 0.5, reducedMotion: true });
+        if (st.started) { kinds.push(st.started.kind); if (first < 0) first = d.clock; }
+      }
+      expect(first).toBe(FIRST_EVENT_AT);
+      expect(kinds.length).toBeGreaterThan(10);
+      expect(kinds).not.toContain("flare");
+      expect(new Set(kinds)).toEqual(new Set(["comet", "convoy"]));
+      // Never the same kind twice running, here too: so they alternate.
+      for (let i = 1; i < kinds.length; i++) expect(kinds[i]).not.toBe(kinds[i - 1]);
+    }
+  });
+
+  it("a flare already playing ends at once when reduced motion comes on", () => {
     const d = createDirector(() => 0);
-    for (let n = 0; n < 200; n++) expect(stepDirector(d, { ...calm, reducedMotion: true }).started).toBeNull();
     forceStart(d, "flare");
-    let ended = false;
-    for (let n = 0; n < EVENT_DURATION.flare + 1; n++) if (stepDirector(d, { ...calm, reducedMotion: true }).ended) ended = true;
-    expect(ended).toBe(true);
+    const st = stepDirector(d, { ...calm, dt: 0.1, reducedMotion: true });
+    expect(st.ended?.kind).toBe("flare");
+    expect(d.active).toBeNull();
+  });
+
+  it("a comet or convoy under reduced motion plays its full length", () => {
+    for (const kind of REDUCED_MOTION_KINDS) {
+      const d = createDirector(() => 0);
+      forceStart(d, kind);
+      let endedAt = -1;
+      for (let n = 0; n < 200 && endedAt < 0; n++) if (stepDirector(d, { ...calm, reducedMotion: true }).ended) endedAt = d.clock;
+      expect(endedAt, kind).toBe(EVENT_DURATION[kind]);
+    }
   });
 
   it("forceStart ends the active event and starts the requested one", () => {

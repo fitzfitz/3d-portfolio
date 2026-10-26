@@ -5,11 +5,11 @@ import { FUEL_MAX, FUEL_PER_CRYSTAL } from "./fuel";
 
 /**
  * Mining belt pebbles with the tractor beam (spec §6.3). Belt rocks are
- * pebbles (0.1-0.5u), so each is worth a sliver of fuel: 16 make one crystal.
- * A grab gate caps acquisition at one pebble per PEBBLE_GRAB_INTERVAL, so an
- * empty tank always takes at least 40s of mining (64 × 0.65s = 41.6s): a
- * deliberate choice between mining and flying to crystals, never a free
- * refill mid-race.
+ * pebbles (0.1-0.5u), so each is worth a sliver of fuel: 16 make one
+ * "crystal's worth" (FUEL_PER_CRYSTAL, the unit the old fly-through fuel
+ * crystals paid). A grab gate caps acquisition at one pebble per
+ * PEBBLE_GRAB_INTERVAL, so an empty tank always takes at least 40s of mining
+ * (64 × 0.65s = 41.6s), never a free refill mid-race.
  *
  * AsteroidBelt writes each ring's pebble world positions here every frame and
  * reads back which pebbles are tethered (pulled, not orbiting), absorbed

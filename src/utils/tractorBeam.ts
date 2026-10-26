@@ -1,20 +1,19 @@
 import type { Vec3 } from "./reactions";
 
 /**
- * Tractor beam (spec §6). One rule: the lighter object moves. Crystals and
- * belt pebbles come to the ship; data shards are anchored, so the beam reels
- * the ship toward them. Pure and allocation-free.
+ * Tractor beam (spec §6). One rule: the lighter object moves. Belt pebbles
+ * and project probes come to the ship; data shards are anchored, so the beam
+ * reels the ship toward them. Pure and allocation-free.
  */
 export const BEAM_MAX_TARGETS = 3;
 export const BEAM_HALF_ANGLE = (20 * Math.PI) / 180;
 const COS_HALF = Math.cos(BEAM_HALF_ANGLE);
 export const BEAM_RANGE = 30;
 export const PEBBLE_RANGE = 15;
-export const CRYSTAL_PULL_SPEED = 20;
 export const PEBBLE_PULL_SPEED = 8;
 export const REEL_ACCEL = 15;
 
-export type BeamKind = "crystal" | "shard" | "pebble" | "probe";
+export type BeamKind = "shard" | "pebble" | "probe";
 
 /** Up to BEAM_MAX_TARGETS targets, nearest first. Parallel arrays: no allocation per frame. */
 export interface BeamSelection {
@@ -26,7 +25,7 @@ export interface BeamSelection {
 export function createSelection(): BeamSelection {
   const n = BEAM_MAX_TARGETS;
   return {
-    count: 0, kind: Array<BeamKind>(n).fill("crystal"), index: Array(n).fill(-1), ring: Array(n).fill(-1),
+    count: 0, kind: Array<BeamKind>(n).fill("shard"), index: Array(n).fill(-1), ring: Array(n).fill(-1),
     dist: Array(n).fill(Infinity), x: Array(n).fill(0), y: Array(n).fill(0), z: Array(n).fill(0),
   };
 }
@@ -71,8 +70,8 @@ export function consider(
 /**
  * Puts a target in sel[0] ahead of everything already selected, shifting the
  * rest down and dropping whatever falls past `max`. TractorBeam uses it to
- * reserve a project probe's slot: crystals and shards fill `budget - 1`
- * first, so three nearer crystals can never evict the probe.
+ * reserve a project probe's slot: shards fill `budget - 1` first, so
+ * nearer shards can never evict the probe.
  */
 export function reserveFirst(
   sel: BeamSelection, max: number, kind: BeamKind, index: number, ring: number,

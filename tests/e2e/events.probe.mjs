@@ -106,18 +106,68 @@ async function events(page, checks) {
     perf.programs <= 84, `programs=${perf.programs} ceiling=84`);
 }
 
-async function quietUnderReducedMotion(page, checks) {
-  // Past due: without reduced motion a start fires on the next frame (the
-  // first page proves it), so 4 s of none is the setting holding it.
-  const due = await nearDue(page, 1);
-  const started = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 4000, intervalMs: 200 })).ok;
-  checks.check("reduced motion: no world event starts, even past due", !started, `clock=${due.clock.toFixed(1)} nextAt=${due.nextAt}`);
+async function underReducedMotion(page, checks) {
+  // Reduced motion no longer blocks world events: comets and convoys are slow
+  // movers and still play (their badges and the logbook's "all done" need
+  // them); the flare, a flash, never does.
+  await nearDue(page, -0.5);
+  const ev = (await pollUntil(async () => (await readStore(page)).worldEvent, { timeoutMs: 10_000, intervalMs: 200 })).value;
+  checks.check("reduced motion: a world event still starts when due", !!ev, ev ? `kind=${ev.kind}` : "none");
+  checks.check("reduced motion: the event is a comet or a convoy, never a flare",
+    ev?.kind === "comet" || ev?.kind === "convoy", `kind=${ev?.kind}`);
+
+  // The director's clock keeps moving while the bodies hold still, so the
+  // event actually plays rather than freezing at its start.
+  const c0 = await page.evaluate(() => window.__fitz.eventDirector.clock);
+  await settle(page, 1500);
+  const c1 = await page.evaluate(() => window.__fitz.eventDirector.clock);
+  checks.check("reduced motion: the event's clock advances", c1 - c0 > 0.2, `clock ${c0.toFixed(2)} -> ${c1.toFixed(2)}`);
+
+  // A visiting comet moves along its line (the planets stay frozen).
+  await trigger(page, "comet");
+  await settle(page, 300);
+  const cometAt = () => page.evaluate(() => {
+    const g = window.__fitz.scene.getObjectByName("CometVisitor");
+    if (!g || !g.visible) return null;
+    const p = g.children[0].position;
+    return { x: p.x, y: p.y, z: p.z };
+  });
+  const p0 = await cometAt();
+  await settle(page, 1500);
+  const p1 = await cometAt();
+  const moved = p0 && p1 ? Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z) : 0;
+  checks.check("reduced motion: the visiting comet still moves", moved > 0.5, `moved=${moved.toFixed(2)}`);
+
+  // A convoy plans its route against the frozen bodies and still flies it.
+  await page.evaluate(() => { const b = window.__fitz.bodies.earth; window.__fitz.teleport(b.x, b.y + 30, b.z); });
+  await settle(page, 300);
+  await trigger(page, "convoy");
+  await settle(page, 300);
+  const conv = (await readStore(page)).worldEvent;
+  checks.check("reduced motion: a convoy finds a route to a body", conv?.kind === "convoy" && !!conv.convoy?.planet,
+    `kind=${conv?.kind} body=${conv?.convoy?.planet}`);
+  const shipAt = () => page.evaluate(() => {
+    const g = window.__fitz.scene.getObjectByName("ConvoyShip0");
+    return g && g.visible ? { x: g.position.x, y: g.position.y, z: g.position.z } : null;
+  });
+  const s0 = (await pollUntil(shipAt, { timeoutMs: 15_000, intervalMs: 300 })).value;
+  await settle(page, 1500);
+  const s1 = await shipAt();
+  const flew = s0 && s1 ? Math.hypot(s1.x - s0.x, s1.y - s0.y, s1.z - s0.z) : 0;
+  checks.check("reduced motion: the convoy ships fly in", flew > 0.5, `moved=${flew.toFixed(2)}`);
+
+  // A forced flare is cut short at once: no corona flash under reduced motion.
+  await trigger(page, "flare");
+  const gone = (await pollUntil(async () => ((await readStore(page)).worldEvent?.kind !== "flare" ? true : null), { timeoutMs: 3000, intervalMs: 100 })).ok;
+  const corona = await page.evaluate(() => window.__fitz.scene.getObjectByName("SunCorona")?.scale.x ?? 1);
+  checks.check("reduced motion: a flare ends at once and the corona stays calm", gone && Math.abs(corona - 1) < 0.05,
+    `ended=${gone} corona=${corona.toFixed(3)}`);
 }
 
 /** One page each, independent: run.mjs runs them as separate jobs. */
 export const parts = [
   () => withPage({ label: "events" }, events),
-  () => withPage({ label: "events (reduced motion)", emulateReducedMotion: true }, quietUnderReducedMotion),
+  () => withPage({ label: "events (reduced motion)", emulateReducedMotion: true }, underReducedMotion),
 ];
 
 export default function run() { return runParts(parts); }

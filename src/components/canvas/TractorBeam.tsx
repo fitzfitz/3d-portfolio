@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { beamState } from "../../store/beamState";
-import { crystalSlots, flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore } from "../../store/spaceStore";
 import { SHARDS } from "../../data/shards";
 import { PROBE_IDS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
@@ -29,7 +29,7 @@ function putTether(arr: Float32Array, n: number, ox: number, oy: number, oz: num
 }
 
 /**
- * Tractor beam (spec §6): picks this frame's probe, crystal and shard targets
+ * Tractor beam (spec §6): picks this frame's probe and shard targets
  * (nearest first, sharing the 3-target budget with tethered pebbles), sets the
  * shard reel, and draws a soft cone plus one tether per target. The cone
  * reuses the engine plume's shader with a teal uColor, and the tethers reuse
@@ -65,20 +65,14 @@ export default function TractorBeam() {
       return;
     }
 
-    // Tethered pebbles hold their slots; crystals and shards share the rest.
+    // Tethered pebbles hold their slots; shards share the rest.
     const budget = BEAM_MAX_TARGETS - tetherCount();
     const { ox, oy, oz, dx, dy, dz } = beamState;
     // A project probe in the cone has a reserved slot (sel[0], set below):
-    // crystals and shards share what is left, so nearer crystals cannot evict
-    // it. ProjectProbes pulls it.
+    // shards share what is left, so nearer shards cannot evict it.
+    // ProjectProbes pulls it.
     const probe = budget > 0 ? grabbableProbe(ox, oy, oz, dx, dy, dz, probePos, probeRelocating) : null;
     const shared = probe !== null ? budget - 1 : budget;
-    for (let i = 0; i < crystalSlots.length; i++) {
-      const s = crystalSlots[i];
-      if (!s.active) continue;
-      const d = inCone(ox, oy, oz, dx, dy, dz, s.x, s.y, s.z, BEAM_RANGE);
-      if (d >= 0) consider(sel, shared, "crystal", i, -1, d, s.x, s.y, s.z);
-    }
     const collected = useSpaceStore.getState().shardsCollected;
     for (let i = 0; i < SHARDS.length; i++) {
       if (collected.includes(i)) continue;
@@ -113,7 +107,7 @@ export default function TractorBeam() {
       coneMaterial.uniforms.uPower.value = 0.35;
     }
 
-    // Tethers: nose to each crystal/shard target, then to each tethered pebble.
+    // Tethers: nose to each probe/shard target, then to each tethered pebble.
     if (lines) {
       const arr = lines.geometry.attributes.position.array as Float32Array;
       let n = 0;

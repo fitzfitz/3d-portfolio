@@ -542,8 +542,8 @@ export function readStore(page) {
  * Reads the RadioChatter HUD line. Most lines (zone/ambient/warp/wrap/comet/
  * altitude/impact) are typed straight into this DOM node by RadioChatter.tsx's
  * `typeLine` and never touch `store.broadcast`; shard pickups
- * (DataShards.tsx), scan reports (Scanner.tsx), the dry-tank warning
- * (HUDOverlay.tsx) and crystal pickups (FuelCrystals.tsx) go through
+ * (DataShards.tsx), scan reports (Scanner.tsx) and the dry-tank warning
+ * (HUDOverlay.tsx) go through
  * `sendBroadcast`, which RadioChatter subscribes to and also renders here.
  *
  * So this DOM node — not `store.broadcast` — is the only place that sees every

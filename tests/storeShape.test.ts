@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as storeModule from "../src/store/spaceStore";
 // Type-only: `npm run build` type-checks tests/, so these pin the type exports too.
-import type { FlightInput, CrystalSlot, WorldEventState, SpaceState } from "../src/store/spaceStore";
+import type { FlightInput, WorldEventState, SpaceState } from "../src/store/spaceStore";
 import { PROBES } from "../src/data/probes";
 import { BODY_IDS } from "../src/data/bodyIds";
 import { CHANGELOG } from "../src/data/changelog";
 import { flight } from "../src/store/flightState";
 import { bodies } from "../src/store/bodies";
-import { crystalSlots } from "../src/store/crystalSlots";
 import { worldClock } from "../src/store/worldClock";
 
 /**
@@ -18,7 +17,7 @@ import { worldClock } from "../src/store/worldClock";
  * store notifications and storage writes for a scripted run of every action.
  */
 
-type _TypeExports = [FlightInput, CrystalSlot, WorldEventState, SpaceState];
+type _TypeExports = [FlightInput, WorldEventState, SpaceState];
 const _typesUsed: _TypeExports | null = null;
 
 const STATE_KEYS = [
@@ -40,7 +39,7 @@ const STATE_KEYS = [
 ];
 
 const MODULE_EXPORTS = [
-  "WEBGL_AVAILABLE", "bodies", "crystalSlots", "flight", "hasWebGL", "loadBadges", "loadShards",
+  "WEBGL_AVAILABLE", "bodies", "flight", "hasWebGL", "loadBadges", "loadShards",
   "selectModalOpen", "selectSceneFrozen", "todayStamp", "useSpaceStore", "wantsResume", "worldClock",
   "worldEventElapsed",
 ];
@@ -103,7 +102,6 @@ describe("store shape (split guard)", () => {
   it("re-exports the per-frame objects themselves, not copies", () => {
     expect(storeModule.flight).toBe(flight);
     expect(storeModule.bodies).toBe(bodies);
-    expect(storeModule.crystalSlots).toBe(crystalSlots);
     expect(storeModule.worldClock).toBe(worldClock);
     expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "speed", "x", "y", "z"]);
     expect(Object.keys(flight.input).sort()).toEqual(["ascend", "backward", "beam", "boost", "descend", "forward", "left", "right", "scan", "steer", "thrust"]);
