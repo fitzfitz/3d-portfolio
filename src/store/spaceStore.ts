@@ -1,27 +1,25 @@
-import { create } from "zustand";
+import { create, type StateCreator } from "zustand";
+
 import { worldClock } from "./worldClock";
 import { subscribeWithSelector } from "zustand/middleware";
 import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
-import type { Beacon } from "../utils/beacons";
 import { projects } from "../constants";
 import { PROBES, PROBE_IDS } from "../data/probes";
 import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
 import { isBodyId, type BodyId } from "../data/bodyIds";
 import { destinationById } from "../data/destinations";
-import { REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
-import { setAmbientEnabled } from "../utils/ambientTime";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
 import { setLowPerfSource } from "../utils/hiResMaps";
-import { CHANGELOG } from "../data/changelog";
 import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
 import {
-  safeGetMuted, safeSetMuted, safeGetFlag, safeSetFlag, safeGetReducedMotion, safeSetReducedMotion,
-  safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
+  safeGetFlag, safeSetFlag, safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
 } from "./persist";
+import { createSettingsSlice, type SettingsSlice } from "./slices/settings";
+import { createSkySlice, type SkySlice } from "./slices/sky";
 
 const PROJECT_IDS: readonly string[] = projects.map((p) => p.id);
 
@@ -40,20 +38,6 @@ export { todayStamp, loadBadges, loadShards };
 
 const loadVisitedDossiers = () => loadVisitedDossiersFor(PROJECT_IDS);
 
-// `matchMedia` can be absent (old browser, SSR-ish context) — degrade to "no
-// preference" rather than throwing. Seeding from the live query at module
-// scope (rather than assuming `false`) closes a startup gap for an OS-reduce
-// visitor with nothing stored: without it, `reducedMotion` and the ambient
-// clock would both start as if no preference were set, and only flip once
-// the sync effect in useReducedMotion ran after first paint.
-function safeGetReducedMotionQueryMatches(): boolean {
-  try {
-    return typeof window !== "undefined" && typeof window.matchMedia === "function"
-      && window.matchMedia(REDUCED_MOTION_QUERY).matches;
-  } catch {
-    return false;
-  }
-}
 
 export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
 
@@ -97,27 +81,20 @@ export interface WorldEventState {
   convoy?: { planet: BodyId; plan: ConvoyPlan };
 }
 
-export interface SpaceState {
+/** A zustand slice creator over the whole store (zustand's slices pattern; see slices/). */
+export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
+
+export interface SpaceState extends SettingsSlice, SkySlice {
   activeZone: string | null;
   isOrbitLocked: boolean;
   isOrbitCooldown: boolean;
   isWarping: boolean;
-  isLowPerf: boolean;
-  lowPerfManual: boolean;
-  /**
-   * A tier switch requested during shader warm-up, applied when warm-up ends.
-   * Switching mid-warm-up unmounts the full-detail objects and disposes
-   * materials three's compileAsync is still polling; its poll then throws
-   * ("reading 'isReady'") and ShaderWarmup waits out its 8s cap.
-   */
-  pendingLowPerf: boolean | null;
   worldEvent: WorldEventState | null;
   showClassicCV: boolean;
   /** The canvas's React key: remountCanvas bumps it for a fresh WebGL context. */
   canvasEpoch: number;
   isNearSpawn: boolean;
   isTeleporting: boolean;
-  isMuted: boolean;
   cometNear: boolean;
   shardsCollected: number[];
   /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
@@ -131,19 +108,8 @@ export interface SpaceState {
   race: RaceState;
   /** Best lap in seconds, persisted; null until the first finish. */
   raceBest: number | null;
-  /** Visitor beacons from the beacon API (empty when it is not configured). */
-  beacons: Beacon[];
-  /** Ids of beacons this browser dropped, persisted, so they render as "yours". */
-  ownBeacons: string[];
   beaconPickerOpen: boolean;
-  reducedMotion: boolean;
-  reducedMotionManual: boolean;
   fuelEmpty: boolean;
-  /** True once every Suspense-loaded asset has resolved and the scene is on screen. */
-  sceneReady: boolean;
-  /** True while ShaderWarmup holds the frame loop for async shader compile. */
-  warmingUp: boolean;
-  setWarmingUp: (v: boolean) => void;
   /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
   visitedDossiers: string[];
   /**
@@ -168,13 +134,11 @@ export interface SpaceState {
   closeDossier: () => void;
   setProbeNear: (id: string | null) => void;
   setProbeTip: (tip: ProbeTip) => void;
-  setSceneReady: (v: boolean) => void;
   setFuelEmpty: (v: boolean) => void;
   setActiveZone: (z: string | null) => void;
   setOrbitLocked: (v: boolean) => void;
   breakOrbit: () => void;
   setWarping: (v: boolean) => void;
-  setLowPerf: (v: boolean, manual?: boolean) => void;
   setShowClassicCV: (v: boolean) => void;
   /**
    * Mounts a new canvas in place of the current one, as the classic-résumé
@@ -185,7 +149,6 @@ export interface SpaceState {
   remountCanvas: () => void;
   setNearSpawn: (v: boolean) => void;
   triggerTeleportFlash: () => void;
-  setMuted: (v: boolean) => void;
   setCometNear: (v: boolean) => void;
   collectShard: (i: number) => void;
   /**
@@ -200,10 +163,7 @@ export interface SpaceState {
   setPadConnected: (v: boolean) => void;
   setRace: (r: RaceState) => void;
   setRaceBest: (t: number) => void;
-  setBeacons: (b: Beacon[]) => void;
-  addOwnBeacon: (id: string) => void;
   setBeaconPickerOpen: (v: boolean) => void;
-  setReducedMotion: (v: boolean, manual?: boolean) => void;
   startWorldEvent: (ev: WorldEventState, line: string) => void;
   endWorldEvent: () => void;
   /** Logbook badges earned (persisted as fitz-logbook). Dossiers and shards are derived elsewhere. */
@@ -223,16 +183,6 @@ export interface SpaceState {
    * and logbook lines queue 4.5 s apart.
    */
   announceLogbook: (line: string) => void;
-  /** Live sky on (persisted as fitz-live-sky, default on): share this ship and see other pilots. */
-  liveSky: boolean;
-  setLiveSky: (v: boolean) => void;
-  /**
-   * The live-sky notice has been on the radio (persisted as fitz-live-seen-2:
-   * versioned when the notice grew the charted count, so pilots who agreed to
-   * the old one hear the new one once). No pose is sent before it.
-   */
-  liveSkySeen: boolean;
-  setLiveSkySeen: (v: boolean) => void;
   /** Bodies charted (persisted as fitz-charted, never fitz-logbook). The CARTOGRAPHER title is derived from it. */
   charted: ChartRecord[];
   /** Earned the title before the real Solar System (charting.ts LEGACY_CARTOGRAPHER_KEY): cartographer at 5/9, never cleared. */
@@ -260,24 +210,8 @@ export interface SpaceState {
   tellAurumOnce: () => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
-  /** Newest changelog id the visitor has seen (persisted as fitz-changelog-seen). */
-  changelogSeen: string;
-  markChangelogSeen: () => void;
 }
 
-// Read once into a module-level const: the two derived fields below must
-// agree, and calling the helper twice could in principle race with a
-// concurrent write.
-const storedReducedMotion = safeGetReducedMotion();
-const initialReducedMotionQueryMatches = safeGetReducedMotionQueryMatches();
-// Synchronise the ambient clock here, at module scope, not inside a mount
-// effect: the effect that would otherwise do this (Task 3's media-query sync)
-// skips its own call when the choice is manual, since manual already reflects
-// the visitor's intent. Without this line a reload with reduced motion stored
-// ON would leave `enabled` at its `true` default until the visitor toggled
-// the HUD button twice — the store would say reduced motion is on while the
-// decorative clock kept advancing.
-setAmbientEnabled(!resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches));
 
 const initialBadges = loadBadges(safeGetJSON<unknown>("fitz-logbook", []));
 const initialPlume = (() => {
@@ -286,23 +220,14 @@ const initialPlume = (() => {
   return typeof raw === "string" && plumeAllowed(raw, progress, hasPlumeColour, initialCharted, initialLegacyCartographer) ? raw : "stock";
 })();
 
-/** First visit: everything is new, so mark the newest entry seen and show no dot. */
-const initialChangelogSeen = (() => {
-  const raw = safeGetJSON<unknown>("fitz-changelog-seen", null);
-  if (typeof raw === "string") return raw;
-  safeSetJSON("fitz-changelog-seen", CHANGELOG[0].id);
-  return CHANGELOG[0].id;
-})();
-
 export const useSpaceStore = create<SpaceState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set, get, api) => ({
+    ...createSettingsSlice(set, get, api),
+    ...createSkySlice(set, get, api),
     activeZone: null,
     isOrbitLocked: false,
     isOrbitCooldown: false,
     isWarping: false,
-    isLowPerf: false,
-    lowPerfManual: false,
-    pendingLowPerf: null,
     worldEvent: null,
     badges: initialBadges,
     plumeColor: initialPlume,
@@ -378,25 +303,15 @@ export const useSpaceStore = create<SpaceState>()(
       set({ chartShoutAt: null });
     },
     changelogOpen: false,
-    changelogSeen: initialChangelogSeen,
     setChangelogOpen: (v) => {
       if (get().changelogOpen === v) return;
       set(v ? { changelogOpen: true, logbookOpen: false } : { changelogOpen: false });
-    },
-    markChangelogSeen: () => {
-      const newest = CHANGELOG[0].id;
-      if (get().changelogSeen === newest) return;
-      safeSetJSON("fitz-changelog-seen", newest);
-      set({ changelogSeen: newest });
     },
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     canvasEpoch: 0,
     isNearSpawn: true,
     isTeleporting: false,
-    isMuted: safeGetMuted(),
-    liveSky: safeGetFlag("fitz-live-sky", true),
-    liveSkySeen: safeGetFlag("fitz-live-seen-2", false),
     cometNear: false,
     shardsCollected: loadShards(safeGetJSON<unknown>("fitz-shards", [])),
     broadcast: null,
@@ -406,24 +321,8 @@ export const useSpaceStore = create<SpaceState>()(
     padConnected: false,
     race: { phase: "idle" },
     raceBest: parseRaceBest(safeGetJSON<unknown>("fitz-race-best", null)),
-    beacons: [],
-    ownBeacons: (() => {
-      const raw = safeGetJSON<unknown>("fitz-own-beacons", []);
-      return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
-    })(),
     beaconPickerOpen: false,
-    reducedMotion: resolveReducedMotion(storedReducedMotion, initialReducedMotionQueryMatches),
-    reducedMotionManual: storedReducedMotion !== null,
     fuelEmpty: false,
-    sceneReady: false,
-    warmingUp: false,
-    setWarmingUp: (v) => {
-      const s = get();
-      if (s.warmingUp === v) return;
-      // Ending warm-up releases a tier switch held back during it (setLowPerf).
-      if (!v && s.pendingLowPerf !== null) set({ warmingUp: false, isLowPerf: s.pendingLowPerf, pendingLowPerf: null });
-      else set({ warmingUp: v });
-    },
     visitedDossiers: loadVisitedDossiers(),
     jumpRequest: null,
     openDossier: null,
@@ -461,7 +360,6 @@ export const useSpaceStore = create<SpaceState>()(
       if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
       set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
     },
-    setSceneReady: (v) => { if (get().sceneReady !== v) set({ sceneReady: v }); },
     // Guarded setters: these are called from frame loops, so bail without
     // notifying when the value hasn't changed.
     setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
@@ -484,12 +382,6 @@ export const useSpaceStore = create<SpaceState>()(
     setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
     setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
     setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
-    // The manual lock applies at once, so an automatic decline arriving during
-    // warm-up is still refused; only the tier itself waits (pendingLowPerf).
-    setLowPerf: (v, manual = false) =>
-      set((s) => s.warmingUp
-        ? { pendingLowPerf: v, lowPerfManual: s.lowPerfManual || manual }
-        : { isLowPerf: v, pendingLowPerf: null, lowPerfManual: s.lowPerfManual || manual }),
     // Clearing the lock on the way IN (not just tracked as a side effect of
     // GlobalCanvas unmounting) closes a mount-while-frozen hole: showClassicCV
     // is the only thing that unmounts GlobalCanvas (App.tsx), and until this
@@ -512,18 +404,6 @@ export const useSpaceStore = create<SpaceState>()(
       get().breakOrbit();
       get().closeDossier();
       set((s) => ({ canvasEpoch: s.canvasEpoch + 1, isWarping: false }));
-    },
-    setLiveSky: (v) => {
-      set({ liveSky: v });
-      safeSetFlag("fitz-live-sky", v);
-    },
-    setLiveSkySeen: (v) => {
-      set({ liveSkySeen: v });
-      safeSetFlag("fitz-live-seen-2", v);
-    },
-    setMuted: (v) => {
-      set({ isMuted: v });
-      safeSetMuted(v);
     },
     breakOrbit: () => {
       if (orbitCooldownTimer) clearTimeout(orbitCooldownTimer);
@@ -557,20 +437,7 @@ export const useSpaceStore = create<SpaceState>()(
       safeSetJSON("fitz-race-best", t);
       set({ raceBest: t });
     },
-    setBeacons: (beacons) => set({ beacons }),
-    addOwnBeacon: (id) => {
-      // Newest 20: enough to recognise your own, bounded in storage.
-      const next = [id, ...get().ownBeacons.filter((o) => o !== id)].slice(0, 20);
-      safeSetJSON("fitz-own-beacons", next);
-      set({ ownBeacons: next });
-    },
     setBeaconPickerOpen: (v) => set({ beaconPickerOpen: v }),
-    setReducedMotion: (v, manual = false) => {
-      if (manual) safeSetReducedMotion(v);
-      // Ambient motion is the inverse of reduced motion.
-      setAmbientEnabled(!v);
-      set((s) => ({ reducedMotion: v, reducedMotionManual: s.reducedMotionManual || manual }));
-    },
   }))
 );
 
