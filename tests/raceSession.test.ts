@@ -292,6 +292,7 @@ class FakeSocket implements SocketLike {
 function connection() {
   const sockets: FakeSocket[] = [];
   const race: RaceServerMessage[] = [];
+  const hellos: number[] = [];
   let clock = 0;
   const conn = new LiveSkyConnection({
     url: "wss://sky.example/live",
@@ -301,8 +302,9 @@ function connection() {
     clearTimer: () => {},
     random: () => 0.5,
     onRace: (m) => race.push(m),
+    onHello: () => hellos.push(clock),
   });
-  return { conn, sockets, race, advance: (ms: number) => { clock += ms; } };
+  return { conn, sockets, race, hellos, advance: (ms: number) => { clock += ms; } };
 }
 
 const ME: ShipState = { p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
@@ -317,6 +319,19 @@ describe("LiveSkyConnection race traffic", () => {
     sockets[0].serve({ t: "rwait", cc: "ID" });
     sockets[0].serve({ t: "rbogus" });
     expect(race).toEqual([{ t: "rerr", reason: "full" }, { t: "rwait", cc: "ID" }]);
+  });
+
+  it("tells onHello on every hello, after the socket can send (R10's rejoin hangs off it)", () => {
+    const { conn, sockets, hellos } = connection();
+    conn.setWanted(true);
+    sockets[0].open();
+    expect(hellos).toEqual([]);
+    sockets[0].serve({ t: "hello", id: "me", peers: 0 });
+    expect(hellos).toHaveLength(1);
+    expect(conn.connected).toBe(true);
+    sockets[0].serve({ t: "peers", n: 2 });
+    sockets[0].serve({ t: "hello", id: "me2", peers: 0 });
+    expect(hellos).toHaveLength(2);
   });
 
   it("sendRace sends when open, and says false otherwise", () => {

@@ -37,7 +37,7 @@ describe("B2 landmark clearance", () => {
       }
     }
   });
-  it("keeps clear of every time-trial ring and every data shard", () => {
+  it("keeps clear of every race ring and every data shard", () => {
     for (const p of PLACES) {
       RING_GATES.forEach((g, i) => expect(d3(p.pos, g), `ring ${i} vs ${p.name}`).toBeGreaterThan(RING_RADIUS + p.keepOut + MARGIN));
       SHARDS.forEach((s, i) => expect(d3(p.pos, s.pos), `shard ${i} vs ${p.name}`).toBeGreaterThan(p.keepOut + MARGIN));

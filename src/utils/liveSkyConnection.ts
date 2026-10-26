@@ -29,6 +29,8 @@ export interface ConnectionDeps {
   onCharted?: (cc: string | null) => void;
   /** A ring-race message from the room (raceController.ts onRaceServer). */
   onRace?: (m: RaceServerMessage) => void;
+  /** The room said hello: connected and able to send (raceJoin.ts onLiveSkyHello rejoins a race). */
+  onHello?: () => void;
 }
 
 const OPEN = 1;
@@ -205,7 +207,7 @@ export class LiveSkyConnection {
       return;
     }
     switch (m.t) {
-      case "hello": this.selfId = m.id; this.peers = m.peers; break;
+      case "hello": this.selfId = m.id; this.peers = m.peers; this.deps.onHello?.(); break;
       case "peers": this.peers = m.n; if (m.n === 0) this.ghosts.clear(); break;
       case "sync": this.sendState.syncPending = true; break;
       case "charted": this.deps.onCharted?.(m.cc); break;

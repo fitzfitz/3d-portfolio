@@ -128,9 +128,10 @@ describe("jellyfish guide on the pad", () => {
     expect(padActions(press(), press(11))).toEqual([{ kind: "guide" }]);
     expect(padActions(press(11), press(11))).toEqual([]);
   });
-  it("leaves L3 (button 10) free", () => {
+  it("L3 (button 10) joins or leaves a race (R on the keyboard), on its press edge only", () => {
     const press = (...i: number[]) => Array.from({ length: 17 }, (_, k) => i.includes(k));
-    expect(padActions(press(), press(10))).toEqual([]);
+    expect(padActions(press(), press(10))).toEqual([{ kind: "race" }]);
+    expect(padActions(press(10), press(10))).toEqual([]);
   });
 });
 

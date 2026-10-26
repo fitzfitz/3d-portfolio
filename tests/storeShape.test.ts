@@ -200,7 +200,7 @@ describe("store shape (split guard)", () => {
       "fitz-live-sky": "0",
       "fitz-live-seen-2": "1",
       "fitz-race-best": "41.5",
-      // The old time trial's ghost: deleted once at load (race slice).
+      // The old solo lap's ghost: deleted once at load (race slice).
       "fitz-race-ghost": "{}",
       "fitz-own-beacons": JSON.stringify(["b1", 7, "b2"]),
       "fitz-own-bottles": JSON.stringify([{ id: "b2", x: 1, y: 2, z: 3, text: "hello there", at: 5, country: "ID" }, { id: "<x>" }]),

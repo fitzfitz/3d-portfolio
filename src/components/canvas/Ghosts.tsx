@@ -18,6 +18,7 @@ const hearShout = createShoutGate();
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
 import { raceLink } from "../../utils/raceLink";
 import { onRaceServer } from "../../utils/raceController";
+import { onLiveSkyHello, watchRaceJoin } from "../../utils/raceJoin";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
 
@@ -89,6 +90,8 @@ export default function Ghosts() {
     random: Math.random,
     onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
     onRace: (m) => onRaceServer(m),
+    // R10: a reload or reconnect mid-race rejoins with the stored token; a waiting join goes out.
+    onHello: () => onLiveSkyHello(),
   }), []);
   const noticeQueued = useRef(false);
   const wireCharts = useRef(makeWireChartCache());
@@ -101,10 +104,15 @@ export default function Ghosts() {
     flameGeometry.dispose();
   }, [conn, slots, flameGeometry]);
 
-  // The race talks through this connection (raceLink.ts sendRace).
+  // The race talks through this connection (raceLink.ts sendRace). A join
+  // waiting on the consent notice goes out when it plays (raceJoin.ts).
   useEffect(() => {
     raceLink.conn = conn;
-    return () => { if (raceLink.conn === conn) raceLink.conn = null; };
+    const unwatch = watchRaceJoin();
+    return () => {
+      unwatch();
+      if (raceLink.conn === conn) raceLink.conn = null;
+    };
   }, [conn]);
 
   useEffect(() => {

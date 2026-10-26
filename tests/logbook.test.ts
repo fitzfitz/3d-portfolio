@@ -173,3 +173,11 @@ describe("probe hints", () => {
     expect(byId("fuxx").title).toBe("Read the fuxx dossier");
   });
 });
+
+describe("the Ring runner badge (ring race)", () => {
+  it("is earned by finishing a race", () => {
+    expect(byId("ring").title).toBe("Ring runner");
+    expect(byId("ring").hint).toBe("FINISH A RING RACE");
+    expect(byId("ring").hintShort).toBe("FINISH A RACE");
+  });
+});

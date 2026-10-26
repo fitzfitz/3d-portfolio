@@ -1,7 +1,7 @@
 import { RING_GATES } from "../data/ringCourse";
 import {
   RACE_LIMIT_MS, UPLOAD_WINDOW_MS, RACE_ID_RE, isInviteCode, parseStamp,
-  type LobbyPilot, type RaceKind, type RaceServerMessage, type ResultRow, type Stamp,
+  type LobbyPilot, type RaceClientMessage, type RaceKind, type RaceServerMessage, type ResultRow, type Stamp,
 } from "./raceProtocol";
 
 /**
@@ -164,4 +164,10 @@ export async function uploadRun(
 export function raceCodeFromUrl(search: string): string | null {
   const code = new URLSearchParams(search).get("race");
   return isInviteCode(code) ? code : null;
+}
+
+/** The join a `?race=` link asks for: that invite's race for a valid code, else the public race. */
+export function raceJoinMessage(search: string): RaceClientMessage {
+  const code = raceCodeFromUrl(search);
+  return code ? { t: "rjoin", code } : { t: "rjoin" };
 }

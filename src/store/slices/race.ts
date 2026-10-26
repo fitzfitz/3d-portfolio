@@ -3,7 +3,7 @@ import { RACE_IDLE, type RaceView } from "../../utils/raceSession";
 import { STORE_KEYS, safeGetJSON, safeSetJSON, safeRemove } from "../persist";
 import type { SliceCreator } from "../spaceStore";
 
-/** The old time trial's best-lap ghost: the race replays the server's best lap now. Deleted once at load. */
+/** The old solo lap's best-lap ghost: the race replays the server's best lap now. Deleted once at load. */
 export const LEGACY_RACE_GHOST_KEY = "fitz-race-ghost";
 
 /** The ring race: what the HUD and the scene show, the live sky it turned on, and the best lap. */

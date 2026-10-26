@@ -30,6 +30,20 @@ export function wantsResume(loc: { search: string; hash: string } | undefined =
   return q.has("cv") || q.has("resume") || /^#(cv|resume)$/i.test(loc.hash);
 }
 
+/**
+ * The invite code of a `?race=CODE` link (the shape raceProtocol's
+ * isInviteCode accepts: six characters without the look-alikes), or null. The
+ * ship then starts on the race grid instead of the spawn pad (flightState.ts).
+ * Import-free like the rest of this file, so the pattern is repeated here
+ * (tests/raceHud.test.tsx keeps the two in step).
+ */
+export function raceLinkCode(loc: { search: string } | undefined =
+  typeof window !== "undefined" ? window.location : undefined): string | null {
+  if (!loc) return null;
+  const code = new URLSearchParams(loc.search).get("race");
+  return code !== null && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/.test(code) ? code : null;
+}
+
 /** Probed once at import: each probe creates a throwaway WebGL context. */
 export const WEBGL_AVAILABLE = hasWebGL();
 

@@ -18,12 +18,17 @@ import type { RaceError, RaceServerMessage, ResultRow, Stamp } from "./raceProto
 
 const N = RING_GATES.length;
 
-/** Radio copy (Task 7 owns the rest of the race's lines). */
-const ERROR_LINES: Partial<Record<RaceError, string>> = {
+/** The race's radio copy (`RACE // …`, like every radio line). */
+export const ERROR_LINES: Partial<Record<RaceError, string>> = {
   expired: "RACE // THAT RACE HAS ENDED · THE START GATE IS STILL OPEN",
   full: "RACE // THE RACE IS FULL · TRY THE NEXT ONE",
   off: "RACE // RACING IS OFFLINE RIGHT NOW",
+  busy: "RACE // THIS RACE IS OPEN IN ANOTHER TAB",
 };
+export const waitLine = (cc: string | null) => `RACE // A PILOT FROM ${cc ?? "DEEP SPACE"} IS WAITING AT THE START GATE`;
+export const SOLO_LINE = "RACE // NO RIVALS ONLINE · RACING THE BEST LAP";
+export const GO_LINE = `RACE // GO · ${N} RINGS · NORMAL WARP ONLY`;
+export const FINAL_LINE = "RACE // FINAL CALL · 30 SECONDS";
 export const RESULT_LOST_LINE = "RACE // RESULT NOT RECEIVED IN TIME";
 export function resultLine(own: ResultRow, total: number): string {
   return own.timeMs !== null
@@ -73,7 +78,10 @@ function keepStamp(stamp: Stamp, localNow: number, refresh: boolean): RaceRun {
 /** Store, run storage, radio, badge and best for one server race message. */
 export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()): void {
   const s = useSpaceStore.getState();
+  /** The view before this message: the lines below play on a change, not on a rejoin's resend. */
+  const prev = s.raceView;
   let run: RaceRun | null = null;
+  let line: string | null = null;
   switch (m.t) {
     case "rlobby": {
       const cur = readRun(localNow);
@@ -91,10 +99,21 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
       if (cur?.race !== m.race && token) saveRun({ v: 1, race: m.race, token, kind: m.kind, stamps: [], expiresAt: localNow + RUN_TTL_MS });
       // The grid has the final kind: a lone pilot's public or private lobby races solo.
       else if (cur && cur.kind !== m.kind) saveRun({ ...cur, kind: m.kind });
+      // Docked or reading a dossier, the scene is frozen (no frame runs), so
+      // nothing would put the ship on the grid: let go of both (R15).
+      if (s.isOrbitLocked) s.breakOrbit();
+      if (s.openDossier !== null) s.closeDossier();
+      if (m.kind === "solo" && !(prev.phase === "grid" && prev.race === m.race)) line = SOLO_LINE;
       break;
     }
     case "rgo":
       run = keepStamp(m.stamp, localNow, true);
+      // From the grid only: a rejoin after a reload picks the race up mid-lap.
+      if (prev.phase === "grid" && prev.race === m.stamp.r) line = GO_LINE;
+      break;
+    case "rfinal":
+      // A race of one ends at its finish: there is no one to call.
+      if (prev.phase === "running" && prev.finalEndsAt === null && prev.kind !== "solo") line = FINAL_LINE;
       break;
     case "rstamp":
       run = keepStamp(m.stamp, localNow, false);
@@ -115,16 +134,20 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
       clearRun();
       break;
     }
-    case "rerr": {
-      const line = ERROR_LINES[m.reason];
-      if (line) s.sendBroadcast(line);
+    case "rerr":
+      line = ERROR_LINES[m.reason] ?? null;
+      // The room no longer knows the stored run's race (a rejoin after it
+      // ended): drop the run, or every reconnect would ask again (raceJoin.ts).
+      if (m.reason === "expired") clearRun();
       break;
-    }
     case "rwait":
+      // Ambient, for pilots off a race; a racer has the lobby in front of them.
+      if (prev.phase === "idle") line = waitLine(m.cc);
       break;
   }
-  const view = syncWithRun(raceReduce(s.raceView, m, localNow), run);
-  if (view !== s.raceView) s.setRaceView(view);
+  if (line) s.sendBroadcast(line);
+  const view = syncWithRun(raceReduce(prev, m, localNow), run);
+  if (view !== prev) s.setRaceView(view);
 }
 
 /** The wait before the one retry of a failed upload. */

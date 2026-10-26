@@ -68,9 +68,19 @@ describe("runPadAction", () => {
   });
 
   it("the pad-link line names every button with a job, R3 GUIDE included", () => {
-    for (const part of ["L-STICK FLY", "R-STICK PITCH", "RB WARP", "LB BEAM", "A SCAN", "Y PHOTO", "X LOGBOOK", "R3 GUIDE", "D-PAD JUMP", "VIEW SHIPYARD", "MENU CONTACT"]) {
+    for (const part of ["L-STICK FLY", "R-STICK PITCH", "RB WARP", "LB BEAM", "A SCAN", "Y PHOTO", "X LOGBOOK", "R3 GUIDE", "L3 RACE", "D-PAD JUMP", "VIEW SHIPYARD", "MENU CONTACT"]) {
       expect(LINKED_MESSAGE).toContain(part);
     }
+  });
+
+  it("L3 runs the race key (join at the gate, leave a lobby), not in photo mode, under a modal or the résumé", () => {
+    const race = vi.fn();
+    runPadAction({ kind: "race" }, store(), race);
+    expect(race).toHaveBeenCalledOnce();
+    for (const over of [{ photoMode: true }, { isOrbitLocked: true }, { openDossier: "ruangrapi" }, { showClassicCV: true }, { bottlePanelOpen: true }]) {
+      runPadAction({ kind: "race" }, store(over), race);
+    }
+    expect(race).toHaveBeenCalledOnce();
   });
 
   it("keeps the existing photo-mode and orbit rules", () => {

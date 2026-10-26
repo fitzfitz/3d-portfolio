@@ -44,6 +44,7 @@ import { JUMP_TARGETS, destinationById } from "./data/destinations";
 import { PROBES } from "./data/probes";
 import { probeIntro } from "./utils/probes";
 import { identity } from "./data/identity";
+import { raceKey, startRaceLink } from "./utils/raceJoin";
 import PerfOverlay from "./debug/PerfOverlay";
 
 /**
@@ -139,6 +140,11 @@ export default function App() {
         s.setChangelogOpen(!s.changelogOpen);
         return;
       }
+      // R joins a race at the start gate, or leaves its lobby (raceJoin.ts).
+      if (e.code === "KeyR" && !s.photoMode && !selectModalOpen(s)) {
+        raceKey();
+        return;
+      }
       // Number keys jump to JUMP_TARGETS in order: probes, then destinations.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
@@ -158,6 +164,11 @@ export default function App() {
   // A pilot who charted all five before AURUM existed hears about it once.
   useEffect(() => {
     if (sceneReady) useSpaceStore.getState().tellAurumOnce();
+  }, [sceneReady]);
+  // A ?race= invite link joins its race once the scene is up (the ship
+  // already sits on the grid); the code leaves the URL.
+  useEffect(() => {
+    if (sceneReady) startRaceLink();
   }, [sceneReady]);
 
   const dossierProject = projectById(openDossier);

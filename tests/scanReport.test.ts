@@ -44,8 +44,8 @@ describe("generateScanReport", () => {
     expect(generateScanReport("comet_2p")).toContain("PERIOD 3.3 YR");
     expect(generateScanReport("comet_67p")).toContain("PERIOD 6.4 YR");
   });
-  it("describes the time-trial course without the old belt", () => {
-    expect(generateScanReport("time_trial")).not.toMatch(/BELT/);
+  it("reports the race start gate: fly in and press R", () => {
+    expect(generateScanReport("race_start")).toBe("SCAN[RACE_START] // FLY IN AND PRESS R TO RACE OTHER PILOTS");
   });
   it("always uppercases and prefixes SCAN[", () => {
     expect(generateScanReport("asteroid_1")).toMatch(/^SCAN\[/);

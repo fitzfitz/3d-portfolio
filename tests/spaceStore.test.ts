@@ -161,13 +161,13 @@ describe("spaceStore", () => {
   it("a queued logbook line waits again if another line went out meanwhile", async () => {
     vi.useFakeTimers();
     const s = useSpaceStore.getState();
-    s.sendBroadcast("LAP 0:42");
+    s.sendBroadcast("RACE // P1 OF 2 · 0:42.0");
     s.recordBadge("ring");
     await Promise.resolve();
     vi.advanceTimersByTime(4000);
-    s.sendBroadcast("TIME TRIAL ABORTED");
+    s.sendBroadcast("RACE // RACING IS OFFLINE RIGHT NOW");
     vi.advanceTimersByTime(600); // the badge's slot arrives
-    expect(useSpaceStore.getState().broadcast?.text).toBe("TIME TRIAL ABORTED");
+    expect(useSpaceStore.getState().broadcast?.text).toBe("RACE // RACING IS OFFLINE RIGHT NOW");
     vi.advanceTimersByTime(4500);
     expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
     vi.useRealTimers();

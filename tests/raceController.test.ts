@@ -290,3 +290,66 @@ describe("raceController", () => {
     }
   });
 });
+
+describe("raceController radio copy (Task 7)", () => {
+  const grid = (kind: "public" | "solo" = "public", race = "race-1"): RaceServerMessage =>
+    ({ t: "rgrid", race, kind, slot: 0, goAt: T + 3000, now: T });
+  const text = () => s().broadcast?.text ?? null;
+
+  it("rwait: who is waiting at the gate, heard only off a race", () => {
+    onRaceServer({ t: "rwait", cc: "ID" }, T);
+    expect(text()).toBe("RACE // A PILOT FROM ID IS WAITING AT THE START GATE");
+    onRaceServer({ t: "rwait", cc: null }, T);
+    expect(text()).toBe("RACE // A PILOT FROM DEEP SPACE IS WAITING AT THE START GATE");
+    onRaceServer(lobby(), T);
+    useSpaceStore.setState({ broadcast: null });
+    onRaceServer({ t: "rwait", cc: "MY" }, T);
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("a solo grid says there are no rivals, once per race", () => {
+    onRaceServer(lobby(), T);
+    onRaceServer(grid("solo"), T);
+    expect(text()).toBe("RACE // NO RIVALS ONLINE · RACING THE BEST LAP");
+    useSpaceStore.setState({ broadcast: null });
+    onRaceServer(grid("solo"), T);
+    expect(s().broadcast).toBeNull();
+    onRaceServer(grid("public", "race-2"), T);
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("GO from the grid, not from a rejoin's rgo", () => {
+    onRaceServer(lobby(), T);
+    onRaceServer(grid(), T);
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T + 3000);
+    expect(text()).toBe(`RACE // GO · ${N} RINGS · NORMAL WARP ONLY`);
+    useSpaceStore.setState({ broadcast: null, raceView: RACE_IDLE });
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 9000 }, T + 9000);
+    expect(s().raceView.phase).toBe("running");
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("FINAL CALL once, and not in a race of one", () => {
+    onRaceServer(lobby(), T);
+    onRaceServer(grid(), T);
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T + 3000);
+    onRaceServer({ t: "rfinal", endsAt: T + 60_000, now: T + 30_000 }, T + 30_000);
+    expect(text()).toBe("RACE // FINAL CALL · 30 SECONDS");
+    useSpaceStore.setState({ broadcast: null });
+    onRaceServer({ t: "rfinal", endsAt: T + 60_000, now: T + 31_000 }, T + 31_000);
+    expect(s().broadcast).toBeNull();
+    useSpaceStore.setState({ raceView: RACE_IDLE });
+    onRaceServer(grid("solo", "race-2"), T);
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000, "race-2"), now: T + 3000 }, T + 3000);
+    useSpaceStore.setState({ broadcast: null });
+    onRaceServer({ t: "rfinal", endsAt: T + 60_000, now: T + 30_000 }, T + 30_000);
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("rerr busy: the race is open in another tab; this tab keeps its view", () => {
+    onRaceServer(lobby(), T);
+    onRaceServer({ t: "rerr", reason: "busy" }, T);
+    expect(text()).toBe("RACE // THIS RACE IS OPEN IN ANOTHER TAB");
+    expect(s().raceView.phase).toBe("lobby");
+  });
+});

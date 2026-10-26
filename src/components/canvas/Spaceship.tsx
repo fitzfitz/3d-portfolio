@@ -1,10 +1,11 @@
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useModel } from "../../utils/sceneAssets";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies, selectRaceFlying } from "../../store/spaceStore";
+import { shipStartPose, markShipStarted } from "../../store/flightState";
 import { moonPositions } from "../../store/moonState";
 import { moonReach, SOLAR_MOONS } from "../../data/solarMoons";
 import { fitzDebug } from "../../debug/bridge";
@@ -186,7 +187,10 @@ export default function Spaceship() {
     return stockEmissive.get(engineMat)!;
   }, [engineMat]);
 
-  const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
+  // The spawn pad, or a race link's grid slot for the page's first ship (flightState.ts).
+  const [start] = useState(shipStartPose);
+  useEffect(() => markShipStarted(), []);
+  const pos = useRef(new THREE.Vector3(start.x, start.y, start.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
   // Gravity momentum (spec §5): built by wells, decays slowly; the ship moves
   // by vel + gravity. Zeroed wherever the ship is placed, docked or bounced.
@@ -226,9 +230,9 @@ export default function Spaceship() {
 
   // Spawn nose-on to the first probe, so the first W press flies toward a
   // project rather than into empty space.
-  const angle = useRef(headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
+  const angle = useRef(start.heading ?? headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
   const roll = useRef(0);
-  const pitch = useRef(0);
+  const pitch = useRef(start.pitch);
   const turnVelocity = useRef(0); // rad/second
   const pitchVel = useRef(0); // rad/s — `pitch` ref (above) is now flight state, not just visual
   const shake = useRef(0);
@@ -249,7 +253,8 @@ export default function Spaceship() {
   const warpSpeed = useRef(WARP_SPEED);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on the first probe, so the first W press flies toward a project.
-  const hasFlown = useRef(false);
+  // A race link's ship starts on the grid, not the pad: nothing to auto-aim.
+  const hasFlown = useRef(start.race);
   // A requested jump target, applied by the frame loop. Held in a ref rather
   // than applied in the store subscription: an open dossier freezes the frame
   // loop, so the jump first breaks orbit and lands on the next live frame.

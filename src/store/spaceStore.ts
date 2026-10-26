@@ -10,7 +10,8 @@
  * tier, warm-up, reduced motion, sound, changelog seen), sky (beacons, live sky).
  *
  * Cross-slice actions call the other slice's action through get():
- *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination)
+ *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination);
+ *                                   it reads race.raceView (no docking while racing)
  *   - logbook.recordBadge        -> logbook.announceLogbook -> hud.sendBroadcast
  *                                   (announceLogbook also reads hud.broadcast)
  *   - hud.setShowClassicCV(true) -> flight.breakOrbit + dossier.closeDossier

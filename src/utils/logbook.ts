@@ -59,7 +59,7 @@ const FIXED_ENTRIES: readonly LogbookEntry[] = [
   { id: "contact", section: "essential", title: "Reach the contact portal", hint: "DOCK AT THE CONTACT PORTAL", hintShort: "CONTACT PORTAL", plume: false },
   { id: "slingshot", section: "badge", title: "Slingshot", hint: "SKIM A PLANET OR THE SUN, LEAVE FAST", hintShort: "GRAVITY SLINGSHOT", plume: true },
   { id: "comet", section: "badge", title: "Comet chaser", hint: "SCAN A VISITING COMET (HOLD E)", hintShort: "SCAN A COMET", plume: true },
-  { id: "ring", section: "badge", title: "Ring runner", hint: "LAP THE RING COURSE UNDER 1:00", hintShort: "RING LAP < 1:00", plume: true },
+  { id: "ring", section: "badge", title: "Ring runner", hint: "FINISH A RING RACE", hintShort: "FINISH A RACE", plume: true },
   { id: "ore", section: "badge", title: "Prospector", hint: "MINE 16 ORE FROM THE BELT (HOLD F)", hintShort: "MINE 16 ORE", plume: true },
   { id: "convoy", section: "badge", title: "Convoy spotter", hint: "WATCH A CONVOY DELIVER UP CLOSE", hintShort: "SPOT A CONVOY", plume: true },
   { id: "shards", section: "badge", title: "Shard hunter", hint: `FIND ${SHARDS_FOR_BADGE} DATA SHARDS`, hintShort: `FIND ${SHARDS_FOR_BADGE} SHARDS`, plume: true },
