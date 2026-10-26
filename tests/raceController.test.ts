@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useSpaceStore } from "../src/store/spaceStore";
-import { onRaceServer, onRaceOver, resetRaceController } from "../src/utils/raceController";
+import { onRaceServer, onRaceOver, resetRaceController, leaveRace, UPLOAD_RETRY_MS } from "../src/utils/raceController";
+import { raceLink } from "../src/utils/raceLink";
+import type { LiveSkyConnection } from "../src/utils/liveSkyConnection";
 import { RACE_IDLE, RUN_TTL_MS, loadRun } from "../src/utils/raceSession";
 import { STORE_KEYS } from "../src/store/persist";
 import { RING_GATES } from "../src/data/ringCourse";
@@ -44,7 +46,7 @@ describe("raceController", () => {
   it("rlobby stores a fresh run, once per race and token", () => {
     onRaceServer(lobby(), T);
     expect(s().raceView.phase).toBe("lobby");
-    expect(run()).toEqual({ v: 1, race: "race-1", token: TOKEN, stamps: [], expiresAt: T + RUN_TTL_MS });
+    expect(run()).toEqual({ v: 1, race: "race-1", token: TOKEN, kind: "public", stamps: [], expiresAt: T + RUN_TTL_MS });
     onRaceServer({ t: "rgrid", race: "race-1", kind: "public", slot: 0, goAt: T + 3000, now: T }, T);
     onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T + 3000);
     onRaceServer(lobby(), T + 4000);
@@ -68,13 +70,35 @@ describe("raceController", () => {
     expect(run()!.stamps.map((x) => x.i)).toEqual([0, 1, 2, 3]);
   });
 
+  it("the run keeps the race's kind: the lobby's, then the grid's (a lone pilot's race turns solo)", () => {
+    onRaceServer(lobby(), T);
+    expect(run()!.kind).toBe("public");
+    onRaceServer({ t: "rgrid", race: "race-1", kind: "solo", slot: 0, goAt: T + 3000, now: T }, T);
+    expect(run()!.kind).toBe("solo");
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T + 3000);
+    expect(run()!.kind).toBe("solo");
+    expect(run()!.stamps.map((x) => x.i)).toEqual([0]);
+  });
+
+  it("a solo race resumed after a reload stays solo: the rejoin's rgo on an idle view takes the stored kind", () => {
+    stored.set(STORE_KEYS.raceRun, JSON.stringify({ v: 1, race: "race-1", token: TOKEN, kind: "solo", stamps: [stamp(0, T), stamp(1, T + 5000)], expiresAt: T + RUN_TTL_MS }));
+    onRaceServer({ t: "rgo", stamp: stamp(0, T), now: T + 8000 }, T + 8000);
+    expect(s().raceView).toMatchObject({ phase: "running", kind: "solo", next: 2 });
+  });
+
+  it("a stored run from before kinds were kept resumes as public", () => {
+    stored.set(STORE_KEYS.raceRun, JSON.stringify({ v: 1, race: "race-1", token: TOKEN, stamps: [stamp(0, T)], expiresAt: T + RUN_TTL_MS }));
+    onRaceServer({ t: "rgo", stamp: stamp(0, T), now: T + 8000 }, T + 8000);
+    expect(s().raceView).toMatchObject({ phase: "running", kind: "public" });
+  });
+
   it("race again: a new grid starts a new run with the same token", () => {
     onRaceServer(lobby(), T);
     onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T + 3000);
     onRaceServer({ t: "rresults", race: "race-1", rows: [], againBy: T + 20_000, now: T }, T);
     expect(stored.has(STORE_KEYS.raceRun)).toBe(false);
     onRaceServer({ t: "rgrid", race: "race-2", kind: "solo", slot: 0, goAt: T + 3000, now: T }, T);
-    expect(run()).toEqual({ v: 1, race: "race-2", token: TOKEN, stamps: [], expiresAt: T + RUN_TTL_MS });
+    expect(run()).toEqual({ v: 1, race: "race-2", token: TOKEN, kind: "solo", stamps: [], expiresAt: T + RUN_TTL_MS });
     expect(s().raceView).toMatchObject({ phase: "grid", race: "race-2" });
   });
 
@@ -162,5 +186,77 @@ describe("raceController", () => {
     useSpaceStore.setState({ broadcast: null });
     await onRaceOver(null);
     expect(s().broadcast).toBeNull();
+  });
+
+  /** A finished solo lap, over with the upload window open until `uploadBy`. */
+  function overAt(uploadBy: number) {
+    stored.set("fitz-beacon-api-dev", "https://api.example");
+    onRaceServer(lobby(), T);
+    onRaceServer({ t: "rgo", stamp: stamp(0, T), now: T }, T);
+    onRaceServer({ t: "rover", race: "race-1", uploadBy, now: T }, T);
+    useSpaceStore.setState({ broadcast: null });
+  }
+  const replies = (...statuses: number[]) => {
+    const f = vi.fn(async () => new Response("{}", { status: statuses.shift() ?? 500 }));
+    vi.stubGlobal("fetch", f);
+    return f;
+  };
+
+  it("onRaceOver retries a failed upload once while the window is open", async () => {
+    overAt(T + 30_000);
+    const f = replies(503, 200);
+    const p = onRaceOver(null);
+    await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_MS);
+    await p;
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("onRaceOver retries once only, then says the result was lost", async () => {
+    overAt(T + 30_000);
+    const f = replies(503, 503, 200);
+    const p = onRaceOver(null);
+    await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_MS * 3);
+    await p;
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(s().broadcast?.text).toBe("RACE // RESULT NOT RECEIVED IN TIME");
+  });
+
+  it("onRaceOver does not retry once the window has closed", async () => {
+    overAt(T + UPLOAD_RETRY_MS - 1);
+    const f = replies(503, 200);
+    const p = onRaceOver(null);
+    await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_MS);
+    await p;
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(s().broadcast?.text).toBe("RACE // RESULT NOT RECEIVED IN TIME");
+  });
+
+  it("leaveRace sends rleave, drops the run and goes back to idle", () => {
+    const sent: unknown[] = [];
+    raceLink.conn = { sendRace: (m: unknown) => { sent.push(m); return true; } } as unknown as LiveSkyConnection;
+    try {
+      onRaceServer(lobby(), T);
+      onRaceServer({ t: "rgo", stamp: stamp(0, T), now: T }, T);
+      leaveRace();
+      expect(sent).toEqual([{ t: "rleave" }]);
+      expect(stored.has(STORE_KEYS.raceRun)).toBe(false);
+      expect(s().raceView).toEqual(RACE_IDLE);
+    } finally {
+      raceLink.conn = null;
+    }
+  });
+
+  it("onRaceOver never retries late or rejected", async () => {
+    for (const status of [409, 400, 404]) {
+      resetRaceController();
+      overAt(T + 30_000);
+      const f = replies(status, 200);
+      const p = onRaceOver(null);
+      await vi.advanceTimersByTimeAsync(UPLOAD_RETRY_MS);
+      await p;
+      expect(f, String(status)).toHaveBeenCalledTimes(1);
+      expect(s().broadcast?.text).toBe("RACE // RESULT NOT RECEIVED IN TIME");
+    }
   });
 });

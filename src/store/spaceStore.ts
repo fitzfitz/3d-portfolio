@@ -100,6 +100,15 @@ export function selectModalOpen(s: Pick<SpaceState, "isOrbitLocked" | "openDossi
 }
 
 /**
+ * The pilot is mid-lap: the race is running and they have not finished. The
+ * quiet-while-racing readers (radio lines, traffic, events, the guide) use it;
+ * a finished pilot waiting out the final call hears the world again.
+ */
+export function selectRaceFlying(s: Pick<SpaceState, "raceView">): boolean {
+  return s.raceView.phase === "running" && !s.raceView.finished;
+}
+
+/**
  * Seconds since the running event of `kind` started, or null if none is
  * running. Kept here rather than in worldClock.ts: it reads the store, and
  * worldClock.ts importing the store would make an import cycle.

@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { useSpaceStore } from "../../store/spaceStore";
-import { raceClock } from "../../utils/raceClock";
 import { formatRaceTime } from "../../utils/race";
 import { PAR_SECONDS, RING_GATES } from "../../data/ringCourse";
 import { setText } from "../../utils/domWrite";
@@ -22,7 +21,7 @@ export default function RaceHUD() {
     if (race.phase !== "running") return;
     let raf = 0;
     const tick = () => {
-      setText(clockRef.current, formatRaceTime(raceClock.now - race.startClock));
+      setText(clockRef.current, formatRaceTime((Date.now() - race.goAt) / 1000));
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

@@ -40,7 +40,7 @@ const STATE_KEYS = [
 
 const MODULE_EXPORTS = [
   "WEBGL_AVAILABLE", "bodies", "flight", "hasWebGL", "loadBadges", "loadShards",
-  "selectModalOpen", "selectSceneFrozen", "todayStamp", "useSpaceStore", "wantsResume", "worldClock",
+  "selectModalOpen", "selectRaceFlying", "selectSceneFrozen", "todayStamp", "useSpaceStore", "wantsResume", "worldClock",
   "worldEventElapsed",
 ];
 
@@ -104,7 +104,7 @@ describe("store shape (split guard)", () => {
     expect(storeModule.flight).toBe(flight);
     expect(storeModule.bodies).toBe(bodies);
     expect(storeModule.worldClock).toBe(worldClock);
-    expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "speed", "x", "y", "z"]);
+    expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "raceHold", "racing", "speed", "x", "y", "z"]);
     expect(Object.keys(flight.input).sort()).toEqual(["ascend", "backward", "beam", "boost", "descend", "forward", "left", "right", "scan", "steer", "thrust"]);
     expect(Object.keys(worldClock)).toEqual(["now"]);
   });

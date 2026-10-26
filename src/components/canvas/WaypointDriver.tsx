@@ -2,7 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { projectById } from "../../constants";
 import { destinationById } from "../../data/destinations";
-import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectModalOpen, selectRaceFlying } from "../../store/spaceStore";
 import { createWaypointTarget, makeRecruiterTarget } from "../../utils/waypointTarget";
 import { waypointState } from "../../utils/waypointState";
 import { RACE_GATES } from "../../data/ringCourse";
@@ -27,7 +27,7 @@ export default function WaypointDriver() {
   useFrame(({ camera, size }) => {
     const s = useSpaceStore.getState();
     // Mid-race, until the finish, the waypoint belongs to the race: point at the next ring.
-    const race = s.raceView.phase === "running" && !s.raceView.finished ? s.raceView : null;
+    const race = selectRaceFlying(s) && s.raceView.phase === "running" ? s.raceView : null;
     const placed = !race && recruiterTarget(flight, s.visitedDossiers, s.badges, wp);
     const id = race ? "" : wp.id;
     // Nothing to point at while docked at a destination or inside its zone

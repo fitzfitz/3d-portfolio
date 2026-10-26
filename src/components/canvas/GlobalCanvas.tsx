@@ -34,7 +34,7 @@ import CareerStation from "./CareerStation";
 import CareerTrail from "./CareerTrail";
 import Shipyard from "./Shipyard";
 import DormantGate from "./DormantGate";
-import RingCourse from "./RingCourse";
+import RaceCourse from "./RaceCourse";
 import Bottles from "./Bottles";
 import Ghosts from "./Ghosts";
 import { liveSkyUrl } from "../../utils/liveSky";
@@ -683,8 +683,8 @@ function GlobalCanvas() {
             <Shipyard />
             <DormantGate />
 
-            {/* Time-trial ring course through the inner belt, with a ghost of the best lap */}
-            <RingCourse />
+            {/* The ring race: the start gate, the course for racers, the best lap's ghost in a solo race */}
+            <RaceCourse />
 
             {/* Visitors' bottles — only when the beacon API is configured, and Show bottles is on */}
             {BEACONS_ENABLED && <BottlesGate />}

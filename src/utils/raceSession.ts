@@ -76,8 +76,15 @@ export function raceReduce(v: RaceView, m: RaceServerMessage, localNow: number):
 
 // ---- the run: token and stamps, kept for the upload ------------------------
 
-/** Stored as fitz-race-run, so a reload mid-race keeps the stamps earned before it. */
-export interface RaceRun { v: 1; race: string; token: string; stamps: Stamp[]; expiresAt: number }
+/**
+ * Stored as fitz-race-run, so a reload mid-race keeps the stamps earned before
+ * it. `kind` (from the lobby and the grid) lets a rejoin after a reload pick
+ * the race up as the kind it was: a solo race keeps its best-lap replay. Runs
+ * stored before it was kept have none (still v 1).
+ */
+export interface RaceRun { v: 1; race: string; token: string; kind?: RaceKind; stamps: Stamp[]; expiresAt: number }
+
+const KINDS: readonly string[] = ["public", "private", "solo"] satisfies RaceKind[];
 
 /** How long a run is kept from the race's start: the race, the upload window and a minute. */
 export const RUN_TTL_MS = RACE_LIMIT_MS + UPLOAD_WINDOW_MS + 60_000;
@@ -99,7 +106,10 @@ export function loadRun(raw: string | null, localNow: number): RaceRun | null {
     if (!s) return null;
     stamps.push(s);
   }
-  return { v: 1, race: r.race, token: r.token, stamps, expiresAt: r.expiresAt };
+  const run: RaceRun = { v: 1, race: r.race, token: r.token, stamps, expiresAt: r.expiresAt };
+  // Optional: a missing or unknown kind leaves it out (the rejoin falls back to public).
+  if (typeof r.kind === "string" && KINDS.includes(r.kind)) run.kind = r.kind as RaceKind;
+  return run;
 }
 
 /** The run with `s` added, replacing a stamp with the same ring index; stamps stay in ring order. */
@@ -110,8 +120,9 @@ export function withStamp(run: RaceRun, s: Stamp): RaceRun {
 
 /**
  * The view brought in line with the stored run of the same race: after a
- * reload the rejoin's rgo knows only the start, while the run holds every
- * ring stamped before it. Never moves `next` back.
+ * reload the rejoin's rgo knows only the start (and, on an idle view, not the
+ * kind), while the run holds every ring stamped before it and the race's
+ * kind. Never moves `next` back.
  */
 export function syncWithRun(v: RaceView, run: RaceRun | null): RaceView {
   if (!run || (v.phase !== "running" && v.phase !== "over") || v.race !== run.race || run.stamps.length === 0) return v;
@@ -119,7 +130,8 @@ export function syncWithRun(v: RaceView, run: RaceRun | null): RaceView {
   const finished = v.finished || top >= N;
   if (v.phase === "over") return finished === v.finished ? v : { ...v, finished };
   const next = Math.max(v.next, top + 1);
-  return next === v.next && finished === v.finished ? v : { ...v, next, finished };
+  const kind = run.kind ?? v.kind;
+  return next === v.next && finished === v.finished && kind === v.kind ? v : { ...v, next, finished, kind };
 }
 
 /**

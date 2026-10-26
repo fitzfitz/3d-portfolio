@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, worldEventElapsed, type WorldEventState } from "../../store/spaceStore";
+import { useSpaceStore, flight, bodies, worldClock, selectSceneFrozen, selectRaceFlying, worldEventElapsed, type WorldEventState } from "../../store/spaceStore";
 import { SUN_RADIUS } from "../../constants";
 import { createDirector, stepDirector, skipEvent, forceStart, ambientStep, EVENT_DURATION, type WorldEventKind, type ActiveEvent, type DirectorStep, type DirectorInput } from "../../utils/eventDirector";
 import { planCometPass, planNearestConvoy, convoyShipOffsetAt, CONVOY_APPROACH_S, CONVOY_ORBIT_S, type Sphere } from "../../utils/worldEvents";
@@ -139,7 +139,7 @@ export default function WorldEventDirector() {
       dirInput.dt = dt;
       // Not photo mode: the planets keep orbiting there, so the event must too.
       dirInput.paused = selectSceneFrozen(s) || s.showClassicCV;
-      dirInput.raceRunning = s.raceView.phase === "running";
+      dirInput.raceRunning = selectRaceFlying(s);
       dirInput.radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
       dirInput.reducedMotion = s.reducedMotion;
       step = stepDirector(director, dirInput, stepOut);

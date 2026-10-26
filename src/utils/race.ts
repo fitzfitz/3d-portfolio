@@ -1,6 +1,6 @@
 /**
  * Ring race logic, pure: gate crossing, the start grid, and ghost recording,
- * playback and the seed lap. The scene component (RingCourse.tsx) feeds it
+ * playback and the seed lap. The scene component (RaceCourse.tsx) feeds it
  * positions; lap rules shared with the server live in raceProtocol.ts.
  */
 

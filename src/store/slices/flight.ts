@@ -1,5 +1,6 @@
 import { PROBE_IDS } from "../../data/probes";
 import { destinationById } from "../../data/destinations";
+import { flight } from "../flightState";
 import type { SliceCreator } from "../spaceStore";
 
 /** Orbit and dock, warp, the spawn pad, the teleport flash, fuel-out, jumps and impacts. */
@@ -21,7 +22,7 @@ export interface FlightSlice {
   /**
    * Pending jump to a planet id or a destination id (src/data/destinations.ts),
    * consumed by Spaceship's frame loop. `seq` makes a repeat request for the
-   * same target a new value.
+   * same target a new value. A no-op while racing (flight.racing).
    */
   jumpRequest: { id: string; seq: number } | null;
   requestJump: (id: string) => void;
@@ -75,6 +76,8 @@ export const createFlightSlice: SliceCreator<FlightSlice> = (set, get) => ({
   setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
   jumpRequest: null,
   requestJump: (id) => {
+    // Racing: the ship stays on the course (spec: jumps are off while racing).
+    if (flight.racing) return;
     if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
     set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
   },

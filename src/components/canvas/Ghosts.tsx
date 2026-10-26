@@ -21,7 +21,7 @@ import { onRaceServer } from "../../utils/raceController";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
 
-/** RingCourse's race-ghost wash strength. */
+/** RaceCourse's race-ghost wash strength. */
 const GHOST_WASH = 0.55;
 const GHOST_PLUME_LEN = 0.3;
 const GHOST_NOZZLE_R = 0.07;
@@ -34,7 +34,7 @@ interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE
 
 function makeSlot(shipScene: THREE.Object3D, flameGeometry: THREE.BufferGeometry, i: number): Slot {
   const stock = new THREE.Color(PLUME_COLORS.stock.hex);
-  // RingCourse's race-ghost material, parameter for parameter, so the two
+  // RaceCourse's race-ghost material, parameter for parameter, so the two
   // share one already-compiled program. Colour and opacity are uniforms.
   const hull = new THREE.MeshBasicMaterial({
     color: stock.clone().multiplyScalar(GHOST_WASH),

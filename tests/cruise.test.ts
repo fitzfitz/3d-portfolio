@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise,
+  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise, raceWarpSpeed,
 } from "../src/utils/cruise";
 import { SUN_RADIUS, SYSTEM_RADIUS, SHIP_WARP_SPEED } from "../src/constants";
 import { BODY_REACH, bodyById } from "../src/data/solarSystem";
@@ -43,6 +43,20 @@ describe("cruise limit", () => {
     expect(stepCruise(39, 468, DT)).toBeCloseTo(41.5, 9);
     expect(stepCruise(400, 39, DT)).toBe(39);
     expect(stepCruise(466, 468, DT)).toBe(468);
+  });
+});
+
+describe("raceWarpSpeed", () => {
+  it("holds a racer to the base warp speed, whatever the free space", () => {
+    for (const [cur, limit] of [[39, 468], [200, 468], [468, 468], [39, 39], [300, 100]]) {
+      expect(raceWarpSpeed(cur, true, limit, DT)).toBe(SHIP_WARP_SPEED);
+    }
+    expect(SHIP_WARP_SPEED).toBe(39);
+  });
+  it("is stepCruise when not racing", () => {
+    for (const [cur, limit] of [[39, 468], [200, 468], [466, 468], [400, 39], [39, 39]]) {
+      expect(raceWarpSpeed(cur, false, limit, DT)).toBe(stepCruise(cur, limit, DT));
+    }
   });
 });
 

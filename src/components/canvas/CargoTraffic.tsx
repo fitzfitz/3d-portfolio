@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import EngineWake from "./EngineWake";
 import { useModel } from "../../utils/sceneAssets";
-import { flight, useSpaceStore, bodies, worldEventElapsed } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, worldEventElapsed, selectRaceFlying } from "../../store/spaceStore";
 import { convoyShipOffsetAt, CONVOY_HIDE_DIST } from "../../utils/worldEvents";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
@@ -114,7 +114,7 @@ export default function CargoTraffic() {
     const now = gameTime(elapsed);
     const store = useSpaceStore.getState();
     const react = !store.reducedMotion;
-    const raceRunning = store.raceView.phase === "running";
+    const raceRunning = selectRaceFlying(store);
     const broadcastId = store.broadcast?.id ?? 0;
     if (broadcastId !== lastBroadcast.current.id) lastBroadcast.current = { id: broadcastId, at: now };
     const radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;

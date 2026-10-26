@@ -16,6 +16,7 @@ import { BUOYS } from "../src/data/careerTrail";
 import { chatterPools } from "../src/data/chatterLines";
 import { PROBE_IDS } from "../src/data/probes";
 import { LOGBOOK } from "../src/utils/logbook";
+import { RACE_START_SCAN_ID } from "../src/utils/raceScene";
 
 /** A project as D1 returns it: every column, `tech` as JSON text, NULL for absent. */
 const projectRow = (over: Record<string, unknown> = {}) => ({
@@ -85,7 +86,7 @@ describe("parseContent: projects", () => {
     ["a scenery asteroid's id", { id: "asteroid_3" }],
     ["a comet's id", { id: "comet_2p" }],
     ["the creature's id", { id: "jellyfish" }],
-    ["the ring course's id", { id: "time_trial" }],
+    ["the race start gate's id", { id: "race_start" }],
     ["the gate's id", { id: "dormant_gate" }],
     ["a beacon-style id", { id: "beacon_x" }],
     ["a bottle-style id", { id: "bottle_x" }],
@@ -116,7 +117,7 @@ describe("parseContent: projects", () => {
     expect([...COMET_IDS]).toEqual([...COMET_SCAN_IDS]);
     const taken = [
       ...BODY_IDS, ...MOON_IDS, ...COMET_SCAN_IDS, ...ASTEROID_COLLIDERS.map((a) => a.id), GATE_SCAN_ID, SUN_WELL_ID,
-      ...BUOYS.map((b) => b.id), "career_11", ghostScanId("abc"), "beacon_123", bottleScanId("123"), "comet_visitor", "jellyfish", "time_trial",
+      ...BUOYS.map((b) => b.id), "career_11", ghostScanId("abc"), "beacon_123", bottleScanId("123"), "comet_visitor", "jellyfish", RACE_START_SCAN_ID,
       ...RESERVED_ZONE_IDS, ...Object.keys(chatterPools.zones).filter((z) => !PROBE_IDS.includes(z)),
     ];
     for (const id of taken) expect(isReservedId(id), id).toBe(true);

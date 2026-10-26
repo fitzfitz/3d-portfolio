@@ -47,4 +47,11 @@ export const flight = {
   fuel: FUEL_MAX,
   /** The return burn is running this frame (Spaceship writes it; EdgeHaze reads it for the radio line). */
   edgeBurn: false,
+  /**
+   * On a race's grid or racing it (RaceCourse writes it from the race view):
+   * warp is held to the base speed, jumps and beam dossiers are off.
+   */
+  racing: false,
+  /** Held on the race grid until GO (RaceCourse writes it): Spaceship keeps the ship still. */
+  raceHold: false,
 };

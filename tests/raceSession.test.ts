@@ -160,6 +160,13 @@ describe("syncWithRun", () => {
     expect(syncWithRun(over, done)).toEqual({ ...over, finished: true });
   });
 
+  it("takes the stored kind for a running view of the same race", () => {
+    expect(syncWithRun(running(), { ...run, kind: "solo" })).toEqual(running({ next: 3, kind: "solo" }));
+    expect(syncWithRun(running(), run)).toEqual(running({ next: 3 }));
+    const v = running({ kind: "solo", next: 3 });
+    expect(syncWithRun(v, { ...run, kind: "solo" })).toBe(v);
+  });
+
   it("ignores another race's run and never moves next back", () => {
     const v = running({ next: 3 });
     expect(syncWithRun(v, { ...run, race: "race-2" })).toBe(v);
@@ -189,6 +196,13 @@ describe("run storage", () => {
     expect(loadRun(JSON.stringify({ ...run, expiresAt: "soon" }), T)).toBeNull();
     expect(loadRun(JSON.stringify(run), run.expiresAt)).toBeNull();
     expect(loadRun(JSON.stringify(run), run.expiresAt - 1)).toEqual(run);
+  });
+
+  it("loadRun keeps a valid kind, and tolerates a missing or unknown one", () => {
+    expect(loadRun(JSON.stringify({ ...run, kind: "solo" }), T)).toEqual({ ...run, kind: "solo" });
+    expect(loadRun(JSON.stringify(run), T)).not.toHaveProperty("kind");
+    expect(loadRun(JSON.stringify({ ...run, kind: "drag" }), T)).not.toHaveProperty("kind");
+    expect(loadRun(JSON.stringify({ ...run, kind: "drag" }), T)).toEqual(run);
   });
 
   it("a reload keeps the stamps intact", () => {

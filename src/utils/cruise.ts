@@ -24,6 +24,15 @@ export function stepCruise(current: number, limit: number, dt: number): number {
 }
 
 /**
+ * Warp speed after one frame for the ship: a racer is held to the base warp
+ * speed (RACE_SPEED, the same for every pilot), anyone else builds speed with
+ * the free space (stepCruise).
+ */
+export function raceWarpSpeed(current: number, racing: boolean, limit: number, dt: number): number {
+  return racing ? SHIP_WARP_SPEED : stepCruise(current, limit, dt);
+}
+
+/**
  * The clear distance from `p` to the nearest sphere surface among the first
  * `count` of `spheres`, or to the system edge (`edgeR - |p|`) if that is nearer.
  * Allocation-free: callers reuse one sphere list across frames.

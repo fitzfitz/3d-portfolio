@@ -169,7 +169,7 @@ export function applyFill(scene: { environmentIntensity: number }, cameraDistanc
  * the same at every exposure. Lit matter, such as Saturn's rings,
  * is NOT compensated: it follows exposure like its planet. The sun's glare
  * sprites and the ring-course gates are compensated too, but through their
- * colour each frame (Sun.tsx, RingCourse.tsx), since they are built-in
+ * colour each frame (Sun.tsx, RaceCourse.tsx), since they are built-in
  * materials. Materials reference this object directly, so one write a frame
  * reaches all of them with no allocation and no recompile.
  */

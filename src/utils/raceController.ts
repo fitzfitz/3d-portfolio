@@ -3,7 +3,8 @@ import { STORE_KEYS, safeGetString, safeSetJSON, safeRemove } from "../store/per
 import { RING_GATES } from "../data/ringCourse";
 import { formatRaceTime, isNewBest } from "./race";
 import { beaconApiUrl } from "./apiBase";
-import { raceReduce, syncWithRun, loadRun, withStamp, uploadRun, RUN_TTL_MS, type RaceRun } from "./raceSession";
+import { raceReduce, syncWithRun, loadRun, withStamp, uploadRun, RUN_TTL_MS, RACE_IDLE, type RaceRun } from "./raceSession";
+import { sendRace } from "./raceLink";
 import type { RaceError, RaceServerMessage, ResultRow, Stamp } from "./raceProtocol";
 
 /**
@@ -77,7 +78,9 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
     case "rlobby": {
       const cur = readRun(localNow);
       if (!cur || cur.race !== m.race || cur.token !== m.token) {
-        saveRun({ v: 1, race: m.race, token: m.token, stamps: [], expiresAt: localNow + RUN_TTL_MS });
+        saveRun({ v: 1, race: m.race, token: m.token, kind: m.kind, stamps: [], expiresAt: localNow + RUN_TTL_MS });
+      } else if (cur.kind !== m.kind) {
+        saveRun({ ...cur, kind: m.kind });
       }
       break;
     }
@@ -85,7 +88,9 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
       // Race again: a new race id with no lobby first, flown under the same token.
       const cur = readRun(localNow);
       const token = cur?.token ?? lastToken;
-      if (cur?.race !== m.race && token) saveRun({ v: 1, race: m.race, token, stamps: [], expiresAt: localNow + RUN_TTL_MS });
+      if (cur?.race !== m.race && token) saveRun({ v: 1, race: m.race, token, kind: m.kind, stamps: [], expiresAt: localNow + RUN_TTL_MS });
+      // The grid has the final kind: a lone pilot's public or private lobby races solo.
+      else if (cur && cur.kind !== m.kind) saveRun({ ...cur, kind: m.kind });
       break;
     }
     case "rgo":
@@ -122,15 +127,39 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
   if (view !== s.raceView) s.setRaceView(view);
 }
 
+/** The wait before the one retry of a failed upload. */
+export const UPLOAD_RETRY_MS = 2_000;
+
 /**
  * Uploads the stored run, once per race (the scene calls it at `over`; a
  * second call is a no-op). `ghost` is the encoded best-lap path or null. A
- * result that does not land says so on the radio; one that does is heard at the results.
+ * failed upload (no network, a 5xx) is tried once more after UPLOAD_RETRY_MS
+ * if the over view's upload window is still open then; late and rejected are
+ * final. A result that does not land says so on the radio; one that does is
+ * heard at the results.
  */
 export async function onRaceOver(ghost: string | null): Promise<void> {
   const run = readRun(Date.now());
   if (!run || run.stamps.length === 0 || uploadedRace === run.race) return;
   uploadedRace = run.race;
-  const res = await uploadRun(beaconApiUrl(), run, ghost);
+  const base = beaconApiUrl();
+  let res = await uploadRun(base, run, ghost);
+  if (res === "failed") {
+    await new Promise((resolve) => setTimeout(resolve, UPLOAD_RETRY_MS));
+    const v = useSpaceStore.getState().raceView;
+    if (v.phase === "over" && v.race === run.race && Date.now() < v.uploadBy) res = await uploadRun(base, run, ghost);
+  }
   if (res !== "ok") useSpaceStore.getState().sendBroadcast(RESULT_LOST_LINE);
+}
+
+/**
+ * Leaves the race the pilot is on (the classic CV opening mid-race; Task 7's
+ * LEAVE): the room makes them DNF and stops sending them the race, so the view
+ * goes back to idle here, and the run goes too (no `over` will come for its upload).
+ */
+export function leaveRace(): void {
+  sendRace({ t: "rleave" });
+  clearRun();
+  const s = useSpaceStore.getState();
+  if (s.raceView.phase !== "idle") s.setRaceView(RACE_IDLE);
 }

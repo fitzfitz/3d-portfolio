@@ -3,7 +3,6 @@ import { useSpaceStore, flight, bodies } from "../store/spaceStore";
 import { moonPositions } from "../store/moonState";
 import { soundManager } from "../audio/soundManager";
 import { perfStats } from "./perfStats";
-import { raceClock } from "../utils/raceClock";
 import type { JellyState } from "../utils/jellyMood";
 import type { GuideName, GuideState } from "../utils/jellyGuide";
 import type { WorldEventKind } from "../utils/eventDirector";
@@ -45,8 +44,6 @@ export interface FitzDebug {
   bodies: typeof bodies;
   /** The nine moons' live centres by moon id (store/moonState.ts), written by SolarMoons each frame. */
   moons: typeof moonPositions;
-  /** Time-trial clock (seconds), live. */
-  raceClock: typeof raceClock;
   sound: typeof soundManager;
   scene: THREE.Scene | null;
   gl: THREE.WebGLRenderer | null;
@@ -147,7 +144,6 @@ export const fitzDebug: FitzDebug = {
   flight,
   bodies,
   moons: moonPositions,
-  raceClock,
   sound: soundManager,
   scene: null,
   gl: null,
