@@ -33,7 +33,8 @@ export const RULES = [
   [/^src\/components\/canvas\/SpaceJellyfish\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
   // The guide's pure logic (the creature's frame, posture and radio gate); waypointTarget also feeds the HUD, so it stays with ALL.
   [/^src\/(utils\/(jellyGuide|jellyFrame|jellyMood|jellyPosture|guideRadio|guideToggle)|data\/jellyfishPath)\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
-  [/^src\/components\/canvas\/(Ghosts|Beacons)\b/, () => [...BUDGETS, "livesky", "beacons"]],
+  [/^src\/components\/canvas\/Ghosts\b/, () => [...BUDGETS, "livesky"]],
+  [/^src\/components\/canvas\/Bottles\b/, () => [...BUDGETS, "bottles"]],
   [/^src\/components\/canvas\/RingCourse\b/, () => [...BUDGETS, "race"]],
   [/^src\/components\/canvas\/(SkyBackdrop|DistantGalaxies|starLayer|softSprite|orbitRibbon|WaypointDriver|noIbl|logDepth)\b/, () => [...BUDGETS, "sky"]],
   // GlobalCanvas, PostFX and anything else in the canvas: everything.
@@ -42,7 +43,7 @@ export const RULES = [
   [/^src\/components\/layout\/(LogbookPanel|LogbookTracker|ChangelogPanel|PlumePicker|HangarPanel)\b/, () => ["smoke", "logbook", "shipyard"]],
   [/^src\/components\/layout\/(CareerDossier|BuoyCard)\b/, () => ["smoke", "career", "careerphone"]],
   [/^src\/components\/layout\/(ProjectDossier|reopenDossier|dossierCopy)\b/, () => ["smoke", "probes", "logbook"]],
-  [/^src\/components\/layout\/(BeaconPicker)\b/, () => ["smoke", "beacons"]],
+  [/^src\/components\/layout\/(BottlePanel|BottleCard)\b/, () => ["smoke", "bottles"]],
   [/^src\/components\/layout\/(RaceHUD)\b/, () => ["smoke", "race"]],
   [/^src\/components\/layout\/(TouchControls)\b/, () => ["smoke", "touch", "careerphone"]],
   [/^src\/components\/layout\//, () => ["smoke", "logbook", "touch", "careerphone", "reducedmotion", "transition"]],

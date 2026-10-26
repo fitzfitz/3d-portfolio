@@ -35,7 +35,7 @@ import CareerTrail from "./CareerTrail";
 import Shipyard from "./Shipyard";
 import DormantGate from "./DormantGate";
 import RingCourse from "./RingCourse";
-import Beacons from "./Beacons";
+import Bottles from "./Bottles";
 import Ghosts from "./Ghosts";
 import { liveSkyUrl } from "../../utils/liveSky";
 import { beaconApiUrl } from "../../utils/beaconApi";
@@ -444,6 +444,14 @@ function ShaderWarmup() {
 }
 
 const BEACONS_ENABLED = !!beaconApiUrl();
+/**
+ * Show bottles off (spec "The visitor setting") draws nothing; its own
+ * component so the toggle re-renders only this. Its own Suspense: turned on
+ * after load, the model's first fetch must not suspend the whole scene.
+ */
+function BottlesGate() {
+  return useSpaceStore((s) => s.showBottles) ? <Suspense fallback={null}><Bottles /></Suspense> : null;
+}
 const LIVE_SKY_ENABLED = !!liveSkyUrl();
 
 /**
@@ -678,8 +686,8 @@ function GlobalCanvas() {
             {/* Time-trial ring course through the inner belt, with a ghost of the best lap */}
             <RingCourse />
 
-            {/* Visitors' beacons — only when the beacon API is configured */}
-            {BEACONS_ENABLED && <Beacons />}
+            {/* Visitors' bottles — only when the beacon API is configured, and Show bottles is on */}
+            {BEACONS_ENABLED && <BottlesGate />}
 
             {/* Other pilots flying now — only when the live sky URL is configured */}
             {LIVE_SKY_ENABLED && <Ghosts />}

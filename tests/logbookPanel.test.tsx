@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import LogbookPanel from "../src/components/layout/LogbookPanel";
 import { reopenDossier } from "../src/components/layout/reopenDossier";
@@ -32,5 +32,37 @@ describe("LogbookPanel dossier re-open", () => {
     useSpaceStore.getState().closeDossier();
     expect(useSpaceStore.getState().probeSpots).toEqual(spots);
     expect(useSpaceStore.getState().relocation).toBeNull();
+  });
+});
+
+// Spec "The visitor setting: Show bottles": a switch next to live sky, only
+// where bottles exist (the beacon API is configured).
+describe("LogbookPanel Show bottles switch", () => {
+  async function render(api: string, patch: Record<string, unknown> = {}) {
+    vi.resetModules();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => (k === "fitz-beacon-api-dev" ? api : null), setItem() {} });
+    const { useSpaceStore: store } = await import("../src/store/spaceStore");
+    const { default: Panel } = await import("../src/components/layout/LogbookPanel");
+    Object.assign(store.getInitialState(), { logbookOpen: true, showClassicCV: false, ...patch });
+    return renderToStaticMarkup(<Panel />);
+  }
+  afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
+
+  it("shows ON by default, as a switch described by its note", async () => {
+    const html = await render("http://relay.test");
+    const btn = html.match(/<button[^>]*data-testid="bottles-toggle"[^>]*>(.*?)<\/button>/);
+    expect(btn?.[0]).toMatch(/role="switch"/);
+    expect(btn?.[0]).toMatch(/aria-checked="true"/);
+    expect(btn?.[1]).toBe("ON");
+    expect(html).toContain('id="bottles-label"');
+    expect(html).toMatch(/id="bottles-desc"[^>]*>[^<]*bottles/i);
+  });
+  it("reads OFF when the pilot hid them", async () => {
+    const html = await render("http://relay.test", { showBottles: false });
+    expect(html).toMatch(/data-testid="bottles-toggle"[^>]*>OFF</);
+    expect(html).toMatch(/aria-checked="false"[^>]*data-testid="bottles-toggle"|data-testid="bottles-toggle"[^>]*aria-checked="false"/);
+  });
+  it("is absent without a beacon API", async () => {
+    expect(await render("")).not.toContain("bottles-toggle");
   });
 });

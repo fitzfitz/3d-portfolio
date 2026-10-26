@@ -11,6 +11,7 @@ import { ASTEROID_COLLIDERS } from "../src/data/asteroids";
 import { GATE_SCAN_ID } from "../src/data/dormantGate";
 import { SUN_WELL_ID } from "../src/utils/gravityWell";
 import { ghostScanId } from "../src/utils/liveSky";
+import { bottleScanId } from "../src/utils/beacons";
 import { BUOYS } from "../src/data/careerTrail";
 import { chatterPools } from "../src/data/chatterLines";
 import { PROBE_IDS } from "../src/data/probes";
@@ -87,6 +88,7 @@ describe("parseContent: projects", () => {
     ["the ring course's id", { id: "time_trial" }],
     ["the gate's id", { id: "dormant_gate" }],
     ["a beacon-style id", { id: "beacon_x" }],
+    ["a bottle-style id", { id: "bottle_x" }],
   ])("drops a row with %s, and warns", (_, over) => {
     const { projects } = parseContent({ projects: [projectRow(over), projectRow({ id: "kept" })] }, warn);
     expect(projects?.map((p) => p.id)).toEqual(["kept"]);
@@ -114,7 +116,7 @@ describe("parseContent: projects", () => {
     expect([...COMET_IDS]).toEqual([...COMET_SCAN_IDS]);
     const taken = [
       ...BODY_IDS, ...MOON_IDS, ...COMET_SCAN_IDS, ...ASTEROID_COLLIDERS.map((a) => a.id), GATE_SCAN_ID, SUN_WELL_ID,
-      ...BUOYS.map((b) => b.id), "career_11", ghostScanId("abc"), "beacon_123", "comet_visitor", "jellyfish", "time_trial",
+      ...BUOYS.map((b) => b.id), "career_11", ghostScanId("abc"), "beacon_123", bottleScanId("123"), "comet_visitor", "jellyfish", "time_trial",
       ...RESERVED_ZONE_IDS, ...Object.keys(chatterPools.zones).filter((z) => !PROBE_IDS.includes(z)),
     ];
     for (const id of taken) expect(isReservedId(id), id).toBe(true);

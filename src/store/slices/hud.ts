@@ -39,8 +39,9 @@ export interface HudSlice {
   setLogbookOpen: (v: boolean) => void;
   changelogOpen: boolean;
   setChangelogOpen: (v: boolean) => void;
-  beaconPickerOpen: boolean;
-  setBeaconPickerOpen: (v: boolean) => void;
+  /** The bottle writing panel (B / the BOTTLE button). It owns the keyboard while open. */
+  bottlePanelOpen: boolean;
+  setBottlePanelOpen: (v: boolean) => void;
   cometNear: boolean;
   setCometNear: (v: boolean) => void;
   /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
@@ -104,8 +105,8 @@ export const createHudSlice: SliceCreator<HudSlice> = (set, get) => ({
     if (get().changelogOpen === v) return;
     set(v ? { changelogOpen: true, logbookOpen: false } : { changelogOpen: false });
   },
-  beaconPickerOpen: false,
-  setBeaconPickerOpen: (v) => set({ beaconPickerOpen: v }),
+  bottlePanelOpen: false,
+  setBottlePanelOpen: (v) => set({ bottlePanelOpen: v }),
   cometNear: false,
   setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
   broadcast: null,

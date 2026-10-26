@@ -1,31 +1,60 @@
-import { validateDrop, BEACON_LIMIT, type Beacon } from "../../src/utils/beacons";
+import {
+  validatePosition, BOTTLE_LIMIT, BOTTLE_DAILY_CAP, type Bottle, type BottleRateReason,
+} from "../../src/utils/beacons";
+import { checkBottleText } from "../../src/utils/bottleFilter";
+import { BEACON_PHRASES } from "../../src/data/beaconPhrases";
 
 /**
- * Beacon API request handling, free of Cloudflare bindings so it can be unit
- * tested (tests/beaconApi.test.ts). index.ts wires it to D1.
+ * Messages-in-bottles API (the routes keep their beacon names), free of
+ * Cloudflare bindings so it can be unit tested (tests/beaconApi.test.ts,
+ * tests/bottleApi.test.ts). index.ts wires it to D1 through d1Store.ts.
  *
- *   GET  /beacons   newest BEACON_LIMIT beacons
- *   POST /beacons   { x, y, z, phrase } → 201 { beacon }
+ *   GET  /beacons   newest BOTTLE_LIMIT visible bottles
+ *   POST /beacons   { x, y, z, text } → 201 { beacon }
+ *                   (or the legacy { x, y, z, phrase }, from a cached old client)
  *
  * GET /content (projects and career) lives in content.ts.
  */
 
-export interface StoredBeacon extends Beacon {
+export interface StoredBottle extends Bottle {
+  /**
+   * The BEACON_PHRASES index for a legacy drop, else null. Served back so the
+   * old client, which only reads phrases, keeps showing those through the deploy.
+   */
+  phrase: number | null;
   /** HMAC-SHA256(IP_SALT, rate key). The raw IP is never stored. */
   ipHash: string;
 }
 
+/** The limits one insert is checked against; each `*Since` is an inclusive epoch-ms bound. */
+export interface DropLimits {
+  /** Refused if the pilot has any row at or after this (the RATE_WINDOW_MS window). */
+  keySince: number;
+  /** Refused if `globalMax` rows from anyone exist at or after `globalSince`. */
+  globalSince: number;
+  globalMax: number;
+  /** Refused if the pilot has `dayMax` rows at or after `daySince`. */
+  daySince: number;
+  dayMax: number;
+}
+
 export interface BeaconStore {
-  list(limit: number): Promise<StoredBeacon[]>;
+  /** The newest `limit` rows that are not hidden. */
+  list(limit: number): Promise<StoredBottle[]>;
   /**
-   * Inserts `row` unless its ipHash already has a row at or after `keySince`,
-   * or `globalMax` rows exist at or after `globalSince`. Must be ONE atomic
-   * statement: a separate check and insert let a parallel burst from one
-   * client all pass the check before any insert lands.
+   * Inserts `row` unless a limit in `limits` refuses it; hidden rows count.
+   * Must be ONE atomic statement: a separate check and insert let a parallel
+   * burst from one client all pass the check before any insert lands.
    */
-  insertIfAllowed(row: StoredBeacon, keySince: number, globalSince: number, globalMax: number): Promise<boolean>;
-  /** Deletes all but the newest `keep` rows. */
-  prune(keep: number): Promise<void>;
+  insertIfAllowed(row: StoredBottle, limits: DropLimits): Promise<boolean>;
+  /**
+   * The pilot's drop times at or after `since`, newest first, hidden rows
+   * included. Read after a refused insert only to explain it, so it need not
+   * be atomic with it.
+   */
+  pilotDrops(ipHash: string, since: number): Promise<number[]>;
+  /** Deletes all but the newest `keep` rows, except that rows at or after `keepSince` always stay. */
+  prune(keep: number, keepSince: number): Promise<void>;
 }
 
 /** The Workers Rate Limiting binding's interface (env.LIMITER). */
@@ -46,16 +75,30 @@ export interface Deps {
   now: () => number;
 }
 
-/** One beacon per pilot per window. */
+/** One bottle per pilot per window. */
 export const RATE_WINDOW_MS = 10 * 60_000;
+/** The daily cap's window (BOTTLE_DAILY_CAP per pilot in any DAY_MS). */
+export const DAY_MS = 24 * 3_600_000;
 /**
  * Drops per minute across everyone. Bounds a flood from rotating IPs, and
- * keeps the table (KEEP_ROWS) from turning over inside RATE_WINDOW_MS — the
- * per-pilot limit lives in those rows, so pruning them early would forget it.
+ * bounds how fast the table grows (see KEEP_ROWS).
  */
 export const GLOBAL_PER_MINUTE = 10;
-/** Rows kept; older beacons fall off. The scene only shows BEACON_LIMIT anyway. */
+/**
+ * Rows kept once they are older than a day; older bottles fall off. The scene
+ * only shows BOTTLE_LIMIT anyway.
+ *
+ * The per-pilot limits live in these rows, so a row must outlive every window
+ * it is counted in. The 10-minute window was safe with a plain "newest 500":
+ * at GLOBAL_PER_MINUTE the table turns over in 500 / 10 = 50 minutes. The
+ * daily cap is not: at that rate a day writes 10 × 1,440 = 14,400 rows, so a
+ * plain prune would forget a pilot's notes within the hour and reopen their
+ * cap. prune() therefore never deletes a row younger than DAY_MS. The table
+ * is then at most KEEP_ROWS + 14,400 rows (one day at the global cap), a few
+ * MB, and back to KEEP_ROWS a day after the burst.
+ */
 export const KEEP_ROWS = 500;
+/** Fits a full note: 140 code points of up to 4 UTF-8 bytes each, plus the coordinates. */
 const MAX_BODY_BYTES = 1024;
 export const MIN_SALT_LENGTH = 16;
 
@@ -81,7 +124,28 @@ export function json(status: number, body: unknown, headers: Record<string, stri
   });
 }
 
-const publicView = ({ ipHash: _ipHash, ...b }: StoredBeacon): Beacon => b;
+/**
+ * What the API serves: `{ id, x, y, z, text, at, country }`, plus `phrase`
+ * for a legacy drop so the old client (which parses phrases only) still
+ * shows it. The new client ignores `phrase`.
+ */
+function publicView(b: StoredBottle): Bottle & { phrase?: number } {
+  const { id, x, y, z, text, at, country, phrase } = b;
+  return phrase === null ? { id, x, y, z, text, at, country } : { id, x, y, z, text, at, country, phrase };
+}
+
+const isPhraseIndex = (v: unknown): v is number =>
+  Number.isInteger(v) && (v as number) >= 0 && (v as number) < BEACON_PHRASES.length;
+
+/**
+ * Why a refused insert was refused, and when the pilot may try again. The
+ * daily cap is named first: past it, the 10-minute wait is beside the point.
+ */
+function refusal(drops: readonly number[], limits: DropLimits, now: number): { reason: BottleRateReason; retryAt: number } {
+  if (drops.length >= limits.dayMax) return { reason: "daily", retryAt: drops[limits.dayMax - 1] + DAY_MS };
+  if (drops.length > 0 && drops[0] >= limits.keySince) return { reason: "wait", retryAt: drops[0] + RATE_WINDOW_MS };
+  return { reason: "busy", retryAt: now + 60_000 };
+}
 
 /**
  * The part of a client address that identifies one pilot. IPv4 whole; IPv6 to
@@ -110,7 +174,7 @@ export async function hmacHex(key: string, text: string): Promise<string> {
  * isolate, which is fine: a few-second-stale sky is invisible.
  */
 export function withListCache(store: BeaconStore, ttlMs: number, now: () => number): BeaconStore {
-  let cached: { at: number; limit: number; rows: StoredBeacon[] } | null = null;
+  let cached: { at: number; limit: number; rows: StoredBottle[] } | null = null;
   return {
     async list(limit) {
       if (cached && cached.limit === limit && now() - cached.at < ttlMs) return cached.rows;
@@ -123,7 +187,8 @@ export function withListCache(store: BeaconStore, ttlMs: number, now: () => numb
       if (ok) cached = null;
       return ok;
     },
-    prune: (keep) => store.prune(keep),
+    pilotDrops: (ipHash, since) => store.pilotDrops(ipHash, since),
+    prune: (keep, keepSince) => store.prune(keep, keepSince),
   };
 }
 
@@ -136,12 +201,14 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h });
 
   const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
+  // The request budget runs first, for every method: it guards the Worker and
+  // D1 quotas, so a POST spends it even when the filter then refuses the note.
   if (deps.limiter && !(await deps.limiter.limit({ key: rateKey(ip) })).success) {
     return json(429, { error: "slow down" }, { ...h, "Retry-After": "60" });
   }
 
   if (req.method === "GET") {
-    const rows = await deps.store.list(BEACON_LIMIT);
+    const rows = await deps.store.list(BOTTLE_LIMIT);
     return json(200, { beacons: rows.map(publicView) }, { ...h, "Cache-Control": "public, max-age=30" });
   }
 
@@ -159,22 +226,51 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   const declared = Number(req.headers.get("Content-Length") ?? "0");
   if (declared > MAX_BODY_BYTES) return json(413, { error: "too large" }, h);
 
-  const text = await req.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return json(413, { error: "too large" }, h);
+  const raw = await req.text();
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json(413, { error: "too large" }, h);
   let body: unknown;
-  try { body = JSON.parse(text); } catch { return json(400, { error: "bad json" }, h); }
-  const v = validateDrop(body);
-  if (!v.ok) return json(400, { error: "invalid beacon" }, h);
+  try { body = JSON.parse(raw); } catch { return json(400, { error: "bad json" }, h); }
+
+  // 1. Where: the same position rules as the client.
+  const pos = validatePosition(body);
+  if (!pos.ok) return json(400, { error: "invalid beacon" }, h);
+  // 2. What: free text through the filter, or a legacy phrase index. The
+  //    phrases are the owner's own fixed strings and skip the filter (one is
+  //    over 20 characters of capitals, which it would call junk).
+  const { text, phrase } = body as Record<string, unknown>;
+  let note: { text: string; phrase: number | null };
+  if (typeof text === "string") {
+    const c = checkBottleText(text);
+    if (!c.ok) return json(400, { error: "rejected", reason: c.reason }, h);
+    note = { text: c.text, phrase: null };
+  } else if (text === undefined && isPhraseIndex(phrase)) {
+    note = { text: BEACON_PHRASES[phrase], phrase };
+  } else {
+    return json(400, { error: "invalid beacon" }, h);
+  }
 
   const now = deps.now();
   const ipHash = await hmacHex(deps.salt, rateKey(ip));
   // CF-IPCountry is "XX" when unknown and "T1" for Tor; keep real codes only.
   const cc = req.headers.get("CF-IPCountry");
   const country = cc && /^[A-Z]{2}$/.test(cc) && cc !== "XX" && cc !== "T1" ? cc : null;
-  const row: StoredBeacon = { id: crypto.randomUUID(), ...v.drop, at: now, country, ipHash };
+  const row: StoredBottle = { id: crypto.randomUUID(), ...pos.pos, ...note, at: now, country, ipHash };
 
-  const inserted = await deps.store.insertIfAllowed(row, now - RATE_WINDOW_MS + 1, now - 60_000 + 1, GLOBAL_PER_MINUTE);
-  if (!inserted) return json(429, { error: "rate" }, { ...h, "Retry-After": "60" });
-  await deps.store.prune(KEEP_ROWS);
+  // 3. How often: the pilot's window, the global cap and the pilot's daily
+  //    cap, in one atomic insert.
+  const limits: DropLimits = {
+    keySince: now - RATE_WINDOW_MS + 1,
+    globalSince: now - 60_000 + 1,
+    globalMax: GLOBAL_PER_MINUTE,
+    daySince: now - DAY_MS + 1,
+    dayMax: BOTTLE_DAILY_CAP,
+  };
+  if (!(await deps.store.insertIfAllowed(row, limits))) {
+    const { reason, retryAt } = refusal(await deps.store.pilotDrops(ipHash, limits.daySince), limits, now);
+    const retryAfter = Math.max(1, Math.ceil((retryAt - now) / 1000));
+    // `error: "rate"` is what the old client keys on (it reads the status only).
+    return json(429, { error: "rate", reason, retryAfter }, { ...h, "Retry-After": String(retryAfter) });
+  }
+  await deps.store.prune(KEEP_ROWS, limits.daySince);
   return json(201, { beacon: publicView(row) }, h);
 }

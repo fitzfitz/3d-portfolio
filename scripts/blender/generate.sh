@@ -27,6 +27,9 @@ mkdir -p assets-src
 "$BLENDER" --background --python scripts/blender/gen_dormant_gate.py
 # Project probes (2026-10-20): the Voyager-style probe that carries the dossiers.
 "$BLENDER" --background --python scripts/blender/gen_probe.py
+# Message bottle (2026-10-26): Poly Haven's CC0 "Wine Bottles 01" (pinned
+# SHA-256, kept in assets-src/polyhaven-src/), with a rolled note and a cork.
+"$BLENDER" --background --python scripts/blender/gen_bottle.py
 # Space monsters (2026-10-23): dormant, optimized into public/models-lab/.
 "$BLENDER" --background --python scripts/blender/gen_saucer.py
 "$BLENDER" --background --python scripts/blender/gen_tardigrade.py

@@ -1,15 +1,27 @@
-import type { Beacon } from "../../utils/beacons";
+import { parseBottle, OWN_BOTTLES_KEPT, type Bottle } from "../../utils/beacons";
 import { STORE_KEYS, safeGetFlag, safeSetFlag, safeGetJSON, safeSetJSON } from "../persist";
 import type { SliceCreator } from "../spaceStore";
 
-/** Visitor beacons and the live sky (other pilots). */
+/** Visitors' bottles (the beacon API keeps its old name) and the live sky (other pilots). */
 export interface SkySlice {
-  /** Visitor beacons from the beacon API (empty when it is not configured). */
-  beacons: Beacon[];
-  setBeacons: (b: Beacon[]) => void;
-  /** Ids of beacons this browser dropped, persisted, so they render as "yours". */
+  /**
+   * The bottles shown: the newest 30 plus this visitor's own (mergeBottles).
+   * Empty when the API is not configured or Show bottles was off from the start.
+   */
+  beacons: Bottle[];
+  setBeacons: (b: Bottle[]) => void;
+  /** Ids of beacons and bottles this browser dropped, persisted, so they render as "yours". */
   ownBeacons: string[];
-  addOwnBeacon: (id: string) => void;
+  /**
+   * This browser's own bottles in full (fitz-own-bottles, newest
+   * OWN_BOTTLES_KEPT), so they show even outside the newest 30.
+   */
+  ownBottles: Bottle[];
+  /** Remembers a bottle this browser dropped, in ownBottles and ownBeacons. */
+  addOwnBottle: (b: Bottle) => void;
+  /** Show bottles (persisted as fitz-bottles, default on). Off: nothing is fetched, drawn or read. Writing still works. */
+  showBottles: boolean;
+  setShowBottles: (v: boolean) => void;
   /** Live sky on (persisted as fitz-live-sky, default on): share this ship and see other pilots. */
   liveSky: boolean;
   setLiveSky: (v: boolean) => void;
@@ -29,11 +41,25 @@ export const createSkySlice: SliceCreator<SkySlice> = (set, get) => ({
     const raw = safeGetJSON<unknown>(STORE_KEYS.ownBeacons, []);
     return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
   })(),
-  addOwnBeacon: (id) => {
-    // Newest 20: enough to recognise your own, bounded in storage.
-    const next = [id, ...get().ownBeacons.filter((o) => o !== id)].slice(0, 20);
-    safeSetJSON(STORE_KEYS.ownBeacons, next);
-    set({ ownBeacons: next });
+  ownBottles: (() => {
+    // Stored by this browser, but storage is still untrusted input: parse like the API's rows.
+    const raw = safeGetJSON<unknown>(STORE_KEYS.ownBottles, []);
+    return Array.isArray(raw)
+      ? raw.map(parseBottle).filter((b): b is Bottle => b !== null).slice(0, OWN_BOTTLES_KEPT)
+      : [];
+  })(),
+  addOwnBottle: (b) => {
+    // Ids: newest 20, enough to recognise your own (older ids are legacy beacons), bounded in storage.
+    const ids = [b.id, ...get().ownBeacons.filter((o) => o !== b.id)].slice(0, 20);
+    safeSetJSON(STORE_KEYS.ownBeacons, ids);
+    const bottles = [b, ...get().ownBottles.filter((o) => o.id !== b.id)].slice(0, OWN_BOTTLES_KEPT);
+    safeSetJSON(STORE_KEYS.ownBottles, bottles);
+    set({ ownBeacons: ids, ownBottles: bottles });
+  },
+  showBottles: safeGetFlag(STORE_KEYS.showBottles, true),
+  setShowBottles: (v) => {
+    set({ showBottles: v });
+    safeSetFlag(STORE_KEYS.showBottles, v);
   },
   liveSky: safeGetFlag(STORE_KEYS.liveSky, true),
   setLiveSky: (v) => {

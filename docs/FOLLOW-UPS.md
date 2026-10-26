@@ -26,7 +26,7 @@ Delete an entry when it is fixed.
     reopen close-up look work.
 
 - **Layout constants stay built at module load** (deferred from the store
-  split, PR 62; spec docs/superpowers/specs/2026-10-26-store-split-design.md):
+  split, PR 62; spec docs/archive/specs/2026-10-26-store-split-design.md):
   `PROBES`, `BUOYS`, `LOGBOOK`, `JUMP_TARGETS` and the store's initial
   dossier/probe/plume state are still computed from the content when their
   modules load. The boot gate (PR 59) settles the content before any of them

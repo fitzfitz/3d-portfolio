@@ -17,9 +17,10 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import RadarMap from "./RadarMap";
 import RadioChatter from "./RadioChatter";
 import RaceHUD from "./RaceHUD";
-import { openBeaconPicker } from "../../utils/beaconActions";
+import { openBottlePanel } from "../../utils/beaconActions";
 import ScanRing from "./ScanRing";
 import BuoyCard from "./BuoyCard";
+import BottleCard from "./BottleCard";
 import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
@@ -197,6 +198,8 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
       {!modalOpen && <ScanRing />}
       {/* Frozen with the scene while docked, so hidden then too. */}
       {!modalOpen && <BuoyCard />}
+      {/* A message in a bottle's read card: only with the bottle API, frozen with the scene while docked. */}
+      {beaconsEnabled && !modalOpen && <BottleCard />}
       {/* Phones get the three readouts that matter mid-flight; the rest of
           the telemetry is desktop flavour and collided with everything. */}
       {/* items-start: each row is only as wide as its text. Stretched rows took
@@ -324,11 +327,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
           )}
         </button>}
         {beaconsEnabled && !modalOpen && (
-          <button data-testid="beacon-button" onClick={openBeaconPicker}
-            aria-label="Drop a beacon"
+          <button data-testid="bottle-button" onClick={openBottlePanel}
+            aria-label="Leave a message in a bottle"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/5 bg-white/2 text-white/50 hover:text-[#00ff87] hover:border-[#00ff87]/20 transition-all duration-300">
             <RadioTower className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">BEACON{keyHint("B")}</span>
+            <span className="hidden sm:inline">BOTTLE{keyHint("B")}</span>
           </button>
         )}
         <button onClick={() => setLowPerf(!isLowPerf, true)}

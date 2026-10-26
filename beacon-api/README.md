@@ -1,8 +1,10 @@
 # Beacon API
 
-The small Cloudflare Worker behind visitor beacons. A visitor can drop a beacon
-where their ship is. Each beacon carries one phrase from a fixed list, and later
-visitors see it in space and can scan it.
+The small Cloudflare Worker behind messages in bottles (formerly beacons). A
+visitor can leave a bottle where their ship is, carrying a short free-text
+note, and later visitors see it in space and can read it. The routes and the
+table keep their beacon names. Spec:
+`docs/archive/specs/2026-10-26-message-bottles-design.md`.
 
 The site works without this API. With `VITE_BEACON_API` empty, the beacon
 feature does not render at all, and the projects and career come from the
@@ -13,25 +15,27 @@ The same Worker serves the portfolio's projects and career history from D1
 
 ## Design
 
-- **No free text.** A beacon stores an index into
-  [`src/data/beaconPhrases.ts`](../src/data/beaconPhrases.ts), and the Worker
-  rejects any other value. Nobody can write words onto the page, so there is no
-  text to moderate. Spam is still possible: someone can drop many beacons, or
-  drop them somewhere annoying. The limits below bound that, and you can delete
-  rows (see "Moderating" below). The phrase list is append-only, because old
-  beacons refer to their phrase by position.
-- **The same validation runs in two places.** `validateDrop` in
+- **Filtered free text, auto-published.** A note passes
+  [`src/utils/bottleFilter.ts`](../src/utils/bottleFilter.ts) on the Worker,
+  which is the authority (the client runs the same function for instant
+  feedback): 3–140 characters after normalising, no links or contact details,
+  no profanity (EN + ID list), no junk. The Worker stores the normalised text.
+  The owner can hide any note (see "Moderating" below). Text is rendered as
+  plain text only.
+- **The same position check runs in two places.** `validatePosition` in
   [`src/utils/beacons.ts`](../src/utils/beacons.ts) checks drops in both the
   client and the Worker. It also refuses drops near the spawn pad, where every
-  visitor starts. The client treats the `GET` response as untrusted:
-  `parseBeacons` drops malformed rows and caps the list.
+  visitor starts.
 - **Rate limits.** A single SQL statement checks the limits and inserts the
   row, so a parallel burst cannot slip past. The limits are:
-  - **Per pilot:** one beacon every 10 minutes.
+  - **Per pilot:** one bottle every 10 minutes, and at most 5 in any 24 hours
+    (`BOTTLE_DAILY_CAP`). Hidden notes still count.
   - **Overall:** 10 drops per minute across everyone. This bounds a flood from
-    rotating IPs. It also stops the table turning over faster than the
-    per-pilot window, which matters because the per-pilot limit lives in those
-    rows.
+    rotating IPs, and how fast the table grows.
+
+  The per-pilot limits live in the rows, so prune never deletes a row younger
+  than a day: the table keeps the newest 500 rows, plus every row from the
+  last 24 hours (at most 14,400 at the overall cap).
 - **Pilot identity is hashed.** A pilot is an HMAC-SHA256, keyed with
   `IP_SALT`, of the client IP. IPv6 addresses are cut to their /64 first,
   because one home connection owns 2^64 addresses. The raw IP is never stored.
@@ -40,21 +44,72 @@ The same Worker serves the portfolio's projects and career history from D1
   that could be reversed.
 - **Per-pilot request budget.** 30 requests a minute (see "Request quota"
   below).
-- **Reads are cheap.** `GET` serves the newest 40 rows from a 30-second cache
-  in each isolate, so repeat reads skip D1. The table keeps the newest 500
-  rows.
+- **Reads are cheap.** `GET` serves the newest 30 visible rows
+  (`BOTTLE_LIMIT`) from a 30-second cache in each isolate, so repeat reads
+  skip D1.
 - **The origin check is not abuse protection.** A `POST` must carry an
   `Origin` from `ALLOWED_ORIGINS`, which stops other websites' pages from
   writing here. Any script can forge that header, so the rate limits are what
   actually bound abuse.
-- **Country is public.** It comes from `CF-IPCountry` and appears on a scan as
-  "PILOT FROM ID", along with how long ago the beacon was dropped. The picker
-  tells visitors this before they drop. Unknown (`XX`) and Tor (`T1`) are
+- **Country is public.** It comes from `CF-IPCountry` and shows on the note's
+  card, along with how long ago it was left. Unknown (`XX`) and Tor (`T1`) are
   stored as null.
 
-The handler lives in `src/handler.ts` and has no Cloudflare bindings. Its tests
-are in [`tests/beaconApi.test.ts`](../tests/beaconApi.test.ts) and run under
-the root `npm test`. `src/index.ts` is the D1 adapter.
+The handler lives in `src/handler.ts` and has no Cloudflare bindings. The D1
+adapter is `src/d1Store.ts`; `src/index.ts` wires them together. Tests:
+[`tests/beaconApi.test.ts`](../tests/beaconApi.test.ts) (the handler, over an
+in-memory store) and [`tests/bottleApi.test.ts`](../tests/bottleApi.test.ts)
+(the handler over the real SQL on SQLite, plus the migration). Both run under
+the root `npm test`.
+
+## The bottles API
+
+```
+GET  /beacons
+  200 { beacons: [{ id, x, y, z, text, at, country }, …] }
+      newest first, at most 30, hidden rows left out
+
+POST /beacons   { x, y, z, text }
+  201 { beacon: { id, x, y, z, text, at, country } }   text as stored (normalised)
+  403 { error: "origin" }                              Origin not in ALLOWED_ORIGINS
+  415 { error: "json only" }                           Content-Type is not application/json
+  413 { error: "too large" }                           body over the byte cap
+  400 { error: "bad json" }                            body is not JSON
+  400 { error: "invalid beacon" }                      bad position, or no text
+  400 { error: "rejected", reason }                    the filter refused the note:
+        reason = too_short | too_long | contact | profanity | junk
+  429 { error: "rate", reason, retryAfter }            also a Retry-After header (s):
+        reason = wait  (one per 10 minutes)
+               | daily (5 per 24 hours)
+               | busy  (10 a minute across everyone)
+  429 { error: "slow down" }                           the request budget (LIMITER)
+```
+
+Checks run in this order: the request budget, the origin, the body (type,
+size, JSON), the position, the filter, then the drop limits in one insert. A refused note costs the pilot nothing but the
+request.
+
+**Legacy body.** `POST { x, y, z, phrase }` (a `BEACON_PHRASES` index) still
+works, so a cached old site keeps working through the deploy. It is stored
+with that phrase's text, skipping the filter (the phrases are the owner's own
+strings). Rows with a phrase are served with `phrase` as well, which the old
+site needs; a free-text row stores `phrase = -1` and the old site skips it.
+
+## The `hidden` column
+
+`beacons.hidden` is 0 or 1 (default 0). A row with `hidden = 1` is never
+served, to anyone; it still counts toward its pilot's limits, so hiding a note
+does not refund it. To hide a note, find its id, then in the Cloudflare
+dashboard (**Storage & Databases → D1 → fitz-beacons → Console**) run:
+
+```sql
+UPDATE beacons SET hidden = 1 WHERE id = '…';
+```
+
+Visitors stop seeing it within about a minute (30 s per isolate, plus 30 s of
+public caching). `hidden = 0` brings it back. The author still sees their own
+hidden note in their browser (`fitz-own-bottles`). Hiding has no effect until the
+new Worker is deployed (step 2), because the old Worker ignores `hidden`.
 
 ## Live sky
 
@@ -110,12 +165,12 @@ Run these from the repo root. Wrangler is not a dependency of this repo, so
 
 ```bash
 # 1. Create the database, and paste its id into beacon-api/wrangler.toml
-npx wrangler d1 create fitz-beacons
+npx wrangler d1 create fitz-beacons --config beacon-api/wrangler.toml
 
 # 2. Create the tables: beacons, then the content tables and their first rows
-npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/schema.sql
-npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content.sql
-npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content-seed.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/schema.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content-seed.sql
 
 # 3. Set ALLOWED_ORIGINS in wrangler.toml to every host that serves the site
 #    (comma-separated), then deploy. Drops fail closed until step 4.
@@ -139,6 +194,34 @@ protect the data, and this budget protects your Worker and D1 quotas from a
 GET loop. The counters are approximate by design, so a burst can slip a few
 requests past before the 429s start.
 
+### Deploying bottles (once, on the existing database)
+
+The production table predates bottles, so it needs `bottles.sql`, which adds
+`text` and `hidden` and fills `text` for the old phrase rows. Three steps, in
+this order. **Each one needs the owner's word.**
+
+```bash
+# 1. Migrate. Run once: a second run stops at the first ALTER with
+#    "duplicate column name: text" and changes nothing.
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/bottles.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml \
+  --command "SELECT phrase, text, hidden, COUNT(*) FROM beacons GROUP BY phrase, text, hidden"
+
+# 2. Deploy the Worker. It serves the old site too (legacy POST, phrase in GET).
+npx wrangler deploy --config beacon-api/wrangler.toml
+
+# 3. Merge the site (messages in bottles), which deploys staging; production
+#    follows with the next v* release.
+```
+
+Why this order: the new Worker writes the `text` column, so it fails on an
+unmigrated table; the old Worker ignores the new columns, so migrating first
+is safe. Rows the old Worker writes between steps 1 and 2 have no `text`; the
+new Worker reads them as their phrase's text. If only one of the two ALTERs
+ever landed, run the missing one by hand with `--command`, then re-run the
+`UPDATE` from `bottles.sql` (safe to repeat), since the script stopped before
+it; until then the Worker's read-time mapping already shows those rows' phrase text.
+
 Then give the site the Worker's URL by setting `VITE_BEACON_API` in the
 committed [`.env.production`](../.env.production). Every production build
 reads that file, so both hosts (GitHub Pages and the Cloudflare copy) pick it
@@ -152,7 +235,7 @@ tables, `projects` and `career` (schema: [`content.sql`](content.sql); spec:
 `docs/archive/specs/2026-10-23-dynamic-content-design.md`). There is no
 admin page and no write endpoint: edit the rows in the Cloudflare dashboard,
 under **Storage & Databases → D1 → fitz-beacons → Console** (or the table
-browser next to it), or with `wrangler d1 execute --remote --command`.
+browser next to it), or with `wrangler d1 execute --remote --config beacon-api/wrangler.toml --command`.
 
 Visitors see an edit on their next visit, after up to about six minutes: the
 response is publicly cacheable for 300 s, and each Worker isolate keeps it for
@@ -234,7 +317,7 @@ DELETE FROM projects WHERE id = 'atlas';
 From a terminal, the same with `--remote`, from the repo root:
 
 ```bash
-npx wrangler d1 execute fitz-beacons --remote \
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml \
   --command "SELECT id, sort, title, color FROM projects ORDER BY sort"
 ```
 
@@ -245,10 +328,10 @@ again):
 
 ```bash
 # The two tables
-npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content.sql
 # The first rows, identical to the bundled data. INSERT OR IGNORE: running it
 # again never overwrites an edit.
-npx wrangler d1 execute fitz-beacons --remote --file=beacon-api/content-seed.sql
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content-seed.sql
 ```
 
 `content-seed.sql` is generated from `src/data/projects.json` and
@@ -262,18 +345,21 @@ when it matters (offline visitors and a broken database see them), and
 
 ## Moderating
 
+Prefer hiding (see "The `hidden` column"): a deleted row no longer counts
+toward its pilot's limits.
+
 ```bash
 # What is up there right now (newest first)
-npx wrangler d1 execute fitz-beacons --remote \
-  --command "SELECT id, phrase, at, country FROM beacons ORDER BY at DESC LIMIT 50"
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml \
+  --command "SELECT id, text, hidden, at, country FROM beacons ORDER BY at DESC LIMIT 50"
 
-# Remove one
-npx wrangler d1 execute fitz-beacons --remote \
-  --command "DELETE FROM beacons WHERE id = '<id>'"
+# Hide one
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml \
+  --command "UPDATE beacons SET hidden = 1 WHERE id = '<id>'"
 
-# Remove a burst (epoch ms)
-npx wrangler d1 execute fitz-beacons --remote \
-  --command "DELETE FROM beacons WHERE at > <epoch-ms>"
+# Hide a burst (epoch ms)
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml \
+  --command "UPDATE beacons SET hidden = 1 WHERE at > <epoch-ms>"
 ```
 
 **Kill switch:** empty `VITE_BEACON_API` in `.env.production` and merge. Both

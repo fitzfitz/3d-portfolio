@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isEditableTarget, isModifiedChord, resetFlightInput } from "../src/hooks/useKeyboardInput";
+import { isEditableTarget, isModifiedChord, resetFlightInput, flightKeyIgnored, gameKeyIgnored } from "../src/hooks/useKeyboardInput";
 import type { FlightInput } from "../src/store/spaceStore";
 
 describe("isEditableTarget", () => {
@@ -40,5 +40,34 @@ describe("resetFlightInput", () => {
       forward: false, backward: false, left: false, right: false, boost: false,
       ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
     });
+  });
+});
+
+// The bottle panel (spec "Writing a note"): typing a note must never fly the
+// ship, scan, open the logbook, jump, or open a second panel.
+describe("keys while the bottle panel is open", () => {
+  const bare = { metaKey: false, ctrlKey: false, altKey: false, repeat: false };
+  const textarea = { tagName: "TEXTAREA" };
+  const body = { tagName: "BODY" };
+  const flying = { showClassicCV: false, bottlePanelOpen: false };
+  const writing = { showClassicCV: false, bottlePanelOpen: true };
+
+  it("typing in the note box reaches neither flight nor game keys", () => {
+    expect(flightKeyIgnored({ ...bare, target: textarea }, writing)).toBe(true);
+    expect(gameKeyIgnored({ ...bare, target: textarea }, writing)).toBe(true);
+  });
+  it("with the panel open but focus elsewhere (its buttons), the keys stay off", () => {
+    expect(flightKeyIgnored({ ...bare, target: body }, writing)).toBe(true);
+    expect(gameKeyIgnored({ ...bare, target: body }, writing)).toBe(true);
+  });
+  it("in flight, with the panel closed, keys fly and act", () => {
+    expect(flightKeyIgnored({ ...bare, target: body }, flying)).toBe(false);
+    expect(gameKeyIgnored({ ...bare, target: body }, flying)).toBe(false);
+  });
+  it("keeps the older guards: chords, key repeat for game keys, and the classic résumé", () => {
+    expect(flightKeyIgnored({ ...bare, metaKey: true, target: body }, flying)).toBe(true);
+    expect(gameKeyIgnored({ ...bare, repeat: true, target: body }, flying)).toBe(true);
+    expect(flightKeyIgnored({ ...bare, target: body }, { ...flying, showClassicCV: true })).toBe(true);
+    expect(gameKeyIgnored({ ...bare, target: body }, { ...flying, showClassicCV: true })).toBe(true);
   });
 });

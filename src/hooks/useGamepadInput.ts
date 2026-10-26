@@ -19,16 +19,16 @@ function firstPad(): Gamepad | null {
 }
 
 type PadStore = Pick<SpaceState,
-  "showClassicCV" | "beaconPickerOpen" | "photoMode" | "isOrbitLocked" | "openDossier" | "logbookOpen" |
+  "showClassicCV" | "bottlePanelOpen" | "photoMode" | "isOrbitLocked" | "openDossier" | "logbookOpen" |
   "setPhotoMode" | "breakOrbit" | "closeDossier" | "setLogbookOpen" | "requestJump">;
 
 /**
  * One pad button press. Same guards as the keyboard: nothing while the
- * classic résumé or the beacon picker is up (the picker owns its own keys).
+ * classic résumé or the bottle panel is up (the panel owns the keys).
  * R3 (guide) follows J: ignored under a dossier or dock panel.
  */
 export function runPadAction(a: PadAction, s: PadStore): void {
-  if (s.showClassicCV || s.beaconPickerOpen) return;
+  if (s.showClassicCV || s.bottlePanelOpen) return;
   if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
   else if (a.kind === "close") {
     // A project dossier is not an orbit lock: B closes whichever is up.

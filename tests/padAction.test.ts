@@ -5,7 +5,7 @@ import { padActions } from "../src/utils/gamepad";
 
 function store(over: Record<string, unknown> = {}) {
   return {
-    showClassicCV: false, beaconPickerOpen: false, photoMode: false, isOrbitLocked: false, openDossier: null, logbookOpen: false,
+    showClassicCV: false, bottlePanelOpen: false, photoMode: false, isOrbitLocked: false, openDossier: null, logbookOpen: false,
     setPhotoMode: vi.fn(), breakOrbit: vi.fn(), closeDossier: vi.fn(), setLogbookOpen: vi.fn(), requestJump: vi.fn(),
     ...over,
   };
@@ -36,7 +36,7 @@ describe("runPadAction", () => {
   });
 
   it("does nothing while the beacon picker is open, like the L key", () => {
-    const s = store({ beaconPickerOpen: true });
+    const s = store({ bottlePanelOpen: true });
     runPadAction({ kind: "logbook" }, s);
     runPadAction({ kind: "photo" }, s);
     runPadAction({ kind: "jump", id: "home" }, s);
@@ -61,7 +61,7 @@ describe("runPadAction", () => {
 
   it("R3 is ignored under a dossier or dock panel, the résumé and the beacon picker, as J is", () => {
     takeGuideToggle();
-    for (const over of [{ isOrbitLocked: true }, { openDossier: "ruangrapi" }, { showClassicCV: true }, { beaconPickerOpen: true }]) {
+    for (const over of [{ isOrbitLocked: true }, { openDossier: "ruangrapi" }, { showClassicCV: true }, { bottlePanelOpen: true }]) {
       runPadAction({ kind: "guide" }, store(over));
       expect(takeGuideToggle(), JSON.stringify(over)).toBe(false);
     }

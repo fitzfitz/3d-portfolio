@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-26.
 **Status:** scope agreed with the owner ("cool go"). The design calls are the controller's.
-**Plan:** `docs/superpowers/plans/2026-10-26-store-split.md`.
+**Plan:** `docs/archive/plans/2026-10-26-store-split.md`.
 
 ## Why
 

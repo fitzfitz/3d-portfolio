@@ -11,7 +11,7 @@ import { worldClock } from "../src/store/worldClock";
 
 /**
  * API-shape and behaviour guard for the store split (spec
- * docs/superpowers/specs/2026-10-26-store-split-design.md). Pinned from the
+ * docs/archive/specs/2026-10-26-store-split-design.md). Pinned from the
  * single-file store before the split: the state keys, the module's named
  * exports, the import-time initial state and writes, and the exact sequence of
  * store notifications and storage writes for a scripted run of every action.
@@ -21,21 +21,21 @@ type _TypeExports = [FlightInput, WorldEventState, SpaceState];
 const _typesUsed: _TypeExports | null = null;
 
 const STATE_KEYS = [
-  "activeZone", "addOwnBeacon", "announceLogbook", "aurumTold", "badges", "beaconPickerOpen", "beacons",
+  "activeZone", "addOwnBottle", "announceLogbook", "aurumTold", "badges", "beacons", "bottlePanelOpen",
   "breakOrbit", "broadcast", "bumpImpact", "canvasEpoch", "changelogOpen", "changelogSeen", "chartShoutAt",
   "chartWorld", "charted", "clearChartShout", "closeDossier", "collectShard", "cometNear", "dossierVia",
   "endWorldEvent", "fuelEmpty", "impactCount", "isLowPerf", "isMuted", "isNearSpawn", "isOrbitCooldown",
   "isOrbitLocked", "isTeleporting", "isWarping", "jumpRequest", "legacyCartographer", "liveSky", "liveSkySeen",
   "logbookLineAt", "logbookOpen", "lowPerfManual", "markChangelogSeen", "openDossier", "openProjectDossier",
-  "ownBeacons", "padConnected", "pendingLowPerf", "photoMode", "plumeColor", "probeNear", "probeSpots",
-  "probeTip", "race", "raceBest", "recordBadge", "reducedMotion", "reducedMotionManual", "relocation",
-  "remountCanvas", "requestJump", "scanTarget", "sceneReady", "sendBroadcast", "setActiveZone",
-  "setBeaconPickerOpen", "setBeacons", "setChangelogOpen", "setCometNear", "setFuelEmpty", "setLiveSky",
+  "ownBeacons", "ownBottles", "padConnected", "pendingLowPerf", "photoMode", "plumeColor", "probeNear",
+  "probeSpots", "probeTip", "race", "raceBest", "recordBadge", "reducedMotion", "reducedMotionManual",
+  "relocation", "remountCanvas", "requestJump", "scanTarget", "sceneReady", "sendBroadcast", "setActiveZone",
+  "setBeacons", "setBottlePanelOpen", "setChangelogOpen", "setCometNear", "setFuelEmpty", "setLiveSky",
   "setLiveSkySeen", "setLogbookOpen", "setLowPerf", "setMuted", "setNearSpawn", "setOrbitLocked",
   "setPadConnected", "setPhotoMode", "setPlumeColor", "setProbeNear", "setProbeTip", "setRace", "setRaceBest",
-  "setReducedMotion", "setScanTarget", "setSceneReady", "setShowClassicCV", "setWarmingUp", "setWarping",
-  "shardsCollected", "showClassicCV", "startWorldEvent", "tellAurumOnce", "triggerTeleportFlash", "visitedDossiers",
-  "warmingUp", "worldEvent",
+  "setReducedMotion", "setScanTarget", "setSceneReady", "setShowBottles", "setShowClassicCV", "setWarmingUp",
+  "setWarping", "shardsCollected", "showBottles", "showClassicCV", "startWorldEvent", "tellAurumOnce",
+  "triggerTeleportFlash", "visitedDossiers", "warmingUp", "worldEvent",
 ];
 
 const MODULE_EXPORTS = [
@@ -122,8 +122,8 @@ describe("store shape (split guard)", () => {
         "activeZone": null,
         "aurumTold": false,
         "badges": [],
-        "beaconPickerOpen": false,
         "beacons": [],
+        "bottlePanelOpen": false,
         "broadcast": null,
         "canvasEpoch": 0,
         "changelogOpen": false,
@@ -150,6 +150,7 @@ describe("store shape (split guard)", () => {
         "lowPerfManual": false,
         "openDossier": null,
         "ownBeacons": [],
+        "ownBottles": [],
         "padConnected": false,
         "pendingLowPerf": null,
         "photoMode": false,
@@ -171,6 +172,7 @@ describe("store shape (split guard)", () => {
         "scanTarget": null,
         "sceneReady": false,
         "shardsCollected": [],
+        "showBottles": true,
         "showClassicCV": true,
         "visitedDossiers": [],
         "warmingUp": false,
@@ -197,6 +199,8 @@ describe("store shape (split guard)", () => {
       "fitz-live-seen-2": "1",
       "fitz-race-best": "41.5",
       "fitz-own-beacons": JSON.stringify(["b1", 7, "b2"]),
+      "fitz-own-bottles": JSON.stringify([{ id: "b2", x: 1, y: 2, z: 3, text: "hello there", at: 5, country: "ID" }, { id: "<x>" }]),
+      "fitz-bottles": "0",
       "fitz-probes": JSON.stringify({ [PROBES[0].id]: 1 }),
     }, { matchMedia: () => ({ matches: true }), location: { search: "?cv", hash: "" } });
     expect(events).toMatchInlineSnapshot(`
@@ -215,8 +219,8 @@ describe("store shape (split guard)", () => {
             "id": "slingshot",
           },
         ],
-        "beaconPickerOpen": false,
         "beacons": [],
+        "bottlePanelOpen": false,
         "broadcast": null,
         "canvasEpoch": 0,
         "changelogOpen": false,
@@ -267,6 +271,17 @@ describe("store shape (split guard)", () => {
           "b1",
           "b2",
         ],
+        "ownBottles": [
+          {
+            "at": 5,
+            "country": "ID",
+            "id": "b2",
+            "text": "hello there",
+            "x": 1,
+            "y": 2,
+            "z": 3,
+          },
+        ],
         "padConnected": false,
         "pendingLowPerf": null,
         "photoMode": false,
@@ -291,6 +306,7 @@ describe("store shape (split guard)", () => {
           0,
           1,
         ],
+        "showBottles": false,
         "showClassicCV": true,
         "visitedDossiers": [
           "ruangrapi",
@@ -430,6 +446,7 @@ describe("store shape (split guard)", () => {
     s().setMuted(true);
     s().setLiveSky(false);
     s().setLiveSkySeen(true);
+    s().setShowBottles(false);
     s().setSceneReady(true);
     s().setSceneReady(true);
 
@@ -449,10 +466,11 @@ describe("store shape (split guard)", () => {
     s().setPhotoMode(true);
     s().setPadConnected(true);
     s().setBeacons([]);
-    s().addOwnBeacon("a");
-    s().addOwnBeacon("b");
-    s().addOwnBeacon("a");
-    s().setBeaconPickerOpen(true);
+    const note = (id: string) => ({ id, x: 100, y: 0, z: 100, text: `note ${id}`, at: 1, country: null });
+    s().addOwnBottle(note("a"));
+    s().addOwnBottle(note("b"));
+    s().addOwnBottle(note("a"));
+    s().setBottlePanelOpen(true);
     s().setCometNear(true);
     s().setCometNear(true);
     s().setNearSpawn(false);
@@ -560,6 +578,8 @@ describe("store shape (split guard)", () => {
         "write fitz-live-sky=0",
         "set liveSkySeen=true",
         "write fitz-live-seen-2=1",
+        "set showBottles=false",
+        "write fitz-bottles=0",
         "set sceneReady=true",
         "-- shards and race",
         "set shardsCollected=[0]",
@@ -576,12 +596,15 @@ describe("store shape (split guard)", () => {
         "set padConnected=true",
         "set beacons=[]",
         "write fitz-own-beacons=["a"]",
-        "set ownBeacons=["a"]",
+        "write fitz-own-bottles=[{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null}]",
+        "set ownBeacons=["a"] ownBottles=[{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null}]",
         "write fitz-own-beacons=["b","a"]",
-        "set ownBeacons=["b","a"]",
+        "write fitz-own-bottles=[{"id":"b","x":100,"y":0,"z":100,"text":"note b","at":1,"country":null},{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null}]",
+        "set ownBeacons=["b","a"] ownBottles=[{"id":"b","x":100,"y":0,"z":100,"text":"note b","at":1,"country":null},{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null}]",
         "write fitz-own-beacons=["a","b"]",
-        "set ownBeacons=["a","b"]",
-        "set beaconPickerOpen=true",
+        "write fitz-own-bottles=[{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null},{"id":"b","x":100,"y":0,"z":100,"text":"note b","at":1,"country":null}]",
+        "set ownBeacons=["a","b"] ownBottles=[{"id":"a","x":100,"y":0,"z":100,"text":"note a","at":1,"country":null},{"id":"b","x":100,"y":0,"z":100,"text":"note b","at":1,"country":null}]",
+        "set bottlePanelOpen=true",
         "set cometNear=true",
         "set isNearSpawn=false",
         "set fuelEmpty=true",

@@ -24,6 +24,8 @@ export const STORE_KEYS = {
   aurumTold: "fitz-aurum-told",
   raceBest: "fitz-race-best",
   ownBeacons: "fitz-own-beacons",
+  ownBottles: "fitz-own-bottles",
+  showBottles: "fitz-bottles",
   liveSky: "fitz-live-sky",
   liveSkySeen: "fitz-live-seen-2",
   changelogSeen: "fitz-changelog-seen",

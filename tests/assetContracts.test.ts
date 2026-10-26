@@ -14,7 +14,7 @@ import sharp from "sharp";
 /**
  * Contracts between the generated models in public/models and the code that
  * loads them by name, size or position (Spaceship, CargoTraffic,
- * PlasmaAnomalies, SpacePlanets, SolarMoons, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
+ * PlasmaAnomalies, SpacePlanets, SolarMoons, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes, the bottles). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
 let io: NodeIO;
@@ -709,6 +709,80 @@ describe("project probe (probe.glb)", () => {
 
   it("probe.glb: stays inside its download budget", () => {
     expect(kb("probe")).toBeLessThanOrEqual(600);
+  });
+});
+
+describe("message bottle (bottle.glb)", () => {
+  // The bottles scene draws it as two InstancedMeshes (one per node): the
+  // opaque note and cork, then the blended glass. gen_bottle.py's header has
+  // the contract; COLOR_0's R on the glass is the glint zone the game lights.
+  it("bottle.glb: a glass node and a contents node, one primitive each, two materials, no extensions", async () => {
+    const doc = await load("bottle");
+    expect(nodeNames(doc).filter((n) => n.startsWith("Bottle_"))).toEqual(["Bottle_Contents", "Bottle_Glass"]);
+    for (const n of ["Bottle_Contents", "Bottle_Glass"]) expect(node(doc, n).getMesh()!.listPrimitives()).toHaveLength(1);
+    expect(materialNames(doc)).toEqual(["BottleContents", "BottleGlass"]);
+    // no KHR_materials_* extension, so three builds a MeshStandardMaterial
+    for (const m of doc.getRoot().listMaterials()) expect(m.listExtensions(), m.getName()).toEqual([]);
+    expect(semantics(doc)).not.toContain("TANGENT");
+  });
+
+  it("bottle.glb: the glass blends with no maps; the note and cork are one opaque textured material; nothing emits in the file", async () => {
+    const doc = await load("bottle");
+    expect(textureSet(doc, "BottleGlass")).toMatchObject({ base: false, normal: false, emissive: false, metalRough: false, alpha: "BLEND" });
+    expect(textureSet(doc, "BottleContents")).toMatchObject({ base: true, emissive: false, alpha: "OPAQUE" });
+    for (const m of doc.getRoot().listMaterials()) {
+      expect(m.getEmissiveFactor(), m.getName()).toEqual([0, 0, 0]);
+      // single-sided: the glass shows its near outer and far inner wall only
+      expect(m.getDoubleSided(), m.getName()).toBe(false);
+    }
+    const a = doc.getRoot().listMaterials().find((m) => m.getName() === "BottleGlass")!.getAlpha();
+    expect(a).toBeGreaterThan(0.1);
+    expect(a).toBeLessThan(0.6);
+  });
+
+  it("bottle.glb: the glint zone (COLOR_0 R on the glass) is present and small; the contents carry no COLOR_0", async () => {
+    const doc = await load("bottle");
+    const glass = node(doc, "Bottle_Glass").getMesh()!.listPrimitives()[0];
+    const col = glass.getAttribute("COLOR_0");
+    expect(col).not.toBeNull();
+    const n = col!.getCount();
+    const el: number[] = [];
+    let lit = 0;
+    for (let i = 0; i < n; i++) {
+      col!.getElement(i, el);
+      if (el[0] > 0.5) lit++;
+    }
+    expect(lit).toBeGreaterThan(0);
+    expect(lit / n).toBeLessThan(0.3);
+    expect(node(doc, "Bottle_Contents").getMesh()!.listPrimitives()[0].getAttribute("COLOR_0")).toBeNull();
+  });
+
+  it("bottle.glb: triangles <= 1500", async () => {
+    expect(triangles(await load("bottle"))).toBeLessThanOrEqual(1500);
+  });
+
+  it("bottle.glb: longest extent 0.6–0.8, along +Y (the neck)", async () => {
+    // Measured as the scene will see it: node transforms (quantization) applied.
+    const b = bounds(await load("bottle"));
+    const size = [0, 1, 2].map((i) => b.max[i] - b.min[i]);
+    const longest = Math.max(...size);
+    expect(longest).toBeGreaterThanOrEqual(0.6);
+    expect(longest).toBeLessThanOrEqual(0.8);
+    expect(size[1]).toBe(longest);
+  });
+
+  it("bottle.glb: the note sits inside the glass (only the cork stands proud, at +Y)", async () => {
+    const doc = await load("bottle");
+    const g = materialBounds(doc, "BottleGlass"), c = materialBounds(doc, "BottleContents");
+    for (const i of [0, 2]) {
+      expect(c.min[i]).toBeGreaterThan(g.min[i]);
+      expect(c.max[i]).toBeLessThan(g.max[i]);
+    }
+    expect(c.min[1]).toBeGreaterThan(g.min[1]);
+  });
+
+  it("bottle.glb: stays inside its download budget (150 KB)", () => {
+    expect(kb("bottle")).toBeLessThanOrEqual(150);
   });
 });
 

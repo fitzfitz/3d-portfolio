@@ -38,8 +38,8 @@ export const RESERVED_IDS: ReadonlySet<string> = new Set<string>([
   // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the ring course, the visiting comet.
   "sun", "jellyfish", "time_trial", "comet_visitor",
 ]);
-/** Families of generated scan ids: buoys (career_<n>), beacons, live-sky ghosts, comets, scenery asteroids. */
-export const RESERVED_PREFIXES: readonly string[] = ["career_", "beacon_", "ghost_", "comet_", "asteroid_"];
+/** Families of generated scan ids: buoys (career_<n>), bottles (and the old beacons), live-sky ghosts, comets, scenery asteroids. */
+export const RESERVED_PREFIXES: readonly string[] = ["career_", "bottle_", "beacon_", "ghost_", "comet_", "asteroid_"];
 
 /** True when a project may not take this id. */
 export const isReservedId = (id: string): boolean => RESERVED_IDS.has(id) || RESERVED_PREFIXES.some((p) => id.startsWith(p));

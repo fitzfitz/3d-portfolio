@@ -6,7 +6,7 @@ import { beamState } from "../src/store/beamState";
 
 function store(over: Record<string, unknown> = {}) {
   return {
-    showClassicCV: false, beaconPickerOpen: false, photoMode: false, isOrbitLocked: false, openDossier: null,
+    showClassicCV: false, bottlePanelOpen: false, photoMode: false, isOrbitLocked: false, openDossier: null,
     logbookOpen: false, setPhotoMode: vi.fn(), breakOrbit: vi.fn(), closeDossier: vi.fn(),
     setLogbookOpen: vi.fn(), requestJump: vi.fn(),
     ...over,

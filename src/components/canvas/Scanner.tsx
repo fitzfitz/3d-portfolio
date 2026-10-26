@@ -8,6 +8,8 @@ import { scanState } from "../../utils/scanState";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { buoyCardState, buoyIndex, BUOY_SCAN_HOLD_S } from "../../utils/buoyCard";
 import { isBodyId } from "../../data/bodyIds";
+import { bottleRegistry } from "../../utils/beacons";
+import { bottleCardState, BOTTLE_SCAN_HOLD_S } from "../../utils/bottleCard";
 
 
 /** Headless: drives scan targeting/progress/report dispatch each frame. Renders nothing. */
@@ -48,6 +50,9 @@ export default function Scanner() {
         // A scanned career buoy keeps its HUD card up for a while (CareerTrail shows it).
         const buoy = buoyIndex(near.id);
         if (buoy >= 0) buoyCardState.scan = { index: buoy, until: gameTime(state.clock.getElapsedTime()) + BUOY_SCAN_HOLD_S };
+        // So does a scanned bottle: its note unrolls on the HUD (Bottles.tsx shows it).
+        const bottle = bottleRegistry.get(near.id);
+        if (bottle) bottleCardState.scan = { bottle: bottle.bottle, until: gameTime(state.clock.getElapsedTime()) + BOTTLE_SCAN_HOLD_S };
         scanState.progress = 0;
         latched.current = true; // one report per hold
       }
