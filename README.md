@@ -25,12 +25,12 @@ Tailwind, on Vite.
 | `F` (hold) | Tractor beam: mine belt pebbles, reel in project probes, reel yourself to a data shard |
 | `P` | Photo mode |
 | `J` | Call the jellyfish guide, or send it back |
-| `B` | Drop a beacon (only when a beacon API is configured) |
+| `B` | Leave a message in a bottle (only when a beacon API is configured) |
 | `1`–`3` | Jump next to a project probe (grab it with `F` to open its dossier) |
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
 | `6` | Jump to the contact portal |
-| `Esc` | Close the open dossier, hangar or contact form |
+| `Esc` | Close the open dossier, hangar, contact form or bottle panel |
 
 The keys above are for the three projects the site has today. The probes come
 first, one key each, then the three destinations, so with more projects every
@@ -38,7 +38,7 @@ destination key moves up by one (six projects: career `7`, shipyard `8`,
 contact `9`).
 
 The buttons along the bottom left carry their own keys: LOGBOOK (`L`, `X` on a
-pad), PATCH_NOTES (`N`) and, with a beacon API, BEACON (`B`).
+pad), PATCH_NOTES (`N`) and, with a beacon API, BOTTLE (`B`).
 
 No flying required: the spawn card has jump buttons for each project, the
 sector list (bottom right) jumps on click, and a waypoint marks the next unread
@@ -51,10 +51,19 @@ the start ring. Par is 0:35, and one tank of warp covers the whole loop, so par 
 Your best time is saved in this browser, and later laps race a ghost of that
 best lap. A jump or an orbit lock aborts the lap.
 
-**Beacons.** If a beacon API is configured, `B` (or the BEACON button) drops a
-beacon where your ship is. It carries a phrase from a fixed list, never free
-text, and later visitors can scan it. Without the API the feature is absent. See
-[`beacon-api/README.md`](beacon-api/README.md).
+**Messages in bottles.** If a beacon API is configured, `B` (or the BOTTLE (B)
+button) opens a small panel: write a note of up to 140 characters and Send
+leaves it in a bottle where your ship is. Notes are filtered (no links or
+contact details, no profanity or junk) on the Worker, and the panel shows the
+same reason as you type. One bottle every 10 minutes, five a day. The newest 30
+bottles bob in space for everyone, plus your own. Fly within about 8 u of one
+and its note unrolls on the HUD with the writer's country and its age; scanning
+(`E`) reads it on the radio too. Bottles never collide, and the beam, the
+waypoint and the jumps ignore them. **Show bottles** in the logbook hides them
+all, for you only (saved in this browser); you can still leave one. Notes are
+only ever shown as plain text. Without the API the feature is absent. See
+[`beacon-api/README.md`](beacon-api/README.md), which also explains how the
+owner hides a note.
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
