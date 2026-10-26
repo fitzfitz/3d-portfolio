@@ -10,7 +10,9 @@ import saucerRigJson from "../../../data/saucerRig.json";
 import tardigradeRigJson from "../../../data/tardigradeRig.json";
 import { MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
 import { monsterMatrix } from "../../../utils/combat/monsterFrame";
-import { nestPhase, saucerRenderPose, tardigradeRenderPose } from "../../../utils/combat/renderPose";
+import {
+  monsterFrameNeeded, monstersOnShow, nestPhase, saucerRenderPose, tardigradeRenderPose,
+} from "../../../utils/combat/renderPose";
 import { MONSTER_UNIFORMS } from "../../../utils/monsters/monsterShading";
 import { beginMonsterFrame, createLodState, endMonsterFrame } from "../../../utils/monsters/monsterInstances";
 import { saucerTint, type SaucerTint } from "../../../utils/monsters/monsterTint";
@@ -67,6 +69,8 @@ export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.G
       lod: createLodState(), phase: nestPhase(MAX_SAUCERS + i),
     })),
     m: new THREE.Matrix4(), p: new THREE.Vector3(), ship: { x: 0, y: 0, z: 0 },
+    /** A monster was on show last frame (Ruling C21). */
+    shownLast: true,
   }), []);
 
   // Warm the programs and maps, then open the warm gate for wave 1.
@@ -76,7 +80,7 @@ export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.G
     if (!root) return;
     const s = useSpaceStore.getState();
     const postFx = !(s.pendingLowPerf ?? s.isLowPerf);
-    warmNest(gl, root, camera, scene, postFx).then(() => { if (!cancelled) combat.warm = true; });
+    warmNest(gl, root, camera, scene, postFx).then(() => { if (!cancelled) { combat.warm = true; combat.loadFailed = false; } });
     return () => { cancelled = true; combat.warm = false; };
   }, [gl, camera, scene, warmRoot]);
 
@@ -102,6 +106,12 @@ export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.G
     MONSTER_UNIFORMS.uMotion.value = reduced ? 0 : 1;
     const n = combat.nest;
     const S = slots;
+    // Nothing on show this frame or last: the meshes are already empty, so
+    // skip the instance frame (no buffer upload or bounds refit) (C21).
+    const show = monstersOnShow(n);
+    const run = monsterFrameNeeded(show, S.shownLast);
+    S.shownLast = show;
+    if (!run) return;
     S.ship.x = flight.x; S.ship.y = flight.y; S.ship.z = flight.z;
     const cam = camera.position;
     beginMonsterFrame(all);

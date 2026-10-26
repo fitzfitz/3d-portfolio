@@ -108,7 +108,8 @@ describe("store shape (split guard)", () => {
     expect(storeModule.worldClock).toBe(worldClock);
     expect(storeModule.combat).toBe(combatModule.combat);
     expect(combat).toBe(combatModule.combat);
-    expect(Object.keys(combat).sort()).toEqual(["breachAt", "clearedAt", "click", "enteredAt", "flashAt", "hits", "inArea", "nest", "towRequest", "warm"]);
+    // loadFailed: Ruling C22 (the on-demand models failed to load), added on purpose in Task 9.
+    expect(Object.keys(combat).sort()).toEqual(["breachAt", "clearedAt", "click", "enteredAt", "flashAt", "hits", "inArea", "loadFailed", "nest", "towRequest", "warm"]);
     expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "raceHold", "racing", "speed", "x", "y", "z"]);
     expect(Object.keys(flight.input).sort()).toEqual(["ascend", "backward", "beam", "boost", "descend", "forward", "left", "right", "scan", "steer", "thrust"]);
     expect(Object.keys(worldClock)).toEqual(["now"]);

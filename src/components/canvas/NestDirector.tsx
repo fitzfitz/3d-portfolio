@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, combat } from "../../store/spaceStore";
 import { shipTeleport } from "../../store/shipTeleport";
@@ -69,8 +69,9 @@ function readShip(): void {
 export default function NestDirector() {
   // A remounted canvas (the classic-résumé round trip) starts a fresh track:
   // the module-level one would otherwise sweep the ship's hit sphere from
-  // where the last canvas left it (Ruling C17). Before the dev-only effect.
-  useEffect(() => { track.has = false; }, []);
+  // where the last canvas left it (Ruling C17). A layout effect, so it runs
+  // before any frame can (Ruling C20), and before the dev-only effect.
+  useLayoutEffect(() => { track.has = false; }, []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;

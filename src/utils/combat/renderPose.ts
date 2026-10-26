@@ -58,3 +58,23 @@ export function tardigradeRenderPose(t: Tardigrade, phase: number, out: Tardigra
   out.curl = t.pose.curl;
   return out;
 }
+
+/** What monstersOnShow reads of a monster. */
+interface MonsterShow { phase: string; scale: number }
+
+/** Is any monster on show (not gone, scaled above nothing)? The renderer draws only these. */
+export function monstersOnShow(n: { saucers: readonly MonsterShow[]; tardigrades: readonly MonsterShow[] }): boolean {
+  for (let i = 0; i < n.saucers.length; i++) if (n.saucers[i].phase !== "gone" && n.saucers[i].scale > 0) return true;
+  for (let i = 0; i < n.tardigrades.length; i++) if (n.tardigrades[i].phase !== "gone" && n.tardigrades[i].scale > 0) return true;
+  return false;
+}
+
+/**
+ * Does the renderer run its instance frame (beginMonsterFrame … endMonsterFrame)?
+ * While a monster is on show, and on the one frame after the last leaves (it
+ * empties the meshes); then it skips, so after a visit the instance buffers are
+ * not re-uploaded and the bounds not refitted every frame (Ruling C21).
+ */
+export function monsterFrameNeeded(shownNow: boolean, shownLast: boolean): boolean {
+  return shownNow || shownLast;
+}

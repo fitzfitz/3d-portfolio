@@ -216,5 +216,20 @@ export default async function run() {
       await page.touchscreen.touchEnd();
       checks.check("SCAN sets the scan input", scanning.scan === true);
     }
+
+    // In the Nest's fighting area (110 u) the BEAM button reads FIRE (spec
+    // 2026-10-27-combat "Touch"). 90 u out: inside the area, outside the 70 u
+    // zone, so no fight starts. Back out it reads BEAM again.
+    const beamText = () => page.$eval('[data-testid="touch-beam"]', (b) => b.textContent);
+    const nestAt = (r) => page.evaluate(async (r) => {
+      const { NEST_CENTRE } = await import("/src/data/nest.ts");
+      window.__fitz.teleport(NEST_CENTRE[0], NEST_CENTRE[1], NEST_CENTRE[2] + r);
+    }, r);
+    await nestAt(90);
+    const fire = (await pollUntil(async () => ((await beamText()) === "FIRE" ? true : null), { timeoutMs: 4000 })).ok;
+    checks.check("the BEAM button reads FIRE in the Nest's fighting area", fire, `label=${await beamText()}`);
+    await nestAt(300);
+    const beam = (await pollUntil(async () => ((await beamText()) === "BEAM" ? true : null), { timeoutMs: 4000 })).ok;
+    checks.check("and BEAM again outside it", beam, `label=${await beamText()}`);
   });
 }

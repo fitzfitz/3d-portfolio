@@ -19,6 +19,12 @@ export const combat = {
   click: { pending: false, x: 0, y: 0, z: 0 },
   /** The Nest's programs and maps are on the GPU. */
   warm: false,
+  /**
+   * The on-demand models (or the renderer's chunk) failed to load: warm then
+   * never comes, the Nest stays harmless and the HUD says so (Ruling C22).
+   * NestGate sets it from its error boundary and clears it on each new attempt.
+   */
+  loadFailed: false,
   enteredAt: -Infinity,
   flashAt: -Infinity,
   clearedAt: -Infinity,

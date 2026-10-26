@@ -6,7 +6,10 @@ import { DESTINATIONS } from "../../data/destinations";
 import { BUOY_POSITIONS, CAREER_AMBER } from "../../data/careerTrail";
 import { GATE_POS, GATE_RADAR_GREY } from "../../data/dormantGate";
 import { SOLAR_BODIES } from "../../data/solarSystem";
-import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, combat } from "../../store/spaceStore";
+import { NEST_CENTRE, NEST_RED } from "../../data/nest";
+import { NEST_ZONE_R } from "../../utils/combat/constants";
+import { nestRadarShown } from "../../utils/combat/nestHud";
 import { worldToRadar, altitudeCue, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
@@ -42,6 +45,22 @@ export default function RadarMap() {
     canvas.width = SIZE * dpr;
     canvas.height = SIZE * dpr;
     ctx.scale(dpr, dpr);
+
+    /** Live monsters as small red dots, in range only (no allocation). */
+    const drawMonsterBlips = (list: readonly { alive: boolean; x: number; y: number; z: number }[]) => {
+      ctx.fillStyle = NEST_RED;
+      ctx.globalAlpha = 1;
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (!m.alive) continue;
+        const dx = m.x - flight.x, dz = m.z - flight.z;
+        if (Math.hypot(dx, m.y - flight.y, dz) > RADAR_RANGE) continue;
+        const { x: sx, up } = worldToRadar(dx, dz, flight.heading);
+        ctx.beginPath();
+        ctx.arc(c + sx * scale, c - up * scale, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
 
     const draw = () => {
       const now = performance.now() / 1000;
@@ -202,6 +221,50 @@ export default function RadarMap() {
           ctx.arc(c + sx * scale, c - up * scale, 2, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 1;
+        }
+      }
+
+      // The Nest: a red dot and its 70 u zone ring, in range only and never
+      // rim-clamped (like the gate dot), with the altitude chevron (it lies
+      // below the plane). Its monsters are small red dots, in range only.
+      {
+        const dx = (NEST_CENTRE[0] - flight.x);
+        const dz = (NEST_CENTRE[2] - flight.z);
+        const dy = (NEST_CENTRE[1] - flight.y);
+        if (nestRadarShown(dx, dy, dz)) {
+          const { x: sx, up } = worldToRadar(dx, dz, a);
+          const px = c + sx * scale, py = c - up * scale;
+          ctx.fillStyle = NEST_RED;
+          ctx.strokeStyle = NEST_RED;
+          // The ring is clipped to the radar's rim (the dot near the rim would spill it).
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(c, c, rimR, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.globalAlpha = 0.5;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(px, py, NEST_ZONE_R * scale, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+          ctx.globalAlpha = 0.95;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+          const cue = altitudeCue(dy);
+          if (cue.dir !== 0) {
+            ctx.globalAlpha = cue.alpha * 0.9;
+            const by = py - cue.dir * 6;
+            ctx.beginPath();
+            ctx.moveTo(px - 2.5, by + cue.dir * 2.5);
+            ctx.lineTo(px, by);
+            ctx.lineTo(px + 2.5, by + cue.dir * 2.5);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+          drawMonsterBlips(combat.nest.saucers);
+          drawMonsterBlips(combat.nest.tardigrades);
         }
       }
 
