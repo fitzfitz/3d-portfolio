@@ -248,18 +248,23 @@ export async function checkLap(
   return { ok: true, rings: last.i, timeMs: last.i === finish ? last.at - stamps[0].at : null, lastAt: last.at };
 }
 
-/** Slack on a ghost's position at a ring stamp, beyond the ring's radius (u). */
-const PATH_RING_SLACK = 15;
+/**
+ * Slack on a ghost's position at a ring stamp, beyond the ring's radius (u).
+ * Server stamps arrive about one round trip after the client's crossing.
+ */
+export const PATH_RING_SLACK = 40;
+/** Slack on the ghost's duration against the stamped lap time (s), for the same reason. */
+export const PATH_TIME_SLACK_S = 1.5;
 
 /**
  * Whether an uploaded best-lap ghost matches the stamped lap: no teleports, the
- * same duration, and through every ring when the server stamped it.
+ * same duration, and through every ring (the GO stamp aside) when the server stamped it.
  * Expects a finished lap (stamps 0..N).
  */
 export function checkPath(ghost: Ghost, stamps: readonly Stamp[], centres: Centres): boolean {
   if (stamps.length !== centres.length + 1) return false;
   const lapTime = (stamps[stamps.length - 1].at - stamps[0].at) / 1000;
-  if (Math.abs(ghost.time - lapTime) > 0.5) return false;
+  if (Math.abs(ghost.time - lapTime) > PATH_TIME_SLACK_S) return false;
   const s = ghost.samples;
   if (s.length < 2) return false;
   const maxStep = (RACE_SPEED / GHOST_HZ) * 1.5 + 0.5;
@@ -267,6 +272,8 @@ export function checkPath(ghost: Ghost, stamps: readonly Stamp[], centres: Centr
     if (Math.hypot(s[n].x - s[n - 1].x, s[n].y - s[n - 1].y, s[n].z - s[n - 1].z) > maxStep) return false;
   }
   for (const st of stamps) {
+    // The GO stamp is issued at goAt wherever the ship sits on the grid (up to ~38 u behind gate 0).
+    if (st.i === 0) continue;
     const t = (st.at - stamps[0].at) / 1000;
     // sampleGhost is null at the very end of the run: the last sample is the pose there.
     const p = sampleGhost(s, t) ?? s[s.length - 1];

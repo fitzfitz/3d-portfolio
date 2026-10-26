@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  checkLap, checkPath, isInviteCode, newInviteCode, newRaceToken, parseRaceClient, parseRaceServer,
+  checkLap, checkPath, PATH_RING_SLACK, isInviteCode, newInviteCode, newRaceToken, parseRaceClient, parseRaceServer,
   rankResults, signStamp, verifyStamp, type RaceServerMessage, type ResultEntry, type Stamp,
 } from "../src/utils/raceProtocol";
 import { RING_RADIUS } from "../src/data/ringCourse";
@@ -161,16 +161,26 @@ describe("checkPath", () => {
   it("fails a ghost whose time disagrees with the lap", async () => {
     const stamps = await lap(range(0, 11));
     const g = ghostFor(stamps);
-    expect(checkPath({ ...g, time: g.time + 0.6 }, stamps, CENTRES)).toBe(false);
-    expect(checkPath({ ...g, time: g.time + 0.4 }, stamps, CENTRES)).toBe(true);
+    expect(checkPath({ ...g, time: g.time + 1.6 }, stamps, CENTRES)).toBe(false);
+    expect(checkPath({ ...g, time: g.time + 1.4 }, stamps, CENTRES)).toBe(true);
   });
   it("fails a ghost that misses a ring", async () => {
     const stamps = await lap(range(0, 11));
     const g = ghostFor(stamps);
     // Ring 5 is stamped at 15 s (sample 150): a smooth bump there takes the ghost well off the ring without a step the step rule would catch.
-    const off = RING_RADIUS + 15 + 5;
+    const off = RING_RADIUS + PATH_RING_SLACK + 5;
     for (let n = 140; n <= 160; n++) g.samples[n] = { ...g.samples[n], y: off * (1 - Math.abs(n - 150) / 10) };
     expect(checkPath(g, stamps, CENTRES)).toBe(false);
+  });
+  it("passes a ghost that starts on the grid, 38 u behind gate 0", async () => {
+    const stamps = await lap(range(0, 11));
+    const g = ghostFor(stamps);
+    // Slot 7: 38 u behind, 4 u to the side, easing onto the line over 1.5 s.
+    for (let n = 0; n <= 15; n++) {
+      const k = 1 - n / 15;
+      g.samples[n] = { ...g.samples[n], x: g.samples[n].x - 38 * k, z: g.samples[n].z + 4 * k };
+    }
+    expect(checkPath(g, stamps, CENTRES)).toBe(true);
   });
   it("fails an unfinished lap", async () => {
     const stamps = await lap(range(0, 4));
