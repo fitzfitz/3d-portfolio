@@ -4,28 +4,20 @@ import { worldClock } from "./worldClock";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { WorldEventKind } from "../utils/eventDirector";
 import type { CometPass, ConvoyPlan } from "../utils/worldEvents";
-import { projects } from "../constants";
-import { PROBES, PROBE_IDS } from "../data/probes";
-import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
 import type { BodyId } from "../data/bodyIds";
-import { destinationById } from "../data/destinations";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
 import { setLowPerfSource } from "../utils/hiResMaps";
 import {
-  safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
-
+  safeGetJSON, safeSetJSON, todayStamp, loadBadges, loadShards,
 } from "./persist";
+import { createFlightSlice, type FlightSlice } from "./slices/flight";
+import { createDossierSlice, loadVisitedDossiers, type DossierSlice } from "./slices/dossier";
 import { createProgressSlice, initialCharted, initialLegacyCartographer, type ProgressSlice } from "./slices/progress";
 import { createSettingsSlice, type SettingsSlice } from "./slices/settings";
 import { createSkySlice, type SkySlice } from "./slices/sky";
 
-const PROJECT_IDS: readonly string[] = projects.map((p) => p.id);
-
-// Module-level timeout handles for cancellation on re-entry
-let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
-let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
 /**
  * A badge earned in the same moment as its payoff (a scan report, a lap time)
  * must not cut that line off: RadioChatter's single typewriter line cancels
@@ -35,8 +27,6 @@ const BADGE_LINE_HOLD_MS = 3000;
 const BADGE_LINE_DELAY_MS = 4500;
 
 export { todayStamp, loadBadges, loadShards };
-
-const loadVisitedDossiers = () => loadVisitedDossiersFor(PROJECT_IDS);
 
 
 export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
@@ -62,56 +52,19 @@ export interface WorldEventState {
 /** A zustand slice creator over the whole store (zustand's slices pattern; see slices/). */
 export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
 
-export interface SpaceState extends ProgressSlice, SettingsSlice, SkySlice {
-  activeZone: string | null;
-  isOrbitLocked: boolean;
-  isOrbitCooldown: boolean;
-  isWarping: boolean;
+export interface SpaceState extends FlightSlice, DossierSlice, ProgressSlice, SettingsSlice, SkySlice {
   worldEvent: WorldEventState | null;
   showClassicCV: boolean;
   /** The canvas's React key: remountCanvas bumps it for a fresh WebGL context. */
   canvasEpoch: number;
-  isNearSpawn: boolean;
-  isTeleporting: boolean;
   cometNear: boolean;
   /** The latest radio line; `at` (Date.now) lets a badge line wait for a fresh one to be read. */
   broadcast: { id: number; text: string; silent: boolean; at: number } | null;
-  impactCount: number;
   scanTarget: string | null;
   photoMode: boolean;
   /** A gamepad has reported in (it does only after its first button press). */
   padConnected: boolean;
   beaconPickerOpen: boolean;
-  fuelEmpty: boolean;
-  /** Project ids whose dossier has been opened (persisted). Drives DOSSIERS n/3. */
-  visitedDossiers: string[];
-  /**
-   * Pending jump to a planet id or a destination id (src/data/destinations.ts),
-   * consumed by Spaceship's frame loop. `seq` makes a repeat request for the
-   * same target a new value.
-   */
-  jumpRequest: { id: string; seq: number } | null;
-  requestJump: (id: string) => void;
-  /** Project id whose dossier popup is open (independent of the orbit lock). */
-  openDossier: string | null;
-  dossierVia: "probe" | "logbook" | null;
-  /** Each probe's current spot (0 = home, k = remote[k-1]); persisted as fitz-probes. */
-  probeSpots: Record<string, number>;
-  /** Set when a probe's dossier closes; consumed by ProjectProbes to play the burn. */
-  relocation: { id: string; seq: number } | null;
-  /** Nearest probe within PROBE_IN_RANGE (written by ProjectProbes, change-guarded). */
-  probeNear: string | null;
-  /** The HUD pickup tip for probeNear: "grab" only when the beam would take a probe (ProjectProbes, change-guarded). */
-  probeTip: ProbeTip;
-  openProjectDossier: (id: string, via: "probe" | "logbook") => void;
-  closeDossier: () => void;
-  setProbeNear: (id: string | null) => void;
-  setProbeTip: (tip: ProbeTip) => void;
-  setFuelEmpty: (v: boolean) => void;
-  setActiveZone: (z: string | null) => void;
-  setOrbitLocked: (v: boolean) => void;
-  breakOrbit: () => void;
-  setWarping: (v: boolean) => void;
   setShowClassicCV: (v: boolean) => void;
   /**
    * Mounts a new canvas in place of the current one, as the classic-résumé
@@ -120,8 +73,6 @@ export interface SpaceState extends ProgressSlice, SettingsSlice, SkySlice {
    * and three cannot re-upload from them.
    */
   remountCanvas: () => void;
-  setNearSpawn: (v: boolean) => void;
-  triggerTeleportFlash: () => void;
   setCometNear: (v: boolean) => void;
   /**
    * Shows a line on the radio. `silent` lines (cargo hails, flavour such as
@@ -129,7 +80,6 @@ export interface SpaceState extends ProgressSlice, SettingsSlice, SkySlice {
    * the aria-live region is for content a visitor acted to get.
    */
   sendBroadcast: (text: string, opts?: { silent?: boolean }) => void;
-  bumpImpact: () => void;
   setScanTarget: (v: string | null) => void;
   setPhotoMode: (v: boolean) => void;
   setPadConnected: (v: boolean) => void;
@@ -167,13 +117,12 @@ const initialPlume = (() => {
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((set, get, api) => ({
+    ...createFlightSlice(set, get, api),
+    ...createDossierSlice(set, get, api),
     ...createProgressSlice(set, get, api),
+
     ...createSettingsSlice(set, get, api),
     ...createSkySlice(set, get, api),
-    activeZone: null,
-    isOrbitLocked: false,
-    isOrbitCooldown: false,
-    isWarping: false,
     worldEvent: null,
     badges: initialBadges,
     plumeColor: initialPlume,
@@ -224,74 +173,12 @@ export const useSpaceStore = create<SpaceState>()(
     // No WebGL means no scene: start on the résumé rather than a blank page.
     showClassicCV: !WEBGL_AVAILABLE || wantsResume(),
     canvasEpoch: 0,
-    isNearSpawn: true,
-    isTeleporting: false,
     cometNear: false,
     broadcast: null,
-    impactCount: 0,
     scanTarget: null,
     photoMode: false,
     padConnected: false,
     beaconPickerOpen: false,
-    fuelEmpty: false,
-    visitedDossiers: loadVisitedDossiers(),
-    jumpRequest: null,
-    openDossier: null,
-    dossierVia: null,
-    probeSpots: loadProbeSpots(safeGetJSON<unknown>("fitz-probes", null)),
-    relocation: null,
-    probeNear: null,
-    probeTip: null,
-    // Records the visit as setOrbitLocked once did. The popup freezes the frame
-    // loop, so clear isWarping here too or the warp drone outlives the boost.
-    openProjectDossier: (id, via) => {
-      if (!PROJECT_IDS.includes(id) || get().openDossier !== null) return;
-      const visited = get().visitedDossiers;
-      if (visited.includes(id)) {
-        set({ openDossier: id, dossierVia: via, isWarping: false });
-        return;
-      }
-      const next = [...visited, id];
-      safeSetJSON("fitz-dossiers", next);
-      set({ openDossier: id, dossierVia: via, isWarping: false, visitedDossiers: next });
-    },
-    closeDossier: () => {
-      const { openDossier, dossierVia, probeSpots, relocation } = get();
-      if (openDossier === null) return;
-      const def = dossierVia === "probe" ? PROBES.find((p) => p.id === openDossier) : undefined;
-      if (!def) { set({ openDossier: null, dossierVia: null }); return; }
-      const spots = { ...probeSpots, [def.id]: nextSpot(def, probeSpots[def.id] ?? 0) };
-      // Persist before the burn plays: a reload mid-animation must not undo it.
-      safeSetJSON("fitz-probes", spots);
-      set({ openDossier: null, dossierVia: null, probeSpots: spots, relocation: { id: def.id, seq: (relocation?.seq ?? 0) + 1 } });
-    },
-    setProbeNear: (id) => { if (get().probeNear !== id) set({ probeNear: id }); },
-    setProbeTip: (tip) => { if (get().probeTip !== tip) set({ probeTip: tip }); },
-    requestJump: (id) => {
-      if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
-      set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
-    },
-    // Guarded setters: these are called from frame loops, so bail without
-    // notifying when the value hasn't changed.
-    setActiveZone: (z) => { if (get().activeZone !== z) set({ activeZone: z }); },
-    // Change-guarded: called from a frame loop, so it must not notify unless the
-    // value actually flipped.
-    setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
-    // Locking freezes the frame loop (selectSceneFrozen), so the ship can no
-    // longer clear isWarping itself — clear it here or the warp drone and the
-    // HUD's "ACTIVE" line outlive the boost for as long as the dossier is open.
-    setOrbitLocked: (v) => {
-      if (get().isOrbitLocked === v) return;
-      if (!v) { set({ isOrbitLocked: false }); return; }
-      const zone = get().activeZone;
-      set({ isOrbitLocked: true, isWarping: false });
-      // Logbook essential: docking at a destination records the badge named
-      // after it (recordBadge ignores ids the logbook does not list).
-      const dest = destinationById(zone);
-      if (dest) get().recordBadge(dest.id);
-    },
-    setWarping: (v) => { if (get().isWarping !== v) set({ isWarping: v }); },
-    setNearSpawn: (v) => { if (get().isNearSpawn !== v) set({ isNearSpawn: v }); },
     setCometNear: (v) => { if (get().cometNear !== v) set({ cometNear: v }); },
     // Clearing the lock on the way IN (not just tracked as a side effect of
     // GlobalCanvas unmounting) closes a mount-while-frozen hole: showClassicCV
@@ -316,23 +203,12 @@ export const useSpaceStore = create<SpaceState>()(
       get().closeDossier();
       set((s) => ({ canvasEpoch: s.canvasEpoch + 1, isWarping: false }));
     },
-    breakOrbit: () => {
-      if (orbitCooldownTimer) clearTimeout(orbitCooldownTimer);
-      set({ isOrbitLocked: false, activeZone: null, isOrbitCooldown: true });
-      orbitCooldownTimer = setTimeout(() => set({ isOrbitCooldown: false }), 1800);
-    },
-    triggerTeleportFlash: () => {
-      if (teleportFlashTimer) clearTimeout(teleportFlashTimer);
-      set({ isTeleporting: true });
-      teleportFlashTimer = setTimeout(() => set({ isTeleporting: false }), 380);
-    },
     sendBroadcast: (text, opts) => set({ broadcast: { id: (get().broadcast?.id ?? 0) + 1, text, silent: opts?.silent ?? false, at: Date.now() } }),
     startWorldEvent: (ev, line) => {
       set({ worldEvent: ev });
       get().sendBroadcast(line);
     },
     endWorldEvent: () => { if (get().worldEvent) set({ worldEvent: null }); },
-    bumpImpact: () => set({ impactCount: get().impactCount + 1 }),
     setScanTarget: (v) => { if (get().scanTarget !== v) set({ scanTarget: v }); },
     setPhotoMode: (v) => set({ photoMode: v }),
     setPadConnected: (v) => set({ padConnected: v }),
