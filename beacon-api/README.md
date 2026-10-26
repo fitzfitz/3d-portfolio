@@ -162,7 +162,7 @@ room can stay deployed; nothing connects to it.
 ## The ring race
 
 The live-sky room also runs the multiplayer ring race (spec:
-`docs/superpowers/specs/2026-10-26-ring-race-design.md`). Race messages ride
+`docs/archive/specs/2026-10-26-ring-race-design.md`). Race messages ride
 the `/live` socket under their own `r…` types; the room logic is pure and
 unit tested (`src/raceRoom.ts`, `tests/raceRoom.test.ts`).
 

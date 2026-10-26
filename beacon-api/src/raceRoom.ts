@@ -11,7 +11,7 @@ import type { Outgoing } from "./sky";
  * The ring race room, free of Cloudflare bindings so it can be unit tested
  * (tests/raceRoom.test.ts). index.ts's Sky Durable Object persists it and
  * calls onRaceTick from its alarm (nextAlarm says when).
- * Spec: docs/superpowers/specs/2026-10-26-ring-race-design.md.
+ * Spec: docs/archive/specs/2026-10-26-ring-race-design.md.
  *
  * Plain JSON only: the Durable Object stores the room and may hibernate at
  * any point, so there are no Maps, no class instances and no timers here.

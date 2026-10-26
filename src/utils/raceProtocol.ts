@@ -4,7 +4,7 @@ import { MAX_MESSAGE_BYTES } from "./liveSkyProtocol";
 import { GHOST_HZ, sampleGhost, type Ghost } from "./race";
 
 /**
- * Ring race wire protocol and rules (docs/superpowers/specs/2026-10-26-ring-race-design.md).
+ * Ring race wire protocol and rules (docs/archive/specs/2026-10-26-ring-race-design.md).
  * Binding-free and shared by the client and beacon-api's Sky room, as
  * liveSkyProtocol.ts is: both validate the same way. Race messages ride the
  * live-sky socket under their own `r…` types, so the two parsers never both match.
