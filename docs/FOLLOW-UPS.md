@@ -25,6 +25,14 @@ Delete an entry when it is fixed.
   - Look polish: the owner closed it at "realistic at normal viewing". Do not
     reopen close-up look work.
 
+- **Layout constants stay built at module load** (deferred from the store
+  split, PR 62; spec docs/superpowers/specs/2026-10-26-store-split-design.md):
+  `PROBES`, `BUOYS`, `LOGBOOK`, `JUMP_TARGETS` and the store's initial
+  dossier/probe/plume state are still computed from the content when their
+  modules load. The boot gate (PR 59) settles the content before any of them
+  load, so they are correct today. Revisit only if content must change
+  mid-visit; combat spawns are runtime state and do not need it.
+
 - **Memory, past PR 53** (docs/archive/specs/2026-10-22-memory-budget-design.md;
   Chrome's memory-infra dump, 2026-10-23, at 1512×802@2):
   - ~550 MB of the GPU process is Chrome's own for any WebGL page here (a blank
