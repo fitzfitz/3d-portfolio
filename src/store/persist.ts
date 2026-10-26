@@ -1,5 +1,6 @@
 import { REDUCED_MOTION_KEY } from "../utils/reducedMotionPreference";
 import { isRecordable, type BadgeRecord } from "../utils/logbook";
+import { LEGACY_CARTOGRAPHER_KEY } from "../utils/charting";
 import { SHARDS } from "../data/shards";
 
 /**
@@ -26,6 +27,7 @@ export const STORE_KEYS = {
   liveSky: "fitz-live-sky",
   liveSkySeen: "fitz-live-seen-2",
   changelogSeen: "fitz-changelog-seen",
+  legacyCartographer: LEGACY_CARTOGRAPHER_KEY,
 } as const;
 
 export function safeGetMuted(): boolean {

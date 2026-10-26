@@ -86,6 +86,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.doUnmock("../src/utils/ambientTime");
+  vi.doUnmock("../src/utils/flightGate");
   vi.resetModules();
 });
 
@@ -300,6 +301,71 @@ describe("store shape (split guard)", () => {
         "worldEvent": null,
       }
     `);
+  });
+
+  it("runs the import-time effects in order: legacy write, ambient switch, changelog write", async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    const legacy = ["w-rock", "w-ringed", "w-tilted", "w-blue", "w-dwarf"].map((id) => ({ id, at: "2025-01-02" }));
+    const { events } = await freshStore({
+      "fitz-reduced-motion": "1",
+      "fitz-charted": JSON.stringify(legacy),
+    });
+    expect(events).toEqual([
+      "write fitz-cartographer-legacy=1",
+      "ambient false",
+      'write fitz-changelog-seen="<newest changelog id>"',
+    ]);
+  });
+
+  it("flips the orbit cooldown at exactly 1800 ms and the teleport flash at exactly 380 ms", async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    const { m } = await freshStore();
+    const s = () => m.useSpaceStore.getState();
+    s().breakOrbit();
+    expect(s().isOrbitCooldown).toBe(true);
+    await vi.advanceTimersByTimeAsync(1799);
+    expect(s().isOrbitCooldown).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s().isOrbitCooldown).toBe(false);
+    s().triggerTeleportFlash();
+    expect(s().isTeleporting).toBe(true);
+    await vi.advanceTimersByTimeAsync(379);
+    expect(s().isTeleporting).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s().isTeleporting).toBe(false);
+  });
+
+  it("does not notify (an empty set() still notifies) when setActiveZone, setWarping and setNearSpawn get the same value", async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 26, 12, 0, 0) });
+    const { m } = await freshStore();
+    const s = () => m.useSpaceStore.getState();
+    let notified = 0;
+    m.useSpaceStore.subscribe(() => { notified++; });
+    const calls: Array<[() => void, number]> = [
+      [() => s().setActiveZone("contact"), 1],
+      [() => s().setWarping(true), 1],
+      [() => s().setNearSpawn(false), 1],
+    ];
+    for (const [call, firstNotifications] of calls) {
+      const before = notified;
+      call();
+      expect(notified - before).toBe(firstNotifications);
+      call();
+      expect(notified - before).toBe(firstNotifications);
+    }
+  });
+
+  it("starts on the classic CV only when WebGL is missing or the URL asks for the resume", async () => {
+    vi.doMock("../src/utils/flightGate", async (orig) => ({
+      ...(await orig<typeof import("../src/utils/flightGate")>()),
+      WEBGL_AVAILABLE: true,
+    }));
+    const flies = await freshStore({}, { matchMedia: () => ({ matches: false }), location: { search: "", hash: "" } });
+    expect(flies.m.useSpaceStore.getState().showClassicCV).toBe(false);
+    for (const loc of [{ search: "?cv", hash: "" }, { search: "", hash: "#resume" }]) {
+      const { m } = await freshStore({}, { matchMedia: () => ({ matches: false }), location: loc });
+      expect(m.useSpaceStore.getState().showClassicCV).toBe(true);
+    }
   });
 
   it("keeps the order of notifications, writes and timers for every action", async () => {
