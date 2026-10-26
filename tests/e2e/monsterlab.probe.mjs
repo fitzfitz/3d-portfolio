@@ -5,6 +5,9 @@ import { withPage, nextFrames, settle, BASE_URL } from "./harness.mjs";
 // The monster lab (dev only, /monster-lab.html; space monsters Task 6) and
 // the shaders and budgets of Task 5's instanced monsters, in a real WebGL
 // context with the game's renderer, light and post stack:
+//  - the lab boots under the game's content gate: its entry settles the
+//    bundled content before MonsterLab loads (source "bundled", no
+//    "content: already settled" warning);
 //  - every layout (fight, spread, overlap) loads under both light presets
 //    (near: Earth's distance from the sun; far: Neptune's) with no console
 //    error and no program carrying compile diagnostics;
@@ -237,6 +240,14 @@ export default function run() {
       }
       return;
     }
+
+    // --- the boot gate: the lab settles the bundled content before MonsterLab and the game modules it borrows load ---
+    const contentWarnings = [];
+    page.on("console", (m) => { if (/^content: /.test(m.text())) contentWarnings.push(m.text()); });
+    await open(page, { layout: "fight", preset: "near", lod: "0", state: "idle", seed: "7" });
+    const source = await lab(page, () => window.__monsterLab.content);
+    checks.check("the lab boots with the content settled from the bundled snapshot, before any module read it",
+      source === "bundled" && contentWarnings.length === 0, `source ${source}; ${contentWarnings.join(" | ") || "no content warnings"}`);
 
     // --- every layout under both presets ---
     for (const layout of LAYOUTS) {

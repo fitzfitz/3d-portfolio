@@ -10,6 +10,7 @@ import SkyBackdrop from "../components/canvas/SkyBackdrop";
 import Sun from "../components/canvas/Sun";
 import { CAMERA_FAR, LOG_DEPTH_BUFFER } from "../components/canvas/logDepth";
 import { PLAYER_SHIP_SCALE } from "../constants";
+import { contentSource, type ContentSource } from "../data/content";
 import saucerRigJson from "../data/saucerRig.json";
 import tardigradeRigJson from "../data/tardigradeRig.json";
 import { useSpaceStore } from "../store/spaceStore";
@@ -94,6 +95,8 @@ export interface LabReadings { calls: number; triangles: number; programs: numbe
 /** The debug hook's shape (tests/e2e/monsterlab.probe.mjs). */
 export interface MonsterLabHook {
   ready: boolean;
+  /** Where this visit's content came from; the lab's entry (src/lab/main.tsx) settles it from the bundled snapshot before MonsterLab loads. */
+  content: ContentSource;
   /**
    * One frame's numbers, all snapshotted in the same onAfterRender: the renderer's totals (calls, triangles),
    * what the monster meshes themselves drew that frame (monsterCalls, monsterTriangles, from their own
@@ -365,6 +368,7 @@ function LabScene({ store, readings }: SceneProps) {
     };
     const hook: MonsterLabHook = {
       ready: window.__monsterLab?.ready ?? false,
+      content: contentSource(),
       stats: () => ({
         calls: L.calls, triangles: L.triangles, monsterCalls: L.monsterCalls, monsterTriangles: L.monsterTriangles,
         submittedCalls: submitted.calls, submittedTriangles: submitted.triangles, counts: Array.from(submitted.counts),
