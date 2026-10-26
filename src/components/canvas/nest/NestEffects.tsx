@@ -8,7 +8,7 @@ import { softSprite } from "../softSprite";
 import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
 import { nestPaused } from "../../../utils/combat/nestRadio";
 import {
-  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetParticle, smokeAlpha,
+  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetParticle, nearFade, smokeAlpha,
   stepSmoke, thrustMatrix,
 } from "../../../utils/combat/effects";
 import type { V3 } from "../../../utils/combat/types";
@@ -46,7 +46,8 @@ const JETS = JET_PARTICLES * MAX_TARDIGRADES;
  *  - one Points for the smoke trailing each defeated saucer for its 3 s
  *    drift (normal blending, vertex alphas).
  * A paused fight freezes them (dt 0). Each draws only while it has something
- * to show.
+ * to show. The jet's and the smoke's sprites fade out within a few units of
+ * the camera (effects.ts nearFade), so none fills the screen as it passes.
  */
 export default function NestEffects() {
   const bolts = useMemo(() => {
@@ -109,6 +110,7 @@ export default function NestEffects() {
   const scratch = useMemo(() => ({
     m: new THREE.Matrix4(), c: new THREE.Color(), ship: new THREE.Color(), enemy: new THREE.Color(ENEMY_BOLT_HEX),
     thrust: new THREE.Color(THRUST_HEX), jet: new THREE.Color(JET_HEX), plume: "", p: { x: 0, y: 0, z: 0 } as V3,
+    cam: { x: 0, y: 0, z: 0 } as V3,
   }), []);
 
   // Live counts for the renderer's debug handle (NestMonsters reads them; dev only).
@@ -118,11 +120,14 @@ export default function NestEffects() {
     return () => { nestEffectMeshes.meshes = []; };
   }, [bolts, jet, smoke]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const s = useSpaceStore.getState();
     const n = combat.nest;
     const dt = nestPaused(s) ? 0 : Math.min(delta, 0.05);
     const comp = exposureCompensation.value;
+    // The camera, for the sprites' near fade (nearFade).
+    const cam = scratch.cam;
+    cam.x = state.camera.position.x; cam.y = state.camera.position.y; cam.z = state.camera.position.z;
 
     // ── Bolts and thrust glows ──
     if (s.plumeColor !== scratch.plume) {
@@ -169,7 +174,9 @@ export default function NestEffects() {
         jpa[j * 3] = p.x; jpa[j * 3 + 1] = p.y; jpa[j * 3 + 2] = p.z;
         // Fades toward the far end.
         const along = ((p.x - t.jx) * t.jdx + (p.y - t.jy) * t.jdy + (p.z - t.jz) * t.jdz) / l;
-        const g = JET_GLOW * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)));
+        // Faded out near the camera: additive black draws nothing.
+        const g = JET_GLOW * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
+          * nearFade(p.x, p.y, p.z, cam);
         jca[j * 3] = scratch.jet.r * g; jca[j * 3 + 1] = scratch.jet.g * g; jca[j * 3 + 2] = scratch.jet.b * g;
       }
     }
@@ -189,7 +196,7 @@ export default function NestEffects() {
       if (!f.live) continue;
       spa[m * 3] = f.x; spa[m * 3 + 1] = f.y; spa[m * 3 + 2] = f.z;
       sca[m * 4] = SMOKE_GREY[0] * comp; sca[m * 4 + 1] = SMOKE_GREY[1] * comp; sca[m * 4 + 2] = SMOKE_GREY[2] * comp;
-      sca[m * 4 + 3] = smokeAlpha(f.age);
+      sca[m * 4 + 3] = smokeAlpha(f.age) * nearFade(f.x, f.y, f.z, cam);
       m++;
     }
     smoke.points.geometry.setDrawRange(0, m);

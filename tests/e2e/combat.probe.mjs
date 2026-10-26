@@ -270,7 +270,37 @@ async function fight(page, checks) {
   const jetDrawn = (jetFx ?? []).find((e) => e.name === "NestJet")?.count ?? 0;
   checks.check("a tardigrade fires its jet in wave 3", jet.ok, JSON.stringify((await nest(page)).tardigradePhases));
   checks.check("the jet draws while it fires", jetDrawn > 0, JSON.stringify(jetFx));
-  await shot(page, "jet", checks, "a tardigrade jet mid-fire");
+  await shot(page, "jet", checks, "a tardigrade jet mid-fire, from the chase camera (sprites near the camera fade out)");
+  // Side-on: the AI frozen mid-jet (the jet holds, its particles still), the
+  // ship 30 u off the jet's midpoint, square to its axis, nose on the
+  // midpoint; the chase camera gets a second to settle after the teleport.
+  // This jet, if it is still firing, or the next one.
+  const side = await pollUntil(async () => {
+    const placed = await inPage(page, () => {
+      window.__fitz.nest.setHull(100);
+      const g = window.__fitz.nest.combat.nest.tardigrades[0];
+      if (!g.alive || g.phase !== "jet") return false;
+      window.__fitz.nest.combat.nest.frozen = true;
+      const l = Math.hypot(g.jdx, g.jdy, g.jdz) || 1;
+      const d = { x: g.jdx / l, y: g.jdy / l, z: g.jdz / l };
+      const mid = { x: g.jx + d.x * 25, y: g.jy + d.y * 25, z: g.jz + d.z * 25 };
+      // Square to the axis, level: world up × axis.
+      let sx = d.z, sz = -d.x;
+      const sl = Math.hypot(sx, sz) || 1;
+      sx /= sl; sz /= sl;
+      const at = { x: mid.x + sx * 30, y: mid.y, z: mid.z + sz * 30 };
+      window.__fitz.teleport(at.x, at.y, at.z);
+      window.__fitz.setAttitude(Math.atan2(mid.x - at.x, mid.z - at.z), 0);
+      return true;
+    });
+    if (!placed) return false;
+    await nextFrames(page, 60);
+    return inPage(page, () => window.__fitz.nest.combat.nest.tardigrades[0].phase === "jet"
+      && (window.__fitz.nestRender?.effects().find((e) => e.name === "NestJet")?.count ?? 0) > 0);
+  }, { timeoutMs: 20_000, intervalMs: 30 });
+  checks.check("the jet seen side-on (nose square to its axis) still draws", side.ok);
+  await shot(page, "jet-side", checks, "a tardigrade jet mid-fire, side-on (AI frozen for the shot)");
+  await inPage(page, () => window.__fitz.nest.resume());
   const programsAfter = await programs(page);
   checks.check("the fight compiles no new program (the warm-up compiled them all)",
     programsAfter === programsBefore, `${programsBefore} → ${programsAfter}`);

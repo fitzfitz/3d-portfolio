@@ -141,6 +141,27 @@ export function smokeAlpha(age: number): number {
   return k > 0 ? SMOKE_ALPHA * k * k : 0;
 }
 
+// ── Near the camera ────────────────────────────────────────────────────────
+
+/** Point sprites fade out from this far from the camera (u)… */
+export const NEAR_FADE_FAR = 8;
+/** …to nothing this close: a sprite sized by distance would otherwise fill the screen. */
+export const NEAR_FADE_NEAR = 2;
+
+/**
+ * A point sprite's brightness (jet) or opacity (smoke) factor by its distance
+ * from the camera: 1 from NEAR_FADE_FAR out, smoothstepping to 0 at
+ * NEAR_FADE_NEAR and inside it. The jet and smoke Points are size-attenuated
+ * (~560 px ÷ distance at 1280×800), so a particle passing the chase camera
+ * would fill the screen; additive black and zero alpha draw nothing, and the
+ * programs stay the shared ones.
+ */
+export function nearFade(px: number, py: number, pz: number, cam: V3): number {
+  const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
+  const x = (d - NEAR_FADE_NEAR) / (NEAR_FADE_FAR - NEAR_FADE_NEAR);
+  return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+}
+
 // ── Bolts and thrust glows (one instanced mesh, a unit sphere) ────────────
 
 /** A bolt's instance: a unit sphere stretched to `length` along its flight (dx, dy, dz), `radius` across, at (x, y, z). */

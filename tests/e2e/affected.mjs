@@ -40,7 +40,7 @@ export const RULES = [
   // The Nest (the combat stage): its director, load gate, renderer and effects
   // (reactions: the director's rumour line shares the radio with the cargo hail).
   [/^src\/components\/canvas\/(NestDirector|nest\/)/, () => [...BUDGETS, "combat", "reactions"]],
-  [/^src\/data\/nest\.ts$/, () => [...BUDGETS, "combat"]],
+  [/^src\/data\/nest\.ts$/, () => [...BUDGETS, "combat", "reactions"]],
   // GlobalCanvas, PostFX and anything else in the canvas: everything.
   [/^src\/components\/canvas\//, () => "ALL"],
   // The HUD and panels.

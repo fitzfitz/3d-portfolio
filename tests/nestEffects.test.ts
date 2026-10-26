@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   JET_PARTICLES, JET_STREAM_SPEED, SMOKE_EVERY_S, SMOKE_LIFE_S, SMOKE_POOL, THRUST_DROP, boltMatrix, createSmoke, emitSmoke,
-  jetParticle, smokeAlpha, stepSmoke, thrustMatrix,
+  NEAR_FADE_FAR, NEAR_FADE_NEAR, jetParticle, nearFade, smokeAlpha, stepSmoke, thrustMatrix,
 } from "../src/utils/combat/effects";
 import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "../src/utils/combat/constants";
 import { createSaucer, spawnSaucer, hitSaucer, type Saucer } from "../src/utils/combat/saucerAi";
@@ -75,6 +75,35 @@ describe("the plasma jet's particles", () => {
       bins.add(Math.floor(inJet(p, mouth, d).along / (JET_RANGE / 10)));
     }
     expect(bins.size).toBe(10);
+  });
+});
+
+describe("the sprites' near-camera fade", () => {
+  const cam = v(10, -4, 3);
+  it("is full from 8 u out and nothing within 2 u, in any direction", () => {
+    expect(NEAR_FADE_FAR).toBe(8);
+    expect(NEAR_FADE_NEAR).toBe(2);
+    for (const [dx, dy, dz] of [[1, 0, 0], [0, -1, 0], [0, 0.6, 0.8]]) {
+      expect(nearFade(cam.x + dx * 8, cam.y + dy * 8, cam.z + dz * 8, cam)).toBe(1);
+      expect(nearFade(cam.x + dx * 40, cam.y + dy * 40, cam.z + dz * 40, cam)).toBe(1);
+      expect(nearFade(cam.x + dx * 2, cam.y + dy * 2, cam.z + dz * 2, cam)).toBe(0);
+      expect(nearFade(cam.x + dx * 0.5, cam.y + dy * 0.5, cam.z + dz * 0.5, cam)).toBe(0);
+    }
+    expect(nearFade(cam.x, cam.y, cam.z, cam)).toBe(0);
+  });
+  it("rises smoothly in between: half at 5 u, rising with distance", () => {
+    expect(nearFade(cam.x + 5, cam.y, cam.z, cam)).toBeCloseTo(0.5, 12);
+    let last = 0;
+    for (let d = 2; d <= 8; d += 0.25) {
+      const f = nearFade(cam.x, cam.y + d, cam.z, cam);
+      expect(f).toBeGreaterThanOrEqual(last);
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThanOrEqual(1);
+      last = f;
+    }
+    // Smoothstep: flat at both ends.
+    expect(nearFade(cam.x + 2.01, cam.y, cam.z, cam)).toBeLessThan(0.001);
+    expect(nearFade(cam.x + 7.99, cam.y, cam.z, cam)).toBeGreaterThan(0.999);
   });
 });
 
