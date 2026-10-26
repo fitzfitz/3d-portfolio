@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { SPAWN } from "../data/spawn";
+import { worldClock } from "./worldClock";
 import { subscribeWithSelector } from "zustand/middleware";
 import { parseRaceBest, type RaceState } from "../utils/race";
 import type { WorldEventKind } from "../utils/eventDirector";
@@ -9,12 +9,9 @@ import { projects } from "../constants";
 import { PROBES, PROBE_IDS } from "../data/probes";
 import { loadProbeSpots, nextSpot, type ProbeTip } from "../utils/probes";
 import { isBodyId, type BodyId } from "../data/bodyIds";
-import { SOLAR_BODIES } from "../data/solarSystem";
 import { destinationById } from "../data/destinations";
-import { bodyPositionAt } from "../utils/bodyPositions";
 import { REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
-import { FUEL_MAX } from "../utils/fuel";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
 import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
@@ -60,63 +57,11 @@ function safeGetReducedMotionQueryMatches(): boolean {
 
 export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
 
-export interface FlightInput {
-  forward: boolean;
-  backward: boolean;
-  left: boolean;
-  right: boolean;
-  boost: boolean;
-  ascend: boolean;
-  descend: boolean;
-  /** Analog steering from touch joystick, -1 (left) .. 1 (right). 0 = keyboard only. */
-  steer: number;
-  /** Analog thrust from touch joystick, -1 (brake) .. 1 (full). 0 = keyboard only. */
-  thrust: number;
-  scan: boolean;
-  /** Tractor beam held (F, gamepad LB, touch BEAM). */
-  beam: boolean;
-}
-
-/**
- * Per-frame telemetry. Mutated inside useFrame/rAF loops and read the same
- * way — deliberately NOT in React state so flight never re-renders the tree.
- */
-export const flight = {
-  x: SPAWN.x as number, // widened: SPAWN is `as const`, flight is mutated
-  z: SPAWN.z as number,
-  y: SPAWN.y as number, // altitude, written by Spaceship each frame
-  speed: 0, // world units / second
-  heading: 0, // yaw in radians, written by Spaceship each frame
-  pitch: 0, // nose pitch in radians (+up), written by Spaceship each frame
-  /** The pilot has flown at least once this page (Spaceship sets it). Live sky connects only after it. */
-  hasFlown: false,
-  input: {
-    forward: false, backward: false, left: false, right: false,
-    boost: false, ascend: false, descend: false, steer: 0, thrust: 0, scan: false, beam: false,
-  } as FlightInput,
-  /**
-   * Warp fuel, 0..FUEL_MAX. Written by Spaceship's frame loop (continuous
-   * drain while warping) and by FuelCrystals' pickup (discrete refuel on
-   * collection), and read by the HUD/radar rAF loops. Deliberately here
-   * rather than in the store: it changes every frame while warping, and store
-   * state would make that a per-frame React commit, breaking the
-   * zero-renders-during-flight guarantee.
-   * Starts full — fuel is session state, not persisted progress.
-   */
-  fuel: FUEL_MAX,
-  /** The return burn is running this frame (Spaceship writes it; EdgeHaze reads it for the radio line). */
-  edgeBurn: false,
-};
-
-/**
- * Live positions of the nine bodies, by body id, written once per frame by
- * SolarBodies' useFrame (utils/bodyPositions.ts updateBodies) and read by
- * Spaceship (wells, collisions), RadarMap, HUD, and the scannable registry.
- * Mutable outside React — same pattern as `flight`. Seeded at game time 0.
- */
-export const bodies: Record<BodyId, { x: number; y: number; z: number }> = Object.fromEntries(
-  SOLAR_BODIES.map((b) => [b.id, bodyPositionAt(b, 0, { x: 0, y: 0, z: 0 })] as const),
-) as Record<BodyId, { x: number; y: number; z: number }>;
+// Per-frame objects, mutable outside React. Same objects, re-exported: importers keep using this path.
+export { flight, type FlightInput } from "./flightState";
+export { bodies } from "./bodies";
+export { crystalSlots, type CrystalSlot } from "./crystalSlots";
+export { worldClock } from "./worldClock";
 
 /**
  * Charted bodies from fitz-charted, read once at import (sanitised; the five
@@ -140,20 +85,6 @@ const initialShout = (() => {
   const v = safeGetJSON<unknown>("fitz-charted-shout", null);
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 })();
-
-export interface CrystalSlot { x: number; y: number; z: number; active: boolean }
-
-/**
- * Live fuel-crystal slots, seeded and mutated by FuelCrystals' frame loop and
- * read by RadarMap's rAF loop. Module-level and mutable outside React — the same
- * pattern as `flight` and `bodies` above, and for the same reason: a pickup or a
- * respawn must not cost a React render.
- *
- * Deliberately NOT routed through the debug bridge: that is dead-code-eliminated
- * in production, so the radar would draw no crystal blips for real visitors, and
- * at ~146-unit mean spacing the mechanic needs that cue to be findable at all.
- */
-export const crystalSlots: CrystalSlot[] = [];
 
 /** The running world event (docs/archive/specs/2026-10-12-world-events-design.md). */
 export interface WorldEventState {
@@ -664,13 +595,6 @@ export function selectSceneFrozen(
 export function selectModalOpen(s: Pick<SpaceState, "isOrbitLocked" | "openDossier">): boolean {
   return s.isOrbitLocked || s.openDossier !== null;
 }
-
-/**
- * The world-event director's clock (flying seconds), written once per frame by
- * WorldEventDirector. Mutable outside React, like `flight`, so event
- * animations read it per frame without a subscription.
- */
-export const worldClock = { now: 0 };
 
 /** Seconds since the running event of `kind` started, or null if none is running. */
 export function worldEventElapsed(kind: WorldEventKind): number | null {

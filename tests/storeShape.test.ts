@@ -5,6 +5,10 @@ import type { FlightInput, CrystalSlot, WorldEventState, SpaceState } from "../s
 import { PROBES } from "../src/data/probes";
 import { BODY_IDS } from "../src/data/bodyIds";
 import { CHANGELOG } from "../src/data/changelog";
+import { flight } from "../src/store/flightState";
+import { bodies } from "../src/store/bodies";
+import { crystalSlots } from "../src/store/crystalSlots";
+import { worldClock } from "../src/store/worldClock";
 
 /**
  * API-shape and behaviour guard for the store split (spec
@@ -93,6 +97,16 @@ describe("store shape (split guard)", () => {
 
   it("keeps every runtime export of spaceStore.ts", () => {
     expect(Object.keys(storeModule).sort()).toEqual(MODULE_EXPORTS);
+  });
+
+  it("re-exports the per-frame objects themselves, not copies", () => {
+    expect(storeModule.flight).toBe(flight);
+    expect(storeModule.bodies).toBe(bodies);
+    expect(storeModule.crystalSlots).toBe(crystalSlots);
+    expect(storeModule.worldClock).toBe(worldClock);
+    expect(Object.keys(flight).sort()).toEqual(["edgeBurn", "fuel", "hasFlown", "heading", "input", "pitch", "speed", "x", "y", "z"]);
+    expect(Object.keys(flight.input).sort()).toEqual(["ascend", "backward", "beam", "boost", "descend", "forward", "left", "right", "scan", "steer", "thrust"]);
+    expect(Object.keys(worldClock)).toEqual(["now"]);
   });
 
   it("keeps the import-time state and writes with empty storage", async () => {
