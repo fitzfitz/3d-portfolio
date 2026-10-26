@@ -3,7 +3,7 @@ import { withPage, readStore, sceneQuery, pollUntil, isFontHost, respondInertFon
 // Projects and career from beacon-api's GET /content
 // (docs/archive/specs/2026-10-23-dynamic-content-design.md). The page is
 // pointed at a mock API through the dev-only localStorage override
-// (src/utils/apiBase.ts) and reloaded, as beacons.probe.mjs does, so no other
+// (src/utils/apiBase.ts) and reloaded, as bottles.probe.mjs does, so no other
 // probe ever sees the API. Three pages:
 //   0. no API: today's layout, from the bundled data;
 //   1. a live /content with a fourth project and three jobs: loading waits for
