@@ -797,8 +797,8 @@ describe("saucer (saucer.glb)", () => {
     expect(nodeNames(doc).filter((n) => n.startsWith("Saucer_LOD"))).toEqual(["Saucer_LOD0", "Saucer_LOD1"]);
   });
 
-  it("stays inside its triangle budget: LOD0 <= 15000, LOD1 <= 4000 (R10; R23 for Gate B fix B's crossing cards and part D's crown strips: LOD0 14,996)", async () => {
-    expect(tris(await lod(0))).toBeLessThanOrEqual(15000);
+  it("stays inside its triangle budget: LOD0 <= 16000, LOD1 <= 4000 (R10; R23 for Gate B fix B's crossing cards and part D's crown strips; R25 for part F's five-row strips and fuller brow fringe: LOD0 15,700)", async () => {
+    expect(tris(await lod(0))).toBeLessThanOrEqual(16000);
     expect(tris(await lod(1))).toBeLessThanOrEqual(4000);
   });
 

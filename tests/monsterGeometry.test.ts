@@ -114,8 +114,11 @@ describe("splitFurGeometry on the shipped glbs (R19)", () => {
   // Gate B round 2, part E: the tardigrade's spine tufts are narrower and
   // twice as dense (66, +36) and 50 short tufts ring the crystals' roots
   // (+100), so 3,180 of 4,258; the fur base and LOD1 are unchanged.
+  // Gate B round 3, part F: each of those strips is five rows (8 triangles,
+  // was 6) and the 15 brow-fringe strip locks have six strips (+704), so
+  // 5,498 of 5,964.
   const EXPECTED: Record<string, [number, number]> = {
-    Saucer_LOD0: [466, 4794], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 3180], Tardigrade_LOD1: [402, 396],
+    Saucer_LOD0: [466, 5498], Saucer_LOD1: [206, 0], Tardigrade_LOD0: [1078, 3180], Tardigrade_LOD1: [402, 396],
   };
   for (const model of ["saucer", "tardigrade"]) {
     it(`${model}: every fur splits cleanly into its base and its cards`, async () => {

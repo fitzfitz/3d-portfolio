@@ -73,7 +73,9 @@
 # twisting crossing cards on the crown (Gate B fix B: no stacked flat
 # sheets at grazing angles), or, on the 58 crown locks that can look
 # broadest end-on, four narrower strips splaying apart from a shared root
-# (Gate B round 2, part D: no broad flat face end-on). The shells are not in
+# (Gate B round 2, part D: no broad flat face end-on; six on the brow
+# fringe, each strip on five rows along its lock's smoothed centreline,
+# round 3, part F: no folded chevrons at close range). The shells are not in
 # the file. Raw-material provenance: every map is generated here
 # (Cycles bakes of the node fields below, and the numpy strand mask in
 # monster_bake.fur_strand_texture); no image, scan or add-on is used.
@@ -2147,11 +2149,47 @@ def crown_cards(rc, spine, frames, laid):
 # edge to edge into one wider striped sheet); strips sharing one axis,
 # unsplayed (their long parallel edges still read as stacked planks).
 STRIP_LOCKS = 58        # crown locks drawn as strips (58 x 6 = 348 of the 352 triangles left under 15,000)
-STRIPS = (math.radians(-67.5), math.radians(-22.5), math.radians(22.5), math.radians(67.5))
 STRIP_W = 0.48          # each strip's width, of round 4's fin and ribbon (fix B's star cards were 0.8)
 STRIP_SPREAD = 0.06     # each strip's root off the lock's axis, up to this many of the lock's widths along its own width
 STRIP_SPLAY = (0.16, 0.32)   # each strip's tip swung out along its own width by this many of the lock's widths (either way)
 STRIP_LEN = (0.86, 0.97)     # the shorter strips' lengths, of the lock's (one strip a lock keeps its full length)
+# Gate B round 3 (part F; R25: the saucer's LOD0 cap 16,000). At extreme
+# close-up a lock's strips still stacked into zig-zag chevrons, and the brow
+# fringe had thinned. The cause of the chevrons, measured: a lock rises off
+# the skin along its normal and turns over into its flow within a few
+# hundredths of a unit, and part D's strips (4 rows, at the same heights as
+# the lock's own) took all of that turn at their second row, a fold of 40 deg
+# (median; up to 81) that broke each strip's strand lines into a V, the
+# strips of a lock folding alike, stacked. Now each strip follows its lock's
+# centreline smoothed (strip_curve: the turn rounded wider than a strip), on
+# five rows of its own spread over the turn (bend_rows), narrowed where it
+# still turns in its own plane (unfold), its frames held square to a side
+# taken past the turn (tan x n turned unstably where a lock rises near its
+# normal), gathering at a root sunk under the skin and tapering to a
+# narrower tip, its texture starting past the solid root mass; its angle,
+# twist, lift and bow out of its own plane vary, so no two strips' edges
+# line up. The brow fringe's strip locks get six strips, fuller and longer.
+# Each strip is 8 triangles (part D: 6). Tried and dropped: strips spread over
+# +-50 deg (more fin-like strips: more of them bent within their own plane);
+# rows spread over the turn on the raw centreline (rows bunched at a turn
+# tighter than a strip is wide, and the strips folded over there); stronger
+# lift and bow (more folds, no better look).
+STRIP_ROWS = ((0.25, 0.04), (0.5, 0.05), (0.75, 0.04))   # a strip's three inner rows: quantile, +- jitter (bend_rows)
+STRIP_BEND = 0.6             # how far its rows follow the lock's turning rather than its length
+STRIP_SAMPLES, STRIP_SMOOTH = 48, 160   # a strip's centreline: resampled, then smoothed (strip_curve)
+STRIP_TURN, STRIP_MINW = 0.5, 0.4       # a strip's half width at a turn in its own plane: under this of the
+#                                         turn's radius, but not under this of its width (unfold)
+STRIP_FAN = 67.5             # a lock's strips spread over +- this about its spin (deg, as part D)
+STRIP_JIT = (0.3, 14.0)      # each strip's angle off that even spread (of the gap) and its twist off the lock's (deg), +-
+STRIP_LIFT = (0.10, 0.22)    # each strip's tip lifted out of its own plane by this many of the lock's widths (either way)
+STRIP_BOW = (0.08, 0.18)     # and bowed out of it mid-length by this many (either way)
+STRIP_ROOT, STRIP_TIP = 0.5, 0.32   # a strip's width at its root and at its tip, of its widest (its second row)
+STRIP_SINK = 0.004           # a strip's root edge sunk under the skin by its own reach along the normal, and this more
+STRIP_V0 = 0.28              # a strip's texture starts this far up the lock's (past most of its solid root mass)
+FRINGE_NZ = 0.3              # a strip lock whose skin faces forward past this (glTF n.z) is on the brow fringe:
+FRINGE_STRIPS = 6            # its strips (the others: 4)
+FRINGE_ROOT, FRINGE_TIP = 0.65, 0.5   # their root and tip widths
+FRINGE_LEN = (0.92, 1.0)     # their shorter strips' lengths; their texture starts at the root (fuller over the brows)
 VIEW_DIRS = [Vector((math.sin(math.radians(az)) * math.cos(math.radians(el)),
                      -math.cos(math.radians(az)) * math.cos(math.radians(el)), math.sin(math.radians(el))))
              for el in (0, 15, 30, 45) for az in range(0, 360, 15)]   # (Blender space; az from the face, toward +X)
@@ -2176,29 +2214,42 @@ def end_on(spine, n, width):
     return worst
 
 
-def crown_strips(rs, star, drip):
-    """A broad-looking crown lock's cards: four narrower strips in place of
-    its star, as (angle, twist, width factor, offset along the normal,
-    root offset along the width, tip splay along the width, length), the
-    offsets in the lock's widths. Same spin and twist as its star (the
-    star's draws are kept, so the other locks' spins are unchanged), 45 deg
-    apart, each a little off the axis and lifted off the others, twisting a
-    little differently, its tip swung out along its own width (0 at the
-    root), so the lock splits into diverging strands from a shared root
-    instead of a fan of parallel planks; all but one a little shorter, so
-    the tips stagger and the lock keeps its reach. A drip's lock keeps its
-    first strip (variant 0, solid-cored) straight and whole: the drip hangs
-    from it. `star` is crown_cards' result: its middle card lies at the
-    lock's spin, with its twist."""
+def crown_strips(rs, star, drip, fringe):
+    """A broad-looking crown lock's cards: narrower strips in place of its
+    star (four; FRINGE_STRIPS on the brow fringe), as (angle, twist, width
+    factor, offset along the normal, root offset along the width, tip splay
+    along the width, length, (tip lift, mid-length bow) along the normal,
+    row jitters (bend_rows places the rows), (root width, tip width,
+    texture start)), the offsets in the lock's widths. Same spin and twist
+    as its star (the star's draws are kept, so the other locks' spins are
+    unchanged), spread evenly over +-STRIP_FAN about it, each a little off
+    that spread, off the axis, and lifted off the others, twisting a little
+    differently, its tip swung out along its own width and lifted and bowed
+    out of its own plane (0 at the root), so the lock splits into diverging
+    strands from a shared root instead of a fan of parallel planks; all but
+    one a little shorter, so the tips stagger and the lock keeps its reach
+    (part F: see STRIP_ROWS). A drip's lock keeps its first strip (variant
+    0, solid-cored) as part D laid it, straight and whole on its lock's own
+    rows: the drip hangs from it. `star` is crown_cards' result: its middle
+    card lies at the lock's spin, with its twist."""
     spin, tw = star[1][0], star[1][1]
-    full = 0 if drip else rs.randrange(len(STRIPS))
+    nk = FRINGE_STRIPS if fringe else 4
+    ends = (FRINGE_ROOT, FRINGE_TIP, 0.0) if fringe else (STRIP_ROOT, STRIP_TIP, STRIP_V0)
+    base = [math.radians(-STRIP_FAN + 2 * STRIP_FAN * k / (nk - 1)) for k in range(nk)]
+    gap = base[1] - base[0]
+    full = 0 if drip else rs.randrange(nk)
     out = []
-    for k, a0 in enumerate(STRIPS):
+    for k, a0 in enumerate(base):
         side = STRIP_SPREAD * rs.uniform(-1, 1)
-        splay = rs.uniform(*STRIP_SPLAY) * rs.choice((-1, 1)) * (0.0 if drip and k == 0 else 1.0)
-        ln = 1.0 if k == full else rs.uniform(*STRIP_LEN)
-        out.append((spin + a0 + math.radians(rs.uniform(-6, 6)), tw + math.radians(rs.uniform(-8, 8)),
-                    STRIP_W, rs.uniform(-0.12, 0.12), side, splay, ln))
+        straight = drip and k == 0
+        splay = rs.uniform(*STRIP_SPLAY) * rs.choice((-1, 1)) * (0.0 if straight else 1.0)
+        lift = rs.uniform(*STRIP_LIFT) * rs.choice((-1, 1)) * (0.0 if straight else 1.0)
+        bow = rs.uniform(*STRIP_BOW) * rs.choice((-1, 1)) * (0.0 if straight else 1.0)
+        ln = 1.0 if k == full else rs.uniform(*(FRINGE_LEN if fringe else STRIP_LEN))
+        rows = tuple(rs.uniform(-j, j) for _, j in STRIP_ROWS)     # (bend_rows places them)
+        out.append((spin + a0 + gap * STRIP_JIT[0] * rs.uniform(-1, 1), tw + math.radians(rs.uniform(-1, 1) * STRIP_JIT[1]),
+                    STRIP_W, rs.uniform(-0.12, 0.12), side, splay, ln, (lift, bow),
+                    None if straight else rows, (1.0, 0.55, 0.0) if straight else ends))
     return out
 
 
@@ -2211,7 +2262,10 @@ def add_cards(ob, cards, drip_tips, rng_):
     star of three narrower crossing cards, each twisting along the lock and
     spun so its planes cross its neighbours' (crown_cards; Gate B fix B), or
     on the 58 locks that can look broadest end-on four narrower strips
-    splaying from a shared root (crown_strips; Gate B round 2, part D).
+    splaying from a shared root (crown_strips; Gate B round 2, part D), six
+    on the brow fringe, each a 5-row strip along its lock's smoothed
+    centreline, narrowed where it turns (strip_curve, bend_rows, unfold;
+    round 3, part F).
     The mask runs along the lock (its strands stretched 2.5x down its
     length) and the alpha test rises toward the tip (lock_x), so a lock
     frays into its strands. Normals are the skin's (the ribbon's turned out
@@ -2251,28 +2305,129 @@ def add_cards(ob, cards, drip_tips, rng_):
     laid = []          # the crown cards so far: (row points, row plane normals)
     laid_old = []      # the same measure for round 4's untwisted fin and ribbon (the log's before/after)
     laid_now = []      # the same for the cards as laid (the strips where they replace a star)
-    n_cross = 0
+    n_cross = n_strip = n_fringe = n_unfold = 0
+    _sc = {}           # strip_curve's cache
+    _dev = []          # and how far each strays from its lock's (largest; at the tip; reach from the centre)
     rows_t = (0.0, 0.36, 0.7, 1.0)
 
-    def lock_frame(c, ln=1.0):
-        """A lock's skin normal, its 4 rows' centres and frames (tangent,
+    def lock_frame(c, ln=1.0, rows=rows_t, steady=False):
+        """A lock's skin normal, its rows' centres and frames (tangent,
         side, fin), and its width: no draws. ln < 1 lays the rows over
-        that fraction of the lock from its root (a shorter strip)."""
+        that fraction of the lock from its root (a shorter strip); `rows`
+        are their heights along it (round 4's four by default); `steady`
+        (part F's strips) lays them along strip_curve, interpolated, with
+        frames square to one side taken past the lock's turn."""
         n = (GL2BL.to_3x3() @ c["n"]).normalized()
-        dense_gl, Td = lock_curve(c["spine"], c["n"])
-        dense = [bl(p) for p in dense_gl]
+        if steady:
+            dense, Td = strip_curve(c)
+        else:
+            dense_gl, Td = lock_curve(c["spine"], c["n"])
+            dense = [bl(p) for p in dense_gl]
         spine = []
-        for t in rows_t:
+        for t in rows:
+            if steady:     # (part F) a strip's rows interpolated along the curve (its rows can lie closer than its samples)
+                j = max(0, min(len(Td) - 2, next((q for q in range(1, len(Td)) if Td[q] >= t * ln), len(Td) - 1) - 1))
+                f = (t * ln - Td[j]) / max(Td[j + 1] - Td[j], 1e-9)
+                spine.append(dense[j].lerp(dense[j + 1], min(max(f, 0.0), 1.0)))
+                continue
             j = min(range(len(Td)), key=lambda q: abs(Td[q] - t * ln))
             spine.append(dense[j])
         width = c["radius"] * (2.1 if c["zone"] == "crown" else 2.9)
         frames = []
+        if steady:     # (part F) a strip's side: one across the lock's turn (where it has left the skin), kept square to each row
+            j = min(range(len(Td)), key=lambda q: abs(Td[q] - 0.4))
+            ref = (dense[min(j + 1, len(dense) - 1)] - dense[max(j - 1, 0)]).normalized().cross(n).normalized()
         for i, p in enumerate(spine):
-            tan = (spine[min(i + 1, 3)] - spine[max(i - 1, 0)]).normalized()
-            side = tan.cross(n)
+            tan = (spine[min(i + 1, len(rows) - 1)] - spine[max(i - 1, 0)]).normalized()
+            side = tan.cross(n) if not steady else ref - tan * tan.dot(ref)
+            # (round 4's rule, tan x n, turns unstably where a lock rises
+            # near the skin's normal: a strip's rows close to its root
+            # flipped across it)
             side = side.normalized() if side.length > 1e-5 else tan.orthogonal().normalized()
             frames.append((tan, side, tan.cross(side).normalized()))
         return n, spine, frames, width
+
+    def strip_curve(c):
+        """(part F) A strip's centreline (Blender space): its lock's, resampled
+        evenly (STRIP_SAMPLES) and smoothed (STRIP_SMOOTH Laplacian passes, its
+        root and tip held). A lock rises off the skin along its normal and
+        then turns over into its flow within a few hundredths of a unit: a
+        strip wider than that turn folds over at it (round 3's chevrons, its
+        strand lines broken into a V, stacked strip over strip). Smoothed,
+        the turn is rounded wider than a strip."""
+        key = id(c)
+        if key not in _sc:
+            dense_gl, Td = lock_curve(c["spine"], c["n"])
+            d = [bl(p) for p in dense_gl]
+            pts = []
+            for k in range(STRIP_SAMPLES):
+                t = k / (STRIP_SAMPLES - 1)
+                j = max(0, min(len(Td) - 2, next((q for q in range(1, len(Td)) if Td[q] >= t), len(Td) - 1) - 1))
+                f = (t - Td[j]) / max(Td[j + 1] - Td[j], 1e-9)
+                pts.append(d[j].lerp(d[j + 1], min(max(f, 0.0), 1.0)))
+            for _ in range(STRIP_SMOOTH):
+                pts = [pts[0]] + [(a + b) * 0.25 + m * 0.5 for a, m, b in zip(pts, pts[1:], pts[2:])] + [pts[-1]]
+            T = [0.0]
+            for a, b in zip(pts, pts[1:]):
+                T.append(T[-1] + (b - a).length)
+            _sc[key] = (pts, [x / T[-1] for x in T])
+            fine = [d[j].lerp(d[j + 1], f / 8) for j in range(len(d) - 1) for f in range(8)] + [d[-1]]
+            _dev.append((max(min((p - q).length for q in fine) for p in pts), (pts[-1] - d[-1]).length,
+                         max(p.length for p in pts) - max(p.length for p in d)))
+        return _sc[key]
+
+    def bend_rows(c, ln, jit):
+        """(part F) A strip's five row heights (0 and 1 its ends): its three
+        inner rows at the quarters of the lock's turning over the strip's
+        length (STRIP_BEND of the way from its length's quarters), each
+        jittered (`jit`): a lock rises off the skin and turns within its
+        first fifth, so rows spread evenly along it put all of that turn at
+        one row (a sharp fold: the strand lines broke there into chevrons,
+        stacked strip over strip); rows spread over the turn share it out."""
+        dense, Td = strip_curve(c)
+        pts = [q for q, t in zip(dense, Td) if t <= ln + 1e-9]
+        turn = [0.0]
+        for a, b, d in zip(pts, pts[1:], pts[2:]):
+            u, v = b - a, d - b
+            turn.append(turn[-1] + (u.angle(v, 0.0) if u.length > 1e-9 and v.length > 1e-9 else 0.0))
+        turn.append(turn[-1])
+        ts = [t / ln for t in Td[:len(pts)]]
+        out = [0.0]
+        for (q, _), jt in zip(STRIP_ROWS, jit):
+            k = next((m for m, th in enumerate(turn) if th >= q * turn[-1]), len(ts) - 1) if turn[-1] > 1e-6 else 0
+            t = STRIP_BEND * ts[k] + (1.0 - STRIP_BEND) * q + jt
+            out.append(min(max(t, out[-1] + 0.08), 0.92 - 0.08 * (2 - len(out) + 1)))
+        return tuple(out) + (1.0,)
+
+    def unfold(rows):
+        """(part F) A strip narrowed where it turns within its own plane:
+        a lock rises off the skin and turns over into its flow, and a wide
+        flat strip whose width lies in that turn bends like a ruler laid
+        flat (round 3's chevrons: its strand lines broke into a V there, or
+        nested round the corner, stacked strip over strip; tighter, its
+        inner edge ran back on itself). At each inner row its half width is
+        held under STRIP_TURN of the turn's radius there, over the share of
+        its width that lies in the turn (a strip across the turn bends out
+        of its plane, as hair does, and keeps its width), but not under
+        STRIP_MINW of its width: the strip gathers at its turn as a lock
+        does. Returns the rows and whether any narrowed."""
+        rows = [list(r) for r in rows]
+        shrunk = False
+        for i in range(1, len(rows) - 1):
+            s1, s2 = rows[i][0] - rows[i - 1][0], rows[i + 1][0] - rows[i][0]
+            if s1.length < 1e-9 or s2.length < 1e-9:
+                continue
+            b = s2.normalized() - s1.normalized()
+            th = s1.angle(s2, 0.0)
+            if b.length < 1e-6 or th < 1e-4:
+                continue
+            share = abs(rows[i][2].dot(b.normalized()))
+            cap = STRIP_TURN * 0.5 * (s1.length + s2.length) / th / max(share, 1e-3)
+            w = max(rows[i][1] * STRIP_MINW, min(rows[i][1], cap))
+            if w < rows[i][1] - 1e-9:
+                rows[i][1] = w
+                shrunk = True
+        return [tuple(r) for r in rows], shrunk
 
     # part D: the STRIP_LOCKS crown locks that can look broadest (end_on)
     # become strips (crown_strips; their draws on rs); ties keep the pick's order
@@ -2288,48 +2443,65 @@ def add_cards(ob, cards, drip_tips, rng_):
         drip_lock = any((c["spine"][-1] - q).length < 1e-6 for q in drip_tips)
         crown = c["zone"] == "crown"
         if crown:
-            cards_ = [cd + (0.0, 0.0, 1.0) for cd in crown_cards(rc, spine, frames, laid)]
+            cards_ = [cd + (0.0, 0.0, 1.0, (0.0, 0.0), rows_t, (1.0, 0.55, 0.0)) for cd in crown_cards(rc, spine, frames, laid)]
             laid_old.append(([p for _ in range(2) for p in spine], [
                 tan.cross(Matrix.Rotation(spin, 3, tan) @ (fin if k == 0 else side)).normalized()
                 for k in range(2) for tan, side, fin in frames]))
             if idx in strip_ids:
-                cards_ = crown_strips(rs, cards_, drip_lock)
+                cards_ = crown_strips(rs, cards_, drip_lock, c["n"].z > FRINGE_NZ)
+                n_strip += len(cards_)
+                n_fringe += c["n"].z > FRINGE_NZ
             laid_now.append(([p for _ in cards_ for p in spine], [
                 tan.cross(Matrix.Rotation(ang + twist * rows_t[i], 3, tan) @ fin).normalized()
                 for ang, twist, *_ in cards_ for i, (tan, _, fin) in enumerate(frames)]))
             n_cross += len(cards_) - 2
         else:              # the tentacles and arms: the fin and ribbon as before
-            cards_ = [(spin, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), (spin, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)]
-        for layer, (ang, twist, wk, off, aside, splay, ln) in enumerate(cards_):  # tentacles: 0 the fin, 1 the ribbon
+            cards_ = [(spin, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, (0.0, 0.0), rows_t, (1.0, 0.55, 0.0))] * 2
+        # tentacles: layer 0 the fin, 1 the ribbon; crown: the star's cards or the strips
+        for layer, (ang, twist, wk, off, aside, splay, ln, (lift, bow), rt, (rootw, tipw, v0)) in enumerate(cards_):
+            if rt is None:         # a drip's strip: its lock's own rows (part D's), so the drip still hangs from it
+                rt = rows_t
+            elif len(rt) == 3:     # a strip's (jittered) rows: over its lock's bend
+                rt = bend_rows(c, ln, rt)
             k_var = 0 if drip_lock and layer < 2 else rng_.randrange(LOCK_VARIANTS) if layer < 2 else \
                 rc.randrange(LOCK_VARIANTS) if layer == 2 else rs.randrange(LOCK_VARIANTS)
             rows = []
-            spine_k, frames_k = (spine, frames) if ln == 1.0 else lock_frame(c, ln)[1:3]
+            spine_k, frames_k = (spine, frames) if ln == 1.0 and rt is rows_t else lock_frame(c, ln, rt, steady=rt is not rows_t)[1:3]
             for i, p in enumerate(spine_k):
                 tan, side, fin = frames_k[i]
                 if crown:
-                    wdir = Matrix.Rotation(ang + twist * rows_t[i], 3, tan) @ fin
-                    p = p + tan.cross(wdir).normalized() * (off * width) + wdir * ((aside + splay * rows_t[i]) * width)
+                    wdir = Matrix.Rotation(ang + twist * rt[i], 3, tan) @ fin
+                    p = p + tan.cross(wdir).normalized() * ((off + lift * rt[i] ** 1.5 + bow * math.sin(math.pi * rt[i])) * width) + \
+                        wdir * ((aside + splay * rt[i]) * width)
                 else:
                     wdir = Matrix.Rotation(spin, 3, tan) @ (fin if layer == 0 else side)
-                w = width * wk * (0.55 + 0.45 * (1.0 - rows_t[i])) * 0.5    # (the texture tapers the clumps)
-                rows.append(([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, wdir))
-            for i in range(3):
+                if rt is rows_t:
+                    w = width * wk * (0.55 + 0.45 * (1.0 - rt[i])) * 0.5    # (the texture tapers the clumps)
+                else:              # (part F) a strip gathers at its root and tapers to a narrower tip
+                    w = width * wk * min(tipw + (1.0 - tipw) * (1.0 - rt[i]), rootw + (1.0 - rootw) * rt[i] / rt[1]) * 0.5
+                if i == 0 and rt is not rows_t:    # (part F) a strip's root edge sunk under the skin: it emerges, no straight end shows
+                    p = p - n * (abs(wdir.dot(n)) * w + STRIP_SINK)
+                rows.append((p, w, wdir))
+            if rt is not rows_t:
+                rows, n_narrow = unfold(rows)
+                n_unfold += n_narrow
+            rows = [([bm.verts.new(p - wdir * w), bm.verts.new(p + wdir * w)], w, wdir) for p, w, wdir in rows]
+            for i in range(len(rows) - 1):
                 (a0, a1), _, _ = rows[i]
                 (b0, b1), _, _ = rows[i + 1]
                 f = bm.faces.new((a0, a1, b1, b0))
                 f.smooth = True
                 f[F["prim"]], f[F["card"]], f[F["part"]], f[F["bk"]] = 2, 1, c["part"], BAKE_IDS["fur"]
                 for lp in f.loops:
-                    ri = next(k for k in range(4) if lp.vert in rows[k][0])
+                    ri = next(k for k in range(len(rows)) if lp.vert in rows[k][0])
                     ci = rows[ri][0].index(lp.vert)
                     # the atlas's lock half: variant k_var, across its width, root to tip
-                    lp[uvl].uv = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * rows_t[ri])
+                    lp[uvl].uv = (0.5 + (k_var + 0.02 + 0.96 * ci) / (2 * LOCK_VARIANTS), 0.015 + 0.97 * (v0 + (1.0 - v0) * rt[ri]))
             for i, (vs, _, across) in enumerate(rows):
                 for e, v in zip((-1, 1), vs):
                     v[VI["vpart"]] = c["part"]
                     v[V["wgt"]] = c["wgt"]
-                    v[V["cardf"]] = lock_x(rows_t[i])
+                    v[V["cardf"]] = lock_x(rt[i])
                     v[V["wet"]] = c["wet"]
                     # the skin's normal; the ribbon's turned out across its
                     # width, so it shades round like the blockout's tufts (the
@@ -2354,9 +2526,13 @@ def add_cards(ob, cards, drip_tips, rng_):
     # part D: the broadest a crown lock's widest card can look (end_on: its
     # root width over the lock's shortest projected length where it is seen)
     broad = sorted(((s * (STRIP_W if i in strip_ids else STAR_W), s * FIXB_STAR_W) for s, i in scored), reverse=True)
-    print("saucer: crown strips: %d locks as %d strips (%d at the hem); end-on breadth, all crown locks: "
+    print("saucer: crown strips: %d narrowed where they turn tight (unfold); smoothed centrelines stray from their "
+          "locks' at most %.4f (p90 %.4f), tips held, reach from the centre changes %.4f..%.4f" % (
+              n_unfold, max(d for d, _, _ in _dev), sorted(d for d, _, _ in _dev)[len(_dev) * 9 // 10],
+              min(r for _, _, r in _dev), max(r for _, _, r in _dev)))
+    print("saucer: crown strips: %d locks as %d strips (%d at the hem, %d on the brow fringe as %d); end-on breadth, all crown locks: "
           "fix B's stars max %.2f p90 %.2f -> now max %.2f p90 %.2f; strip threshold %.2f" % (
-              len(strip_ids), len(strip_ids) * len(STRIPS), sum(pick[i][1]["hem_d"] < 0.14 for i in strip_ids),
+              len(strip_ids), n_strip, sum(pick[i][1]["hem_d"] < 0.14 for i in strip_ids), n_fringe, FRINGE_STRIPS,
               max(s for _, s in broad), sorted(s for _, s in broad)[len(broad) * 9 // 10],
               broad[0][0], sorted(b for b, _ in broad)[len(broad) * 9 // 10], scored[STRIP_LOCKS - 1][0] * FIXB_STAR_W))
     for name, ld in (("round 4 (fin and ribbon, no twist)", laid_old), ("star (fix B)", laid), ("now", laid_now)):
