@@ -28,7 +28,7 @@ describe("e2e affected-probe selection", () => {
   });
 
   it("runs only the monster lab's probe for the dev-only monsters (the game imports none of them)", () => {
-    for (const f of ["src/lab/MonsterLab.tsx", "src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-lab/tardigrade.glb", "monster-lab.html"]) {
+    for (const f of ["src/lab/MonsterLab.tsx", "src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-ondemand/tardigrade.glb", "monster-lab.html"]) {
       expect(affectedProbes([f]), f).toEqual(["monsterlab"]);
     }
   });

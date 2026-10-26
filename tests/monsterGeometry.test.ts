@@ -15,7 +15,7 @@ import {
 
 /**
  * The space monsters' geometry contract on the real, shipped glbs
- * (public/models-lab), read the way the lab and the combat stage read them:
+ * (public/models-ondemand), read the way the lab and the combat stage read them:
  * each primitive with its node transform baked in, in float.
  *  - splitFurGeometry: no fur triangle is half card, half base (a majority
  *    vote would silently move it), and each fur splits into the R19 counts.
@@ -34,7 +34,7 @@ beforeAll(async () => {
   io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.decoder": MeshoptDecoder });
 });
 async function doc(name: string): Promise<Document> {
-  if (!docs.has(name)) docs.set(name, await io.read(`public/models-lab/${name}.glb`));
+  if (!docs.has(name)) docs.set(name, await io.read(`public/models-ondemand/${name}.glb`));
   return docs.get(name)!;
 }
 

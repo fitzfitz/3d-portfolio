@@ -28,7 +28,8 @@ import { addSaucer, saucerBoundsMargin, saucerMuzzle, type SaucerPose, type Sauc
 import {
   addTardigrade, tardigradeCurlPoint, type TardigradePose, type TardigradeRig,
 } from "../utils/monsters/tardigradeMaterial";
-import { buildSaucer, buildTardigrade, type LabMesh } from "./labMonsters";
+import { buildSaucer, buildTardigrade, type MonsterMesh } from "../utils/monsters/buildMonsters";
+import { SAUCER_GLB, TARDIGRADE_GLB } from "../utils/monsters/monsterAssets";
 import {
   CYCLE_SECONDS, LAB_STATES, clusterCentre, createSubmittedSnapshot, snapshotSubmitted, labQuery, heroKind, layoutFraming, layoutPlacements, monsterPhases, parseLabQuery,
   placementMatrix, saucerLabPose, tardigradeLabPose, type LabSettings, type MonsterKind,
@@ -188,11 +189,11 @@ function LabScene({ store, readings }: SceneProps) {
   const controls = useThree((s) => s.controls) as unknown as Orbit | null;
   const settings = useSyncExternalStore(store.subscribe, store.get);
 
-  const saucerGltf = useModel(assetUrl("/models-lab/saucer.glb"));
-  const tardigradeGltf = useModel(assetUrl("/models-lab/tardigrade.glb"));
+  const saucerGltf = useModel(assetUrl(SAUCER_GLB));
+  const tardigradeGltf = useModel(assetUrl(TARDIGRADE_GLB));
   const saucer = useMemo(() => buildSaucer(saucerGltf.scene, SAUCER_RIG, SAUCERS), [saucerGltf]);
   const tardigrade = useMemo(() => buildTardigrade(tardigradeGltf.scene, TARDIGRADE_RIG, TARDIGRADES), [tardigradeGltf]);
-  const meshes: LabMesh[] = useMemo(() => [...saucer.meshes, ...tardigrade.meshes], [saucer, tardigrade]);
+  const meshes: MonsterMesh[] = useMemo(() => [...saucer.meshes, ...tardigrade.meshes], [saucer, tardigrade]);
   const all = useMemo(() => meshes.map((m) => m.mesh), [meshes]);
   useEffect(() => () => {
     for (const m of meshes) { m.mesh.geometry.dispose(); m.mesh.dispose(); }

@@ -92,6 +92,7 @@ export default async function basepathProbe() {
   const okAssets = [];     // asset URLs that resolved 2xx
   const askedForAssets = []; // EVERY pack or /models/ URL requested, resolved or not
   const looseModels = [];   // /models/ requests: the packs should have covered them
+  const onDemand = [];      // /models-ondemand/ requests: only the Nest's load gate may fetch these
   const pageErrors = [];
 
   try {
@@ -133,6 +134,7 @@ export default async function basepathProbe() {
       // temporarily reintroducing a bare literal — that check was the one
       // check of six that still passed.
       if (/\/models\//.test(url)) looseModels.push(url);
+      if (/\/models-ondemand\//.test(url)) onDemand.push(url);
       if (/\/models\//.test(url) || PACK_RE.test(url)) askedForAssets.push(url);
       // Hold the packs back so they arrive after the 3D code, as they do on
       // a real connection (~7 MB against ~0.6 MB). On localhost they would
@@ -172,6 +174,7 @@ export default async function basepathProbe() {
     for (const u of inPage) {
       if (/\/models\//.test(u) && !looseModels.includes(u)) looseModels.push(u);
       if ((/\/models\//.test(u) || PACK_RE.test(u)) && !askedForAssets.includes(u)) askedForAssets.push(u);
+      if (/\/models-ondemand\//.test(u) && !onDemand.includes(u)) onDemand.push(u);
     }
 
     const missing = REQUIRED_ASSETS.filter((a) => !has(okAssets, a));
@@ -181,6 +184,8 @@ export default async function basepathProbe() {
     checks.check("exactly one texture tier was downloaded", tiers.length === 1, tiers.join(" | "));
     checks.check("the packs covered the landing view (no loose /models/ request)", looseModels.length === 0,
       looseModels.slice(0, 3).join(" | "));
+    checks.check("the landing view never fetches the on-demand monsters (/models-ondemand/)", onDemand.length === 0,
+      onDemand.slice(0, 3).join(" | "));
 
     // Every asset must be REQUESTED from under the base, not the domain root.
     const rootServed = askedForAssets.filter((u) => !new URL(u).pathname.startsWith(BASE));
