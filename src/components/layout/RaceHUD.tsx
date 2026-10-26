@@ -59,7 +59,7 @@ export function RacePanel(p: RacePanelProps) {
     case "idle":
       if (!p.near && !p.joining) return null;
       body = p.joining ? (
-        <div className={label}>JOINING… CONNECTING TO LIVE SKY</div>
+        <div className={label}>JOINING…</div>
       ) : (<>
         {button("join", `JOIN RACE${key(keyName)}`)}
         {!p.liveSky && <div className="text-[9px] text-white/55">JOINING TURNS LIVE SKY ON FOR THE RACE</div>}

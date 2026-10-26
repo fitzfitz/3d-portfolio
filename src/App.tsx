@@ -45,6 +45,7 @@ import { PROBES } from "./data/probes";
 import { probeIntro } from "./utils/probes";
 import { identity } from "./data/identity";
 import { raceKey, startRaceLink } from "./utils/raceJoin";
+import { watchRaceStuck } from "./utils/raceController";
 import PerfOverlay from "./debug/PerfOverlay";
 
 /**
@@ -165,6 +166,10 @@ export default function App() {
   useEffect(() => {
     if (sceneReady) useSpaceStore.getState().tellAurumOnce();
   }, [sceneReady]);
+  // R17: a race view the room stopped talking to (a dead socket) goes back to
+  // idle after the race limit and the upload window. App-wide, not in the
+  // scene: the canvas can be frozen or gone.
+  useEffect(() => watchRaceStuck(), []);
   // A ?race= invite link joins its race once the scene is up (the ship
   // already sits on the grid); the code leaves the URL.
   useEffect(() => {

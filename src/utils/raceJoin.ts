@@ -4,7 +4,7 @@ import { START_GATE } from "../data/ringCourse";
 import { JOIN_RADIUS, type RaceClientMessage } from "./raceProtocol";
 import { loadRun, raceCodeFromUrl, raceJoinMessage, RACE_IDLE } from "./raceSession";
 import { raceLink, sendRace } from "./raceLink";
-import { ERROR_LINES, leaveRace } from "./raceController";
+import { ERROR_LINES, leaveRace, onRaceReply } from "./raceController";
 import type { Vec3 } from "./race";
 
 /**
@@ -31,6 +31,12 @@ export function nearStartGate(p: Vec3): boolean {
 /** The join waiting for the socket or the notice, or null. */
 let pending: RaceClientMessage | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * The join went out and the room has not answered yet (no lobby, grid or
+ * error). JOIN stays hidden and no second rjoin goes out meanwhile.
+ */
+let awaiting = false;
+let replyTimer: ReturnType<typeof setTimeout> | null = null;
 /** Live sky said hello and the stored run's rejoin has not gone out yet. */
 let rejoinDue = false;
 /** INVITE FRIENDS was pressed: copy the link when the private lobby's code arrives. */
@@ -47,8 +53,40 @@ function setPending(m: RaceClientMessage | null): void {
   notify();
 }
 
-/** Whether a join is waiting (the HUD shows JOINING…). */
-export function joinPending(): boolean { return pending !== null; }
+function setAwaiting(v: boolean): void {
+  if (!v && replyTimer !== null) { clearTimeout(replyTimer); replyTimer = null; }
+  if (awaiting === v) return;
+  awaiting = v;
+  notify();
+}
+
+/** Any answer from the room settles the wait (raceController.ts onRaceReply). */
+onRaceReply(() => setAwaiting(false));
+
+/** Gives up on the join: the offline line, and idle again (live sky back off if the join turned it on). */
+function giveUp(): void {
+  const s = useSpaceStore.getState();
+  s.sendBroadcast(ERROR_LINES.off!);
+  s.setRaceView(RACE_IDLE);
+}
+
+/**
+ * The sent join's wait: no answer within JOIN_TIMEOUT_MS (an old Worker
+ * ignores rjoin) gives up, unless something has moved the view on.
+ */
+function awaitReply(): void {
+  setAwaiting(true);
+  if (replyTimer !== null) clearTimeout(replyTimer);
+  replyTimer = setTimeout(() => {
+    replyTimer = null;
+    if (!awaiting) return;
+    setAwaiting(false);
+    if (useSpaceStore.getState().raceView.phase === "idle") giveUp();
+  }, JOIN_TIMEOUT_MS);
+}
+
+/** Whether a join is waiting to go out or for its answer (the HUD shows JOINING…). */
+export function joinPending(): boolean { return pending !== null || awaiting; }
 /** For useSyncExternalStore: told when joinPending flips. */
 export function subscribeJoin(fn: () => void): () => void {
   listeners.add(fn);
@@ -59,6 +97,9 @@ export function subscribeJoin(fn: () => void): () => void {
 export function resetRaceJoin(): void {
   if (timer !== null) clearTimeout(timer);
   timer = null;
+  if (replyTimer !== null) clearTimeout(replyTimer);
+  replyTimer = null;
+  awaiting = false;
   pending = null;
   rejoinDue = false;
   inviteCopyWanted = false;
@@ -77,10 +118,7 @@ function arm(retry: boolean): void {
     if (!pending) return;
     if (retry && raceLink.conn?.connected) { arm(false); return; }
     setPending(null);
-    const s = useSpaceStore.getState();
-    s.sendBroadcast(ERROR_LINES.off!);
-    // Back to idle: turns live sky off again when the join turned it on.
-    s.setRaceView(RACE_IDLE);
+    giveUp();
   }, JOIN_TIMEOUT_MS);
 }
 
@@ -91,7 +129,7 @@ function arm(retry: boolean): void {
  */
 export function requestJoin(msg: RaceClientMessage = { t: "rjoin" }): void {
   const s = useSpaceStore.getState();
-  if (pending || s.raceView.phase !== "idle") return;
+  if (pending || awaiting || s.raceView.phase !== "idle") return;
   if (!s.liveSky) {
     s.setRaceLiveSkyRestore(true);
     s.setLiveSky(true);
@@ -124,7 +162,10 @@ export function flushJoin(localNow: number = Date.now()): void {
       return;
     } else return;
   }
-  if (pending && sendRace(pending)) setPending(null);
+  if (pending && sendRace(pending)) {
+    setPending(null);
+    awaitReply();
+  }
 }
 
 /** Live sky said hello (Ghosts.tsx): every (re)connect rejoins a stored run, or sends the waiting join. */
@@ -140,14 +181,16 @@ export function watchRaceJoin(): () => void {
 
 /**
  * R (and the pad's L3): joins at the start gate from an idle view, drops a
- * waiting join, leaves a lobby. Nothing on the grid or mid-race: a stray key
+ * join still waiting to go out (not one awaiting its answer), leaves a lobby. Nothing on the grid or mid-race: a stray key
  * must not forfeit a race.
  */
 export function raceKey(): void {
   const v = useSpaceStore.getState().raceView;
+  if (v.phase === "lobby") { leaveRace(); return; }
   if (pending) { cancelJoin(); return; }
-  if (v.phase === "idle") { if (nearStartGate(flight)) requestJoin(); return; }
-  if (v.phase === "lobby") leaveRace();
+  // The join is out: its answer (or the reply timeout) decides.
+  if (awaiting) return;
+  if (v.phase === "idle" && nearStartGate(flight)) requestJoin();
 }
 
 /** INVITE FRIENDS: makes the race private; the HUD copies the link when its code arrives. */

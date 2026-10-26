@@ -5,7 +5,7 @@ import { formatRaceTime, isNewBest } from "./race";
 import { beaconApiUrl } from "./apiBase";
 import { raceReduce, syncWithRun, loadRun, withStamp, uploadRun, RUN_TTL_MS, RACE_IDLE, type RaceRun, type RaceView } from "./raceSession";
 import { sendRace } from "./raceLink";
-import type { RaceError, RaceServerMessage, ResultRow, Stamp } from "./raceProtocol";
+import { RACE_LIMIT_MS, UPLOAD_WINDOW_MS, type RaceError, type RaceServerMessage, type ResultRow, type Stamp } from "./raceProtocol";
 
 /**
  * The race's glue: each server race message (from Ghosts.tsx's live-sky
@@ -43,6 +43,16 @@ export function resultLine(own: ResultRow, total: number): string {
 let lastToken: string | null = null;
 /** The race already uploaded (or being uploaded): the scene's over call runs once per race. */
 let uploadedRace: string | null = null;
+
+/**
+ * Told of every reply from the room to a join (anything but the ambient
+ * rwait, a stamp or a refused ring claim): raceJoin.ts settles its wait on it.
+ */
+const replyListeners = new Set<(m: RaceServerMessage) => void>();
+export function onRaceReply(fn: (m: RaceServerMessage) => void): () => void {
+  replyListeners.add(fn);
+  return () => { replyListeners.delete(fn); };
+}
 
 /** Tests: forget the in-memory state. */
 export function resetRaceController(): void {
@@ -148,6 +158,59 @@ export function onRaceServer(m: RaceServerMessage, localNow: number = Date.now()
   if (line) s.sendBroadcast(line);
   const view = syncWithRun(raceReduce(prev, m, localNow), run);
   if (view !== prev) s.setRaceView(view);
+  // A refused join leaves an idle view idle, so the set above is skipped:
+  // set it anyway, which gives live sky back when the join turned it on.
+  else if (m.t === "rerr" && m.reason !== "ring" && prev.phase === "idle") s.setRaceView(RACE_IDLE);
+  if (m.t !== "rwait" && m.t !== "rstamp" && !(m.t === "rerr" && m.reason === "ring")) {
+    for (const fn of replyListeners) fn(m);
+  }
+}
+
+/**
+ * R17: a view still on the grid, racing or at the over this long after its
+ * GO (local) has lost the room (a dead socket): the race limit, the upload
+ * window and 10 s. Past it the client gives up on the race.
+ */
+export const STUCK_AFTER_GO_MS = RACE_LIMIT_MS + UPLOAD_WINDOW_MS + 10_000;
+
+/**
+ * When `v` counts as stuck (local ms), or null for a view that cannot be.
+ * `goAt` is the GO last seen for `v`'s race; an over view picked up with no
+ * GO seen (after a reload) gives up 10 s after its upload window instead.
+ */
+export function stuckDeadline(v: RaceView, seen: { race: string; goAt: number } | null): number | null {
+  if (v.phase === "grid" || v.phase === "running") return v.goAt + STUCK_AFTER_GO_MS;
+  if (v.phase !== "over") return null;
+  return seen?.race === v.race ? seen.goAt + STUCK_AFTER_GO_MS : v.uploadBy + 10_000;
+}
+
+/**
+ * The client failsafe (R17): a view stuck on the grid, racing or at the over
+ * past stuckDeadline goes back to idle, which lifts the race's flags (warp
+ * cap, no jumps, no docking) and gives live sky back, and the stored run goes.
+ * A timer from the store, not a frame: a hidden tab or a frozen scene runs
+ * none. Returns the unsubscribe.
+ */
+export function watchRaceStuck(): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let seen: { race: string; goAt: number } | null = null;
+  const stop = useSpaceStore.subscribe((s) => s.raceView, (v) => {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+    if (v.phase === "grid" || v.phase === "running") seen = { race: v.race, goAt: v.goAt };
+    const deadline = stuckDeadline(v, seen);
+    if (deadline === null) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const s = useSpaceStore.getState();
+      if (s.raceView !== v) return;
+      clearRun();
+      s.setRaceView(RACE_IDLE);
+    }, Math.max(0, deadline - Date.now()));
+  }, { fireImmediately: true });
+  return () => {
+    stop();
+    if (timer !== null) clearTimeout(timer);
+  };
 }
 
 /** The wait before the one retry of a failed upload. */

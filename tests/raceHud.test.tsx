@@ -4,7 +4,7 @@ import { RacePanel, type RacePanelProps } from "../src/components/layout/RaceHUD
 import { raceTicks, resultRowText, raceButtons, inviteLink, copyText, type RaceButton } from "../src/utils/raceHud";
 import { raceJoinMessage, RACE_IDLE, type RaceView } from "../src/utils/raceSession";
 import { raceLink } from "../src/utils/raceLink";
-import { resetRaceJoin } from "../src/utils/raceJoin";
+import { resetRaceJoin, joinPending } from "../src/utils/raceJoin";
 import { startPose } from "../src/store/flightState";
 import { raceLinkCode } from "../src/utils/flightGate";
 import { isInviteCode } from "../src/utils/raceProtocol";
@@ -135,9 +135,10 @@ describe("RacePanel, phase by phase", () => {
     expect(failed).not.toContain("LINK COPIED");
   });
 
-  it("idle JOIN sends rjoin once live sky is connected", () => {
+  it("idle JOIN sends rjoin once live sky is connected, then waits for the reply (no second JOIN)", () => {
     press(raceButtons(RACE_IDLE, { ...ctx, near: true }), "join");
     expect(sent).toEqual([{ t: "rjoin" }]);
+    expect(joinPending()).toBe(true);
     expect(ids(raceButtons(RACE_IDLE, ctx))).toEqual([]);
     expect(ids(raceButtons(RACE_IDLE, { ...ctx, near: true, joining: true }))).toEqual([]);
   });

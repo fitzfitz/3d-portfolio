@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useSpaceStore } from "../src/store/spaceStore";
-import { onRaceServer, onRaceOver, resetRaceController, leaveRace, watchRaceOver, UPLOAD_RETRY_MS } from "../src/utils/raceController";
+import { onRaceServer, onRaceOver, resetRaceController, leaveRace, watchRaceOver, watchRaceStuck, UPLOAD_RETRY_MS, STUCK_AFTER_GO_MS } from "../src/utils/raceController";
 import { raceLink } from "../src/utils/raceLink";
 import type { LiveSkyConnection } from "../src/utils/liveSkyConnection";
-import { RACE_IDLE, RUN_TTL_MS, loadRun } from "../src/utils/raceSession";
+import { RACE_IDLE, RUN_TTL_MS, loadRun, type RaceView } from "../src/utils/raceSession";
 import { STORE_KEYS } from "../src/store/persist";
 import { RING_GATES } from "../src/data/ringCourse";
 import type { RaceServerMessage, Stamp } from "../src/utils/raceProtocol";
@@ -351,5 +351,82 @@ describe("raceController radio copy (Task 7)", () => {
     onRaceServer({ t: "rerr", reason: "busy" }, T);
     expect(text()).toBe("RACE // THIS RACE IS OPEN IN ANOTHER TAB");
     expect(s().raceView.phase).toBe("lobby");
+  });
+});
+
+describe("R17: the client failsafe for a stuck view", () => {
+  const running = (goAt: number): RaceView => ({ phase: "running", race: "race-1", kind: "public", next: 3, goAt, finalEndsAt: null, finished: false });
+
+  it("is the race limit, the upload window and 10 s after GO", () => {
+    expect(STUCK_AFTER_GO_MS).toBe(180_000 + 30_000 + 10_000);
+  });
+
+  it("a running view with no word from the room goes back to idle after the deadline: run cleared, live sky given back", () => {
+    useSpaceStore.setState({ liveSky: true, raceLiveSkyRestore: true });
+    onRaceServer(lobby(), T);
+    onRaceServer({ t: "rgrid", race: "race-1", kind: "public", slot: 0, goAt: T + 3000, now: T }, T);
+    // GO at local T (the rgo's stamp time is its `now`).
+    onRaceServer({ t: "rgo", stamp: stamp(0, T + 3000), now: T + 3000 }, T);
+    const stop = watchRaceStuck();
+    try {
+      expect(s().raceView.phase).toBe("running");
+      vi.advanceTimersByTime(STUCK_AFTER_GO_MS - 1);
+      expect(s().raceView.phase).toBe("running");
+      vi.advanceTimersByTime(1);
+      expect(s().raceView).toEqual(RACE_IDLE);
+      expect(run()).toBeNull();
+      expect(s().liveSky).toBe(false);
+      expect(s().raceLiveSkyRestore).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  it("grid and over count from the race's GO too", () => {
+    const stop = watchRaceStuck();
+    try {
+      useSpaceStore.setState({ raceView: { phase: "grid", race: "race-1", kind: "public", slot: 0, goAt: T + 3000 } });
+      vi.advanceTimersByTime(60_000);
+      useSpaceStore.setState({ raceView: { phase: "over", race: "race-1", uploadBy: T + 60_000, finished: false } });
+      vi.advanceTimersByTime(3000 + STUCK_AFTER_GO_MS - 60_000 - 1);
+      expect(s().raceView.phase).toBe("over");
+      vi.advanceTimersByTime(1);
+      expect(s().raceView).toEqual(RACE_IDLE);
+    } finally {
+      stop();
+    }
+  });
+
+  it("an over view with no GO seen (picked up after a reload) gives up 10 s after its upload window", () => {
+    useSpaceStore.setState({ raceView: { phase: "over", race: "race-9", uploadBy: T + 20_000, finished: false } });
+    const stop = watchRaceStuck();
+    try {
+      vi.advanceTimersByTime(29_999);
+      expect(s().raceView.phase).toBe("over");
+      vi.advanceTimersByTime(1);
+      expect(s().raceView).toEqual(RACE_IDLE);
+    } finally {
+      stop();
+    }
+  });
+
+  it("a normal race never trips it", () => {
+    const stop = watchRaceStuck();
+    try {
+      useSpaceStore.setState({ raceView: running(T) });
+      vi.advanceTimersByTime(90_000);
+      useSpaceStore.setState({ raceView: { phase: "over", race: "race-1", uploadBy: T + 120_000, finished: true } });
+      vi.advanceTimersByTime(30_000);
+      const results: RaceView = { phase: "results", race: "race-1", rows: [], againBy: T + 140_000 };
+      useSpaceStore.setState({ raceView: results });
+      vi.advanceTimersByTime(STUCK_AFTER_GO_MS * 2);
+      expect(s().raceView).toBe(results);
+      // A new race resets the deadline: race again's GO counts from its own start.
+      useSpaceStore.setState({ raceView: running(Date.now()) });
+      vi.advanceTimersByTime(STUCK_AFTER_GO_MS - 1);
+      expect(s().raceView.phase).toBe("running");
+    } finally {
+      stop();
+    }
   });
 });

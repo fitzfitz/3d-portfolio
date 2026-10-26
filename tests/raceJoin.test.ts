@@ -81,7 +81,8 @@ describe("joining", () => {
     // The notice reaches the radio (Ghosts sets liveSkySeen): the join goes out.
     s().setLiveSkySeen(true);
     expect(sent).toEqual([{ t: "rjoin" }]);
-    expect(joinPending()).toBe(false);
+    // Out, and awaiting the room's answer.
+    expect(joinPending()).toBe(true);
   });
 
   it("not connected within 10 s: the offline line, back to idle, live sky off again", () => {
@@ -106,7 +107,9 @@ describe("joining", () => {
     expect(s().broadcast).toBeNull();
     s().setLiveSkySeen(true);
     expect(sent).toEqual([{ t: "rjoin" }]);
-    vi.advanceTimersByTime(JOIN_TIMEOUT_MS);
+    // The room answers: the join's timers are done with.
+    onRaceServer({ t: "rlobby", race: "race-1", kind: "public", code: null, host: false, token: TOKEN, pilots: [{ cc: "ID", you: true }], startsAt: null, now: T }, T);
+    vi.advanceTimersByTime(JOIN_TIMEOUT_MS * 2);
     expect(s().broadcast).toBeNull();
   });
 
@@ -133,6 +136,68 @@ describe("joining", () => {
     const before = sent.length;
     raceKey();
     expect(sent.length).toBe(before);
+  });
+});
+
+describe("the join's reply (fix round 1)", () => {
+  it("live sky off, join, rerr off: live sky goes back off and the restore flag clears", () => {
+    useSpaceStore.setState({ liveSky: false });
+    requestJoin();
+    expect(sent).toEqual([{ t: "rjoin" }]);
+    expect(s().liveSky).toBe(true);
+    onRaceServer({ t: "rerr", reason: "off" }, T);
+    expect(s().broadcast?.text).toBe(OFF_LINE);
+    expect(s().liveSky).toBe(false);
+    expect(s().raceLiveSkyRestore).toBe(false);
+    expect(joinPending()).toBe(false);
+    // The reply settled the join: no second line when its timer would have run out.
+    useSpaceStore.setState({ broadcast: null });
+    vi.advanceTimersByTime(JOIN_TIMEOUT_MS);
+    expect(s().broadcast).toBeNull();
+  });
+
+  it("rerr full and expired at idle give live sky back too", () => {
+    for (const reason of ["full", "expired"] as const) {
+      useSpaceStore.setState({ liveSky: false });
+      requestJoin();
+      onRaceServer({ t: "rerr", reason }, T);
+      expect(s().liveSky, reason).toBe(false);
+      expect(s().raceLiveSkyRestore, reason).toBe(false);
+    }
+  });
+
+  it("no reply within 10 s of the send (an old Worker): the offline line, live sky back off, idle", () => {
+    useSpaceStore.setState({ liveSky: false });
+    requestJoin();
+    expect(sent).toEqual([{ t: "rjoin" }]);
+    expect(joinPending()).toBe(true);
+    vi.advanceTimersByTime(JOIN_TIMEOUT_MS - 1);
+    expect(s().broadcast).toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(s().broadcast?.text).toBe(OFF_LINE);
+    expect(s().liveSky).toBe(false);
+    expect(s().raceLiveSkyRestore).toBe(false);
+    expect(s().raceView).toEqual(RACE_IDLE);
+    expect(joinPending()).toBe(false);
+  });
+
+  it("a lobby reply settles the join: no offline line later", () => {
+    requestJoin();
+    onRaceServer({ t: "rlobby", race: "race-1", kind: "public", code: null, host: false, token: TOKEN, pilots: [{ cc: "ID", you: true }], startsAt: null, now: T }, T);
+    expect(joinPending()).toBe(false);
+    vi.advanceTimersByTime(JOIN_TIMEOUT_MS * 2);
+    expect(s().broadcast).toBeNull();
+    expect(s().raceView.phase).toBe("lobby");
+  });
+
+  it("while awaiting the reply, a second R or JOIN sends nothing", () => {
+    atGate();
+    raceKey();
+    expect(sent).toEqual([{ t: "rjoin" }]);
+    raceKey();
+    requestJoin();
+    expect(sent).toEqual([{ t: "rjoin" }]);
+    expect(joinPending()).toBe(true);
   });
 });
 
