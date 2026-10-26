@@ -2,6 +2,7 @@ import {
   parseClient, roundState, isCartographerCount, SKY_CAP, SNAP_INTERVAL_MS, FLOOD_PER_SECOND, STALE_MS,
   type ServerMessage, type ShipState, type SnapShip,
 } from "../../src/utils/liveSkyProtocol";
+import { parseRaceClient, type RaceClientMessage, type RaceServerMessage } from "../../src/utils/raceProtocol";
 
 /**
  * The live sky room, free of Cloudflare bindings so it can be unit tested
@@ -35,7 +36,7 @@ export interface Pilot {
  * from hibernation forgets them, which is the accepted cost of storing nothing.
  */
 export interface Room { pilots: Pilot[]; lastSnapAt: number; trailingDue: boolean; lastShoutAt: number; shouted: Map<string, number> }
-export interface Outgoing { to: string; msg: ServerMessage }
+export interface Outgoing { to: string; msg: ServerMessage | RaceServerMessage }
 
 export { STALE_MS };
 
@@ -87,18 +88,22 @@ export function onJoin(room: Room, id: string, cc: string | null, now: number, v
   return { ok: true, pilot, out };
 }
 
+/**
+ * `race` is a race message for raceRoom.ts (the adapter routes it), only
+ * after the flood check: race messages count toward the same limit.
+ */
 export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
-  { out: Outgoing[]; close: boolean; trailingIn: number | null } {
+  { out: Outgoing[]; close: boolean; trailingIn: number | null; race: RaceClientMessage | null } {
   const recent = pilot.recent ?? (pilot.recent = []);
   // The (FLOOD_PER_SECOND + 1)th message inside any one second closes the socket.
   if (recent.length >= FLOOD_PER_SECOND && now - recent[recent.length - FLOOD_PER_SECOND] < 1000) {
-    return { out: [], close: true, trailingIn: null };
+    return { out: [], close: true, trailingIn: null, race: null };
   }
   recent.push(now);
   if (recent.length > FLOOD_PER_SECOND) recent.shift();
   const m = parseClient(raw);
-  if (!m) return { out: [], close: false, trailingIn: null };
-  if (m.t === "charted") return { out: shoutOut(room, pilot, now), close: false, trailingIn: null };
+  if (!m) return { out: [], close: false, trailingIn: null, race: parseRaceClient(raw) };
+  if (m.t === "charted") return { out: shoutOut(room, pilot, now), close: false, trailingIn: null, race: null };
   const state = m.state;
   pilot.last = roundState(state);
   pilot.lastAt = now;
@@ -106,12 +111,12 @@ export function onMessage(room: Room, pilot: Pilot, raw: unknown, now: number):
   if (wait <= 0) {
     room.lastSnapAt = now;
     room.trailingDue = false;
-    return { out: snapAll(room, now), close: false, trailingIn: null };
+    return { out: snapAll(room, now), close: false, trailingIn: null, race: null };
   }
   // Inside the window: one trailing snapshot carries this (and any later) move.
-  if (room.trailingDue) return { out: [], close: false, trailingIn: null };
+  if (room.trailingDue) return { out: [], close: false, trailingIn: null, race: null };
   room.trailingDue = true;
-  return { out: [], close: false, trailingIn: wait };
+  return { out: [], close: false, trailingIn: wait, race: null };
 }
 
 /**

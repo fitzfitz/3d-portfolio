@@ -602,6 +602,42 @@ export function lockFullFidelity() {
 }
 
 /**
+ * Page-side script for page.evaluateOnNewDocument (register it before the
+ * reload): a fake live-sky room for the livesky and race probes. Fakes only
+ * fake:// sockets; everything else (Vite's HMR) gets the real WebSocket. Point
+ * the page at it with localStorage "fitz-live-sky-dev" = "fake://sky".
+ * `window.__fakeSky`: `sent` (every message the client sent, parsed),
+ * `serve(msg)` (to every open socket), `open()` (open sockets), `created`.
+ */
+export function installFakeSky() {
+  const sky = { created: 0, sent: [], sockets: [] };
+  window.__fakeSky = sky;
+  class FakeSocket {
+    constructor(url) {
+      this.url = url;
+      this.readyState = 0;
+      this.onopen = null; this.onmessage = null; this.onclose = null; this.onerror = null;
+      sky.created++;
+      sky.sockets.push(this);
+      setTimeout(() => { if (this.readyState !== 0) return; this.readyState = 1; this.onopen?.(); }, 20);
+    }
+    send(d) { sky.sent.push(JSON.parse(d)); }
+    close() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      setTimeout(() => this.onclose?.(), 0);
+    }
+  }
+  sky.serve = (msg) => { for (const s of sky.sockets) if (s.readyState === 1) s.onmessage?.({ data: JSON.stringify(msg) }); };
+  sky.open = () => sky.sockets.filter((s) => s.readyState === 1).length;
+  window.WebSocket = new Proxy(window.WebSocket, {
+    construct(target, args) {
+      return String(args[0]).startsWith("fake://") ? new FakeSocket(args[0]) : Reflect.construct(target, args);
+    },
+  });
+}
+
+/**
  * Installs an in-page recorder for the edge tests so nothing depends on poll
  * timing: every animation frame it tracks the radius, the first crossing past
  * `edge` and the first return inside it (performance.now ms), the maximum

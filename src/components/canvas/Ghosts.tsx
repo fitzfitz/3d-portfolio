@@ -16,10 +16,13 @@ import { createShoutGate, shoutDue, shoutLine, makeWireChartCache } from "../../
 /** Plays another pilot's shout-out at most once per SHOUT_HEAR_GAP_MS. */
 const hearShout = createShoutGate();
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
+import { raceLink } from "../../utils/raceLink";
+import { onRaceServer } from "../../utils/raceController";
+import { onLiveSkyHello, watchRaceJoin } from "../../utils/raceJoin";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
 
-/** RingCourse's race-ghost wash strength. */
+/** RaceCourse's race-ghost wash strength. */
 const GHOST_WASH = 0.55;
 const GHOST_PLUME_LEN = 0.3;
 const GHOST_NOZZLE_R = 0.07;
@@ -32,7 +35,7 @@ interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE
 
 function makeSlot(shipScene: THREE.Object3D, flameGeometry: THREE.BufferGeometry, i: number): Slot {
   const stock = new THREE.Color(PLUME_COLORS.stock.hex);
-  // RingCourse's race-ghost material, parameter for parameter, so the two
+  // RaceCourse's race-ghost material, parameter for parameter, so the two
   // share one already-compiled program. Colour and opacity are uniforms.
   const hull = new THREE.MeshBasicMaterial({
     color: stock.clone().multiplyScalar(GHOST_WASH),
@@ -86,6 +89,9 @@ export default function Ghosts() {
     clearTimer: (h) => window.clearTimeout(h as number),
     random: Math.random,
     onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
+    onRace: (m) => onRaceServer(m),
+    // R10: a reload or reconnect mid-race rejoins with the stored token; a waiting join goes out.
+    onHello: () => onLiveSkyHello(),
   }), []);
   const noticeQueued = useRef(false);
   const wireCharts = useRef(makeWireChartCache());
@@ -97,6 +103,17 @@ export default function Ghosts() {
     writeRadarBlips(NONE);
     flameGeometry.dispose();
   }, [conn, slots, flameGeometry]);
+
+  // The race talks through this connection (raceLink.ts sendRace). A join
+  // waiting on the consent notice goes out when it plays (raceJoin.ts).
+  useEffect(() => {
+    raceLink.conn = conn;
+    const unwatch = watchRaceJoin();
+    return () => {
+      unwatch();
+      if (raceLink.conn === conn) raceLink.conn = null;
+    };
+  }, [conn]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -130,7 +147,8 @@ export default function Ghosts() {
     const want = s.liveSky && flight.hasFlown && (s.liveSkySeen || noticeQueued.current);
     if (want !== wanted.current) { wanted.current = want; conn.setWanted(want); }
 
-    if (s.liveSkySeen && conn.peers > 0) {
+    // Alone in the sky, poses still go out mid-race: the room signs rings against them.
+    if (s.liveSkySeen && (conn.peers > 0 || conn.racing)) {
       me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
       shipQuat(flight.heading, flight.pitch, me.q);
       me.plume = s.plumeColor;

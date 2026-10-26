@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { flight, useSpaceStore } from "../../store/spaceStore";
+import { flight, useSpaceStore, selectRaceFlying } from "../../store/spaceStore";
 import { edgeDepth, HAZE_MAX_OPACITY, HazeLineGate, ReturnBurnLineGate, EdgeRadioClock } from "../../utils/edgeHaze";
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools, RETURN_BURN_LINE } from "../../data/chatterLines";
@@ -42,7 +42,7 @@ export default function EdgeHaze() {
       const s = useSpaceStore.getState();
       const now = performance.now() / 1000;
       clock.observe(s.broadcast?.id ?? 0, now, isEdgeLine);
-      if (gate.update(depth, clock.busy(now, RADIO_BUSY_S), s.race.phase === "running")) {
+      if (gate.update(depth, clock.busy(now, RADIO_BUSY_S), selectRaceFlying(s))) {
         s.sendBroadcast(scheduler.pick("haze"), { silent: true });
       }
       // The burn preempts the haze line: only other broadcasts hold it back.

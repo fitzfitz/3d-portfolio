@@ -35,7 +35,7 @@ export const RULES = [
   [/^src\/(utils\/(jellyGuide|jellyFrame|jellyMood|jellyPosture|guideRadio|guideToggle)|data\/jellyfishPath)\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
   [/^src\/components\/canvas\/Ghosts\b/, () => [...BUDGETS, "livesky"]],
   [/^src\/components\/canvas\/Bottles\b/, () => [...BUDGETS, "bottles"]],
-  [/^src\/components\/canvas\/RingCourse\b/, () => [...BUDGETS, "race"]],
+  [/^src\/components\/canvas\/RaceCourse\b/, () => [...BUDGETS, "race"]],
   [/^src\/components\/canvas\/(SkyBackdrop|DistantGalaxies|starLayer|softSprite|orbitRibbon|WaypointDriver|noIbl|logDepth)\b/, () => [...BUDGETS, "sky"]],
   // GlobalCanvas, PostFX and anything else in the canvas: everything.
   [/^src\/components\/canvas\//, () => "ALL"],

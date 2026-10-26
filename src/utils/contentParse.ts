@@ -35,8 +35,8 @@ export const COMET_IDS: readonly string[] = ["comet_2p", "comet_67p"];
 export const RESERVED_IDS: ReadonlySet<string> = new Set<string>([
   ...DESTINATION_IDS, ...BADGE_IDS, ...BODY_IDS, ...MOON_IDS, ...COMET_IDS,
   ...ASTEROID_COLLIDERS.map((a) => a.id), SUN_COLLIDER.id, GATE_SCAN_ID,
-  // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the ring course, the visiting comet.
-  "sun", "jellyfish", "time_trial", "comet_visitor",
+  // The sun's well (utils/gravityWell.ts SUN_WELL_ID), the creature, the race's start gate (utils/raceScene.ts), the visiting comet.
+  "sun", "jellyfish", "race_start", "comet_visitor",
 ]);
 /** Families of generated scan ids: buoys (career_<n>), bottles (and the old beacons), live-sky ghosts, comets, scenery asteroids. */
 export const RESERVED_PREFIXES: readonly string[] = ["career_", "bottle_", "beacon_", "ghost_", "comet_", "asteroid_"];

@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { flight, useSpaceStore, selectModalOpen, type SpaceState } from "../store/spaceStore";
 import { requestGuideToggle } from "../utils/guideToggle";
+import { raceKey } from "../utils/raceJoin";
 import {
   PAD_NEUTRAL, padActions, padFlightChanges, pressedButtons, readPadFlight,
   type PadAction, type PadFlight,
 } from "../utils/gamepad";
 
-export const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · R3 GUIDE · D-PAD JUMP · VIEW SHIPYARD · MENU CONTACT";
+export const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · R3 GUIDE · L3 RACE · D-PAD JUMP · VIEW SHIPYARD · MENU CONTACT";
 
 /**
  * First pad reporting the W3C standard layout. Flight sticks, wheels and some
@@ -25,9 +26,10 @@ type PadStore = Pick<SpaceState,
 /**
  * One pad button press. Same guards as the keyboard: nothing while the
  * classic résumé or the bottle panel is up (the panel owns the keys).
- * R3 (guide) follows J: ignored under a dossier or dock panel.
+ * R3 (guide) follows J: ignored under a dossier or dock panel. L3 (race)
+ * follows R: not in photo mode or under a dossier or dock panel.
  */
-export function runPadAction(a: PadAction, s: PadStore): void {
+export function runPadAction(a: PadAction, s: PadStore, race: () => void = raceKey): void {
   if (s.showClassicCV || s.bottlePanelOpen) return;
   if (a.kind === "photo") s.setPhotoMode(!s.photoMode);
   else if (a.kind === "close") {
@@ -37,6 +39,7 @@ export function runPadAction(a: PadAction, s: PadStore): void {
   }
   else if (a.kind === "logbook") { if (!s.photoMode && !selectModalOpen(s)) s.setLogbookOpen(!s.logbookOpen); }
   else if (a.kind === "guide") { if (!selectModalOpen(s)) requestGuideToggle(); }
+  else if (a.kind === "race") { if (!s.photoMode && !selectModalOpen(s)) race(); }
   else if (!s.photoMode) s.requestJump(a.id);
 }
 

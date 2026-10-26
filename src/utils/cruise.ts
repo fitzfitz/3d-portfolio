@@ -24,6 +24,32 @@ export function stepCruise(current: number, limit: number, dt: number): number {
 }
 
 /**
+ * Warp speed after one frame for the ship: a racer is held to the base warp
+ * speed (RACE_SPEED, the same for every pilot), anyone else builds speed with
+ * the free space (stepCruise).
+ */
+export function raceWarpSpeed(current: number, racing: boolean, limit: number, dt: number): number {
+  return racing ? SHIP_WARP_SPEED : stepCruise(current, limit, dt);
+}
+
+/**
+ * Racing: caps the ship's total speed (pilot velocity `v` plus gravity
+ * momentum `g`) at `max` (RACE_SPEED, the base warp speed), scaling both so
+ * the direction holds. The room's speed rule assumes it: a well's pull near
+ * the Sun would otherwise carry an honest leg past it. Not racing: untouched.
+ */
+export function clampRaceVelocity(
+  v: { x: number; y: number; z: number }, g: { x: number; y: number; z: number }, racing: boolean, max = SHIP_WARP_SPEED,
+): void {
+  if (!racing) return;
+  const speed = Math.hypot(v.x + g.x, v.y + g.y, v.z + g.z);
+  if (speed <= max) return;
+  const k = max / speed;
+  v.x *= k; v.y *= k; v.z *= k;
+  g.x *= k; g.y *= k; g.z *= k;
+}
+
+/**
  * The clear distance from `p` to the nearest sphere surface among the first
  * `count` of `spheres`, or to the system edge (`edgeR - |p|`) if that is nearer.
  * Allocation-free: callers reuse one sphere list across frames.

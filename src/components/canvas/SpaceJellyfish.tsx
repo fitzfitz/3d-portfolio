@@ -10,7 +10,7 @@ import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
-import { flight, useSpaceStore, bodies, selectModalOpen } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, selectModalOpen, selectRaceFlying } from "../../store/spaceStore";
 import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
@@ -400,7 +400,7 @@ export default function SpaceJellyfish() {
     const now = Date.now();
     const lastLine = store.broadcast;
     const radioBusy = (lastLine !== null && now - lastLine.at < RADIO_BUSY_S * 1000) || now < store.logbookLineAt;
-    fi.blocked = selectModalOpen(store) || store.race.phase === "running" || store.photoMode || store.showClassicCV || radioBusy;
+    fi.blocked = selectModalOpen(store) || selectRaceFlying(store) || store.photoMode || store.showClassicCV || radioBusy;
 
     stepJellyFrame(frame, fi, frameDt);
     // The touch GUIDE button's pressed state; notifies only on a change.

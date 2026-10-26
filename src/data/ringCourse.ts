@@ -1,41 +1,46 @@
 import { buildGates } from "../utils/race";
 
 /**
- * The time-trial course: a closed loop of rings, flown in order, starting and
- * finishing through ring 0 in the inner system, near the sun.
+ * The ring race course ("loop-2"): a closed loop of rings, flown in order,
+ * starting and finishing through ring 0, just sunward of spawn.
  *
- * Out across the inner system (every ring inside r < 115, around the orbits of
- * Mercury, Venus and Earth), a climbing turn up to y≈70, then a dive home. The loop weaves through the inner system, so each ring is placed
+ * Spread out across the inner and middle system (every ring within r 245):
+ * a climb out over Venus's and Earth's orbits, a high arc above Mars and the
+ * belt's inner edge, a long dive through the plane, a low arc under Earth and
+ * Mars, then a climb back over the inner orbits and a dive home. The orbit
+ * tubes fill the plane out here, so every ring sits 40-195 u above or below it,
  * clear of every real swept orbit (planet wells and moon systems, belt,
- * Trojans, comets): rings above or below the plane where the orbit tubes fill
- * it (tests/solarClearance.test.ts). They also clear colliders and shards
- * (tests/race.test.ts).
+ * Trojans, comets; tests/solarClearance.test.ts). Rings also clear colliders,
+ * shards and the portal, and sit at least 80 u apart (tests/race.test.ts).
  *
- * The loop is ~540 units: ~13.9s at pure warp, ~50s at cruise. Since the
- * 2026-10-17 fuel change one tank lasts 62.5 s, so a full warp lap is possible.
+ * The loop is ~1,770 u: ~45 s a lap at warp (39 u/s, which racers are held
+ * to), so a lap takes most of the 62.5 s tank and fuel matters; ~2:45 at
+ * cruise. Turns peak at ~115 degrees, as the old loop's did.
  */
 export const RING_GATES: [number, number, number][] = [
-  [-12, 23, 34],   // 0 start / finish, inner system near the sun
-  [-45, -33, 40],   // out across the inner system
-  [-62, -38, -5],
-  [-26, -34, -52], // past the boulder at (-40, -5, -60)
-  [20, 50, -70],
-  [55, 45, -40],  // climbing turn
-  [40, 70, 10],   // the top
-  [0, 55, 50],
-  [35, 39, 55],   // diving
-  [25, 23, 30],    // home stretch
+  [-12, 40, 34],      // 0 start / finish, sunward of spawn, above Mercury's orbit
+  [40, 100, 110],     // climbing out over Venus's and Earth's orbits
+  [160, 160, 165],    // high over Mars's orbit and the belt's inner edge
+  [240, 170, -10],    // the far high point, above the belt
+  [130, 195, -140],   // the top, out past the career station; then the long dive
+  [10, -105, -165],   // under Earth's orbit, below the contact portal
+  [-130, -105, -150], // under Mars's orbit
+  [-215, -125, -15],  // the far low point, under the belt's inner edge
+  [-185, -125, 120],  // swinging round under the belt before the climb
+  [-130, 90, 0],      // over the inner orbits, diving home past the shipyard
 ];
 
 /** Ring opening radius. Generous: the chase camera hides the ship's exact line. */
 export const RING_RADIUS = 6;
 
-/**
- * Target time. Not a recorded human run; set between pure warp (~12.5s) and
- * pure cruise (~45s). It was tuned when one tank could not warp a whole lap;
- * with the 62.5 s tank it is easy to beat and due a retune.
- */
-export const PAR_SECONDS = 35;
-
 /** The rings with their facing, ready for crossing tests and rendering. */
 export const RACE_GATES = buildGates(RING_GATES);
+
+/** The start / finish ring: the grid lines up behind it. */
+export const START_GATE = RACE_GATES[0];
+
+/** Ring centres in race order, as the server's lap and path checks take them. */
+export const RACE_CENTRES = RING_GATES;
+
+/** The seed lap's steady speed (u/s), between cruise and warp: a lap to beat when no one has set a best. */
+export const SEED_SPEED = 30;

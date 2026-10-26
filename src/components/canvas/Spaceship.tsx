@@ -1,10 +1,11 @@
-import { useRef, useMemo, useEffect } from "react";
+import { useRef, useMemo, useEffect, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useModel } from "../../utils/sceneAssets";
 import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_RADIUS } from "../../constants";
 import { destinationById, escapeR } from "../../data/destinations";
-import { flight, useSpaceStore, bodies } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, selectRaceFlying } from "../../store/spaceStore";
+import { shipStartPose, markShipStarted } from "../../store/flightState";
 import { moonPositions } from "../../store/moonState";
 import { moonReach, SOLAR_MOONS } from "../../data/solarMoons";
 import { fitzDebug } from "../../debug/bridge";
@@ -25,7 +26,8 @@ import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
-import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
+import { clampRaceVelocity, cruiseLimit, freeDistance, raceWarpSpeed } from "../../utils/cruise";
+import { gridPose } from "../../utils/raceScene";
 import { WARP_LANDMARKS } from "../../utils/warpLandmarks";
 import {
   stepGravity, gravityMode, SlingshotWatch, wellAt, SUN_WELL_ID, type Well,
@@ -185,7 +187,10 @@ export default function Spaceship() {
     return stockEmissive.get(engineMat)!;
   }, [engineMat]);
 
-  const pos = useRef(new THREE.Vector3(SPAWN.x, SPAWN.y, SPAWN.z));
+  // The spawn pad, or a race link's grid slot for the page's first ship (flightState.ts).
+  const [start] = useState(shipStartPose);
+  useEffect(() => markShipStarted(), []);
+  const pos = useRef(new THREE.Vector3(start.x, start.y, start.z));
   const vel = useRef(new THREE.Vector3(0, 0, 0)); // units/second
   // Gravity momentum (spec §5): built by wells, decays slowly; the ship moves
   // by vel + gravity. Zeroed wherever the ship is placed, docked or bounced.
@@ -225,9 +230,9 @@ export default function Spaceship() {
 
   // Spawn nose-on to the first probe, so the first W press flies toward a
   // project rather than into empty space.
-  const angle = useRef(headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
+  const angle = useRef(start.heading ?? headingToward(SPAWN.x, SPAWN.z, FIRST_PROBE_HOME[0], FIRST_PROBE_HOME[2]));
   const roll = useRef(0);
-  const pitch = useRef(0);
+  const pitch = useRef(start.pitch);
   const turnVelocity = useRef(0); // rad/second
   const pitchVel = useRef(0); // rad/s — `pitch` ref (above) is now flight state, not just visual
   const shake = useRef(0);
@@ -248,12 +253,15 @@ export default function Spaceship() {
   const warpSpeed = useRef(WARP_SPEED);
   // False until the pilot's first input. Until then the parked ship keeps its
   // nose on the first probe, so the first W press flies toward a project.
-  const hasFlown = useRef(false);
+  // A race link's ship starts on the grid, not the pad: nothing to auto-aim.
+  const hasFlown = useRef(start.race);
   // A requested jump target, applied by the frame loop. Held in a ref rather
   // than applied in the store subscription: an open dossier freezes the frame
   // loop, so the jump first breaks orbit and lands on the next live frame.
   const pendingJump = useRef<string | null>(null);
   const snapCamera = useRef(true); // first frame snaps: the camera starts at the spawn, not the canvas default
+  /** The race grid slot the ship was last put on (raceScene.ts gridPose key): placed once per race and slot. */
+  const placedFor = useRef<string | null>(null);
   useEffect(() => useSpaceStore.subscribe(
     (s) => s.jumpRequest,
     (req) => {
@@ -477,6 +485,46 @@ export default function Spaceship() {
       );
     };
 
+    // Race grid: the ship is put on its slot behind the start gate once per
+    // race and slot, then held still (RaceCourse sets flight.raceHold) until
+    // GO, like photo mode's freeze but with the chase camera still following.
+    const grid = gridPose(store.raceView);
+    const placed = grid !== null && grid.key !== placedFor.current;
+    if (grid && placed) {
+      placedFor.current = grid.key;
+      pos.current.set(grid.p.x, grid.p.y, grid.p.z);
+      angle.current = grid.heading;
+      pitch.current = grid.pitch;
+      roll.current = 0;
+      pendingJump.current = null;
+      hasFlown.current = true;
+      flight.hasFlown = true;
+      snapCamera.current = true;
+      store.triggerTeleportFlash();
+    }
+    if (placed || flight.raceHold) {
+      vel.current.set(0, 0, 0);
+      zeroGravity();
+      _total.set(0, 0, 0);
+      turnVelocity.current = 0;
+      pitchVel.current = 0;
+      warpSpeed.current = WARP_SPEED;
+      shipRef.current.position.copy(pos.current);
+      shipRef.current.position.y += Math.sin(ambient * 2) * SHIP_IDLE_BOB;
+      shipRef.current.rotation.set(-pitch.current, angle.current, roll.current, "YXZ");
+      drivePlumes(0.35, 0.25, time, dt);
+      store.setWarping(false);
+      flight.edgeBurn = false;
+      beamState.active = false; beamState.reel.active = false;
+      flight.x = pos.current.x; flight.z = pos.current.z; flight.y = pos.current.y;
+      flight.heading = angle.current;
+      flight.pitch = pitch.current;
+      flight.speed = 0;
+      applyChaseCam(false);
+      store.setNearSpawn(Math.abs(pos.current.x - SPAWN.x) < SPAWN_PAD_R && Math.abs(pos.current.z - SPAWN.z) < SPAWN_PAD_R && Math.abs(pos.current.y - SPAWN.y) < 3);
+      return;
+    }
+
     if (isOrbitLocked) {
       // Destinations hold still, so the lock centre captured at entry stands.
       orbitRadius.current += (targetLockRadius.current - orbitRadius.current) * frameLerp(0.03, dt);
@@ -640,7 +688,8 @@ export default function Spaceship() {
         const q = probePos[PROBES[i].id], c = CRUISE_SPHERES[n++];
         c.x = q.x; c.y = q.y; c.z = q.z; c.r = PROBE_RADIUS;
       }
-      warpSpeed.current = stepCruise(warpSpeed.current, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
+      // Racers are held to the base warp speed (raceWarpSpeed): the same top speed for every pilot.
+      warpSpeed.current = raceWarpSpeed(warpSpeed.current, flight.racing, cruiseLimit(freeDistance(pos.current, CRUISE_SPHERES, n, SYSTEM_RADIUS)), dt);
       const warp = cruiseCap(warpSpeed.current, SPACE_DRAG, dt);
       vel.current.set(nose.x * warp, nose.y * warp, nose.z * warp);
     } else if (thrustInput > 0) {
@@ -671,6 +720,8 @@ export default function Spaceship() {
     // The edge: after the caps (so it overrides warp and thrust), before integration.
     flight.edgeBurn = edgeReturn(pos.current, vel.current, dt);
     stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
+    // Racing: warp, thrust and gravity together never pass RACE_SPEED (the room's speed rule).
+    clampRaceVelocity(vel.current, g, flight.racing);
 
     pos.current.x += (vel.current.x + g.x) * dt;
     pos.current.y += (vel.current.y + g.y) * dt;
@@ -706,7 +757,7 @@ export default function Spaceship() {
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
       Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,
-      store.race.phase === "running", slingshotOut);
+      selectRaceFlying(store), slingshotOut);
     if (sling.whoosh) soundManager.whoosh();
     if (sling.whoosh) store.recordBadge("slingshot"); // logbook: Slingshot
     if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });

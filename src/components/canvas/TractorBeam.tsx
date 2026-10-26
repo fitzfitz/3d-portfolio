@@ -70,8 +70,9 @@ export default function TractorBeam() {
     const { ox, oy, oz, dx, dy, dz } = beamState;
     // A project probe in the cone has a reserved slot (sel[0], set below):
     // shards share what is left, so nearer shards cannot evict it.
-    // ProjectProbes pulls it.
-    const probe = budget > 0 ? grabbableProbe(ox, oy, oz, dx, dy, dz, probePos, probeRelocating) : null;
+    // ProjectProbes pulls it. Racing, probes are not grabbed, so no dossier
+    // opens mid-race (spec: beam dossiers are off while racing).
+    const probe = budget > 0 && !flight.racing ? grabbableProbe(ox, oy, oz, dx, dy, dz, probePos, probeRelocating) : null;
     const shared = probe !== null ? budget - 1 : budget;
     const collected = useSpaceStore.getState().shardsCollected;
     for (let i = 0; i < SHARDS.length; i++) {

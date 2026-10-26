@@ -26,8 +26,9 @@ namespace_id = "7301"
   period = 60
 
 # Live sky (src/sky.ts, the Sky class in src/index.ts): one room of
-# hibernatable WebSockets. It stores nothing, but the Workers Free plan only
-# offers SQLite-backed Durable Objects, so it is declared as one.
+# hibernatable WebSockets. It stores only the ring race state (src/raceRoom.ts)
+# and sets alarms for its deadlines; the Workers Free plan only offers
+# SQLite-backed Durable Objects, so it is declared as one.
 [[durable_objects.bindings]]
 name = "SKY"
 class_name = "Sky"

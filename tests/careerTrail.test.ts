@@ -125,7 +125,7 @@ describe("career landmark clearance", () => {
       }
     }
   });
-  it("keeps clear of every time-trial ring and every data shard", () => {
+  it("keeps clear of every race ring and every data shard", () => {
     for (const p of PLACES) {
       RING_GATES.forEach((g, i) => {
         expect(d3(p.pos, g), `gate ${i} vs ${p.name}`).toBeGreaterThan(RING_RADIUS + p.keepOut);

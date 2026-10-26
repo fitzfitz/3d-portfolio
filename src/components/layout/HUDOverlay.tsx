@@ -305,6 +305,11 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
               <span className="text-white/45">GUIDE</span>
               <span className="text-white">{pad ? "R3" : "J"}</span>
             </div>
+            <div className="w-[1px] bg-white/5" />
+            <div className="flex flex-col" data-testid="hud-controls-race">
+              <span className="text-white/45">RACE</span>
+              <span className="text-white">{pad ? "L3" : "R"}</span>
+            </div>
           </>
         )}
       </div>

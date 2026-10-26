@@ -1,5 +1,7 @@
 import { PROBE_IDS } from "../../data/probes";
 import { destinationById } from "../../data/destinations";
+import { flight } from "../flightState";
+import { racingView } from "../../utils/raceScene";
 import type { SliceCreator } from "../spaceStore";
 
 /** Orbit and dock, warp, the spawn pad, the teleport flash, fuel-out, jumps and impacts. */
@@ -21,7 +23,7 @@ export interface FlightSlice {
   /**
    * Pending jump to a planet id or a destination id (src/data/destinations.ts),
    * consumed by Spaceship's frame loop. `seq` makes a repeat request for the
-   * same target a new value.
+   * same target a new value. A no-op while racing (flight.racing).
    */
   jumpRequest: { id: string; seq: number } | null;
   requestJump: (id: string) => void;
@@ -33,7 +35,10 @@ export interface FlightSlice {
 let orbitCooldownTimer: ReturnType<typeof setTimeout> | null = null;
 let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Cross-slice: setOrbitLocked records the destination's badge through the logbook slice's recordBadge. */
+/**
+ * Cross-slice: setOrbitLocked records the destination's badge through the
+ * logbook slice's recordBadge, and reads the race slice's raceView.
+ */
 export const createFlightSlice: SliceCreator<FlightSlice> = (set, get) => ({
   activeZone: null,
   // Guarded setters: these are called from frame loops, so bail without
@@ -45,6 +50,10 @@ export const createFlightSlice: SliceCreator<FlightSlice> = (set, get) => ({
   // HUD's "ACTIVE" line outlive the boost for as long as the dossier is open.
   setOrbitLocked: (v) => {
     if (get().isOrbitLocked === v) return;
+    // Racing (R15): a racer crossing a destination's lock radius would dock
+    // and freeze mid-race. The view is read too, so a lock can't slip in
+    // before RaceCourse's next frame sets flight.racing.
+    if (v && (flight.racing || racingView(get().raceView))) return;
     if (!v) { set({ isOrbitLocked: false }); return; }
     const zone = get().activeZone;
     set({ isOrbitLocked: true, isWarping: false });
@@ -75,6 +84,8 @@ export const createFlightSlice: SliceCreator<FlightSlice> = (set, get) => ({
   setFuelEmpty: (v) => { if (get().fuelEmpty !== v) set({ fuelEmpty: v }); },
   jumpRequest: null,
   requestJump: (id) => {
+    // Racing: the ship stays on the course (spec: jumps are off while racing).
+    if (flight.racing) return;
     if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
     set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
   },

@@ -1,5 +1,6 @@
 import { GhostBuffer, markSent, newSendState, parseServerMessage, shouldSend } from "./liveSky";
 import { roundState, CHART_TOTAL, type ShipState } from "./liveSkyProtocol";
+import { parseRaceServer, type RaceClientMessage, type RaceServerMessage } from "./raceProtocol";
 
 /**
  * The live sky socket's lifecycle (spec §4.2): connect when wanted, back off on
@@ -26,6 +27,10 @@ export interface ConnectionDeps {
   random(): number;
   /** Another pilot just charted every world (the room's relayed shout-out). */
   onCharted?: (cc: string | null) => void;
+  /** A ring-race message from the room (raceController.ts onRaceServer). */
+  onRace?: (m: RaceServerMessage) => void;
+  /** The room said hello: connected and able to send (raceJoin.ts onLiveSkyHello rejoins a race). */
+  onHello?: () => void;
 }
 
 const OPEN = 1;
@@ -47,6 +52,11 @@ export class LiveSkyConnection {
   full = false;
   /** Pose messages sent (tests and the e2e probe read it). */
   sent = 0;
+  /**
+   * In a race (the scene sets it from the grid to the end): poses go out even
+   * with no other pilot in the sky, since the room signs rings against them.
+   */
+  racing = false;
 
   private deps: ConnectionDeps;
   private socket: SocketLike | null = null;
@@ -102,7 +112,7 @@ export class LiveSkyConnection {
     if (!me || !ws || ws.readyState !== OPEN) return false;
     const r = roundState(me, this.rounded);
     const now = this.deps.now();
-    if (!shouldSend(this.sendState, this.peers, now, r)) return false;
+    if (!shouldSend(this.sendState, this.racing ? Math.max(1, this.peers) : this.peers, now, r)) return false;
     try {
       // `ch` only when above 0: a pilot who charted nothing sends what it always did.
       ws.send(JSON.stringify(r.ch > 0 ? { t: "me", p: r.p, q: r.q, plume: r.plume, ch: r.ch } : { t: "me", p: r.p, q: r.q, plume: r.plume }));
@@ -114,6 +124,18 @@ export class LiveSkyConnection {
       }
     } catch { /* closing; onclose follows */ }
     return false;
+  }
+
+  /** Sends a race message; false when the socket is not open (or is closing). */
+  sendRace(m: RaceClientMessage): boolean {
+    const ws = this.socket;
+    if (!ws || ws.readyState !== OPEN) return false;
+    try {
+      ws.send(JSON.stringify(m));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   dispose(): void {
@@ -178,9 +200,14 @@ export class LiveSkyConnection {
 
   private receive(data: unknown): void {
     const m = parseServerMessage(data);
-    if (!m) return;
+    if (!m) {
+      // Race messages ride the same socket under their own `r…` types.
+      const r = parseRaceServer(data);
+      if (r) this.deps.onRace?.(r);
+      return;
+    }
     switch (m.t) {
-      case "hello": this.selfId = m.id; this.peers = m.peers; break;
+      case "hello": this.selfId = m.id; this.peers = m.peers; this.deps.onHello?.(); break;
       case "peers": this.peers = m.n; if (m.n === 0) this.ghosts.clear(); break;
       case "sync": this.sendState.syncPending = true; break;
       case "charted": this.deps.onCharted?.(m.cc); break;

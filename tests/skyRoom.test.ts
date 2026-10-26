@@ -78,7 +78,7 @@ describe("messages", () => {
   it("drops an invalid message without touching the sender", () => {
     const room = newRoom();
     const a = join(room, "a");
-    expect(onMessage(room, a.pilot, me(1, "rainbow"), 1000)).toEqual({ out: [], close: false, trailingIn: null });
+    expect(onMessage(room, a.pilot, me(1, "rainbow"), 1000)).toEqual({ out: [], close: false, trailingIn: null, race: null });
     expect(a.pilot.last).toBeNull();
   });
   it("leaves a pilot who has never sent out of snapshots", () => {
@@ -86,6 +86,29 @@ describe("messages", () => {
     join(room, "a");
     join(room, "b");
     expect(buildSnap(room, "a", 0)).toEqual({ t: "snap", ships: [] });
+  });
+});
+
+describe("race messages", () => {
+  it("hands a race message back as race, after the flood check, touching nothing else", () => {
+    const room = newRoom();
+    const a = join(room, "a");
+    join(room, "b");
+    expect(onMessage(room, a.pilot, JSON.stringify({ t: "rring", i: 3 }), 1000)).toEqual({ out: [], close: false, trailingIn: null, race: { t: "rring", i: 3 } });
+    expect(onMessage(room, a.pilot, JSON.stringify({ t: "rjoin" }), 1001).race).toEqual({ t: "rjoin" });
+    expect(a.pilot.last).toBeNull();
+  });
+  it("a live-sky message has race null", () => {
+    const room = newRoom();
+    const a = join(room, "a");
+    expect(onMessage(room, a.pilot, me(1), 1000).race).toBeNull();
+    expect(onMessage(room, a.pilot, '{"t":"charted"}', 1001).race).toBeNull();
+  });
+  it("race messages count toward the flood limit, and a flooded one is not handed back", () => {
+    const room = newRoom();
+    const a = join(room, "a");
+    for (let i = 0; i < 10; i++) onMessage(room, a.pilot, JSON.stringify({ t: "rring", i }), 1000 + i);
+    expect(onMessage(room, a.pilot, JSON.stringify({ t: "rring", i: 11 }), 1100)).toEqual({ out: [], close: true, trailingIn: null, race: null });
   });
 });
 

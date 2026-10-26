@@ -6,17 +6,19 @@
  *
  * Slices: flight (orbit and dock, warp, jumps), dossier (dossiers, probes),
  * hud (panels, radio, world events), logbook (badges, plume, line queue),
- * progress (shards, charting, race), settings (perf tier, warm-up, reduced
- * motion, sound, changelog seen), sky (beacons, live sky).
+ * progress (shards, charting), race (race view, best lap), settings (perf
+ * tier, warm-up, reduced motion, sound, changelog seen), sky (beacons, live sky).
  *
  * Cross-slice actions call the other slice's action through get():
- *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination)
+ *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination);
+ *                                   it reads race.raceView (no docking while racing)
  *   - logbook.recordBadge        -> logbook.announceLogbook -> hud.sendBroadcast
  *                                   (announceLogbook also reads hud.broadcast)
  *   - hud.setShowClassicCV(true) -> flight.breakOrbit + dossier.closeDossier
  *   - hud.remountCanvas          -> flight.breakOrbit + dossier.closeDossier
  *   - progress.chartWorld        -> logbook.announceLogbook
  *   - progress.tellAurumOnce     -> logbook.announceLogbook
+ *   - race.setRaceView(idle)     -> sky.setLiveSky(false) (when racing turned it on)
  *   - hud.startWorldEvent        -> hud.sendBroadcast
  *   - logbook.setPlumeColor reads dossier.visitedDossiers and progress
  *     (shardsCollected, charted, legacyCartographer)
@@ -28,7 +30,8 @@
  *   - hud.remountCanvas sets flight.isWarping = false
  *
  * Import-time order: the slice modules' own reads run at import (progress.ts
- * writes the legacy-cartographer flag once; logbook.ts checks the stored plume
+ * writes the legacy-cartographer flag once; race.ts deletes the old time
+ * trial's fitz-race-ghost once; logbook.ts checks the stored plume
  * against the stored dossiers, shards and charting). The settings slice's
  * creator then switches the ambient clock and makes the first-visit changelog
  * write as the store is created. tests/storeShape.test.ts pins all of it.
@@ -43,6 +46,7 @@ import { createDossierSlice, type DossierSlice } from "./slices/dossier";
 import { createHudSlice, type HudSlice } from "./slices/hud";
 import { createLogbookSlice, type LogbookSlice } from "./slices/logbook";
 import { createProgressSlice, type ProgressSlice } from "./slices/progress";
+import { createRaceSlice, type RaceSlice } from "./slices/race";
 import { createSettingsSlice, type SettingsSlice } from "./slices/settings";
 import { createSkySlice, type SkySlice } from "./slices/sky";
 
@@ -56,7 +60,7 @@ export { bodies } from "./bodies";
 export { worldClock } from "./worldClock";
 
 export interface SpaceState
-  extends FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, SettingsSlice, SkySlice {}
+  extends FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, RaceSlice, SettingsSlice, SkySlice {}
 
 /** A slice creator over the whole store: a slice reads and calls the others through get(). */
 export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
@@ -68,6 +72,7 @@ export const useSpaceStore = create<SpaceState>()(
     ...createHudSlice(...a),
     ...createLogbookSlice(...a),
     ...createProgressSlice(...a),
+    ...createRaceSlice(...a),
     ...createSettingsSlice(...a),
     ...createSkySlice(...a),
   }))
@@ -93,6 +98,15 @@ export function selectSceneFrozen(
 /** A modal covers the scene: an orbit-locked dock panel or a dossier popup. */
 export function selectModalOpen(s: Pick<SpaceState, "isOrbitLocked" | "openDossier">): boolean {
   return s.isOrbitLocked || s.openDossier !== null;
+}
+
+/**
+ * The pilot is mid-lap: the race is running and they have not finished. The
+ * quiet-while-racing readers (radio lines, traffic, events, the guide) use it;
+ * a finished pilot waiting out the final call hears the world again.
+ */
+export function selectRaceFlying(s: Pick<SpaceState, "raceView">): boolean {
+  return s.raceView.phase === "running" && !s.raceView.finished;
 }
 
 /**

@@ -161,13 +161,13 @@ describe("spaceStore", () => {
   it("a queued logbook line waits again if another line went out meanwhile", async () => {
     vi.useFakeTimers();
     const s = useSpaceStore.getState();
-    s.sendBroadcast("LAP 0:42");
+    s.sendBroadcast("RACE // P1 OF 2 · 0:42.0");
     s.recordBadge("ring");
     await Promise.resolve();
     vi.advanceTimersByTime(4000);
-    s.sendBroadcast("TIME TRIAL ABORTED");
+    s.sendBroadcast("RACE // RACING IS OFFLINE RIGHT NOW");
     vi.advanceTimersByTime(600); // the badge's slot arrives
-    expect(useSpaceStore.getState().broadcast?.text).toBe("TIME TRIAL ABORTED");
+    expect(useSpaceStore.getState().broadcast?.text).toBe("RACE // RACING IS OFFLINE RIGHT NOW");
     vi.advanceTimersByTime(4500);
     expect(useSpaceStore.getState().broadcast?.text).toMatch(/RING RUNNER EARNED/);
     vi.useRealTimers();
@@ -607,6 +607,32 @@ describe("requestJump", () => {
   it("ignores unknown targets", () => {
     useSpaceStore.getState().requestJump("nowhere");
     expect(useSpaceStore.getState().jumpRequest).toBe(null);
+  });
+
+  it("does nothing while racing", () => {
+    expect(flight.racing).toBe(false);
+    expect(flight.raceHold).toBe(false);
+    flight.racing = true;
+    try {
+      useSpaceStore.getState().requestJump("portfolio");
+      expect(useSpaceStore.getState().jumpRequest).toBe(null);
+    } finally {
+      flight.racing = false;
+    }
+    useSpaceStore.getState().requestJump("portfolio");
+    expect(useSpaceStore.getState().jumpRequest?.id).toBe("portfolio");
+  });
+});
+
+describe("selectRaceFlying", () => {
+  it("is true only mid-lap: running and not finished", async () => {
+    const { selectRaceFlying } = await import("../src/store/spaceStore");
+    const run = { phase: "running", race: "r", kind: "public", next: 1, goAt: 0, finalEndsAt: null, finished: false } as const;
+    expect(selectRaceFlying({ raceView: run })).toBe(true);
+    expect(selectRaceFlying({ raceView: { ...run, finished: true } })).toBe(false);
+    expect(selectRaceFlying({ raceView: { phase: "idle" } })).toBe(false);
+    expect(selectRaceFlying({ raceView: { phase: "grid", race: "r", kind: "solo", slot: 0, goAt: 0 } })).toBe(false);
+    expect(selectRaceFlying({ raceView: { phase: "over", race: "r", uploadBy: 0, finished: false } })).toBe(false);
   });
 });
 

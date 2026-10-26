@@ -2,7 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useModel } from "../../utils/sceneAssets";
-import { useSpaceStore, flight } from "../../store/spaceStore";
+import { useSpaceStore, flight, selectRaceFlying } from "../../store/spaceStore";
 import { mulberry32 } from "../../utils/mulberry32";
 import { makeBelt, makeTrojans, BELT_COUNT, BELT_COUNT_LOW, TROJAN_COUNT, type FieldRock } from "../../data/smallBodyField";
 import { beltRockPosition } from "../../utils/beltRocks";
@@ -137,7 +137,7 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
       const sec = performance.now() / 1000;
       const bid = radio.broadcast?.id ?? 0;
       if (bid !== lastBroadcast.id) { lastBroadcast.id = bid; lastBroadcast.at = sec; }
-      if (firstOreLine.update(absorbed > 0, sec - lastBroadcast.at < RADIO_BUSY_S, radio.race.phase === "running")) {
+      if (firstOreLine.update(absorbed > 0, sec - lastBroadcast.at < RADIO_BUSY_S, selectRaceFlying(radio))) {
         radio.sendBroadcast(oreLines.pick("ore"), { silent: true });
       }
     }

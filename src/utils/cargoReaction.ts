@@ -44,7 +44,7 @@ export function cargoSwerveTarget(out: Vec3, routePos: Vec3, tangent: Vec3, play
 /**
  * Decides when a cargo ship hails: once per approach (re-armed only after the
  * player has left the react radius), at most once per HAIL_COOLDOWN_S across
- * every ship, never during a running time-trial lap, and never over a
+ * every ship, never mid-race (selectRaceFlying), and never over a
  * broadcast that is still on the radio (`radioBusy`). An approach that
  * reaches the hail radius while suppressed is spent, not deferred, so a hail
  * never fires late, after the moment has passed.
