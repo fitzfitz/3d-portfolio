@@ -6,6 +6,7 @@ import { defineConfig, type Plugin } from 'vite'
 import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { encodePack, packTier } from './src/utils/packFormat.ts'
+import { preloadFiles } from './src/utils/preloadChunks.ts'
 
 /**
  * Production builds ship public/models as hashed asset packs
@@ -56,6 +57,40 @@ function assetPack(): Plugin {
   }
 }
 
+/**
+ * <link rel="modulepreload"> for App's chunk and its static imports. main.tsx
+ * imports App only after the content settles (App's modules read it when they
+ * run), so without these App's code would start downloading only then, a
+ * /content round trip late. modulepreload fetches without evaluating
+ * (src/utils/preloadChunks.ts). Build only: dev serves modules one by one.
+ */
+function preloadApp(): Plugin {
+  let base = '/'
+  return {
+    name: 'fitz-preload-app',
+    apply: 'build',
+    configResolved(c) {
+      base = c.base
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (!ctx.bundle) return html
+        const chunks = Object.values(ctx.bundle).flatMap((c) =>
+          c.type === 'chunk' ? [{ fileName: c.fileName, facadeModuleId: c.facadeModuleId, imports: c.imports }] : [])
+        // Files the page already loads (the entry script).
+        const skip = new Set(chunks.map((c) => c.fileName).filter((f) => html.includes(f)))
+        const files = preloadFiles(chunks, '/src/App.tsx', skip)
+        if (!files.length) this.error('fitz-preload-app: no chunk for src/App.tsx')
+        return {
+          html,
+          tags: files.map((f) => ({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: `${base}${f}` }, injectTo: 'head' as const })),
+        }
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   // Served from the domain root in dev and for a plain `npm run build`; the
@@ -68,7 +103,7 @@ export default defineConfig({
   // src/utils/assetUrl.ts instead, and tests/assetUrl.test.ts fails if a bare
   // "/models/..." literal reappears.
   base: process.env.BASE_PATH ?? '/',
-  plugins: [react(), assetPack()],
+  plugins: [react(), assetPack(), preloadApp()],
   // Agent worktrees under .claude/ are other branches' checkouts: their tests
   // read this checkout's public/ and fail on it.
   test: { exclude: [...configDefaults.exclude, '.claude/**'] },

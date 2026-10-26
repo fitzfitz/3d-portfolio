@@ -21,7 +21,8 @@ const GUIDE_HALF_WIDTH = 0.08;
 const dummy = new THREE.Object3D();
 
 /**
- * The career trail (spec §1): five buoys, oldest job first, as ONE
+ * The career trail (spec §1): a buoy per job (careerTrail.ts BUOYS, five in
+ * the bundled list), oldest job first, as ONE
  * InstancedMesh with Data_Shard's material configuration (no new shader
  * program), joined by one dashed guide arc drawn with the orbit rings' guide
  * material. Each buoy is a scannable (career_<n>, CAREER_<year>).

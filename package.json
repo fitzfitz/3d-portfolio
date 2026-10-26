@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:e2e:quiet": "E2E_JOBS=2 node tests/e2e/run.mjs",
-    "test:e2e:affected": "node tests/e2e/affected.mjs"
+    "test:e2e:affected": "node tests/e2e/affected.mjs",
+    "content:seed": "node --experimental-strip-types --no-warnings scripts/content-seed.mjs"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

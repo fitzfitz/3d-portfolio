@@ -6,6 +6,8 @@ import { validateDrop, BEACON_LIMIT, type Beacon } from "../../src/utils/beacons
  *
  *   GET  /beacons   newest BEACON_LIMIT beacons
  *   POST /beacons   { x, y, z, phrase } → 201 { beacon }
+ *
+ * GET /content (projects and career) lives in content.ts.
  */
 
 export interface StoredBeacon extends Beacon {
@@ -57,11 +59,12 @@ export const KEEP_ROWS = 500;
 const MAX_BODY_BYTES = 1024;
 export const MIN_SALT_LENGTH = 16;
 
-function cors(origin: string | null, deps: Deps): Record<string, string> {
+/** CORS headers for `origin`; content.ts (GET /content) shares them. */
+export function cors(origin: string | null, allowedOrigins: readonly string[]): Record<string, string> {
   // Vary on every response, not only allowed ones: GETs are publicly cacheable
   // for 30s, and a copy made for another (or no) Origin, carrying no CORS
   // headers, must never be served to the site.
-  if (!origin || !deps.allowedOrigins.includes(origin)) return { Vary: "Origin" };
+  if (!origin || !allowedOrigins.includes(origin)) return { Vary: "Origin" };
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -71,7 +74,7 @@ function cors(origin: string | null, deps: Deps): Record<string, string> {
   };
 }
 
-function json(status: number, body: unknown, headers: Record<string, string>): Response {
+export function json(status: number, body: unknown, headers: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...headers },
@@ -127,7 +130,7 @@ export function withListCache(store: BeaconStore, ttlMs: number, now: () => numb
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
   const url = new URL(req.url);
   const origin = req.headers.get("Origin");
-  const h = cors(origin, deps);
+  const h = cors(origin, deps.allowedOrigins);
   if (url.pathname !== "/beacons") return json(404, { error: "not found" }, h);
 
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: h });

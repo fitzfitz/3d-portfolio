@@ -41,6 +41,8 @@ import { useSound } from "./hooks/useSound";
 import { useReducedMotion } from "./hooks/useReducedMotion";
 import { projects, projectById } from "./constants";
 import { JUMP_TARGETS, destinationById } from "./data/destinations";
+import { PROBES } from "./data/probes";
+import { probeIntro } from "./utils/probes";
 import { identity } from "./data/identity";
 import PerfOverlay from "./debug/PerfOverlay";
 
@@ -59,6 +61,9 @@ function EngineLoading() {
 
 /** Beacons exist only when an API is configured; read once per page load. */
 const BEACONS_ENABLED = !!beaconApiUrl();
+
+/** The spawn card's first line, for the probes in play. */
+const PROBE_INTRO = probeIntro(PROBES.length);
 
 /** Without WebGL there is no cabin to return to. */
 const CAN_FLY = WEBGL_AVAILABLE;
@@ -237,7 +242,7 @@ export default function App() {
                   <h2 className="font-display font-bold text-2xl text-white">{identity.name}</h2>
                   <p className="font-mono text-[11px] text-primary/90 mb-3">{identity.role}</p>
                   <p className="text-white/70 text-xs leading-relaxed mb-3">
-                    Three probes carry three projects. Grab one with the tractor beam to open it.
+                    {PROBE_INTRO}
                   </p>
                   <div className="font-mono text-[10px] text-primary mb-3 sm:mb-4">
                     &gt; {padConnected ? "L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM" : isCoarse ? "DRAG THE LEFT HALF TO FLY" : "W/A/S/D FLY · SPACE/C PITCH · SHIFT WARP · F BEAM"}

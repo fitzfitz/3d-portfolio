@@ -5,11 +5,11 @@ import { orbitShape, eclipticToWorld } from "../../src/utils/ephemeris";
 import { ORRERY_TEST_JD } from "../../src/utils/orreryClock";
 import { PLANET_WELL_RADIUS_FACTOR } from "../../src/utils/gravityWell";
 import { PORTAL_POS, PORTAL_ZONE_R } from "../../src/constants";
-import { STATION_POS, STATION_RADII, BUOYS, BUOY_CARD_R, TRAIL_START, TRAIL_BEND, TRAIL_END } from "../../src/data/careerTrail";
+import { STATION_POS, STATION_RADII, BUOY_CARD_R, TRAIL_START, TRAIL_BEND, TRAIL_END, possibleBuoyPositions } from "../../src/data/careerTrail";
 import { SHIPYARD_POS, SHIPYARD_RADII } from "../../src/data/shipyard";
 import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { RING_GATES, RING_RADIUS } from "../../src/data/ringCourse";
-import { PROBES, PROBE_RADIUS } from "../../src/data/probes";
+import { PROBE_SLOTS, PROBE_RADIUS } from "../../src/data/probes";
 import { SPAWN } from "../../src/data/spawn";
 import { SHARDS } from "../../src/data/shards";
 import { ASTEROID_COLLIDERS } from "../../src/data/asteroids";
@@ -112,14 +112,16 @@ export const LANDMARKS: Landmark[] = [
   { name: "trail start", pos: TRAIL_START, radius: BUOY_CARD_R },
   { name: "trail bend", pos: TRAIL_BEND, radius: BUOY_CARD_R },
   { name: "trail end", pos: TRAIL_END, radius: BUOY_CARD_R },
-  ...BUOYS.map((b) => ({ name: `buoy ${b.id}`, pos: b.pos, radius: BUOY_CARD_R })),
+  // Every spot a buoy can take for 1 to MAX_BUOYS jobs, not just this list's (the list comes from D1).
+  ...possibleBuoyPositions().map((p, i) => ({ name: `buoy spot ${i}`, pos: p, radius: BUOY_CARD_R })),
   { name: "shipyard", pos: SHIPYARD_POS, radius: SHIPYARD_RADII.zoneR },
   { name: "dormant gate", pos: GATE_POS, radius: GATE_KEEP_OUT },
   // The portal's proximity zone is PORTAL_ZONE_R (2.2 u, the zone itself, not a scaled planet zone); a body's own zone (1.8 x size) lies inside its 3.5 x size well.
   { name: "portal", pos: PORTAL_POS, radius: PORTAL_ZONE_R },
-  ...PROBES.flatMap((p) => [
-    { name: `${p.id} home`, pos: p.home, radius: PROBE_RADIUS },
-    ...p.remote.map((r, i) => ({ name: `${p.id} remote ${i + 1}`, pos: r, radius: PROBE_RADIUS })),
+  // Every probe slot, used or not: which projects sit on them comes from D1.
+  ...PROBE_SLOTS.flatMap((p, k) => [
+    { name: `probe slot ${k + 1} home`, pos: p.home, radius: PROBE_RADIUS },
+    ...p.remote.map((r, i) => ({ name: `probe slot ${k + 1} remote ${i + 1}`, pos: r, radius: PROBE_RADIUS })),
   ]),
   ...RING_GATES.map((g, i) => ({ name: `ring gate ${i}`, pos: g as Vec3, radius: RING_RADIUS })),
   ...SHARDS.map((s, i) => ({ name: `shard ${i}`, pos: s.pos as Vec3, radius: CRYSTAL_PICKUP_RADIUS })),

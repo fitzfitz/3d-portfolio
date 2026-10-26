@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { identity } from "../src/data/identity";
 import { projects } from "../src/constants";
-import { career } from "../src/data/career";
+import { BUNDLED_CAREER as career } from "../src/data/career";
 
 // index.html is static and loads before the bundle, so it cannot import the
 // identity/project data. These checks are what keeps its copies honest.

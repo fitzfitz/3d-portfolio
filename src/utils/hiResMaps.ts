@@ -1,4 +1,15 @@
-import { useSpaceStore } from "../store/spaceStore";
+/**
+ * Where the low-perf setting is read: spaceStore registers its `isLowPerf`
+ * when it is created. Until then it is the store's own starting value,
+ * false. Import-free on purpose: main.tsx starts the asset packs (which ask
+ * hiResChoice for their tier) before the store exists, since the store's
+ * module reads the projects and career, which settle first (spec
+ * 2026-10-23-dynamic-content, the owner's loading call; tests/bootOrder.test.ts).
+ */
+let lowPerf: () => boolean = () => false;
+export function setLowPerfSource(read: () => boolean): void {
+  lowPerf = read;
+}
 
 /**
  * Whether this device draws the bodies' 4096 maps (the `_4k` variants of
@@ -9,7 +20,7 @@ import { useSpaceStore } from "../store/spaceStore";
  * SD texture pack, so the two always agree.
  */
 export const prefersHiResMaps = (): boolean =>
-  !useSpaceStore.getState().isLowPerf && window.matchMedia?.("(pointer: fine)").matches === true;
+  !lowPerf() && window.matchMedia?.("(pointer: fine)").matches === true;
 
 /**
  * Maps that ship GPU-compressed as KTX2 (scripts/textures/encode_ktx2.mjs
