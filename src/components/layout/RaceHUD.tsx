@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useSpaceStore } from "../../store/spaceStore";
 import { formatRaceTime } from "../../utils/race";
-import { PAR_SECONDS, RING_GATES } from "../../data/ringCourse";
+import { RING_GATES } from "../../data/ringCourse";
 import { setText } from "../../utils/domWrite";
 
 const RINGS = RING_GATES.length - 1;
@@ -42,7 +42,6 @@ export default function RaceHUD() {
       </div>
       <div className="text-[9px] text-white/50">
         {isBest ? <span className="text-[#ffb020]">NEW BEST · </span> : best !== null ? `BEST ${formatRaceTime(best)} · ` : ""}
-        PAR {formatRaceTime(PAR_SECONDS)}
       </div>
     </div>
   );
