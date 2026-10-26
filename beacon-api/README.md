@@ -121,11 +121,12 @@ ghost ships (spec: `docs/archive/specs/2026-10-14-live-sky-design.md`).
   (`src/sky.ts`, `tests/skyRoom.test.ts`); the upgrade gate is
   `src/liveRoute.ts` (Origin in `ALLOWED_ORIGINS`, one `LIMITER` token per
   attempt).
-- **Nothing is stored.** No tables, no storage API, no IPs. A pilot is a
+- **No pilot is stored.** No tables and no IPs. A pilot is a
   random id (new every connection), a country from `CF-IPCountry` (`XX` and
   `T1` become null, as with beacons), their last pose (with how many of the
   five worlds they have charted, 0–5), and a visitor key, all held in the
-  socket's attachment. Closing the socket forgets them.
+  socket's attachment. Closing the socket forgets them. The one thing the
+  room keeps in its storage is the ring race state (see "The ring race").
 - **The cartographer.** A pose's optional `ch` is the pilot's charted count
   (anything malformed reads as 0, never rejected), and the AURUM plume
   (`cartographer`) passes only with `ch: 5` in the same message. A pilot who
@@ -158,6 +159,53 @@ ghost ships (spec: `docs/archive/specs/2026-10-14-live-sky-design.md`).
 **Kill switch:** empty `VITE_LIVE_SKY` in `.env.production` and merge. The
 room can stay deployed; nothing connects to it.
 
+## The ring race
+
+The live-sky room also runs the multiplayer ring race (spec:
+`docs/superpowers/specs/2026-10-26-ring-race-design.md`). Race messages ride
+the `/live` socket under their own `r…` types; the room logic is pure and
+unit tested (`src/raceRoom.ts`, `tests/raceRoom.test.ts`).
+
+- **Signed ring stamps.** The room signs each ring a racer reaches with an
+  HMAC keyed by `RACE_SECRET`, only for the racer's next ring, only near the
+  ring by the pilot's last pose (timed by when the room received it) and
+  never faster than warp allows. Without a 32+ character `RACE_SECRET`,
+  racing fails closed (`rerr off`, and `POST /race/result` is 503) while
+  bottles, content and live-sky poses keep working.
+- **Stored race state.** The race room (lobbies, racers' tokens and ring
+  counters, deadlines) is put in the `Sky` Durable Object's storage after
+  every change, and an alarm at the next deadline carries it on through
+  hibernation. It is gone once results are out. After a restart, racers whose
+  sockets are gone are unbound and can rejoin by token.
+- **One best lap.** `race_best` (`race.sql`) holds one row per course: the
+  fastest checked lap and its path. With no row, the time to beat is the seed
+  lap (`seedLap` in `src/utils/race.ts`).
+
+```
+GET  /race/best
+  200 { course, timeMs, ghost, cc, at }     the best lap (ghost as encodeGhost writes it)
+  200 { course, timeMs: null }              no best yet: race the seed lap
+  503 { error: "unavailable" }              race_best missing or D1 down
+      cached 30 s per isolate, and public, max-age=30
+
+POST /race/result   { race, token, stamps, ghost? }    at most 64 KB
+  200 { ok: true, entry: { cc, timeMs, rings, lastAt } }    timeMs null = DNF
+  400 { ok: false, reason }    malformed | off | sig | race | order | speed | start
+  404 { ok: false, reason }    race | token
+  409 { ok: false, reason }    phase | late | duplicate
+  403 { error: "origin" }      Origin not in ALLOWED_ORIGINS
+  413 { error: "too large" }
+  503 { error: "racing is off" }    no usable RACE_SECRET
+  429 { error: "slow down" }        the request budget (LIMITER)
+```
+
+The Worker forwards the raw body to the `Sky` room, which checks the stamps
+and, on a 200 with a finished lap, stores it as the best lap when it beats the
+row (or the seed lap), the ghost decodes and its path matches the stamps
+(`checkPath`). The reply never carries the race or any token. Tests:
+`tests/raceHttp.test.ts` (the routes), `tests/raceBest.test.ts` (the best-lap
+SQL over SQLite) and `tests/skyAdapter.test.ts` (the Durable Object wiring).
+
 ## Deploying
 
 Run these from the repo root. Wrangler is not a dependency of this repo, so
@@ -167,7 +215,7 @@ Run these from the repo root. Wrangler is not a dependency of this repo, so
 # 1. Create the database, and paste its id into beacon-api/wrangler.toml
 npx wrangler d1 create fitz-beacons --config beacon-api/wrangler.toml
 
-# 2. Create the tables: beacons, then the content tables and their first rows
+# 2. Create the tables: beacons and race_best, then the content tables and their first rows
 npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/schema.sql
 npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content.sql
 npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/content-seed.sql
@@ -176,8 +224,10 @@ npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml 
 #    (comma-separated), then deploy. Drops fail closed until step 4.
 npx wrangler deploy --config beacon-api/wrangler.toml
 
-# 4. Set the salt (any long random string), then confirm it is listed
+# 4. Set the salt (any long random string) and the race stamp secret (32+
+#    characters; racing is off without it), then confirm both are listed
 openssl rand -hex 32 | npx wrangler secret put IP_SALT --config beacon-api/wrangler.toml
+openssl rand -hex 32 | npx wrangler secret put RACE_SECRET --config beacon-api/wrangler.toml
 npx wrangler secret list --config beacon-api/wrangler.toml
 ```
 
@@ -227,6 +277,34 @@ committed [`.env.production`](../.env.production). Every production build
 reads that file, so both hosts (GitHub Pages and the Cloudflare copy) pick it
 up on the next deploy, with no per-host settings. For `npm run dev`, set it in
 `.env`.
+
+### Deploying the ring race (once, on the existing database)
+
+Four steps, in this order. **Each one needs the owner's word.** Never run a
+bare `wrangler deploy`: the root `wrangler.jsonc` is the production site.
+
+```bash
+# 1. The best-lap table. Safe to re-run (CREATE TABLE IF NOT EXISTS).
+npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/race.sql
+
+# 2. The stamp secret: 32+ characters, not IP_SALT. Then confirm it is listed.
+openssl rand -hex 32 | npx wrangler secret put RACE_SECRET --config beacon-api/wrangler.toml
+npx wrangler secret list --config beacon-api/wrangler.toml
+
+# 3. Deploy the Worker (the Sky room's race logic, /race/best, /race/result).
+npx wrangler deploy --config beacon-api/wrangler.toml
+
+# 4. Merge the site (the ring race), which deploys staging; production
+#    follows with the next v* release.
+```
+
+Why this order: the new Worker reads `race_best`, so the table comes first
+(without it `GET /race/best` is a 503 and the site races the seed lap). Without
+the secret the new Worker still serves everything else and turns racing away
+(`rerr off`, 503), so steps 2 and 3 may swap. The old site never sends race
+messages, so the Worker can go out before the site. Rotating `RACE_SECRET`
+voids the stamps of races in flight (their uploads fail with `sig`) but not
+the stored best lap.
 
 ## Editing the content
 

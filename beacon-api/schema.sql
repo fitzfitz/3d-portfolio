@@ -16,3 +16,13 @@ CREATE TABLE IF NOT EXISTS beacons (
 );
 CREATE INDEX IF NOT EXISTS beacons_at ON beacons (at DESC);
 CREATE INDEX IF NOT EXISTS beacons_ip_at ON beacons (ip_hash, at);
+
+-- The ring race's best lap, one row per course. An existing database gets it
+-- from beacon-api/race.sql (README.md, "Deploying the ring race").
+CREATE TABLE IF NOT EXISTS race_best (
+  course   TEXT PRIMARY KEY,       -- RACE_COURSE_ID, e.g. 'loop-2'
+  time_ms  INTEGER NOT NULL,       -- the lap time from the signed stamps (ms)
+  ghost    TEXT NOT NULL,          -- the lap's path, as src/utils/race.ts encodeGhost writes it
+  cc       TEXT,                   -- the racer's ISO alpha-2 country from CF-IPCountry, or NULL
+  at       INTEGER NOT NULL        -- when it was set (epoch ms)
+);

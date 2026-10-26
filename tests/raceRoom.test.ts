@@ -926,6 +926,41 @@ describe("hibernation round trip", () => {
     expect(JSON.parse(JSON.stringify(copy))).toEqual(JSON.parse(JSON.stringify(room)));
     expect(race.phase).toBe("done");
   });
+
+  /** What the Sky adapter reads back: ctx.storage.get("race") is a structured clone of what was put. */
+  const stored = (room: RaceRoom): RaceRoom => structuredClone(JSON.parse(JSON.stringify(room)));
+
+  it("a room loaded from storage in grid continues at the next tick: GO with verifiable stamps", async () => {
+    const room = newRaceRoom();
+    const w = world();
+    const toks = [];
+    for (const p of ["a", "b"]) toks.push(one(await send(room, w, p, { t: "rjoin" }), p, "rlobby").token);
+    await tick(room, w, T0 + LOBBY_COUNTDOWN_MS);
+    const loaded = stored(room);
+    const goAt = loaded.races[0].goAt!;
+    expect(nextAlarm(loaded)).toBe(goAt);
+    const go = await tick(loaded, w, goAt);
+    for (const [n, p] of ["a", "b"].entries()) {
+      const m = one(go, p, "rgo");
+      expect(m.stamp).toMatchObject({ r: loaded.races[0].id, k: toks[n], i: 0, at: goAt });
+      expect(await verifyStamp(SECRET, m.stamp)).toBe(true);
+    }
+    expect(loaded.races[0].phase).toBe("running");
+    expect(nextAlarm(loaded)).toBe(goAt + RACE_LIMIT_MS);
+  });
+  it("a room loaded from storage in upload sends results at the next tick", async () => {
+    const { room, w, race, tokens, starts } = await running(["a", "b"]);
+    const { stamps } = await flyLaps(room, w, race.goAt!, { a: 0 });
+    await tick(room, w, race.finalEndsAt!);
+    expect(race.phase).toBe("upload");
+    const loaded = stored(room);
+    const up = await onRaceUpload(loaded, { race: race.id, token: tokens.a, stamps: [starts.a, ...stamps.a] }, w.ctx);
+    expect(up.status).toBe(200);
+    // The upload itself was persisted, then the room hibernated again before the results alarm.
+    const out = await tick(stored(loaded), w, nextAlarm(loaded)!);
+    expect(one(out, "a", "rresults").rows).toEqual([{ place: 1, cc: "ID", timeMs: up.entry!.timeMs, rings: N, you: true }]);
+    expect(one(out, "b", "rresults").rows[0].you).toBe(false);
+  });
 });
 
 describe("busy token from a second tab", () => {
