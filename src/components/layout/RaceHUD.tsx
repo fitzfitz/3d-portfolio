@@ -13,7 +13,8 @@ const RINGS = RING_GATES.length - 1;
  * itself ticks through rAF + a DOM write, zero renders.
  */
 export default function RaceHUD() {
-  const race = useSpaceStore((s) => s.race);
+  // Stopgap until Task 7 rewrites this HUD: idle renders nothing, as before.
+  const race = useSpaceStore((s) => s.raceView);
   const best = useSpaceStore((s) => s.raceBest);
   const clockRef = useRef<HTMLDivElement>(null);
 

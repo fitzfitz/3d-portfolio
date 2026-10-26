@@ -42,7 +42,7 @@ export default function EdgeHaze() {
       const s = useSpaceStore.getState();
       const now = performance.now() / 1000;
       clock.observe(s.broadcast?.id ?? 0, now, isEdgeLine);
-      if (gate.update(depth, clock.busy(now, RADIO_BUSY_S), s.race.phase === "running")) {
+      if (gate.update(depth, clock.busy(now, RADIO_BUSY_S), s.raceView.phase === "running")) {
         s.sendBroadcast(scheduler.pick("haze"), { silent: true });
       }
       // The burn preempts the haze line: only other broadcasts hold it back.

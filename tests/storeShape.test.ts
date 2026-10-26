@@ -28,11 +28,11 @@ const STATE_KEYS = [
   "isOrbitLocked", "isTeleporting", "isWarping", "jumpRequest", "legacyCartographer", "liveSky", "liveSkySeen",
   "logbookLineAt", "logbookOpen", "lowPerfManual", "markChangelogSeen", "openDossier", "openProjectDossier",
   "ownBeacons", "ownBottles", "padConnected", "pendingLowPerf", "photoMode", "plumeColor", "probeNear",
-  "probeSpots", "probeTip", "race", "raceBest", "recordBadge", "reducedMotion", "reducedMotionManual",
+  "probeSpots", "probeTip", "raceBest", "raceLiveSkyRestore", "raceView", "recordBadge", "reducedMotion", "reducedMotionManual",
   "relocation", "remountCanvas", "requestJump", "scanTarget", "sceneReady", "sendBroadcast", "setActiveZone",
   "setBeacons", "setBottlePanelOpen", "setChangelogOpen", "setCometNear", "setFuelEmpty", "setLiveSky",
   "setLiveSkySeen", "setLogbookOpen", "setLowPerf", "setMuted", "setNearSpawn", "setOrbitLocked",
-  "setPadConnected", "setPhotoMode", "setPlumeColor", "setProbeNear", "setProbeTip", "setRace", "setRaceBest",
+  "setPadConnected", "setPhotoMode", "setPlumeColor", "setProbeNear", "setProbeTip", "setRaceBest", "setRaceLiveSkyRestore", "setRaceView",
   "setReducedMotion", "setScanTarget", "setSceneReady", "setShowBottles", "setShowClassicCV", "setWarmingUp",
   "setWarping", "shardsCollected", "showBottles", "showClassicCV", "startWorldEvent", "tellAurumOnce",
   "triggerTeleportFlash", "visitedDossiers", "warmingUp", "worldEvent",
@@ -67,6 +67,7 @@ async function freshStore(seed: Record<string, string> = {}, win?: unknown) {
   vi.stubGlobal("localStorage", {
     getItem: (k: string) => stored[k] ?? null,
     setItem: (k: string, v: string) => { stored[k] = v; events.push(norm(`write ${k}=${v}`)); },
+    removeItem: (k: string) => { delete stored[k]; events.push(`remove ${k}`); },
   });
   if (win) vi.stubGlobal("window", win);
   vi.doMock("../src/utils/ambientTime", async (orig) => ({
@@ -162,10 +163,11 @@ describe("store shape (split guard)", () => {
           "ruangrapi": 0,
         },
         "probeTip": null,
-        "race": {
+        "raceBest": null,
+        "raceLiveSkyRestore": false,
+        "raceView": {
           "phase": "idle",
         },
-        "raceBest": null,
         "reducedMotion": false,
         "reducedMotionManual": false,
         "relocation": null,
@@ -198,6 +200,8 @@ describe("store shape (split guard)", () => {
       "fitz-live-sky": "0",
       "fitz-live-seen-2": "1",
       "fitz-race-best": "41.5",
+      // The old time trial's ghost: deleted once at load (race slice).
+      "fitz-race-ghost": "{}",
       "fitz-own-beacons": JSON.stringify(["b1", 7, "b2"]),
       "fitz-own-bottles": JSON.stringify([{ id: "b2", x: 1, y: 2, z: 3, text: "hello there", at: 5, country: "ID" }, { id: "<x>" }]),
       "fitz-bottles": "0",
@@ -206,6 +210,7 @@ describe("store shape (split guard)", () => {
     expect(events).toMatchInlineSnapshot(`
       [
         "write fitz-cartographer-legacy=1",
+        "remove fitz-race-ghost",
         "ambient true",
       ]
     `);
@@ -293,10 +298,11 @@ describe("store shape (split guard)", () => {
           "ruangrapi": 1,
         },
         "probeTip": null,
-        "race": {
+        "raceBest": 41.5,
+        "raceLiveSkyRestore": false,
+        "raceView": {
           "phase": "idle",
         },
-        "raceBest": 41.5,
         "reducedMotion": false,
         "reducedMotionManual": true,
         "relocation": null,
@@ -453,7 +459,10 @@ describe("store shape (split guard)", () => {
     step("shards and race");
     s().collectShard(0);
     s().collectShard(0);
-    s().setRace({ phase: "idle" });
+    s().setRaceView({ phase: "over", race: "r", uploadBy: 1, finished: false });
+    s().setLiveSky(true);
+    s().setRaceLiveSkyRestore(true);
+    s().setRaceView({ phase: "idle" });
     s().setRaceBest(42.5);
 
     step("hud");
@@ -584,7 +593,13 @@ describe("store shape (split guard)", () => {
         "-- shards and race",
         "set shardsCollected=[0]",
         "write fitz-shards=[0]",
-        "set race={"phase":"idle"}",
+        "set raceView={"phase":"over","race":"r","uploadBy":1,"finished":false}",
+        "set liveSky=true",
+        "write fitz-live-sky=1",
+        "set raceLiveSkyRestore=true",
+        "set raceLiveSkyRestore=false raceView={"phase":"idle"}",
+        "set liveSky=false",
+        "write fitz-live-sky=0",
         "write fitz-race-best=42.5",
         "set raceBest=42.5",
         "-- hud",

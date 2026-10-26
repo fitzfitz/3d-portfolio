@@ -22,18 +22,19 @@ const wp = createWaypointTarget();
 /** recruiterWaypoint's mapping, memoised on the badges array so a frame builds no closure. */
 const recruiterTarget = makeRecruiterTarget();
 
-/** Headless: projects the next unread dossier (then the next destination) to the screen — or, mid-lap, the next time-trial ring. */
+/** Headless: projects the next unread dossier (then the next destination) to the screen — or, mid-race, the next ring. */
 export default function WaypointDriver() {
   useFrame(({ camera, size }) => {
     const s = useSpaceStore.getState();
-    // Mid-lap, the waypoint belongs to the time trial: point at the next ring.
-    const race = s.race.phase === "running" ? s.race : null;
+    // Mid-race, until the finish, the waypoint belongs to the race: point at the next ring.
+    const race = s.raceView.phase === "running" && !s.raceView.finished ? s.raceView : null;
     const placed = !race && recruiterTarget(flight, s.visitedDossiers, s.badges, wp);
     const id = race ? "" : wp.id;
     // Nothing to point at while docked at a destination or inside its zone
     // (only destinations have one; a probe never sets activeZone).
     if (selectModalOpen(s) || (!race && s.activeZone === id)) { waypointState.active = false; return; }
-    const t = race ? RACE_GATES[race.next].c : placed ? wp : undefined;
+    // The finish (ring N) is gate 0 again.
+    const t = race ? RACE_GATES[race.next % RACE_GATES.length].c : placed ? wp : undefined;
     if (!t) { waypointState.active = false; return; }
 
     v.set(t.x, t.y, t.z).project(camera);
@@ -57,7 +58,7 @@ export default function WaypointDriver() {
     waypointState.angle = Math.atan2(-ny, nx);
     waypointState.distance = Math.hypot(t.x - flight.x, t.y - flight.y, t.z - flight.z);
     if (race) {
-      waypointState.label = race.next === 0 ? "FINISH" : `RING ${race.next}/${RACE_GATES.length - 1}`;
+      waypointState.label = race.next >= RACE_GATES.length ? "FINISH" : `RING ${race.next}/${RACE_GATES.length - 1}`;
       waypointState.color = "#ffb020";
       return;
     }

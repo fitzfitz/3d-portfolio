@@ -139,7 +139,7 @@ export default function WorldEventDirector() {
       dirInput.dt = dt;
       // Not photo mode: the planets keep orbiting there, so the event must too.
       dirInput.paused = selectSceneFrozen(s) || s.showClassicCV;
-      dirInput.raceRunning = s.race.phase === "running";
+      dirInput.raceRunning = s.raceView.phase === "running";
       dirInput.radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
       dirInput.reducedMotion = s.reducedMotion;
       step = stepDirector(director, dirInput, stepOut);

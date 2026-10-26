@@ -114,7 +114,7 @@ export default function CargoTraffic() {
     const now = gameTime(elapsed);
     const store = useSpaceStore.getState();
     const react = !store.reducedMotion;
-    const raceRunning = store.race.phase === "running";
+    const raceRunning = store.raceView.phase === "running";
     const broadcastId = store.broadcast?.id ?? 0;
     if (broadcastId !== lastBroadcast.current.id) lastBroadcast.current = { id: broadcastId, at: now };
     const radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;

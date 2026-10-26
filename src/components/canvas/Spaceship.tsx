@@ -706,7 +706,7 @@ export default function Spaceship() {
     const sling = slingshotWatch.current.update(
       time, store.broadcast?.id ?? 0, wellNow, totalSpeed,
       Math.hypot(gravity.current.x, gravity.current.y, gravity.current.z), warpActive,
-      store.race.phase === "running", slingshotOut);
+      store.raceView.phase === "running", slingshotOut);
     if (sling.whoosh) soundManager.whoosh();
     if (sling.whoosh) store.recordBadge("slingshot"); // logbook: Slingshot
     if (sling.line) store.sendBroadcast(slingshotLines.pick("slingshot"), { silent: true });

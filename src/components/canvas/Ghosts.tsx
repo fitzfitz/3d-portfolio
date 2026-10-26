@@ -16,6 +16,8 @@ import { createShoutGate, shoutDue, shoutLine, makeWireChartCache } from "../../
 /** Plays another pilot's shout-out at most once per SHOUT_HEAR_GAP_MS. */
 const hearShout = createShoutGate();
 import { LiveSkyConnection, type SocketLike } from "../../utils/liveSkyConnection";
+import { raceLink } from "../../utils/raceLink";
+import { onRaceServer } from "../../utils/raceController";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
 
@@ -86,6 +88,7 @@ export default function Ghosts() {
     clearTimer: (h) => window.clearTimeout(h as number),
     random: Math.random,
     onCharted: (cc) => { if (hearShout(Date.now())) useSpaceStore.getState().announceLogbook(shoutLine(cc)); },
+    onRace: (m) => onRaceServer(m),
   }), []);
   const noticeQueued = useRef(false);
   const wireCharts = useRef(makeWireChartCache());
@@ -97,6 +100,12 @@ export default function Ghosts() {
     writeRadarBlips(NONE);
     flameGeometry.dispose();
   }, [conn, slots, flameGeometry]);
+
+  // The race talks through this connection (raceLink.ts sendRace).
+  useEffect(() => {
+    raceLink.conn = conn;
+    return () => { if (raceLink.conn === conn) raceLink.conn = null; };
+  }, [conn]);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -130,7 +139,8 @@ export default function Ghosts() {
     const want = s.liveSky && flight.hasFlown && (s.liveSkySeen || noticeQueued.current);
     if (want !== wanted.current) { wanted.current = want; conn.setWanted(want); }
 
-    if (s.liveSkySeen && conn.peers > 0) {
+    // Alone in the sky, poses still go out mid-race: the room signs rings against them.
+    if (s.liveSkySeen && (conn.peers > 0 || conn.racing)) {
       me.p[0] = flight.x; me.p[1] = flight.y; me.p[2] = flight.z;
       shipQuat(flight.heading, flight.pitch, me.q);
       me.plume = s.plumeColor;

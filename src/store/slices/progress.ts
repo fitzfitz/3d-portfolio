@@ -1,10 +1,9 @@
-import { parseRaceBest, type RaceState } from "../../utils/race";
 import { isBodyId, type BodyId } from "../../data/bodyIds";
 import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../../utils/charting";
 import { STORE_KEYS, safeGetFlag, safeSetFlag, safeGetJSON, safeSetJSON, loadShards, todayStamp } from "../persist";
 import type { SliceCreator } from "../spaceStore";
 
-/** The pilot's progress: data shards, charted bodies (and the AURUM unlock), and the time trial. */
+/** The pilot's progress: data shards and charted bodies (and the AURUM unlock). The race has its own slice (race.ts). */
 export interface ProgressSlice {
   shardsCollected: number[];
   collectShard: (i: number) => void;
@@ -33,12 +32,6 @@ export interface ProgressSlice {
    * scene is ready; a no-op otherwise.
    */
   tellAurumOnce: () => void;
-  /** Time-trial progress (RingCourse.tsx). Changes only at gates, never per frame. */
-  race: RaceState;
-  setRace: (r: RaceState) => void;
-  /** Best lap in seconds, persisted; null until the first finish. */
-  raceBest: number | null;
-  setRaceBest: (t: number) => void;
 }
 
 /**
@@ -106,12 +99,5 @@ export const createProgressSlice: SliceCreator<ProgressSlice> = (set, get) => ({
     s.announceLogbook(AURUM_LINE);
     safeSetFlag(STORE_KEYS.aurumTold, true);
     set({ aurumTold: true });
-  },
-  race: { phase: "idle" },
-  setRace: (race) => set({ race }),
-  raceBest: parseRaceBest(safeGetJSON<unknown>(STORE_KEYS.raceBest, null)),
-  setRaceBest: (t) => {
-    safeSetJSON(STORE_KEYS.raceBest, t);
-    set({ raceBest: t });
   },
 });

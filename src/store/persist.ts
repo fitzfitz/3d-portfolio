@@ -23,6 +23,8 @@ export const STORE_KEYS = {
   chartShout: "fitz-charted-shout",
   aurumTold: "fitz-aurum-told",
   raceBest: "fitz-race-best",
+  /** The current race's token and stamps (raceSession.ts RaceRun), so a reload mid-race keeps them. */
+  raceRun: "fitz-race-run",
   ownBeacons: "fitz-own-beacons",
   ownBottles: "fitz-own-bottles",
   showBottles: "fitz-bottles",
@@ -79,6 +81,23 @@ export function safeGetReducedMotion(): boolean | null {
 export function safeSetReducedMotion(v: boolean) {
   try {
     if (typeof localStorage !== "undefined") localStorage.setItem(STORE_KEYS.reducedMotion, v ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** A stored string as is, or null when absent or storage is blocked. */
+export function safeGetString(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+/** Removes a stored key; only touches storage when the key is there. */
+export function safeRemove(key: string) {
+  try {
+    if (typeof localStorage !== "undefined" && localStorage.getItem(key) !== null) localStorage.removeItem(key);
   } catch {
     /* ignore */
   }

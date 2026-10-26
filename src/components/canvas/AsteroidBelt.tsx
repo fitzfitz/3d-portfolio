@@ -137,7 +137,7 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
       const sec = performance.now() / 1000;
       const bid = radio.broadcast?.id ?? 0;
       if (bid !== lastBroadcast.id) { lastBroadcast.id = bid; lastBroadcast.at = sec; }
-      if (firstOreLine.update(absorbed > 0, sec - lastBroadcast.at < RADIO_BUSY_S, radio.race.phase === "running")) {
+      if (firstOreLine.update(absorbed > 0, sec - lastBroadcast.at < RADIO_BUSY_S, radio.raceView.phase === "running")) {
         radio.sendBroadcast(oreLines.pick("ore"), { silent: true });
       }
     }

@@ -400,7 +400,7 @@ export default function SpaceJellyfish() {
     const now = Date.now();
     const lastLine = store.broadcast;
     const radioBusy = (lastLine !== null && now - lastLine.at < RADIO_BUSY_S * 1000) || now < store.logbookLineAt;
-    fi.blocked = selectModalOpen(store) || store.race.phase === "running" || store.photoMode || store.showClassicCV || radioBusy;
+    fi.blocked = selectModalOpen(store) || store.raceView.phase === "running" || store.photoMode || store.showClassicCV || radioBusy;
 
     stepJellyFrame(frame, fi, frameDt);
     // The touch GUIDE button's pressed state; notifies only on a change.
