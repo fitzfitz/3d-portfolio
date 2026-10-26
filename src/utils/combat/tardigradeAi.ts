@@ -8,7 +8,8 @@ import {
   TARDIGRADE_HIT_POSE_S, TARDIGRADE_HITS, TARDIGRADE_SPEED, TARDIGRADE_STANDOFF, TARDIGRADE_TURN_RATE,
 } from "./constants";
 import {
-  T_EPS, faceToward, flinch, moveLeashed, roll, slewFacing, startFade, steer, stepFade, type MonsterBody,
+  T_EPS, driftHome, faceToward, flinch, moveLeashed, roll, slewFacing, startFade, steer, stepFade, takeHit,
+  type MonsterBody,
 } from "./monsterMotion";
 import type { FightView, NestSink, V3 } from "./types";
 
@@ -88,6 +89,9 @@ export function stepTardigrade(t: Tardigrade, v: FightView, dt: number, rnd: () 
   if (t.phase === "jet") {
     // Held still while it fires, so the jet stays on the mouth.
     t.vx = 0; t.vy = 0; t.vz = 0;
+  } else if (!v.shipIn) {
+    // The ship is out: no attacks, drift back toward the centre.
+    driftHome(t, v.centre, TARDIGRADE_SPEED, SWIM_ACCEL, dt);
   } else {
     // Swim to the point TARDIGRADE_STANDOFF from the ship, on this side.
     let ox = t.x - ship.x, oy = t.y - ship.y, oz = t.z - ship.z;
@@ -132,13 +136,8 @@ function easeOut(t: Tardigrade, dt: number): void {
 
 /** A bolt hit: flinch; true on the defeating (18th) hit. A dying or gone tardigrade takes none. */
 export function hitTardigrade(t: Tardigrade): boolean {
-  if (!t.alive) return false;
-  t.hitT = TARDIGRADE_HIT_POSE_S;
-  t.pose.hit = 1;
-  t.hp--;
-  if (t.hp > 0) return false;
+  if (!takeHit(t, t.pose, TARDIGRADE_HIT_POSE_S)) return false;
   t.phase = "defeated";
-  startFade(t);
   t.pose.curl = 0;
   return true;
 }

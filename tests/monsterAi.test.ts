@@ -230,6 +230,42 @@ describe("saucer AI", () => {
     expect(maxLead).toBeGreaterThan(3 * DEG);
   });
 
+  it("aims the cannon at the lead point, not straight at a strafing ship", () => {
+    const rnd = mulberry32(1);
+    const ship = v(-60, 0, 0);
+    const vel = v(20, 0, 0);
+    const pool = createBoltPool();
+    const s = freshSaucer(-60, 0, 30, ship, rnd);
+    const lead = v(0, 0, 0);
+    const muzzle = v(0, 0, 0);
+    let warnSteps = 0;
+    let firstBolt: { x: number; y: number; z: number; dx: number; dy: number; dz: number } | null = null;
+    for (let i = 0; i < 1200 && !firstBolt; i++) {
+      stepSaucer(s, view(ship, vel), DT, rnd, sink, pool);
+      const got: { x: number; y: number; z: number; dx: number; dy: number; dz: number }[] = [];
+      takeNewBolts(pool, got);
+      // Through the warn, the cannon tracks the lead from its muzzle.
+      if (s.phase === "warn") {
+        leadAim(sink.muzzle(s, muzzle), ship, vel, ENEMY_BOLT_SPEED, lead);
+        expect(angle(s.ax, s.ay, s.az, lead)).toBeLessThanOrEqual(1 * DEG);
+        warnSteps++;
+      }
+      if (got.length > 0) {
+        firstBolt = got[0];
+        leadAim(firstBolt, ship, vel, ENEMY_BOLT_SPEED, lead);
+        // The cannon points down the bolt's (pre-spread) line…
+        expect(angle(s.ax, s.ay, s.az, lead)).toBeLessThanOrEqual(1 * DEG);
+        expect(angle(s.ax, s.ay, s.az, v(firstBolt.dx, firstBolt.dy, firstBolt.dz))).toBeLessThanOrEqual(SAUCER_SPREAD_RAD + 1 * DEG);
+        // …which is well off the straight line to the strafing ship.
+        expect(angle(s.ax, s.ay, s.az, v(ship.x - s.x, ship.y - s.y, ship.z - s.z))).toBeGreaterThan(2 * DEG);
+        expect(Math.hypot(s.ax, s.ay, s.az)).toBeCloseTo(1, 12);
+      }
+      ship.x += vel.x * DT;
+    }
+    expect(firstBolt).not.toBeNull();
+    expect(warnSteps).toBeGreaterThan(100);
+  });
+
   it("stops firing and drifts home while the ship is out", () => {
     const rnd = mulberry32(1);
     const centre = v(0, 0, 0);
@@ -431,6 +467,29 @@ describe("tardigrade AI", () => {
     expect(jetHit(10, 5, 0, 3, 0, 0, 70, 8, 0)).toBe(false);
     expect(jetHit(0, 0, 0, 1, 0, 0, 30, 0, 0, 20)).toBe(false);
     expect(jetHit(0, 0, 0, 1, 0, 0, 30, 4, 0, 90, 5)).toBe(true);
+  });
+
+  it("stops attacking and drifts home while the ship is out", () => {
+    const rnd = mulberry32(1);
+    const centre = v(0, 0, 0);
+    const ship = v(100, 0, 0);
+    const t = createTardigrade();
+    spawnTardigrade(t, 90, 0, 25, rnd, ship);
+    let guard = 0;
+    while (t.phase !== "charge" && guard++ < 1200) stepTardigrade(t, view(ship, v(0, 0, 0), centre), DT, rnd, sink);
+    expect(t.phase).toBe("charge");
+    expect(dist(t, centre)).toBeGreaterThan(80);
+    const out = view(ship, v(0, 0, 0), centre, false);
+    for (let i = 0; i < 1800; i++) {
+      stepTardigrade(t, out, DT, rnd, sink);
+      expect(t.phase).toBe("swim");
+      expect(t.alive).toBe(true);
+      const sp = speed(t);
+      expect(sp).toBeLessThanOrEqual(TARDIGRADE_SPEED + EPS);
+      expect(t.pose.swim).toBeCloseTo(sp / TARDIGRADE_SPEED, 12);
+    }
+    expect(dist(t, centre)).toBeLessThanOrEqual(35);
+    expect(t.pose.charge).toBe(0);
   });
 
   it("the ship leaving cancels a charge", () => {

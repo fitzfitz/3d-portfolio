@@ -8,7 +8,7 @@ import type { AimTarget, V3 } from "./types";
 
 /** The fields both monsters share. `fx, fy, fz` is the unit facing (world). */
 export interface MonsterBody extends AimTarget {
-  phaseT: number; hitT: number;
+  phaseT: number; hp: number; hitT: number;
   fx: number; fy: number; fz: number;
   scale: number;
 }
@@ -39,6 +39,22 @@ export function steer(
 function capSpeed(m: MonsterBody, maxSpeed: number): void {
   const sp = Math.hypot(m.vx, m.vy, m.vz);
   if (sp > maxSpeed) { const k = maxSpeed / sp; m.vx *= k; m.vy *= k; m.vz *= k; }
+}
+
+/** With the ship out, monsters head for the centre and settle this close. */
+export const HOME_R = 25;
+/** Pull toward the home radius (1/s). */
+const HOME_GAIN = 1.2;
+
+/**
+ * The ship is out: steer toward `centre` at up to `maxSpeed`, slowing to a
+ * stop at `HOME_R` from it (they stop firing and drift back).
+ */
+export function driftHome(m: MonsterBody, centre: V3, maxSpeed: number, accel: number, dt: number): void {
+  const dx = centre.x - m.x, dy = centre.y - m.y, dz = centre.z - m.z;
+  const d = Math.hypot(dx, dy, dz);
+  const want = d > HOME_R ? Math.min(maxSpeed, (d - HOME_R) * HOME_GAIN) / d : 0;
+  steer(m, dx * want, dy * want, dz * want, maxSpeed, accel, dt);
 }
 
 /**
@@ -94,6 +110,21 @@ export function slewFacing(m: MonsterBody, dx: number, dy: number, dz: number, m
 export function flinch(m: MonsterBody, dt: number, poseS: number): number {
   m.hitT = Math.max(0, m.hitT - dt);
   return m.hitT / poseS;
+}
+
+/**
+ * A bolt hit on a live monster: the flinch (`hitT = poseS`, `pose.hit = 1`)
+ * and one hit point. True on the defeating hit, which also starts the fade.
+ * A dying or gone monster takes none (false).
+ */
+export function takeHit(m: MonsterBody, pose: { hit: number }, poseS: number): boolean {
+  if (!m.alive) return false;
+  m.hitT = poseS;
+  pose.hit = 1;
+  m.hp--;
+  if (m.hp > 0) return false;
+  startFade(m);
+  return true;
 }
 
 /** Starts a defeat or a leave: no longer a target, the fade's clock at 0. */

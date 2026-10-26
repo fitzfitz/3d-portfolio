@@ -11,7 +11,8 @@ import {
 import { fireBolt, type BoltPool } from "./bolts";
 import { leadAim, spreadDir } from "./aim";
 import {
-  T_EPS, faceToward, flinch, moveLeashed, roll, slewFacing, startFade, steer, stepFade, type MonsterBody,
+  T_EPS, driftHome, faceToward, flinch, moveLeashed, roll, slewFacing, startFade, steer, stepFade, takeHit,
+  type MonsterBody,
 } from "./monsterMotion";
 import type { FightView, NestSink, V3 } from "./types";
 
@@ -44,8 +45,7 @@ const ORBIT_TANGENT = 9;
 const ORBIT_GAIN = 1.2;
 /** Steering acceleration (u/s²). */
 const SAUCER_ACCEL = 24;
-/** With the ship out, saucers head for the centre and settle this close. */
-const HOME_R = 25;
+/** With the ship out, saucers drift home at this speed. */
 const HOME_SPEED = SAUCER_SPEED * 0.6;
 /** Porthole chase laps per second during the warn. */
 const CHASE_RATE = 2;
@@ -86,9 +86,15 @@ export function spawnSaucer(s: Saucer, seed: number, x: number, y: number, z: nu
   s.scale = 1;
 }
 
-function fireShot(s: Saucer, v: FightView, rnd: () => number, sink: NestSink, bolts: BoltPool): void {
+/** Points the cannon (`a*`) at the lead point from the current muzzle; leaves `_muzzle`, `_lead` set. */
+function aimCannon(s: Saucer, v: FightView, sink: NestSink): void {
   sink.muzzle(s, _muzzle);
   leadAim(_muzzle, v.ship, v.shipVel, ENEMY_BOLT_SPEED, _lead);
+  s.ax = _lead.x; s.ay = _lead.y; s.az = _lead.z;
+}
+
+function fireShot(s: Saucer, v: FightView, rnd: () => number, sink: NestSink, bolts: BoltPool): void {
+  aimCannon(s, v, sink);
   spreadDir(_lead, SAUCER_SPREAD_RAD, rnd, _dir);
   fireBolt(bolts, "enemy", _muzzle.x, _muzzle.y, _muzzle.z, _dir.x, _dir.y, _dir.z,
     ENEMY_BOLT_SPEED, ENEMY_BOLT_RANGE, ENEMY_BOLT_DAMAGE);
@@ -122,17 +128,12 @@ export function stepSaucer(s: Saucer, v: FightView, dt: number, rnd: () => numbe
       v.shipVel.z + c * tang + (tz - s.z) * ORBIT_GAIN,
       SAUCER_SPEED, SAUCER_ACCEL, dt);
   } else {
-    // Drift home: toward the centre, settling within HOME_R.
-    const dx = v.centre.x - s.x, dy = v.centre.y - s.y, dz = v.centre.z - s.z;
-    const d = Math.hypot(dx, dy, dz);
-    const want = d > HOME_R ? Math.min(HOME_SPEED, (d - HOME_R) * ORBIT_GAIN) / d : 0;
-    steer(s, dx * want, dy * want, dz * want, SAUCER_SPEED, SAUCER_ACCEL, dt);
+    driftHome(s, v.centre, HOME_SPEED, SAUCER_ACCEL, dt);
   }
   moveLeashed(s, dt, v.centre);
-  const dx = ship.x - s.x, dy = ship.y - s.y, dz = ship.z - s.z;
-  slewFacing(s, dx, dy, dz, SAUCER_TURN_RATE * dt);
-  const al = Math.hypot(dx, dy, dz);
-  if (al > 0) { s.ax = dx / al; s.ay = dy / al; s.az = dz / al; }
+  slewFacing(s, ship.x - s.x, ship.y - s.y, ship.z - s.z, SAUCER_TURN_RATE * dt);
+  // The cannon aims where its bolt would meet the ship (from the muzzle as it stands).
+  aimCannon(s, v, sink);
 
   if (!v.shipIn) {
     // No new warn; a running warn or burst stops (and the clock restarts).
@@ -166,13 +167,8 @@ export function stepSaucer(s: Saucer, v: FightView, dt: number, rnd: () => numbe
 
 /** A bolt hit: flinch; true on the defeating hit. A dying or gone saucer takes none. */
 export function hitSaucer(s: Saucer): boolean {
-  if (!s.alive) return false;
-  s.hitT = SAUCER_HIT_POSE_S;
-  s.pose.hit = 1;
-  s.hp--;
-  if (s.hp > 0) return false;
+  if (!takeHit(s, s.pose, SAUCER_HIT_POSE_S)) return false;
   s.phase = "defeated";
-  startFade(s);
   s.pose.defeat = 1; s.pose.chase = -1;
   s.shotsLeft = 0;
   return true;
