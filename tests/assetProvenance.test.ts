@@ -35,6 +35,9 @@ const MODEL_GENERATORS: Record<string, string> = {
   "shipyard.glb": "scripts/blender/gen_shipyard.py",
   "dormant_gate.glb": "scripts/blender/gen_dormant_gate.py",
   "probe.glb": "scripts/blender/gen_probe.py",
+  // CC0 (Poly Haven, Wine Bottles 01): the generator pins the source glTF by
+  // SHA-256 and adapts it (assets-src/MANIFEST.md has the licence).
+  "bottle.glb": "scripts/blender/gen_bottle.py",
   // Saturn's ring strip (its maps are in BODY_MAPS).
   "w-ringed_ring.webp": "scripts/textures/gen_worlds.mjs",
 };

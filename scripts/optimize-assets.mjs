@@ -58,11 +58,14 @@ const TEXTURE_OPTS = {
   // lab folder until a game stage uses them, so they get the probe's q88.
   saucer: { quality: 88 },
   tardigrade: { quality: 88 },
+  // The message bottle (gen_bottle.py) has one 256² parchment/cork map and is
+  // never more than a few hundred px across: the probe's q88.
+  bottle: { quality: 88 },
 };
 const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
-const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe"];
+const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe", "bottle"];
 // Dormant space monsters: output goes to public/models-lab/, never to the packs.
 const LAB_MODELS = ["saucer", "tardigrade"];
 for (const k of [...MODELS, ...LAB_MODELS]) {
