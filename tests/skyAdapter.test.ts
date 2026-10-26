@@ -30,17 +30,18 @@ const me = JSON.stringify({ t: "me", p: [1, 2, 3], q: [0, 0, 0, 1], plume: "stoc
 /**
  * The Durable Object state: the sockets, and a storage whose get returns a
  * structured clone of what was put (as the runtime's does). `alarms` logs
- * every setAlarm time, and null for each deleteAlarm.
+ * every setAlarm time, and null for each deleteAlarm; `puts` logs each put's key.
  */
 function state(sockets: FakeSocket[], stored = new Map<string, unknown>()) {
   const alarms: (number | null)[] = [];
+  const puts: string[] = [];
   return {
-    stored, alarms,
+    stored, alarms, puts,
     acceptWebSocket() {},
     getWebSockets: () => sockets,
     storage: {
       get: async (k: string) => (stored.has(k) ? structuredClone(stored.get(k)) : undefined),
-      put: async (k: string, v: unknown) => { stored.set(k, structuredClone(v)); },
+      put: async (k: string, v: unknown) => { puts.push(k); stored.set(k, structuredClone(v)); },
       setAlarm: async (at: number) => { alarms.push(at); },
       deleteAlarm: async () => { alarms.push(null); },
     },
@@ -251,6 +252,69 @@ describe("Sky adapter: the ring race", () => {
     at(over.uploadBy);
     await sky.alarm();
     expect(last(a, "rresults")!.rows).toEqual([{ place: 1, cc: "ID", timeMs, rings: N, you: true }]);
+  });
+
+  it("a race message that changes nothing writes nothing: no put, no alarm", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(T0);
+    const { sky, sockets: [a, b], ctx } = raceSky(["a", "b"]);
+    await settle();
+    // b is in a lobby, so a race exists; a is in none.
+    await sky.webSocketMessage(b as never, '{"t":"rjoin"}');
+    const [puts, alarms] = [ctx.puts.length, ctx.alarms.length];
+    for (const m of ['{"t":"rleave"}', '{"t":"ragain"}', '{"t":"rring","i":1}', '{"t":"rsolo"}', '{"t":"rstart"}']) {
+      await sky.webSocketMessage(a as never, m);
+    }
+    expect(ctx.puts.length).toBe(puts);
+    expect(ctx.alarms.length).toBe(alarms);
+    // A refused upload changes nothing either.
+    const res = await sky.fetch(new Request("https://sky/race/result", { method: "POST", body: '{"race":"r","token":"t","stamps":[]}' }));
+    expect(res.status).not.toBe(200);
+    expect(ctx.puts.length).toBe(puts);
+    expect(ctx.alarms.length).toBe(alarms);
+    // A real change still persists and re-arms.
+    await sky.webSocketMessage(a as never, '{"t":"rjoin"}');
+    expect(ctx.puts.length).toBe(puts + 1);
+    expect(ctx.alarms.length).toBe(alarms + 1);
+    expect(ctx.alarms.at(-1)).toBe(T0 + LOBBY_COUNTDOWN_MS);
+    expect(storedRoom(ctx)!.races[0].racers.map((r) => r.pilot)).toEqual(["b", "a"]);
+  });
+
+  it("with RACE_SECRET missing, race messages and disconnects write nothing", async () => {
+    const { sky, sockets: [a, b], ctx } = raceSky(["a", "b"], { secret: "" });
+    await settle();
+    for (const m of ['{"t":"rjoin"}', '{"t":"rinvite"}', '{"t":"rring","i":1}', '{"t":"rleave"}']) {
+      await sky.webSocketMessage(a as never, m);
+    }
+    await sky.webSocketClose(b as never);
+    expect(race(a).every((m) => m.t === "rerr")).toBe(true);
+    expect(ctx.puts).toEqual([]);
+    expect(ctx.alarms).toEqual([]);
+  });
+
+  it("a disconnect from a pilot in no race writes nothing, while a race exists", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(T0);
+    const { sky, sockets: [a, b], ctx } = raceSky(["a", "b"]);
+    await settle();
+    await sky.webSocketMessage(a as never, '{"t":"rjoin"}');
+    const [puts, alarms] = [ctx.puts.length, ctx.alarms.length];
+    await sky.webSocketClose(b as never);
+    expect(ctx.puts.length).toBe(puts);
+    expect(ctx.alarms.length).toBe(alarms);
+  });
+
+  it("an alarm that changes nothing re-arms without a put", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(T0);
+    const { sky, sockets: [a], ctx } = raceSky(["a"]);
+    await settle();
+    await sky.webSocketMessage(a as never, '{"t":"rjoin"}');
+    const puts = ctx.puts.length;
+    at(T0 + 1_000); // early: the lone pilot's 30 s isn't up
+    await sky.alarm();
+    expect(ctx.puts.length).toBe(puts);
+    expect(ctx.alarms.at(-1)).toBe(T0 + ALONE_MS);
   });
 
   it("an upload that is not JSON is a 400 malformed", async () => {

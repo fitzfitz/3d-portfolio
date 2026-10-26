@@ -173,9 +173,9 @@ unit tested (`src/raceRoom.ts`, `tests/raceRoom.test.ts`).
   racing fails closed (`rerr off`, and `POST /race/result` is 503) while
   bottles, content and live-sky poses keep working.
 - **Stored race state.** The race room (lobbies, racers' tokens and ring
-  counters, deadlines) is put in the `Sky` Durable Object's storage after
-  every change, and an alarm at the next deadline carries it on through
-  hibernation. It is gone once results are out. After a restart, racers whose
+  counters, deadlines) is put in the `Sky` Durable Object's storage only when
+  an event changed it (a no-op message writes nothing), and an alarm at the
+  next deadline carries it on through hibernation. It is gone once results are out. After a restart, racers whose
   sockets are gone are unbound and can rejoin by token.
 - **One best lap.** `race_best` (`race.sql`) holds one row per course: the
   fastest checked lap and its path. With no row, the time to beat is the seed

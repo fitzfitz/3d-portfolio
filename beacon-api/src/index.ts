@@ -123,8 +123,9 @@ export default {
  * costs nothing. The room logic lives in sky.ts; this is the adapter.
  *
  * It also runs the ring races (raceRoom.ts). The race room is the one thing
- * stored: it is put after every race change, and an alarm at nextAlarm()
- * carries it on through hibernation.
+ * stored: it is put only when an event changed it (a no-op message writes
+ * nothing, so a flood can't burn the daily write quota), and an alarm at
+ * nextAlarm() carries it on through hibernation.
  */
 export class Sky {
   private ctx: DurableObjectState;
@@ -195,8 +196,9 @@ export class Sky {
       }, r.trailingIn);
     }
     if (r.race) {
+      const before = this.raceSnapshot();
       this.deliver((await onRaceMessage(this.race, pilot.id, pilot.cc, r.race, this.raceCtx())).out);
-      await this.persistRace();
+      await this.persistIfChanged(before);
     }
   }
 
@@ -205,8 +207,11 @@ export class Sky {
 
   /** A race deadline (nextAlarm): lobby countdowns, GO, the final call, the upload window, race again. */
   async alarm(): Promise<void> {
+    const before = this.raceSnapshot();
     this.deliver((await onRaceTick(this.race, this.raceCtx())).out);
-    await this.persistRace();
+    // The runtime clears an alarm as it fires, so a tick that changed nothing still re-arms.
+    if (this.raceSnapshot() !== before) await this.persistRace();
+    else await this.armRaceAlarm();
   }
 
   private async leave(ws: HibernatableSocket): Promise<void> {
@@ -219,8 +224,9 @@ export class Sky {
     this.deliver(onLeave(this.room, id, Date.now()));
     // A pilot in no race changes nothing, so the common disconnect writes nothing.
     if (this.race.races.length === 0) return;
+    const before = this.raceSnapshot();
     this.deliver(onRacePilotLeft(this.race, id, this.raceCtx()).out);
-    await this.persistRace();
+    await this.persistIfChanged(before);
   }
 
   /** POST /race/result from the Worker: the upload, then (on a finished 200) the best lap. */
@@ -228,9 +234,10 @@ export class Sky {
     const raw = await req.text();
     let body: unknown = null;
     try { body = JSON.parse(raw); } catch { /* onRaceUpload answers 400 malformed */ }
+    const before = this.raceSnapshot();
     const res = await onRaceUpload(this.race, body, this.raceCtx());
-    // Only a 200 changes the room (the racer's entry); a refusal writes nothing.
-    if (res.status === 200) await this.persistRace();
+    // Only a change is stored (a 200 sets the racer's entry); a refusal writes nothing.
+    await this.persistIfChanged(before);
     const best = bestCandidate(body, res);
     if (best) {
       try {
@@ -256,9 +263,22 @@ export class Sky {
     };
   }
 
+  /** The race room as plain JSON, to tell whether an event changed it. The room is a few KB. */
+  private raceSnapshot(): string { return JSON.stringify(this.race); }
+
+  /** Stores the room (and re-arms) only if it differs from `before`: a no-op writes nothing. */
+  private async persistIfChanged(before: string): Promise<void> {
+    if (this.raceSnapshot() !== before) await this.persistRace();
+  }
+
   /** Stores the race room and points the alarm at its next deadline (or clears it). */
   private async persistRace(): Promise<void> {
     await this.ctx.storage.put("race", this.race);
+    await this.armRaceAlarm();
+  }
+
+  /** Points the alarm at the room's next deadline, or clears it. */
+  private async armRaceAlarm(): Promise<void> {
     const at = nextAlarm(this.race);
     if (at === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(at);

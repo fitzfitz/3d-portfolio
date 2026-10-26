@@ -54,9 +54,10 @@ starts a 15 s countdown (up to eight race); alone for 30 s, or with RACE THE
 BEST LAP, you race a replay of the course's best lap. Past the start gate, the
 course's rings show only to racers. Everyone on the grid is held to normal warp,
 with no jumps or docking, for a three-minute limit. The room stamps each ring as
-you pass it (signed, in order, never faster than warp allows), and the results
-and the stored best lap are built from those stamps alone
-(`beacon-api/README.md`). Joining turns live sky on for the race if it was off.
+you pass it (signed, in order, never faster than warp allows). Times come from
+those stamps, so editing the browser can't change one; the best lap's replay is
+only checked for plausibility against them (`beacon-api/README.md`). Joining
+turns live sky on for the race if it was off.
 
 **Messages in bottles.** If a beacon API is configured, `B` (or the BOTTLE (B)
 button) opens a small panel: write a note of up to 140 characters and Send

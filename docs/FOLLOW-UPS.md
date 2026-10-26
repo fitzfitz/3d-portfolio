@@ -33,6 +33,70 @@ Delete an entry when it is fixed.
   - L3 leaves the lobby: the pad's race button also leaves, and a stray stick
     click while waiting drops the pilot out. Leave on a held L3, or only from
     the LEAVE button.
+  - Locked out after a network switch: after Wi-Fi to cellular the old socket
+    stays open at the edge, so the rejoin by token gets `rerr busy`
+    (`beacon-api/src/raceRoom.ts:253`). Claims are refused, `rover` goes to the
+    dead socket, and the racer is stuck until the R17 failsafe frees them.
+    Treat a bound pilot with no pose for ~5 s mid-race as gone, let the token
+    rebind to the newest socket, or have the client retry `rjoin` while `busy`
+    (`src/utils/raceSession.ts:71`).
+  - Lost stamp: a socket drop after the room signs ring i but before `rstamp`
+    arrives leaves the client claiming ring i for ever (refused, as the room's
+    `next` is i+1). On a running rebind, `resend` (`raceRoom.ts:124`) can
+    re-sign and resend the last stamp (`i = next − 1`, `at = lastAt`); it is
+    deterministic, so no new state.
+  - Unbeatable best lap: the room signs rings against the pilot's own reported
+    pose, and the speed rule allows `SPEED_SLACK_S` per leg
+    (`src/utils/raceProtocol.ts:245`), so a scripted client can bank about 37 s
+    against about 45 s for an honest pilot at warp. The `race_best` row is
+    permanent. Add a whole-lap floor in `checkLap` (Σ leg / `RACE_SPEED` minus
+    one small total slack) or shrink the per-leg slack. Until then the owner
+    can reset it in the D1 console: `DELETE FROM race_best WHERE course =
+    'loop-2'`. Also make `checkPath`'s comparisons NaN-safe and note that it
+    assumes `checkLap` ran.
+  - Room and Durable Object hardening (`beacon-api/src/index.ts`,
+    `raceRoom.ts`, `raceHttp.ts`): persist in a `finally` and re-arm the
+    alarm on load; catch a `forwardResult` rejection and answer 503 with CORS
+    instead of a CORS-less 500; let `UploadResult` carry the parsed stamps and
+    ghost so `bestCandidate` doesn't re-parse; check a chunked upload's size
+    while reading, not after buffering it (as `/beacons` also does); export
+    one `HEX32` instead of three (`raceRoom.ts`, `raceProtocol.ts`,
+    `raceSession.ts`). Under R4 one socket blip can end the race at once for a
+    trailing racer when everyone still bound has finished (`leaveRaces` →
+    `maybeEnd`); they rejoin into the upload window with a DNF.
+  - Client race flow (`src/utils/raceController.ts`, `raceJoin.ts`): treat a
+    409 `duplicate` on the upload retry as ok, so `RESULT_LOST_LINE` doesn't
+    play when the first upload landed; remove an expired `fitz-race-run` in
+    `readRun` (the spec says it clears on the next visit); `watchRaceOver`
+    calls with `void`, so catch its rejection; reset `inviteCopyWanted` on
+    `rerr`; give the token rejoin a reply timeout; exit photo mode in the
+    `rgrid` handler, since photo mode during the grid skips placement and the
+    hold (`Spaceship.tsx:423` returns before the grid block); a late `?race=`
+    link should start at the spawn pad, not on the grid.
+  - Scene and HUD polish: the waypoint counts `RING x/9` then FINISH
+    (`WaypointDriver.tsx:61`) while the HUD counts `RING x/10`
+    (`RaceHUD.tsx:95`), so pick one; the controls card shows `RACE R` with no
+    live-sky server (`HUDOverlay.tsx`; `raceKey` ignores `liveSkyUrl()` too)
+    and reads RACE over R, not the plan's "R · RACE"; hide the controls card
+    while a race card is up. Perf: `RaceCourse.tsx:224` builds a template-string
+    key every frame even for idle visitors (compare the fields instead);
+    `crossesGate` (`src/utils/race.ts`) and `ringToClaim`
+    (`src/utils/raceScene.ts`) allocate while running; the near-gate rAF loop
+    runs for the whole idle session; the grid hold in `Spaceship.tsx`
+    duplicates the photo-mode and orbit freeze bodies.
+  - Test and e2e hygiene: the ring-miss test bump depends on `RING_RADIUS`, and
+    the grid-start test doesn't tell the `i === 0` skip apart; the "9 to 11
+    rings" title, the redundant 20 u spacing test, `gridSlot` silently wrapping
+    slots ≥ 8 and the seed lap's stretched last tick; add `rjoin {token}` for a
+    done race and rule 1 for `rstart`, `rsolo` and `ragain`; the isolate's
+    `best` cache keeps the first `env.DB` (test-only); the deep-link pose test
+    lives in `raceHud.test`, not the flightGate test. In e2e,
+    `tests/e2e/run.mjs` still costs the race probe at 13 though it runs about
+    10 s longer; `race.probe.mjs`'s jumps check has no positive control, its
+    cleanup is skipped on a throw, and the INVITE check forces `data-quiet`.
+  - Docs: `beacon-api/README.md` deploys D1, then the secret, then the Worker;
+    the stated order is secret, D1, Worker, site. Both are safe (it says steps
+    2 and 3 may swap); mention it in the deploy request.
 
 - **Space monsters, for the combat stage** (notes for the stage that wires the
   saucer and tardigrade into the game, not new work now):
