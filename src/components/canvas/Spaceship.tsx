@@ -26,7 +26,7 @@ import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
 import { cruiseLimit, freeDistance, stepCruise } from "../../utils/cruise";
-import { WARP_LANDMARKS } from "../../utils/crystalField";
+import { WARP_LANDMARKS } from "../../utils/warpLandmarks";
 import {
   stepGravity, gravityMode, SlingshotWatch, wellAt, SUN_WELL_ID, type Well,
   planetWell, SUN_WELL_G, SUN_WELL_RADIUS, G_MAX,

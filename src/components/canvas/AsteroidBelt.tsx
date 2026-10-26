@@ -30,7 +30,7 @@ const rockPos = { x: 0, y: 0, z: 0 };
 const dummy = new THREE.Object3D();
 /** Tether position scratch (mining). */
 const _tp = { x: 0, y: 0, z: 0 };
-/** Module-level so it survives the classic-résumé remount (like FuelCrystals' ventedAnnounced). */
+/** Module-level so it survives the classic-résumé remount (like HUDOverlay's dryAnnouncedThisSpell). */
 const firstOreLine = new FirstOreLine();
 const lastBroadcast = { id: 0, at: -Infinity };
 const oreLines = new ChatterScheduler(chatterPools);

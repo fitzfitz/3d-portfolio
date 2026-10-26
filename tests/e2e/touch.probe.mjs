@@ -1,4 +1,4 @@
-import { withPage, tap, settle, nextFrames, readStore, pollUntil, PLANET_STANDOFF } from "./harness.mjs";
+import { withPage, tap, settle, nextFrames, readStore, pollUntil, toDeepSpace, PLANET_STANDOFF } from "./harness.mjs";
 import { KnownDevices } from "puppeteer-core";
 
 const readInput = (page) => page.evaluate(() => ({ ...window.__fitz.flight.input }));
@@ -14,6 +14,12 @@ export default async function run() {
 
     const coarse = await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches);
     checks.check("emulated viewport reports pointer: coarse", coarse);
+
+    // The spawn card sits over PHOTO's spot on a phone, so PHOTO waits until
+    // the ship leaves the pad (the card goes then too).
+    const atSpawn = await page.evaluate(() => { const s = window.__fitz.store.getState(); return s.sceneReady && s.isNearSpawn; });
+    const photoAtSpawn = await page.$('[data-testid="touch-photo"]');
+    checks.check("PHOTO stays hidden while the spawn card is up", atSpawn && photoAtSpawn === null, `atSpawn=${atSpawn}`);
 
     // The flight buttons are thumbed mid-flight without looking: every pair
     // needs a real gap, or reaching for BOOST lands on BEAM.
@@ -153,6 +159,37 @@ export default async function run() {
     checks.check("GUIDE again sends it back to roaming", sent, `state=${await guideState()}`);
     const off = (await pollUntil(async () => ((await pressed()) === "false" ? true : null), { timeoutMs: 2000 })).ok;
     checks.check("GUIDE reads as not pressed once it roams", off, `aria-pressed=${await pressed()}`);
+
+    // PHOTO waited while the ship sat on the spawn pad (checked at the top).
+    // Off the pad it appears, clear of the other buttons.
+    await toDeepSpace(page);
+    const photoShown = (await pollUntil(async () => ((await page.$('[data-testid="touch-photo"]')) ? true : null), { timeoutMs: 5000 })).ok;
+    checks.check("PHOTO appears once the ship is off the spawn pad", photoShown);
+    const photoGaps = await page.evaluate(() => {
+      const r = (id) => document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+      const p = r("touch-photo");
+      const gap = (a, b) => Math.max(b.left - a.right, a.left - b.right, b.top - a.bottom, a.top - b.bottom);
+      return ["touch-rise", "touch-dive", "touch-beam", "touch-boost", "touch-guide"].map((id) => ({ id, gap: p && r(id) ? Math.round(gap(p, r(id))) : -1 }));
+    });
+    checks.check("PHOTO keeps at least 8px from every flight button", photoGaps.every((g) => g.gap >= 8),
+      photoGaps.map((g) => `${g.id}=${g.gap}px`).join(" "));
+
+    // PHOTO enters photo mode, as P does. The touch controls step aside, and
+    // the PHOTO_MODE label is a button that brings them back.
+    await tap(page, "touch-photo", 300);
+    const inPhoto = (await pollUntil(async () => ((await readStore(page)).photoMode ? true : null), { timeoutMs: 3000 })).ok;
+    checks.check("PHOTO enters photo mode", inPhoto);
+    const stepAside = (await pollUntil(async () => ((await page.$('[data-testid="touch-joystick"]')) === null ? true : null), { timeoutMs: 2000 })).ok;
+    checks.check("the touch controls step aside in photo mode", stepAside);
+    const exitBtn = await page.$('[data-testid="photo-exit"]');
+    checks.check("photo mode shows a tappable exit on touch", !!exitBtn);
+    if (exitBtn) {
+      await tap(page, "photo-exit", 300);
+      const out = (await pollUntil(async () => (!(await readStore(page)).photoMode ? true : null), { timeoutMs: 3000 })).ok;
+      checks.check("tapping the PHOTO_MODE label leaves photo mode", out);
+      const back = (await pollUntil(async () => ((await page.$('[data-testid="touch-joystick"]')) !== null ? true : null), { timeoutMs: 2000 })).ok;
+      checks.check("the touch controls come back after photo mode", back);
+    }
 
     // SCAN only exists while a scannable is in range — put one there.
     const name = await page.evaluate(async (standoff) => {

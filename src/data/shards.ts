@@ -3,6 +3,9 @@ export interface Shard {
   fact: string;
 }
 
+/** Ship-to-shard distance that collects it. */
+export const SHARD_PICKUP_RADIUS = 3;
+
 /**
  * Collectible data shards scattered across the system. 10 total.
  *

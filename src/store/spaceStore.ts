@@ -53,7 +53,6 @@ export type { WorldEventState } from "./slices/hud";
 // Per-frame objects, mutable outside React. The same objects, re-exported: importers keep using this path.
 export { flight, type FlightInput } from "./flightState";
 export { bodies } from "./bodies";
-export { crystalSlots, type CrystalSlot } from "./crystalSlots";
 export { worldClock } from "./worldClock";
 
 export interface SpaceState

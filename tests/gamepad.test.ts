@@ -122,6 +122,18 @@ describe("logbook on the pad", () => {
   });
 });
 
+describe("jellyfish guide on the pad", () => {
+  it("R3 (button 11) calls the guide on its press edge only", () => {
+    const press = (...i: number[]) => Array.from({ length: 17 }, (_, k) => i.includes(k));
+    expect(padActions(press(), press(11))).toEqual([{ kind: "guide" }]);
+    expect(padActions(press(11), press(11))).toEqual([]);
+  });
+  it("leaves L3 (button 10) free", () => {
+    const press = (...i: number[]) => Array.from({ length: 17 }, (_, k) => i.includes(k));
+    expect(padActions(press(), press(10))).toEqual([]);
+  });
+});
+
 describe("PAD_JUMPS", () => {
   it("only names ids that exist in JUMP_TARGETS", () => {
     const ids = new Set(JUMP_TARGETS.map((t) => t.id));

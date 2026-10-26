@@ -76,8 +76,6 @@ export interface FitzDebug {
   setAttitude: ((yaw: number, pitch: number) => void) | null;
   /** Live probe positions (probeState.ts), registered by ProjectProbes in dev. Null until mounted. */
   probes: typeof import("../store/probeState").probePos | null;
-  /** Live crystal slots, registered by FuelCrystals in dev. Null until mounted. */
-  crystals: { x: number; y: number; z: number; active: boolean }[] | null;
   /**
    * Live plasma anomaly pool, registered by PlasmaAnomalies in dev. Null
    * until mounted. Only `active` is asserted on by e2e today, so the shape
@@ -159,7 +157,6 @@ export const fitzDebug: FitzDebug = {
   teleport: null,
   setAttitude: null,
   probes: null,
-  crystals: null,
   anomalies: null,
   cargoSwerve: null,
   jelly: null,

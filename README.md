@@ -22,10 +22,10 @@ Tailwind, on Vite.
 | `Space` | Pitch up |
 | `C` / `X` | Pitch down |
 | `E` (hold) | Scan a nearby object |
-| `F` (hold) | Tractor beam: reel in crystals, belt pebbles and project probes |
+| `F` (hold) | Tractor beam: mine belt pebbles, reel in project probes, reel yourself to a data shard |
 | `P` | Photo mode |
+| `J` | Call the jellyfish guide, or send it back |
 | `B` | Drop a beacon (only when a beacon API is configured) |
-| `J` | Summon the space jellyfish |
 | `1`–`3` | Jump next to a project probe (grab it with `F` to open its dossier) |
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
@@ -37,6 +37,9 @@ first, one key each, then the three destinations, so with more projects every
 destination key moves up by one (six projects: career `7`, shipyard `8`,
 contact `9`).
 
+The buttons along the bottom left carry their own keys: LOGBOOK (`L`, `X` on a
+pad), PATCH_NOTES (`N`) and, with a beacon API, BEACON (`B`).
+
 No flying required: the spawn card has jump buttons for each project, the
 sector list (bottom right) jumps on click, and a waypoint marks the next unread
 probe. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
@@ -44,7 +47,7 @@ the link to send someone who won't fly.
 
 **Time trial.** The amber ring in the inner system, near the sun, starts a lap of nine rings
 out past the orbits of Mercury and Venus and back. Fly them in order and finish through
-the start ring. Par is 0:35, and one tank of warp won't quite cover the loop.
+the start ring. Par is 0:35, and one tank of warp covers the whole loop, so par is easy to beat.
 Your best time is saved in this browser, and later laps race a ghost of that
 best lap. A jump or an orbit lock aborts the lap.
 
@@ -55,14 +58,17 @@ text, and later visitors can scan it. Without the API the feature is absent. See
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
-photo mode, `B` closes a dossier, `LB` grabs a probe, the d-pad (clockwise from up) jumps like
+photo mode, `X` opens the logbook, `B` closes a dossier, `LB` grabs a probe, `R3` (right-stick click) calls the jellyfish guide, the d-pad (clockwise from up) jumps like
 `1`–`4`, View jumps to the shipyard, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
-Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`) render only when the browser
+Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`, `GUIDE`, `PHOTO`) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
-some configurations, devtools device emulation.
+some configurations, devtools device emulation. `GUIDE` calls the jellyfish guide like `J`;
+`PHOTO` enters photo mode (it shows once you leave the spawn pad, and hides on short, sideways screens), and tapping the
+`PHOTO_MODE` label leaves it.
 
-Warp costs fuel; floating crystals refuel it. In open space warp keeps
+Warp costs fuel, and the drive refills the tank on its own whenever you let go
+of warp (empty to full in 20 seconds); mining belt pebbles tops it up too. In open space warp keeps
 building (long-range cruise, up to 12×), so Earth to Neptune takes seconds,
 and it eases off as you near anything. **An empty tank never strands
 you** — it disables warp only, and normal thrust stays fuel-blind in every
@@ -156,7 +162,7 @@ the common pack every device downloads.
 
 | Asset | Generator |
 | --- | --- |
-| Hero ship, contact portal, fuel crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
+| Hero ship, contact portal, plasma crystal | `scripts/blender/gen_spaceship.py`, `gen_portal.py`, `gen_crystal.py` |
 | Asteroids, cargo ship, comet head, jellyfish, project probe | `scripts/blender/gen_*.py` |
 | Career station, buoy, shipyard, dormant gate | `scripts/blender/gen_career_station.py`, `gen_buoy.py`, `gen_shipyard.py`, `gen_dormant_gate.py` |
 | Phobos and Deimos (built to P. C. Thomas's PDS shape models) | `scripts/blender/gen_mars_moons.py` |
@@ -221,7 +227,7 @@ notify on an unchanged value. `tests/e2e/perf.probe.mjs` enforces this by
 asserting `commits=0` across five seconds of steady flight; if you add a
 per-frame `set()`, that probe is what will catch it.
 
-**Anything repeated is instanced.** Asteroids, crystals, shards and NPC traffic
+**Anything repeated is instanced.** Asteroids, plasma anomalies, shards and NPC traffic
 are each a single `InstancedMesh` with per-instance matrices updated in one
 loop. Inactive slots scale to zero rather than resizing an array.
 
@@ -298,6 +304,5 @@ charted worlds, then merge the site.
 `docs/archive/specs/` holds a design document per feature and
 `docs/archive/plans/` the implementation plan that followed it, each with a
 verification record appended. They are the reasoning behind decisions the code
-cannot explain on its own — why fuel lives outside the store, why a refuel
-confirms only when it lifts you out of low, why the radar gates crystals on 3D
-distance rather than horizontal.
+cannot explain on its own — why fuel lives outside the store, why the radar
+gates its blips on 3D distance rather than horizontal.

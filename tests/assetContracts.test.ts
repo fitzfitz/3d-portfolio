@@ -13,7 +13,7 @@ import sharp from "sharp";
 
 /**
  * Contracts between the generated models in public/models and the code that
- * loads them by name, size or position (Spaceship, CargoTraffic, FuelCrystals,
+ * loads them by name, size or position (Spaceship, CargoTraffic,
  * PlasmaAnomalies, SpacePlanets, SolarMoons, CareerStation, CareerTrail, Shipyard, DormantGate, ProjectProbes). Reads the shipped files, which are quantized
  * and meshopt-compressed, so it checks exactly what visitors download.
  */
@@ -311,7 +311,7 @@ describe("cargo ship (cargo_ship.glb)", () => {
   });
 });
 
-describe("fuel crystal (space_crystal.glb)", () => {
+describe("plasma crystal (space_crystal.glb)", () => {
   it("is one node, one mesh, one primitive, one Energy_Crystal material", async () => {
     const root = (await load("space_crystal")).getRoot();
     expect(root.listNodes()).toHaveLength(1);
@@ -332,9 +332,10 @@ describe("fuel crystal (space_crystal.glb)", () => {
   });
 
   it("stays inside its triangle budget", async () => {
-    // Drawn instanced 80 times (40 fuel slots + 40 plasma anomalies), so
-    // every triangle here costs 80 against the deep-space ceiling; a
-    // 626-triangle cluster broke it.
+    // Drawn instanced up to 40 times (plasma anomalies; it also drew 40 fuel
+    // crystals until those went in 2026-10-26), so every triangle here costs
+    // 40 against the deep-space ceiling; a 626-triangle cluster broke it when
+    // it cost 80. The budget is kept as it was.
     const t = triangles(await load("space_crystal"));
     expect(t).toBeGreaterThanOrEqual(300);
     expect(t).toBeLessThanOrEqual(520);

@@ -35,8 +35,8 @@ export default async function run() {
     await frames(page);
     let s = await readStore(page);
     checks.check("connecting a pad sets padConnected", s.padConnected === true);
-    checks.check("connecting a pad broadcasts the control map",
-      /CONTROLLER LINKED/.test(s.broadcast?.text ?? ""), s.broadcast?.text ?? "none");
+    checks.check("connecting a pad broadcasts the control map, R3 GUIDE included",
+      /CONTROLLER LINKED/.test(s.broadcast?.text ?? "") && /R3 GUIDE/.test(s.broadcast?.text ?? ""), s.broadcast?.text ?? "none");
 
     // An idle pad must not overwrite another input source's channels.
     await page.evaluate(() => { window.__fitz.flight.input.steer = 0.5; });
@@ -92,6 +92,16 @@ export default async function run() {
     input = await readInput(page);
     checks.check("right stick up pitches up (ascend)", input.ascend === true);
     await setAxis(page, 3, 0); await frames(page);
+
+    // R3 (right-stick click) calls the jellyfish guide and sends it back, as J
+    // does. A fresh profile has unread dossiers, so it has somewhere to lead.
+    const guideState = () => page.evaluate(() => window.__fitz.jellyGuide?.state ?? null);
+    await press(page, 11);
+    const called = await pollUntil(async () => ((await guideState()) !== "roaming" ? true : null), { timeoutMs: 3000 });
+    checks.check("R3 calls the jellyfish guide", called.ok, `state=${await guideState()}`);
+    await press(page, 11);
+    const sent = await pollUntil(async () => ((await guideState()) === "roaming" ? true : null), { timeoutMs: 3000 });
+    checks.check("R3 again sends it back to roaming", sent.ok, `state=${await guideState()}`);
 
     // D-pad jumps mirror keys 1–4 (up, right, down: the probes; left: the
     // career station); Menu = the contact portal, View = the shipyard.

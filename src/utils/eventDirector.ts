@@ -5,10 +5,16 @@
  * sequence is testable. Its clock is flying time: it only advances on
  * unpaused steps, so an event caught by an orbit lock or photo mode resumes
  * where it was.
+ *
+ * Reduced motion: comets and convoys are slow movers, so they still run (their
+ * badges and the logbook's "all done" stay reachable); the solar flare is a
+ * flash, so it is never picked, and one already playing ends at once.
  */
 
 export type WorldEventKind = "comet" | "flare" | "convoy";
 export const WORLD_EVENT_KINDS: readonly WorldEventKind[] = ["comet", "flare", "convoy"];
+/** The kinds that play under reduced motion: slow movers, no flash. */
+export const REDUCED_MOTION_KINDS: readonly WorldEventKind[] = ["comet", "convoy"];
 export const FIRST_EVENT_AT = 45;
 export const GAP_MIN = 60;
 export const GAP_SPAN = 60;
@@ -32,8 +38,9 @@ export function createDirector(random: () => number = Math.random): DirectorStat
   return { clock: 0, nextAt: FIRST_EVENT_AT, active: null, lastKind: null, nextId: 1, random };
 }
 
-function pickKind(s: DirectorState): WorldEventKind {
-  const options = WORLD_EVENT_KINDS.filter((k) => k !== s.lastKind);
+function pickKind(s: DirectorState, reducedMotion: boolean): WorldEventKind {
+  const kinds = reducedMotion ? REDUCED_MOTION_KINDS : WORLD_EVENT_KINDS;
+  const options = kinds.filter((k) => k !== s.lastKind);
   return options[Math.min(options.length - 1, Math.floor(s.random() * options.length))];
 }
 
@@ -55,19 +62,20 @@ export function endEvent(s: DirectorState): ActiveEvent | null {
 
 /**
  * One frame. Paused: nothing moves. Otherwise the clock advances, an active
- * event ends on time, and a due start fires unless reduced motion is on or a
- * race / busy radio holds it (held, not skipped: it fires once clear).
+ * event ends on time (a flare at once under reduced motion), and a due start
+ * fires unless a race / busy radio holds it (held, not skipped: it fires once
+ * clear). Under reduced motion the start is a comet or a convoy, never a flare.
  */
 export function stepDirector(s: DirectorState, inp: DirectorInput, out: DirectorStep = { started: null, ended: null }): DirectorStep {
   out.started = null; out.ended = null;
   if (inp.paused) return out;
   s.clock += inp.dt;
   if (s.active) {
-    if (s.clock >= s.active.endsAt) out.ended = endEvent(s);
+    if (s.clock >= s.active.endsAt || (inp.reducedMotion && s.active.kind === "flare")) out.ended = endEvent(s);
     return out;
   }
-  if (inp.reducedMotion || inp.raceRunning || inp.radioBusy) return out;
-  if (s.clock >= s.nextAt) out.started = begin(s, pickKind(s));
+  if (inp.raceRunning || inp.radioBusy) return out;
+  if (s.clock >= s.nextAt) out.started = begin(s, pickKind(s, inp.reducedMotion));
   return out;
 }
 

@@ -6,7 +6,8 @@ import { PROBE_IDS } from "../data/probes";
  * mainstream controller reports in Chrome, Firefox and Safari:
  *
  *   axes     0 left-stick X · 1 left-stick Y · 2 right-stick X · 3 right-stick Y  (Y is +1 down)
- *   buttons  0 A · 1 B · 2 X (logbook) · 3 Y · 4 LB · 5 RB · 6 LT · 7 RT · 8 View/Back · 9 Menu/Start · 12–15 d-pad up/down/left/right
+ *   buttons  0 A · 1 B · 2 X (logbook) · 3 Y · 4 LB · 5 RB · 6 LT · 7 RT · 8 View/Back · 9 Menu/Start ·
+ *            10 L3 (left-stick click, free) · 11 R3 (right-stick click: jellyfish guide) · 12–15 d-pad up/down/left/right
  */
 export interface PadLike {
   readonly axes: readonly number[];
@@ -24,7 +25,7 @@ const STICK_DEADZONE = 0.15;
 /** Pitch is a digital channel, so the right stick needs a firm push to engage it. */
 const PITCH_THRESHOLD = 0.5;
 
-const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7, VIEW = 8, MENU = 9;
+const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7, VIEW = 8, MENU = 9, R3 = 11;
 const DPAD_UP = 12, DPAD_DOWN = 13, DPAD_LEFT = 14, DPAD_RIGHT = 15;
 
 /** Zeroes resting drift, then rescales so full deflection still reaches ±1. */
@@ -70,7 +71,7 @@ export function padFlightChanges(prev: Readonly<PadFlight>, next: Readonly<PadFl
   return out;
 }
 
-export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook" } | { kind: "jump"; id: string };
+export type PadAction = { kind: "photo" } | { kind: "close" } | { kind: "logbook" } | { kind: "guide" } | { kind: "jump"; id: string };
 
 /**
  * Jumps by destination id, never by table index, so a new destination row
@@ -93,6 +94,10 @@ export function padActions(prev: readonly boolean[], next: readonly boolean[]): 
   if (edge(Y)) out.push({ kind: "photo" });
   if (edge(B)) out.push({ kind: "close" });
   if (edge(X)) out.push({ kind: "logbook" });
+  // R3 calls or dismisses the jellyfish guide, as J does. A stick click, not a
+  // face button: every face and shoulder button already has a job, and the
+  // right stick only pitches, so a click there is the least likely by accident.
+  if (edge(R3)) out.push({ kind: "guide" });
   for (const [b, id] of PAD_JUMPS) if (edge(b)) out.push({ kind: "jump", id });
   return out;
 }

@@ -9,11 +9,19 @@ const face = (page, x, z) => page.evaluate((tx, tz) => {
   const f = window.__fitz.flight;
   window.__fitz.setAttitude(Math.atan2(tx - f.x, tz - f.z), 0);
 }, x, z);
-/** Parks the ship in deep space and puts crystal slot 0 20u ahead of it. */
-const crystalAhead = (page) => page.evaluate(() => {
-  window.__fitz.teleport(150, 60, 150);
-  window.__fitz.setAttitude(0, 0);
-  Object.assign(window.__fitz.crystals[0], { x: 150, y: 60, z: 170, active: true });
+/** Parks the ship 8u from main-belt pebble 0, facing it. */
+const pebbleAhead = async (page) => {
+  await page.evaluate(() => {
+    const w = window.__fitz.mining.rings[0].world;
+    window.__fitz.teleport(w[0], w[1], w[2] - 8);
+  });
+  const target = await page.evaluate(() => { const w = window.__fitz.mining.rings[0].world; return { x: w[0], z: w[2] }; });
+  await face(page, target.x, target.z);
+};
+/** True once the HUD's ORE readout shows: a pebble was pulled in and absorbed. */
+const oreShown = (page) => page.evaluate(() => {
+  const el = document.querySelector('[data-testid="hud-ore"]');
+  return !!el && el.style.display !== "none" && /ORE \d+\/16/.test(el.textContent ?? "");
 });
 
 async function edge(page, checks) {
@@ -157,37 +165,25 @@ async function gravity(page, checks) {
 
 async function beam(page, checks) {
   await page.keyboard.press("KeyW");
-  await crystalAhead(page);
+  // Mining: park 8u from a main-belt pebble, facing it. The beam pulls the
+  // pebble in and absorbs it as ore (the fuel crystals it used to pull are gone).
+  await pebbleAhead(page);
   await settle(page, 1000);
   const programsBefore = await page.evaluate(() => window.__fitz.gl.info.programs.length);
   await page.keyboard.down("KeyF");
-  const got = await pollUntil(() => page.evaluate(() => !window.__fitz.crystals[0].active), { timeoutMs: 10_000, intervalMs: 200 });
+  await settle(page, 300);
   const during = await page.evaluate(() => ({
     programs: window.__fitz.gl.info.programs.length,
     calls: window.__fitz.perfStats.calls,
     cone: window.__fitz.scene.getObjectByName("TractorBeamCone")?.visible === true,
   }));
+  const ore = await pollUntil(() => oreShown(page), { timeoutMs: 15_000, intervalMs: 250 });
   await page.keyboard.up("KeyF");
-  checks.check("holding F pulls in and collects a crystal 20u ahead", got.ok);
+  checks.check("mining a belt pebble shows the ORE readout", ore.ok);
   checks.check("the beam cone shows while F is held", during.cone);
   checks.check("the beam adds no shader program", during.programs === programsBefore,
     `before=${programsBefore} during=${during.programs}`);
   checks.check("draw calls stay within the close-approach ceiling with the beam on", during.calls <= 110, `calls=${during.calls}`);
-
-  // Mining: park 8u from a main-belt pebble, facing it.
-  await page.evaluate(() => {
-    const w = window.__fitz.mining.rings[0].world;
-    window.__fitz.teleport(w[0], w[1], w[2] - 8);
-  });
-  const target = await page.evaluate(() => { const w = window.__fitz.mining.rings[0].world; return { x: w[0], z: w[2] }; });
-  await face(page, target.x, target.z);
-  await page.keyboard.down("KeyF");
-  const ore = await pollUntil(() => page.evaluate(() => {
-    const el = document.querySelector('[data-testid="hud-ore"]');
-    return !!el && el.style.display !== "none" && /ORE \d+\/16/.test(el.textContent ?? "");
-  }), { timeoutMs: 15_000, intervalMs: 250 });
-  await page.keyboard.up("KeyF");
-  checks.check("mining a belt pebble shows the ORE readout", ore.ok);
 
   // Shard reel: shard 1 (src/data/shards.ts; moved clear of the real orbits
   // in Task 5); park 22u short of it, facing it.
@@ -221,11 +217,11 @@ async function reducedMotion(page, checks) {
   await settle(page, 600);
   const op = await hazeOpacity(page);
   checks.check("reduced motion: the haze still shows", op > 0.5, `opacity=${op}`);
-  await crystalAhead(page);
+  await pebbleAhead(page);
   await page.keyboard.down("KeyF");
-  const got = await pollUntil(() => page.evaluate(() => !window.__fitz.crystals[0].active), { timeoutMs: 10_000, intervalMs: 200 });
+  const got = await pollUntil(() => oreShown(page), { timeoutMs: 15_000, intervalMs: 250 });
   await page.keyboard.up("KeyF");
-  checks.check("reduced motion: the beam still pulls a crystal", got.ok);
+  checks.check("reduced motion: the beam still mines a pebble", got.ok);
 }
 
 /**

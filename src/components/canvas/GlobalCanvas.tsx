@@ -39,7 +39,6 @@ import Beacons from "./Beacons";
 import Ghosts from "./Ghosts";
 import { liveSkyUrl } from "../../utils/liveSky";
 import { beaconApiUrl } from "../../utils/beaconApi";
-import FuelCrystals from "./FuelCrystals";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
 import SkyBackdrop from "./SkyBackdrop";
@@ -684,9 +683,6 @@ function GlobalCanvas() {
 
             {/* Other pilots flying now — only when the live sky URL is configured */}
             {LIVE_SKY_ENABLED && <Ghosts />}
-
-            {/* Floating warp-fuel crystals */}
-            <FuelCrystals />
 
             {/* Headless: drives proximity scan targeting/progress/report dispatch */}
             <Scanner />

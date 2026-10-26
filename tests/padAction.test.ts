@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { runPadAction } from "../src/hooks/useGamepadInput";
+import { runPadAction, LINKED_MESSAGE } from "../src/hooks/useGamepadInput";
+import { takeGuideToggle } from "../src/utils/guideToggle";
 import { padActions } from "../src/utils/gamepad";
 
 function store(over: Record<string, unknown> = {}) {
@@ -50,6 +51,26 @@ describe("runPadAction", () => {
     runPadAction({ kind: "photo" }, s);
     expect(s.setLogbookOpen).not.toHaveBeenCalled();
     expect(s.setPhotoMode).not.toHaveBeenCalled();
+  });
+
+  it("R3 calls the jellyfish guide in normal flight, as J does", () => {
+    takeGuideToggle(); // start clean
+    runPadAction({ kind: "guide" }, store());
+    expect(takeGuideToggle()).toBe(true);
+  });
+
+  it("R3 is ignored under a dossier or dock panel, the résumé and the beacon picker, as J is", () => {
+    takeGuideToggle();
+    for (const over of [{ isOrbitLocked: true }, { openDossier: "ruangrapi" }, { showClassicCV: true }, { beaconPickerOpen: true }]) {
+      runPadAction({ kind: "guide" }, store(over));
+      expect(takeGuideToggle(), JSON.stringify(over)).toBe(false);
+    }
+  });
+
+  it("the pad-link line names every button with a job, R3 GUIDE included", () => {
+    for (const part of ["L-STICK FLY", "R-STICK PITCH", "RB WARP", "LB BEAM", "A SCAN", "Y PHOTO", "X LOGBOOK", "R3 GUIDE", "D-PAD JUMP", "VIEW SHIPYARD", "MENU CONTACT"]) {
+      expect(LINKED_MESSAGE).toContain(part);
+    }
   });
 
   it("keeps the existing photo-mode and orbit rules", () => {

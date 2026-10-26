@@ -367,12 +367,18 @@ export default function App() {
         </SafeErrorBoundary>
       )}
 
-      {/* Photo mode: minimal chrome, orbitable clean frame */}
-      {photoMode && (
+      {/* Photo mode: minimal chrome, orbitable clean frame. On a touch screen
+          the label is the way out (there is no P key), so it is a button there. */}
+      {photoMode && (isCoarse ? (
+        <button type="button" data-testid="photo-exit" onClick={() => setPhotoMode(false)}
+          className="fixed top-4 left-4 z-50 px-3 py-2 rounded-lg border border-white/10 bg-black/50 font-mono text-[10px] text-white/70 pointer-events-auto">
+          PHOTO_MODE — TAP TO EXIT
+        </button>
+      ) : (
         <div className="fixed top-6 left-6 z-50 font-mono text-[10px] text-white/50 pointer-events-none">
-          PHOTO_MODE — [P] EXIT
+          PHOTO_MODE — [{padConnected ? "Y" : "P"}] EXIT
         </div>
-      )}
+      ))}
 
       {/* Classic CV toggle. In classic mode the Navbar carries the way back,
           so this floating button would sit on top of its links. */}

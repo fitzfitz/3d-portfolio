@@ -100,7 +100,7 @@ export interface AnomaliesRef {
 
 /**
  * Click-spawned plasma anomalies, as a preallocated InstancedMesh pool --
- * the same shape FuelCrystals and DataShards use.
+ * the same shape DataShards uses.
  *
  * The previous version mounted a <pointLight> per anomaly. Three.js bakes the
  * light count into every shader's program cache key, so each spawn forced a
@@ -113,7 +113,7 @@ export interface AnomaliesRef {
  * the Bloom pass, which runs at luminanceThreshold 0.2.
  *
  * MeshBasicMaterial, not MeshStandardMaterial: a first pass followed
- * FuelCrystals's pattern of an emissive MeshStandardMaterial tinted per
+ * the old fuel crystals' pattern of an emissive MeshStandardMaterial tinted per
  * instance via `setColorAt`, and every anomaly rendered the same flat white
  * regardless of its assigned colour. Verified against the three.js source:
  * `color_fragment` multiplies instance colour into `diffuseColor` only
@@ -133,7 +133,7 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
   const nextSlot = useRef(0);
 
   // Reuse the GLB's first mesh, baked to world scale -- same approach as
-  // FuelCrystals takes with the identical model. Only the geometry survives
+  // AsteroidBelt takes with asteroids.glb. Only the geometry survives
   // the source mesh -- see the material-choice comment on the component.
   const { geometry, material } = useMemo(() => {
     let src: THREE.Mesh | undefined;
@@ -158,7 +158,7 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
     })), []);
 
   // Mirror onto the bridge purely so the e2e probe can read it, the same
-  // pattern FuelCrystals.tsx uses for `crystals`. Without this, a spawn
+  // pattern ProjectProbes uses for `probes`. Without this, a spawn
   // regression is invisible to transition.probe.mjs's 40-spawns section: the
   // InstancedMesh mounts with a fixed `count = ANOMALY_MAX` regardless of how
   // many slots are actually active, so draw calls/triangles never move and
@@ -194,8 +194,8 @@ export const PlasmaAnomalies = forwardRef<AnomaliesRef>((_props, ref) => {
       // all 40 are active. An earlier version recycled round-robin purely by
       // spawn count, so it could evict a slot that was still flying while
       // dead slots sat unused -- visibly teleporting an anomaly away
-      // mid-flight. `pool.findIndex` mirrors FuelCrystals.tsx's
-      // `slots.find((s) => !s.active)`. No allocation, no state, no render.
+      // mid-flight. `pool.findIndex` takes the first free slot.
+      // No allocation, no state, no render.
       let i = pool.findIndex((m) => !m.active);
       if (i === -1) {
         i = nextSlot.current;

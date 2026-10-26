@@ -11,11 +11,10 @@ import { GATE_POS, GATE_KEEP_OUT } from "../../src/data/dormantGate";
 import { RING_GATES, RING_RADIUS } from "../../src/data/ringCourse";
 import { PROBE_SLOTS, PROBE_RADIUS } from "../../src/data/probes";
 import { SPAWN } from "../../src/data/spawn";
-import { SHARDS } from "../../src/data/shards";
+import { SHARDS, SHARD_PICKUP_RADIUS } from "../../src/data/shards";
 import { ASTEROID_COLLIDERS } from "../../src/data/asteroids";
 import { JELLY_PATH } from "../../src/data/jellyfishPath";
 import { JELLY_RADIUS } from "../../src/utils/jellyMood";
-import { CRYSTAL_PICKUP_RADIUS } from "../../src/utils/crystalField";
 import { DEEP_SPACE_POINT } from "../e2e/deepSpacePoint.mjs";
 
 /**
@@ -124,7 +123,7 @@ export const LANDMARKS: Landmark[] = [
     ...p.remote.map((r, i) => ({ name: `probe slot ${k + 1} remote ${i + 1}`, pos: r, radius: PROBE_RADIUS })),
   ]),
   ...RING_GATES.map((g, i) => ({ name: `ring gate ${i}`, pos: g as Vec3, radius: RING_RADIUS })),
-  ...SHARDS.map((s, i) => ({ name: `shard ${i}`, pos: s.pos as Vec3, radius: CRYSTAL_PICKUP_RADIUS })),
+  ...SHARDS.map((s, i) => ({ name: `shard ${i}`, pos: s.pos as Vec3, radius: SHARD_PICKUP_RADIUS })),
   ...ASTEROID_COLLIDERS.map((a) => ({ name: `scenery ${a.id}`, pos: [a.x, a.y, a.z] as Vec3, radius: a.r })),
   { name: "spawn", pos: [SPAWN.x, SPAWN.y, SPAWN.z], radius: SPAWN_RADIUS },
   { name: "deep-space point", pos: DEEP_SPACE_POINT as unknown as Vec3, radius: 0 },
