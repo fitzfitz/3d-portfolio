@@ -41,17 +41,28 @@ export function gridPose(v: RaceView): { key: string; p: Vec3; heading: number; 
   return { key: `${v.race}:${v.slot}`, ...gridSlot(START_GATE, v.slot) };
 }
 
+/** The last ring claim sent: its race, its ring (`next` then) and when (local ms). */
+export interface RingClaim { race: string; next: number; at: number }
+
+/**
+ * How long a claim waits for its stamp before a later crossing may claim the
+ * ring again: a refused claim (rerr ring: a stale or far pose, the speed rule)
+ * or one lost with the socket would otherwise lock the pilot out of the ring.
+ * The room refuses duplicates, so a retry is safe.
+ */
+export const CLAIM_RETRY_MS = 2_000;
+
 /**
  * The ring this move a→b claims: `next`, when the move crosses the target
- * ring and that ring has not been claimed already (`claimed`, the last
- * claim's key). The view moves on with the server's stamp, not here.
+ * ring, unless that ring was claimed (`claimed`) less than CLAIM_RETRY_MS ago.
+ * The view moves on with the server's stamp, not here; once it has, the old
+ * ring is no longer the target and is never claimed again.
  */
-export function ringToClaim(v: RaceView, a: Vec3, b: Vec3, claimed: string | null): { i: number; key: string } | null {
+export function ringToClaim(v: RaceView, a: Vec3, b: Vec3, claimed: RingClaim | null, localNow: number): number | null {
   const target = targetGate(v);
   if (target === null || v.phase !== "running") return null;
-  const key = `${v.race}:${v.next}`;
-  if (key === claimed || !crossesGate(a, b, RACE_GATES[target], RING_RADIUS)) return null;
-  return { i: v.next, key };
+  if (claimed && claimed.race === v.race && claimed.next === v.next && localNow - claimed.at < CLAIM_RETRY_MS) return null;
+  return crossesGate(a, b, RACE_GATES[target], RING_RADIUS) ? v.next : null;
 }
 
 /** The lap time (server ms) from the run's GO and finish stamps, or null without both. */

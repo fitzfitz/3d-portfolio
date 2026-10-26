@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise, raceWarpSpeed,
+  CRUISE_ACCEL, CRUISE_FREE_REF, CRUISE_MAX_FACTOR, cruiseLimit, freeDistance, stepCruise, raceWarpSpeed, clampRaceVelocity,
 } from "../src/utils/cruise";
 import { SUN_RADIUS, SYSTEM_RADIUS, SHIP_WARP_SPEED } from "../src/constants";
 import { BODY_REACH, bodyById } from "../src/data/solarSystem";
@@ -57,6 +57,34 @@ describe("raceWarpSpeed", () => {
     for (const [cur, limit] of [[39, 468], [200, 468], [466, 468], [400, 39], [39, 39]]) {
       expect(raceWarpSpeed(cur, false, limit, DT)).toBe(stepCruise(cur, limit, DT));
     }
+  });
+});
+
+describe("clampRaceVelocity", () => {
+  const len = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x + b.x, a.y + b.y, a.z + b.z);
+
+  it("racing: caps the total (pilot + gravity) speed at 39, keeping its direction", () => {
+    const v = { x: 39, y: 0, z: 0 }, g = { x: 0, y: 12, z: 5 };
+    const dir = { x: 39 / len(v, g), y: 12 / len(v, g), z: 5 / len(v, g) };
+    clampRaceVelocity(v, g, true);
+    expect(len(v, g)).toBeCloseTo(SHIP_WARP_SPEED, 9);
+    expect((v.x + g.x) / SHIP_WARP_SPEED).toBeCloseTo(dir.x, 9);
+    expect((v.y + g.y) / SHIP_WARP_SPEED).toBeCloseTo(dir.y, 9);
+    expect((v.z + g.z) / SHIP_WARP_SPEED).toBeCloseTo(dir.z, 9);
+  });
+
+  it("racing: a total at or below 39 is left alone", () => {
+    const v = { x: 30, y: 0, z: 0 }, g = { x: 0, y: 9, z: 0 };
+    clampRaceVelocity(v, g, true);
+    expect(v).toEqual({ x: 30, y: 0, z: 0 });
+    expect(g).toEqual({ x: 0, y: 9, z: 0 });
+  });
+
+  it("not racing: nothing changes, however fast", () => {
+    const v = { x: 468, y: 0, z: 0 }, g = { x: 0, y: 40, z: 0 };
+    clampRaceVelocity(v, g, false);
+    expect(v).toEqual({ x: 468, y: 0, z: 0 });
+    expect(g).toEqual({ x: 0, y: 40, z: 0 });
   });
 });
 

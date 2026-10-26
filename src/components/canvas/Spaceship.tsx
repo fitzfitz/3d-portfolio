@@ -25,7 +25,7 @@ import { PLUME_COLORS, sparkBase } from "../../data/plumeColors";
 import { beamState } from "../../store/beamState";
 import { reelStep } from "../../utils/tractorBeam";
 import { cruiseCap } from "../../utils/speedCap";
-import { cruiseLimit, freeDistance, raceWarpSpeed } from "../../utils/cruise";
+import { clampRaceVelocity, cruiseLimit, freeDistance, raceWarpSpeed } from "../../utils/cruise";
 import { gridPose } from "../../utils/raceScene";
 import { WARP_LANDMARKS } from "../../utils/warpLandmarks";
 import {
@@ -715,6 +715,8 @@ export default function Spaceship() {
     // The edge: after the caps (so it overrides warp and thrust), before integration.
     flight.edgeBurn = edgeReturn(pos.current, vel.current, dt);
     stepGravity(g, pos.current, vel.current, ACTIVE_WELLS, wellCount, gravityMode(hasFlown.current, warpActive, idleFor.current), dt);
+    // Racing: warp, thrust and gravity together never pass RACE_SPEED (the room's speed rule).
+    clampRaceVelocity(vel.current, g, flight.racing);
 
     pos.current.x += (vel.current.x + g.x) * dt;
     pos.current.y += (vel.current.y + g.y) * dt;

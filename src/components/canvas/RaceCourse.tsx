@@ -8,12 +8,12 @@ import { STORE_KEYS, safeGetString } from "../../store/persist";
 import { sampleGhost, GHOST_HZ, type Ghost, type GhostSample, type Vec3 } from "../../utils/race";
 import {
   ringsVisible, targetGate, racingView, raceHoldAt, ringToClaim, lapMsFromRun, ghostForUpload, fetchBestLap,
-  RACE_START_SCAN_ID, RACE_START_LABEL,
+  RACE_START_SCAN_ID, RACE_START_LABEL, type RingClaim,
 } from "../../utils/raceScene";
 import { loadRun, type RaceView } from "../../utils/raceSession";
 import { RACE_LIMIT_MS } from "../../utils/raceProtocol";
 import { raceLink, sendRace } from "../../utils/raceLink";
-import { onRaceOver, leaveRace } from "../../utils/raceController";
+import { watchRaceOver, leaveRace } from "../../utils/raceController";
 import { beaconApiUrl } from "../../utils/apiBase";
 import { soundManager } from "../../audio/soundManager";
 import { setScannable, removeScannable } from "../../utils/scannables";
@@ -74,14 +74,12 @@ function ringColor(v: RaceView, i: number): THREE.Color {
 export default function RaceCourse() {
   const ghostRef = useRef<THREE.Group>(null);
   const prevPos = useRef<Vec3 | null>(null);
-  /** The last ring claimed (raceScene.ts ringToClaim key): one claim per ring. */
-  const claimed = useRef<string | null>(null);
+  /** The last ring claim sent (raceScene.ts ringToClaim): a ring is claimed again only if its stamp does not come. */
+  const claimed = useRef<RingClaim>({ race: "", next: -1, at: 0 });
   /** This race's path, from GO to the finish. */
   const rec = useRef<{ race: string; samples: GhostSample[]; valid: boolean; done: boolean } | null>(null);
   /** The course's best lap, fetched once per race. */
   const best = useRef<{ race: string; lap: { timeMs: number; ghost: Ghost } | null } | null>(null);
-  /** The race whose over has been handled (its upload sent). */
-  const overFor = useRef<string | null>(null);
   const wasHeld = useRef(false);
   const paintedFor = useRef("");
 
@@ -127,8 +125,19 @@ export default function RaceCourse() {
     const unsub = useSpaceStore.subscribe((s) => s.showClassicCV, (open) => {
       if (open && racingView(useSpaceStore.getState().raceView)) leaveRace();
     });
+    // The over: upload the run once, with the path if it is a new best. From
+    // the store, not a frame: a hidden tab or a frozen scene runs none.
+    const stopOver = watchRaceOver((v) => {
+      const r = rec.current?.race === v.race && rec.current.valid ? rec.current : null;
+      const lap = best.current?.race === v.race ? best.current.lap : null;
+      // The best is unknown (the fetch is still out): the server keeps only a better path anyway.
+      const bestMs = lap?.timeMs ?? Infinity;
+      const run = loadRun(safeGetString(STORE_KEYS.raceRun), Date.now());
+      return ghostForUpload(v.finished, lapMsFromRun(run?.race === v.race ? run : null), bestMs, r && { time: 0, samples: r.samples });
+    });
     return () => {
       unsub();
+      stopOver();
       removeScannable(RACE_START_SCAN_ID);
       flight.racing = false;
       flight.raceHold = false;
@@ -176,10 +185,11 @@ export default function RaceCourse() {
 
     // Ring claims: the server stamps the ring and the view moves on with it.
     if (prev && !held && !s.photoMode) {
-      const c = ringToClaim(v, prev, cur, claimed.current);
-      if (c && sendRace({ t: "rring", i: c.i })) {
-        claimed.current = c.key;
-        if (c.i === N) {
+      const i = ringToClaim(v, prev, cur, claimed.current, now);
+      if (i !== null && v.phase === "running" && sendRace({ t: "rring", i })) {
+        const c = claimed.current;
+        c.race = v.race; c.next = i; c.at = now;
+        if (i === N) {
           soundManager.fanfare();
           // Close the path on the finish line itself: the 10 Hz samples would
           // otherwise end up to a tenth of a second short.
@@ -192,18 +202,6 @@ export default function RaceCourse() {
           soundManager.pickup();
         }
       }
-    }
-
-    // The over: upload the run once, with the path if it is a new best.
-    if (v.phase === "over" && overFor.current !== v.race) {
-      overFor.current = v.race;
-      const r = rec.current?.race === v.race && rec.current.valid ? rec.current : null;
-      const lap = best.current?.race === v.race ? best.current.lap : null;
-      // The best is unknown (the fetch is still out): the server keeps only a better path anyway.
-      const bestMs = lap?.timeMs ?? Infinity;
-      const run = loadRun(safeGetString(STORE_KEYS.raceRun), now);
-      const ghost = ghostForUpload(v.finished, lapMsFromRun(run?.race === v.race ? run : null), bestMs, r && { time: 0, samples: r.samples });
-      void onRaceOver(ghost);
     }
 
     // The best lap, replayed from GO in a solo race.

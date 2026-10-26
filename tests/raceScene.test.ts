@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   ringsVisible, targetGate, racingView, raceHoldAt, gridPose, ringToClaim, lapMsFromRun, ghostForUpload, fetchBestLap,
+  CLAIM_RETRY_MS, type RingClaim,
   RACE_START_SCAN_ID, RACE_START_LABEL,
 } from "../src/utils/raceScene";
 import { RACE_IDLE, RUN_TTL_MS, type RaceView, type RaceRun } from "../src/utils/raceSession";
@@ -80,31 +81,49 @@ describe("ringToClaim", () => {
   const before = { x: g1.c.x - g1.n.x, y: g1.c.y - g1.n.y, z: g1.c.z - g1.n.z };
   const after = { x: g1.c.x + g1.n.x, y: g1.c.y + g1.n.y, z: g1.c.z + g1.n.z };
 
-  it("claims next on a crossing of the target ring, at most once", () => {
-    const c = ringToClaim(running(), before, after, null)!;
-    expect(c).toEqual({ i: 1, key: "race-1:1" });
-    expect(ringToClaim(running(), before, after, c.key)).toBeNull();
+  const claim = (next: number, at: number, race = "race-1"): RingClaim => ({ race, next, at });
+
+  it("claims next on a crossing of the target ring", () => {
+    expect(ringToClaim(running(), before, after, null, T)).toBe(1);
+  });
+
+  it("refuses a re-claim of the same ring inside CLAIM_RETRY_MS", () => {
+    expect(CLAIM_RETRY_MS).toBe(2000);
+    expect(ringToClaim(running(), before, after, claim(1, T), T)).toBeNull();
+    expect(ringToClaim(running(), before, after, claim(1, T), T + CLAIM_RETRY_MS - 1)).toBeNull();
+  });
+
+  it("allows a re-claim after CLAIM_RETRY_MS with no stamp (a refused or lost claim)", () => {
+    expect(ringToClaim(running(), before, after, claim(1, T), T + CLAIM_RETRY_MS)).toBe(1);
+    // Another race's or another ring's claim never blocks this one.
+    expect(ringToClaim(running(), before, after, claim(1, T, "race-0"), T)).toBe(1);
+  });
+
+  it("never re-claims a ring once next has moved past it", () => {
+    // Stamped: next is 2, so crossing ring 1 again claims nothing, however late.
+    expect(ringToClaim(running({ next: 2 }), before, after, claim(1, T), T + 60_000)).toBeNull();
+    expect(ringToClaim(running({ next: 2 }), before, after, null, T + 60_000)).toBeNull();
   });
 
   it("only the target ring counts; the finish claims ring N through gate 0", () => {
-    expect(ringToClaim(running({ next: 2 }), before, after, null)).toBeNull();
+    expect(ringToClaim(running({ next: 2 }), before, after, null, T)).toBeNull();
     const g0 = START_GATE;
     const a = { x: g0.c.x - g0.n.x, y: g0.c.y - g0.n.y, z: g0.c.z - g0.n.z };
     const b = { x: g0.c.x + g0.n.x, y: g0.c.y + g0.n.y, z: g0.c.z + g0.n.z };
-    expect(ringToClaim(running({ next: N }), a, b, null)).toEqual({ i: N, key: `race-1:${N}` });
+    expect(ringToClaim(running({ next: N }), a, b, null, T)).toBe(N);
     // GO's pass through the start gate is not a claim: ring 1 is the target.
-    expect(ringToClaim(running(), a, b, null)).toBeNull();
+    expect(ringToClaim(running(), a, b, null, T)).toBeNull();
   });
 
   it("claims nothing off a running view, after the finish, or on a miss", () => {
-    expect(ringToClaim(grid, before, after, null)).toBeNull();
-    expect(ringToClaim(over, before, after, null)).toBeNull();
-    expect(ringToClaim(running({ next: N + 1, finished: true }), before, after, null)).toBeNull();
+    expect(ringToClaim(grid, before, after, null, T)).toBeNull();
+    expect(ringToClaim(over, before, after, null, T)).toBeNull();
+    expect(ringToClaim(running({ next: N + 1, finished: true }), before, after, null, T)).toBeNull();
     // Sideways (n × up, flat) by more than the ring's radius.
     const flat = Math.hypot(g1.n.x, g1.n.z);
     const off = RING_RADIUS + 1;
     const miss = (p: typeof before) => ({ x: p.x - (g1.n.z / flat) * off, y: p.y, z: p.z + (g1.n.x / flat) * off });
-    expect(ringToClaim(running(), miss(before), miss(after), null)).toBeNull();
+    expect(ringToClaim(running(), miss(before), miss(after), null, T)).toBeNull();
   });
 });
 

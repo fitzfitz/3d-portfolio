@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useSpaceStore } from "../src/store/spaceStore";
-import { onRaceServer, onRaceOver, resetRaceController, leaveRace, UPLOAD_RETRY_MS } from "../src/utils/raceController";
+import { onRaceServer, onRaceOver, resetRaceController, leaveRace, watchRaceOver, UPLOAD_RETRY_MS } from "../src/utils/raceController";
 import { raceLink } from "../src/utils/raceLink";
 import type { LiveSkyConnection } from "../src/utils/liveSkyConnection";
 import { RACE_IDLE, RUN_TTL_MS, loadRun } from "../src/utils/raceSession";
@@ -245,6 +245,36 @@ describe("raceController", () => {
     } finally {
       raceLink.conn = null;
     }
+  });
+
+  it("watchRaceOver uploads at over without any frame, once per race", () => {
+    const over = vi.fn(async () => {});
+    const ghostFor = vi.fn(() => "path");
+    const stop = watchRaceOver(ghostFor, over);
+    try {
+      onRaceServer(lobby(), T);
+      onRaceServer({ t: "rgo", stamp: stamp(0, T), now: T }, T);
+      expect(over).not.toHaveBeenCalled();
+      onRaceServer({ t: "rover", race: "race-1", uploadBy: T + 30_000, now: T }, T);
+      expect(over).toHaveBeenCalledTimes(1);
+      expect(over).toHaveBeenCalledWith("path");
+      expect(ghostFor).toHaveBeenCalledWith(expect.objectContaining({ phase: "over", race: "race-1" }));
+      // A resent rover changes the view's uploadBy; still one upload for the race.
+      onRaceServer({ t: "rover", race: "race-1", uploadBy: T + 31_000, now: T }, T);
+      expect(over).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+    onRaceServer({ t: "rover", race: "race-2", uploadBy: T + 30_000, now: T }, T);
+    expect(over).toHaveBeenCalledTimes(1);
+  });
+
+  it("watchRaceOver handles a view already over when it starts", () => {
+    useSpaceStore.setState({ raceView: { phase: "over", race: "race-1", uploadBy: T + 30_000, finished: false } });
+    const over = vi.fn(async () => {});
+    const stop = watchRaceOver(() => null, over);
+    stop();
+    expect(over).toHaveBeenCalledWith(null);
   });
 
   it("onRaceOver never retries late or rejected", async () => {

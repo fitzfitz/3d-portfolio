@@ -3,7 +3,7 @@ import { STORE_KEYS, safeGetString, safeSetJSON, safeRemove } from "../store/per
 import { RING_GATES } from "../data/ringCourse";
 import { formatRaceTime, isNewBest } from "./race";
 import { beaconApiUrl } from "./apiBase";
-import { raceReduce, syncWithRun, loadRun, withStamp, uploadRun, RUN_TTL_MS, RACE_IDLE, type RaceRun } from "./raceSession";
+import { raceReduce, syncWithRun, loadRun, withStamp, uploadRun, RUN_TTL_MS, RACE_IDLE, type RaceRun, type RaceView } from "./raceSession";
 import { sendRace } from "./raceLink";
 import type { RaceError, RaceServerMessage, ResultRow, Stamp } from "./raceProtocol";
 
@@ -150,6 +150,24 @@ export async function onRaceOver(ghost: string | null): Promise<void> {
     if (v.phase === "over" && v.race === run.race && Date.now() < v.uploadBy) res = await uploadRun(base, run, ghost);
   }
   if (res !== "ok") useSpaceStore.getState().sendBroadcast(RESULT_LOST_LINE);
+}
+
+/**
+ * Uploads at `over` straight from the store, once per race: the socket keeps
+ * delivering rover in a hidden tab or a frozen scene, where no frame runs.
+ * `ghostFor` gives the path to send with the run (RaceCourse's recording and
+ * best lap). Returns the unsubscribe.
+ */
+export function watchRaceOver(
+  ghostFor: (v: Extract<RaceView, { phase: "over" }>) => string | null,
+  over: (ghost: string | null) => Promise<void> = onRaceOver,
+): () => void {
+  let doneFor: string | null = null;
+  return useSpaceStore.subscribe((s) => s.raceView, (v) => {
+    if (v.phase !== "over" || doneFor === v.race) return;
+    doneFor = v.race;
+    void over(ghostFor(v));
+  }, { fireImmediately: true });
 }
 
 /**
