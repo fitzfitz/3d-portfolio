@@ -12,7 +12,7 @@ import { isBodyId, type BodyId } from "../data/bodyIds";
 import { SOLAR_BODIES } from "../data/solarSystem";
 import { destinationById } from "../data/destinations";
 import { bodyPositionAt } from "../utils/bodyPositions";
-import { REDUCED_MOTION_KEY, REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
+import { REDUCED_MOTION_QUERY, resolveReducedMotion } from "../utils/reducedMotionPreference";
 import { setAmbientEnabled } from "../utils/ambientTime";
 import { FUEL_MAX } from "../utils/fuel";
 import { isRecordable, badgeLine, plumeAllowed, LOGBOOK, type BadgeRecord } from "../utils/logbook";
@@ -20,8 +20,11 @@ import { PLUME_COLORS, hasPlumeColour } from "../data/plumeColors";
 import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
 import { setLowPerfSource } from "../utils/hiResMaps";
 import { CHANGELOG } from "../data/changelog";
-import { SHARDS } from "../data/shards";
 import { loadCharted, coversLegacyWorlds, LEGACY_CARTOGRAPHER_KEY, chartLine, isCartographer, SURVEY_LINE, AURUM_LINE, type ChartRecord } from "../utils/charting";
+import {
+  safeGetMuted, safeSetMuted, safeGetFlag, safeSetFlag, safeGetReducedMotion, safeSetReducedMotion,
+  safeGetJSON, safeSetJSON, loadVisitedDossiers as loadVisitedDossiersFor, todayStamp, loadBadges, loadShards,
+} from "./persist";
 
 const PROJECT_IDS: readonly string[] = projects.map((p) => p.id);
 
@@ -36,59 +39,9 @@ let teleportFlashTimer: ReturnType<typeof setTimeout> | null = null;
 const BADGE_LINE_HOLD_MS = 3000;
 const BADGE_LINE_DELAY_MS = 4500;
 
-// localStorage can throw (e.g. SecurityError when cookies/storage are blocked) —
-// guard both accesses so a blocked store degrades to in-memory rather than crashing.
-function safeGetMuted(): boolean {
-  try {
-    return typeof localStorage !== "undefined" && localStorage.getItem("fitz-sound-muted") === "1";
-  } catch {
-    return false;
-  }
-}
-function safeSetMuted(v: boolean) {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem("fitz-sound-muted", v ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
-/** A persisted on/off setting ("1"/"0"), guarded like the mute flag. */
-function safeGetFlag(key: string, fallback: boolean): boolean {
-  try {
-    if (typeof localStorage === "undefined") return fallback;
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
-  } catch {
-    return fallback;
-  }
-}
-function safeSetFlag(key: string, v: boolean) {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(key, v ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
+export { todayStamp, loadBadges, loadShards };
 
-// Three states — "1", "0", or absent — because absent (no choice made) must
-// stay distinguishable from an explicit false, which has to beat a media
-// query that says true.
-function safeGetReducedMotion(): boolean | null {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    const raw = localStorage.getItem(REDUCED_MOTION_KEY);
-    return raw === null ? null : raw === "1";
-  } catch {
-    return null;
-  }
-}
-function safeSetReducedMotion(v: boolean) {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(REDUCED_MOTION_KEY, v ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
+const loadVisitedDossiers = () => loadVisitedDossiersFor(PROJECT_IDS);
 
 // `matchMedia` can be absent (old browser, SSR-ish context) — degrade to "no
 // preference" rather than throwing. Seeding from the live query at module
@@ -105,75 +58,7 @@ function safeGetReducedMotionQueryMatches(): boolean {
   }
 }
 
-/**
- * Read dossiers from storage, keeping only current project ids: ids from an
- * older content set (e.g. "saas") must not count toward n/3, and a value that
- * isn't an array (hand-edited storage) must not crash the store at import.
- */
-function loadVisitedDossiers(): string[] {
-  const raw = safeGetJSON<unknown>("fitz-dossiers", []);
-  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && PROJECT_IDS.includes(id)) : [];
-}
-
-const DATE_STAMP = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Local date as YYYY-MM-DD, for the "earned" stamp. */
-export function todayStamp(d: Date = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/**
- * Stored badges, sanitised: known recordable ids only, a YYYY-MM-DD date (the
- * `todayStamp` shape), first occurrence wins. Hand-edited or stale storage must not crash the store or
- * grant anything.
- */
-export function loadBadges(raw: unknown): BadgeRecord[] {
-  if (!Array.isArray(raw)) return [];
-  const out: BadgeRecord[] = [];
-  for (const r of raw) {
-    if (!r || typeof r !== "object") continue;
-    const { id, at } = r as { id?: unknown; at?: unknown };
-    if (typeof id !== "string" || typeof at !== "string" || !isRecordable(id) || !DATE_STAMP.test(at)) continue;
-    if (out.some((b) => b.id === id)) continue;
-    out.push({ id, at });
-  }
-  return out;
-}
-
-/**
- * Stored shard pickups, sanitised: unique integer indices of real shards. A
- * hand-edited or corrupt value (null, a string) must not crash the store at
- * import or grant the Shard hunter badge.
- */
-export function loadShards(raw: unknown): number[] {
-  if (!Array.isArray(raw)) return [];
-  const out: number[] = [];
-  for (const v of raw) {
-    if (Number.isInteger(v) && v >= 0 && v < SHARDS.length && !out.includes(v)) out.push(v);
-  }
-  return out;
-}
-
 export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
-
-function safeGetJSON<T>(key: string, fallback: T): T {
-  try {
-    if (typeof localStorage === "undefined") return fallback;
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-function safeSetJSON(key: string, value: unknown) {
-  try {
-    if (typeof localStorage !== "undefined") localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore */
-  }
-}
 
 export interface FlightInput {
   forward: boolean;
