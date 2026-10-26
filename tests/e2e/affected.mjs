@@ -37,6 +37,10 @@ export const RULES = [
   [/^src\/components\/canvas\/Bottles\b/, () => [...BUDGETS, "bottles"]],
   [/^src\/components\/canvas\/RaceCourse\b/, () => [...BUDGETS, "race"]],
   [/^src\/components\/canvas\/(SkyBackdrop|DistantGalaxies|starLayer|softSprite|orbitRibbon|WaypointDriver|noIbl|logDepth)\b/, () => [...BUDGETS, "sky"]],
+  // The Nest (the combat stage): its director, load gate, renderer and effects
+  // (reactions: the director's rumour line shares the radio with the cargo hail).
+  [/^src\/components\/canvas\/(NestDirector|nest\/)/, () => [...BUDGETS, "combat", "reactions"]],
+  [/^src\/data\/nest\.ts$/, () => [...BUDGETS, "combat"]],
   // GlobalCanvas, PostFX and anything else in the canvas: everything.
   [/^src\/components\/canvas\//, () => "ALL"],
   // The HUD and panels.
@@ -46,6 +50,7 @@ export const RULES = [
   [/^src\/components\/layout\/(BottlePanel|BottleCard)\b/, () => ["smoke", "bottles"]],
   [/^src\/components\/layout\/(RaceHUD)\b/, () => ["smoke", "race"]],
   [/^src\/components\/layout\/(TouchControls)\b/, () => ["smoke", "touch", "careerphone"]],
+  [/^src\/components\/layout\/NestOverlay\b/, () => ["smoke", "combat", "reducedmotion"]],
   [/^src\/components\/layout\//, () => ["smoke", "logbook", "touch", "careerphone", "reducedmotion", "transition"]],
   [/^src\/components\/sections\/Contact\b/, () => ["smoke", "contact"]],
   [/^src\/components\/sections\//, () => ["smoke", "logbook", "careerphone"]],
@@ -53,8 +58,12 @@ export const RULES = [
   [/^src\/audio\//, () => ["audio"]],
   [/^(public\/models|public\/basis)\//, () => ["assets", "memory", "sky", "startup", "basepath"]],
   [/^public\/sw\.js$/, () => ["basepath"]],
-  // The space monsters: dev-only until the combat stage imports them (the game imports none of these).
-  [/^(src\/lab\/|src\/utils\/monsters\/|src\/data\/(saucerRig|tardigradeRig)\.json$|public\/models-ondemand\/|monster-lab\.html$)/, () => ["monsterlab"]],
+  // The Nest's rules (fight, aim, HUD, radio): the probes that fly, fire and press its controls, and the radio's.
+  [/^src\/utils\/combat\//, () => ["smoke", "combat", "flight", "gameplay", "touch", "gamepad", "reactions"]],
+  // The space monsters: the game draws them in the Nest (loaded on demand), and the lab shows them.
+  [/^(src\/utils\/monsters\/|src\/data\/(saucerRig|tardigradeRig)\.json$|public\/models-ondemand\/)/, () => ["monsterlab", "combat", ...BUDGETS]],
+  // The monster lab (dev only); the game never imports src/lab (tests/labBoot.test.ts).
+  [/^(src\/lab\/|monster-lab\.html$)/, () => ["monsterlab"]],
   // The app's shell, its state and shared code: everything.
   [/^(src|public)\//, () => "ALL"],
   [/^(index\.html|vite\.config\.ts|package\.json|package-lock\.json|tsconfig[^/]*\.json)$/, () => "ALL"],

@@ -4,10 +4,12 @@
  * initial values, localStorage reads included; persist.ts holds the storage
  * helpers and keys. Consumers import everything from here, as before.
  *
- * Slices: combat (the Nest fight: wave, contacts, breach and cleared marks), flight (orbit and dock, warp, jumps), dossier (dossiers, probes),
- * hud (panels, radio, world events), logbook (badges, plume, line queue),
- * progress (shards, charting), race (race view, best lap), settings (perf
- * tier, warm-up, reduced motion, sound, changelog seen), sky (beacons, live sky).
+ * Slices, in the order they compose: combat (the Nest fight: wave, contacts,
+ * breach and cleared marks), flight (orbit and dock, warp, jumps), dossier
+ * (dossiers, probes), hud (panels, radio, world events), logbook (badges,
+ * plume, line queue), progress (shards, charting), race (race view, best lap),
+ * settings (perf tier, warm-up, reduced motion, sound, changelog seen), sky
+ * (beacons, live sky).
  *
  * Cross-slice actions call the other slice's action through get():
  *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination);

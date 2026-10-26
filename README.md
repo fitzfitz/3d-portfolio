@@ -22,7 +22,8 @@ Tailwind, on Vite.
 | `Space` | Pitch up |
 | `C` / `X` | Pitch down |
 | `E` (hold) | Scan a nearby object |
-| `F` (hold) | Tractor beam: mine belt pebbles, reel in project probes, reel yourself to a data shard |
+| `F` (hold) | Tractor beam: mine belt pebbles, reel in project probes, reel yourself to a data shard. Inside the Nest it fires the plasma gun instead |
+| Left click | Make a plasma spark where you click. Inside the Nest it fires the plasma gun there instead |
 | `P` | Photo mode |
 | `J` | Call the jellyfish guide, or send it back |
 | `B` | Leave a message in a bottle (only when a beacon API is configured) |
@@ -59,6 +60,21 @@ those stamps, so editing the browser can't change one; the best lap's replay is
 only checked for plausibility against them (`beacon-api/README.md`). Joining
 turns live sky on for the race if it was off.
 
+**The Nest.** A hostile zone waits below the orbital plane, marked by a red
+warning buoy on its sunward side; the radar shows it (and its creatures) in
+red once you are within range, and scanning the buoy warns you. Nothing there
+can reach you outside it. Cross its edge and, three seconds later, saucer
+aliens attack in three waves: 3 saucers, then 5, then a tardigrade with 3
+more (2, 3 and 1 + 2 on low-perf). Inside the fighting area a left click
+fires the plasma gun where you click; holding `F` (`LB` on a pad, `FIRE` on
+touch) fires along your nose with a little aim assist. The hull (shown under
+the fuel bar) repairs itself after 4 s without a hit; at zero you are towed
+back to the buoy with 60% and lose nothing. Warp is held to normal speed in
+there but still outruns them, and 20 s outside ends the fight. Clearing all
+three waves earns the Nest breaker badge and the CRIMSON plume; the Nest then
+rests for two minutes. The creatures' models download only when you first come
+within 200 u of it.
+
 **Messages in bottles.** If a beacon API is configured, `B` (or the BOTTLE (B)
 button) opens a small panel: write a note of up to 140 characters and Send
 leaves it in a bottle where your ship is. Notes are filtered (no links or
@@ -75,10 +91,10 @@ owner hides a note.
 
 A gamepad works too, once the browser has seen its first button press: left
 stick (or `RT`/`LT`) flies, right stick pitches, `RB` warps, `A` scans, `Y` is
-photo mode, `X` opens the logbook, `B` closes a dossier, `LB` grabs a probe, `R3` (right-stick click) calls the jellyfish guide, the d-pad (clockwise from up) jumps like
+photo mode, `X` opens the logbook, `B` closes a dossier, `LB` grabs a probe (and fires inside the Nest), `R3` (right-stick click) calls the jellyfish guide, the d-pad (clockwise from up) jumps like
 `1`–`4`, View jumps to the shipyard, and Menu jumps to the contact portal. Impacts rumble the pad in Chrome.
 
-Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`, `GUIDE`, `PHOTO`) render only when the browser
+Touch controls (joystick, pitch, `SCAN`, `BOOST`, `BEAM`, `GUIDE`, `PHOTO`; `BEAM` reads `FIRE` and fires inside the Nest) render only when the browser
 reports `(pointer: coarse)`, so they will not appear on desktop — including, in
 some configurations, devtools device emulation. `GUIDE` calls the jellyfish guide like `J`;
 `PHOTO` enters photo mode (it shows once you leave the spawn pad, and hides on short, sideways screens), and tapping the
@@ -136,6 +152,9 @@ a single probe with its own server and stops it the same way.
 `transition` (the draw-call and triangle budgets) run first, alone, on
 SwiftShader, where `docs/PERF-BUDGETS.md` was measured. Every other probe then
 runs on the real GPU, four at a time; the full suite takes about five minutes.
+The `combat` probe flies the Nest (no download away from it, a fight, a
+breach, the badge, reduced motion, the offline line) and holds the "In the
+Nest (wave 3)" budget on SwiftShader on one of its pages.
 `E2E_JOBS=1` runs them one by one, `E2E_BACKEND=swiftshader` puts every
 unpinned probe back on the CPU rasterizer, and `E2E_TIMING_OUT=file.json`
 saves per-page phase timings.
@@ -171,6 +190,10 @@ public-domain mosaics, fetched by a script that pins each URL and SHA-256.
 npm run assets:generate   # regenerate everything (Blender headless + scripts/textures/)
 npm run assets:optimize   # gltf-transform + sharp, from assets-src/ into public/
 ```
+
+The Nest's two monsters (`public/models-ondemand/`) are the exception: they
+are loose files outside the packs, downloaded only when a visitor first flies
+near the Nest (the dev-only monster lab, `/monster-lab.html`, loads them too).
 
 Every file in `public/models/` goes into an asset pack automatically
 (`vite.config.ts`, `src/utils/packFormat.ts`). Naming decides the tier: an

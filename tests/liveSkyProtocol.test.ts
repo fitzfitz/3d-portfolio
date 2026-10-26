@@ -86,7 +86,7 @@ describe("parseMe", () => {
     expect(parseMe(me({ p: [290, 290, 290] }))).not.toBeNull();
   });
   it("accepts every unlockable plume", () => {
-    for (const id of ["slingshot", "comet", "ring", "ore", "convoy", "shards"]) expect(parseMe(me({ plume: id }))).not.toBeNull();
+    for (const id of ["slingshot", "comet", "ring", "ore", "convoy", "shards", "nest"]) expect(parseMe(me({ plume: id }))).not.toBeNull();
   });
   it.each([
     ["the wrong type", me({ t: "you" })],

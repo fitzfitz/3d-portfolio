@@ -111,8 +111,9 @@ export default function NestEffects() {
     thrust: new THREE.Color(THRUST_HEX), jet: new THREE.Color(JET_HEX), plume: "", p: { x: 0, y: 0, z: 0 } as V3,
   }), []);
 
-  // Live counts for the renderer's debug handle (NestMonsters reads them).
+  // Live counts for the renderer's debug handle (NestMonsters reads them; dev only).
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     nestEffectMeshes.meshes = [bolts, jet, smoke.points];
     return () => { nestEffectMeshes.meshes = []; };
   }, [bolts, jet, smoke]);

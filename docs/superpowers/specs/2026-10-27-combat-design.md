@@ -37,7 +37,7 @@ The owner wants "activity in my universe … battles … achievements" *(owner, 
 - **Finding it.**
   - A warning buoy 120 u from the centre, on the side facing the inner system. It reuses the buoy model with a red tint and blinking red light, and holds position like the career buoys.
   - Scannable: `SCAN[THE_NEST] // HOSTILE LIFEFORMS · ENTER AT YOUR OWN RISK · F OR CLICK TO FIRE`.
-  - A red radar marker when within radar range.
+  - A red radar marker when within radar range; the live monsters show there as small red blips too (Ruling C24: only within radar range of the Nest).
   - An ambient radio line at most once per visit: `RADIO // SOMETHING IS NESTING BELOW THE PLANE. PILOTS REPORT SAUCERS`.
   - It is not on the jump keys; reaching it is part of the adventure.
 - **The zone edge** is a faint red haze shell drawn only when the ship is within 30 u of it, like the world-edge haze. Crossing inward shows `ENTERING THE NEST` on the HUD.

@@ -268,7 +268,9 @@ export class Checks {
  * `expectedErrors` is a probe's own list of console-error patterns it causes
  * on purpose, e.g. the 429 a mocked API returns to test rate limiting: Chrome
  * logs every 4xx response as a console error, and no app code can stop it.
- * Scoped to the one probe so it can never hide the same error elsewhere.
+ * Each pattern is matched against the console text, the URL the console
+ * message points at, and page errors' messages. Scoped to the one probe so it
+ * can never hide the same error elsewhere.
  *
  * `emulateReducedMotion`, if true, emulates the `prefers-reduced-motion:
  * reduce` OS preference before navigation, so the app's own media-query
@@ -300,11 +302,19 @@ export async function withPage({ label, backend = DEFAULT_BACKEND, device = null
     // Pin the orrery date first so a probe initScript can override it.
     await page.evaluateOnNewDocument("window.__FITZ_ORRERY_JD__ = 2461333.5");
     if (initScript) await page.evaluateOnNewDocument(initScript);
-    page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+    // A probe's expectedErrors also cover page errors (an error it causes on
+    // purpose can surface as an unhandled rejection, e.g. a blocked loader's
+    // fetch) and the URL a console error points at: Chrome's "Failed to load
+    // resource" text never names the resource, only its location does.
+    const expected = (s) => expectedErrors.some((re) => re.test(s));
+    page.on("pageerror", (e) => {
+      if (expected(e.message)) return;
+      errors.push(`pageerror: ${e.message}`);
+    });
     page.on("console", (m) => {
       if (m.type() !== "error") return;
       const text = m.text();
-      if ([...IGNORED_ERRORS, ...expectedErrors].some((re) => re.test(text))) return;
+      if (IGNORED_ERRORS.some((re) => re.test(text)) || expected(text) || expected(m.location()?.url ?? "")) return;
       errors.push(`console.error: ${text}`);
     });
     // Arm font interception before navigation: index.html's Google Fonts

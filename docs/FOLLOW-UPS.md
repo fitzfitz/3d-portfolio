@@ -91,31 +91,55 @@ Delete an entry when it is fixed.
     done race and rule 1 for `rstart`, `rsolo` and `ragain`; the isolate's
     `best` cache keeps the first `env.DB` (test-only); the deep-link pose test
     lives in `raceHud.test`, not the flightGate test. In e2e,
-    `tests/e2e/run.mjs` still costs the race probe at 13 though it runs about
-    10 s longer; `race.probe.mjs`'s jumps check has no positive control, its
+    `race.probe.mjs`'s jumps check has no positive control, its
     cleanup is skipped on a throw, and the INVITE check forces `data-quiet`.
   - Docs: `beacon-api/README.md` deploys D1, then the secret, then the Worker;
     the stated order is secret, D1, Worker, site. Both are safe (it says steps
     2 and 3 may swap); mention it in the deploy request.
 
-- **Space monsters, for the combat stage** (notes for the stage that wires the
-  saucer and tardigrade into the game, not new work now):
-  - Saucer body vertex attributes: 15 of 16 WebGL2 slots are used. Free one by
-    packing the band as a paint index before adding any attribute.
-  - Material maths: no test ties the GLSL to the TypeScript mirrors. The
-    per-shell pose is re-packed per shell (pack once, copy). Normals are not
-    corrected under the tardigrade's anisotropic hit/recoil scale, or for the
-    goo.
-  - Download packs: the `public/models-lab/` glbs ship in `dist/` as unused
-    loose files (~2.8 MB). Move them into a pack when the game loads them.
-  - e2e affected mapping: `tests/e2e/affected.mjs` assumes the game imports no
-    monster code. Once the game imports `src/utils/monsters`, update the
-    mapping, or add an import-graph test (like `labBoot.test.ts`) that keeps
-    `src/main.tsx` from reaching `src/lab`.
-  - Bounds sweeps: `tests/monsterGeometry.test.ts` uses 30 s timeouts. Watch the
-    first CI run on ubuntu; raise to 60-90 s if needed.
+- **Space monsters** (the combat stage, PR 67, put the saucer and the
+  tardigrade in the game):
+  - Done: the glbs moved from `public/models-lab/` to `public/models-ondemand/`,
+    loose files outside the asset packs that the Nest's load gate fetches only
+    within 200 u of the Nest (the packs are startup downloads by design); the
+    e2e affected mapping runs the combat probe and the budgets for monster
+    changes, and `tests/labBoot.test.ts` keeps the game from importing
+    `src/lab`; the saucer body's vertex attributes were left alone (no
+    attribute added, 15 of 16 WebGL2 slots still used: free one by packing the
+    band as a paint index before adding any).
+  - Still open: no test ties the GLSL to the TypeScript mirrors (the per-shell
+    pose is re-packed per shell: pack once, copy); normals are not corrected
+    under the tardigrade's anisotropic hit/recoil scale, or for the goo;
+    `tests/monsterGeometry.test.ts`'s bounds sweeps use 30 s timeouts (watch
+    the first CI run on ubuntu; raise to 60-90 s if needed).
+  - The on-demand glbs are unhashed, and the service worker serves same-origin
+    files cache-first: after a model update, a returning visitor gets the old
+    model for one visit (the new one is fetched behind it). Hash the names or
+    give the folder a network-first rule if that ever matters.
   - Look polish: the owner closed it at "realistic at normal viewing". Do not
     reopen close-up look work.
+
+- **Combat, for the coins stage** (the Nest, PR 67; spec
+  `docs/superpowers/specs/2026-10-27-combat-design.md`):
+  - Shards as money, rewards on clearing the Nest, and the hull as an upgrade
+    slot (with shields) are the next stage's; the Nest gives only the badge
+    and the CRIMSON plume today.
+  - Release order: the `nest` plume fails the deployed beacon Worker's plume
+    check until it is redeployed, so live-sky poses from pilots wearing
+    CRIMSON are dropped. Redeploy `beacon-api` (`--config
+    beacon-api/wrangler.toml`) before the site release.
+  - Small leftovers from the build reviews: the hull regen applies a whole
+    frame's regen at the 4 s mark; the bolt's 160 u range and the 12° assist
+    cone's exact boundaries are untested; the hot loops use `Math.hypot`;
+    `monsterMatrix` can flip its up axis when a monster faces near-vertically;
+    `debugStartWave` does not clear the debug formation's freeze and repeats
+    `endFight`'s leave loops; a redundant `as MonsterBody` in `nest.ts`; the
+    out timer is not reset when the Nest is cleared; the placement test copies
+    the programs tour's stop literals (they can drift; read them from the probe
+    or pin them) and its names test is tautological; `labBoot.test.ts`'s
+    import scan has regex edge cases; the hull label reads 100% while the hull
+    regens from 99.5 to 99.99; a stalled (not failed) model fetch keeps
+    showing `CONTACT IN …` (harmless: no wave starts).
 
 - **Layout constants stay built at module load** (deferred from the store
   split, PR 62; spec docs/archive/specs/2026-10-26-store-split-design.md):

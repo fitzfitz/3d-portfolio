@@ -16,8 +16,8 @@ import { ALL } from "./probeList.mjs";
 
 /** Run first, in this order, alone on the machine. */
 const SERIAL = ["startup", "transition"];
-/** Measured seconds per job (2026-10-23, PR 48), for longest-first scheduling; unknown jobs go first. */
-const COST = { "content#2": 22, "content#1": 14, "content#0": 8, sky: 80, gameplay: 69, "events#0": 65, fuel: 39, "logbook#0": 37, career: 35, "programs#1": 34, "programs#0": 34, "mechanics#1": 29, livesky: 29, assets: 26, "memory#0": 25, shipyard: 20, reducedmotion: 20, flight: 18, gamepad: 18, "memory#1": 16, "mechanics#0": 14, perf: 14, touch: 14, "probes#0": 13, race: 13, basepath: 12, audio: 11, "reactions#0": 11, "events#1": 10, bottles: 10, "mechanics#2": 10, "logbook#2": 9, careerphone: 9, "mechanics#5": 9, "probes#2": 8, "reactions#1": 8, "jellyguide#0": 20, "jellyguide#1": 8, "probes#4": 8, contact: 8, "probes#5": 7, "logbook#1": 7, "probes#3": 6, "mechanics#4": 6, smoke: 5, "mechanics#3": 5, "probes#1": 5 };
+/** Measured seconds per job (2026-10-23, PR 48; race, reactions#0 and combat 2026-10-27, PR 67), for longest-first scheduling; unknown jobs go first. */
+const COST = { "content#2": 22, "content#1": 14, "content#0": 8, sky: 80, gameplay: 69, "events#0": 65, fuel: 39, "logbook#0": 37, career: 35, "programs#1": 34, "programs#0": 34, "mechanics#1": 29, livesky: 29, assets: 26, "memory#0": 25, shipyard: 20, reducedmotion: 20, flight: 18, gamepad: 18, "memory#1": 16, "mechanics#0": 14, perf: 14, touch: 14, "probes#0": 13, race: 22, "combat#1": 32, "combat#2": 36, "combat#3": 14, "combat#4": 9, "combat#0": 6, basepath: 12, audio: 11, "reactions#0": 20, "events#1": 10, bottles: 10, "mechanics#2": 10, "logbook#2": 9, careerphone: 9, "mechanics#5": 9, "probes#2": 8, "reactions#1": 8, "jellyguide#0": 20, "jellyguide#1": 8, "probes#4": 8, contact: 8, "probes#5": 7, "logbook#1": 7, "probes#3": 6, "mechanics#4": 6, smoke: 5, "mechanics#3": 5, "probes#1": 5 };
 
 /**
  * Probes whose pages are independent and run as one job each ("events#0",
@@ -25,7 +25,7 @@ const COST = { "content#2": 22, "content#1": 14, "content#0": 8, sky: 80, gamepl
  * (events alone was 170 s of a 370 s run). Each exports `parts`; run-one.mjs
  * fails a part if the probe's count no longer matches this one.
  */
-const PARTS = { mechanics: 6, probes: 6, content: 3, logbook: 3, programs: 2, reactions: 2, jellyguide: 2, memory: 2, events: 2 };
+const PARTS = { mechanics: 6, probes: 6, content: 3, logbook: 3, programs: 2, reactions: 2, jellyguide: 2, memory: 2, events: 2, combat: 5 };
 
 const PROBES = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const JOBS = Number(process.env.E2E_JOBS ?? 4);
