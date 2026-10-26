@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   JET_PARTICLES, JET_STREAM_SPEED, SMOKE_EVERY_S, SMOKE_LIFE_S, SMOKE_POOL, THRUST_DROP, boltMatrix, createSmoke, emitSmoke,
-  NEAR_FADE_FAR, NEAR_FADE_NEAR, jetParticle, nearFade, smokeAlpha, stepSmoke, thrustMatrix,
+  JET_CORE_R, JET_GLOW_SPREAD, JET_SIZE, NEAR_FADE_FAR, NEAR_FADE_NEAR, jetGlow, jetParticle, nearFade, smokeAlpha,
+  stepSmoke, thrustMatrix,
 } from "../src/utils/combat/effects";
 import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "../src/utils/combat/constants";
 import { createSaucer, spawnSaucer, hitSaucer, type Saucer } from "../src/utils/combat/saucerAi";
@@ -45,6 +46,45 @@ describe("the plasma jet's particles", () => {
       }
     }
     expect(checked).toBe(dirs.length * JET_PARTICLES * 25);
+  });
+
+  it("reads as one stream: neighbours overlap along the axis, scattered in a narrow core", () => {
+    // Evenly spaced along the 90 u: the spacing is well under a sprite's size.
+    expect(JET_PARTICLES).toBe(720);
+    expect(JET_SIZE).toBe(1);
+    expect(JET_RANGE / JET_PARTICLES).toBeLessThan(JET_SIZE / 2);
+    // The visible core sits well inside the hit radius.
+    expect(JET_CORE_R).toBe(0.6);
+    expect(JET_CORE_R).toBeLessThan(JET_RADIUS);
+    const p = v(0, 0, 0);
+    for (const d of dirs) {
+      let maxOff = 0, offSum = 0;
+      for (let i = 0; i < JET_PARTICLES; i++) {
+        jetParticle(i, JET_PARTICLES, 0.5, mouth.x, mouth.y, mouth.z, d.x, d.y, d.z, p);
+        const { along, off } = inJet(p, mouth, d);
+        expect(off).toBeLessThanOrEqual(JET_CORE_R + 1e-9);
+        // Narrower at the mouth: within the mouth's share of the core near it.
+        if (along < 1) expect(off).toBeLessThanOrEqual(JET_CORE_R * 0.37 + 1e-9);
+        maxOff = Math.max(maxOff, off);
+        offSum += off;
+      }
+      // A turbulent spread, not a line: particles reach most of the core, and on average sit off the axis.
+      expect(maxOff).toBeGreaterThan(JET_CORE_R * 0.8);
+      expect(offSum / JET_PARTICLES).toBeGreaterThan(0.2);
+    }
+  });
+
+  it("varies each particle's brightness within 1 ± JET_GLOW_SPREAD, fixed per particle", () => {
+    let min = Infinity, max = -Infinity, sum = 0;
+    for (let i = 0; i < JET_PARTICLES; i++) {
+      const g = jetGlow(i);
+      expect(jetGlow(i)).toBe(g);
+      expect(g).toBeGreaterThanOrEqual(1 - JET_GLOW_SPREAD);
+      expect(g).toBeLessThanOrEqual(1 + JET_GLOW_SPREAD);
+      min = Math.min(min, g); max = Math.max(max, g); sum += g;
+    }
+    expect(max - min).toBeGreaterThan(JET_GLOW_SPREAD);
+    expect(sum / JET_PARTICLES).toBeCloseTo(1, 1);
   });
 
   it("jet particles stream outward over time", () => {

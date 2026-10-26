@@ -6,7 +6,7 @@
  * pools are built once, every function writes into a caller's object.
  */
 import type * as THREE from "three";
-import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
+import { JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
 import { monsterMatrix } from "./monsterFrame";
 import type { Saucer } from "./saucerAi";
 import type { V3 } from "./types";
@@ -17,16 +17,28 @@ export const ENEMY_BOLT_HEX = "#c8ff3a";
 export const THRUST_HEX = "#9fe6ff";
 /** The tardigrade's plasma jet. */
 export const JET_HEX = "#8dff9a";
-export const JET_PARTICLES = 64;
+/**
+ * The jet's particles: dense enough that neighbours overlap along its length
+ * (90 u ÷ 720 = 0.125 u apart, against a 1 u sprite), so it reads as one stream.
+ */
+export const JET_PARTICLES = 720;
+/** A jet particle's sprite size (u; size-attenuated Points). */
+export const JET_SIZE = 1.0;
 export const SMOKE_POOL = 96;
 
 /** The jet's particles stream out of the mouth at this speed (u/s): the 90 u jet in 1.2 s. */
 export const JET_STREAM_SPEED = JET_RANGE / 1.2;
 /** The stream's slow twist about its axis (rad/s). */
 const JET_SWIRL = 2.4;
-/** The particles fill this share of the hit radius at the far end; the stream is narrower at the mouth. */
-const JET_FILL = 0.85;
+/**
+ * The stream's visible core: particles scatter up to this far from the axis
+ * at the far end (well inside the 2.5 u hit radius, JET_RADIUS); narrower at
+ * the mouth.
+ */
+export const JET_CORE_R = 0.6;
 const JET_MOUTH_WIDTH = 0.35;
+/** A particle's brightness varies by up to this either side of 1 (jetGlow). */
+export const JET_GLOW_SPREAD = 0.45;
 
 /** A defeated saucer puffs smoke this often while it drifts (SAUCER_DEFEAT_S). */
 export const SMOKE_EVERY_S = 0.08;
@@ -45,15 +57,26 @@ const THRUST_RADIUS = 0.9;
 const THRUST_HEIGHT = 0.22;
 const THRUST_IDLE = 0.25;
 
-const GOLDEN = 0.6180339887498949;
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 const fract = (x: number) => x - Math.floor(x);
+/** A fixed pseudo-random 0..1 per particle index and salt (no allocation, no state). */
+const hash01 = (i: number, salt: number) => fract(Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453);
+
+/**
+ * Particle i's brightness factor, 1 ± JET_GLOW_SPREAD, fixed per particle:
+ * with the overlap it varies the stream's thickness and glow along its length.
+ * (The shared PointsMaterial has one size, so brightness stands in for size.)
+ */
+export function jetGlow(i: number): number {
+  return 1 + JET_GLOW_SPREAD * (2 * hash01(i, 0.53) - 1);
+}
 
 /**
  * Particle i of n at jet time t (s): on the axis from the mouth o along d
  * (any length), 0..JET_RANGE ahead of the mouth (evenly spaced, streaming
- * outward at JET_STREAM_SPEED and wrapping back to the mouth), within
- * JET_RADIUS of the axis (the jet's hit radius: what is drawn is what hits).
+ * outward at JET_STREAM_SPEED and wrapping back to the mouth), scattered
+ * within JET_CORE_R of the axis (a hashed radius and angle per particle,
+ * twisting slowly), so the stream reads turbulent, not as a string of beads.
+ * The hit test is the wider JET_RADIUS.
  */
 export function jetParticle(i: number, n: number, t: number, ox: number, oy: number, oz: number,
   dx: number, dy: number, dz: number, out: V3): V3 {
@@ -66,8 +89,8 @@ export function jetParticle(i: number, n: number, t: number, ox: number, oy: num
   const bx = uy * sz, by = uz * sx - ux * sz, bz = -uy * sx;
   const k = fract(i / n + (t * JET_STREAM_SPEED) / JET_RANGE);
   const along = k * JET_RANGE;
-  const r = JET_RADIUS * JET_FILL * Math.sqrt(fract(i * GOLDEN + 0.37)) * (JET_MOUTH_WIDTH + (1 - JET_MOUTH_WIDTH) * k);
-  const a = i * GOLDEN_ANGLE + t * JET_SWIRL;
+  const r = JET_CORE_R * Math.sqrt(hash01(i, 0.37)) * (JET_MOUTH_WIDTH + (1 - JET_MOUTH_WIDTH) * k);
+  const a = hash01(i, 0.71) * Math.PI * 2 + t * JET_SWIRL;
   const c = Math.cos(a) * r, s = Math.sin(a) * r;
   out.x = ox + ux * along + sx * c + bx * s;
   out.y = oy + uy * along + by * s;

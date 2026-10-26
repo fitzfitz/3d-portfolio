@@ -8,7 +8,7 @@ import { softSprite } from "../softSprite";
 import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
 import { nestPaused } from "../../../utils/combat/nestRadio";
 import {
-  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetParticle, nearFade, smokeAlpha,
+  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetGlow, jetParticle, nearFade, smokeAlpha,
   stepSmoke, thrustMatrix,
 } from "../../../utils/combat/effects";
 import type { V3 } from "../../../utils/combat/types";
@@ -17,14 +17,14 @@ import { nestEffectMeshes } from "./nestEffectMeshes";
 /** Bolts glow past the bloom threshold: × this on their colour. */
 const BOLT_GLOW = 2.6;
 const THRUST_GLOW = 1.3;
-const JET_GLOW = 2.2;
+/** Per particle: the jet is many small overlapping sprites, additive, so each is dim. */
+const JET_GLOW = 0.75;
 /** A ship bolt's and an enemy bolt's glowing length (u): longer for the faster ship bolt. */
 const SHIP_BOLT_LENGTH = 1.8;
 const ENEMY_BOLT_LENGTH = 1.2;
 /** Glow radius: the bolt's hit radius and a little haze. */
 const BOLT_GLOW_R = BOLT_R + 0.08;
-/** The jet's particle size and the far end's share of its brightness. */
-const JET_SIZE = 1.4;
+/** The far end's share of the jet's brightness. */
 const JET_FAR = 0.35;
 /** The smoke's grey (lit dust, compensated like the overlays so it reads the same at any exposure) and puff size. */
 const SMOKE_GREY: readonly [number, number, number] = [0.42, 0.4, 0.38];
@@ -175,7 +175,7 @@ export default function NestEffects() {
         // Fades toward the far end.
         const along = ((p.x - t.jx) * t.jdx + (p.y - t.jy) * t.jdy + (p.z - t.jz) * t.jdz) / l;
         // Faded out near the camera: additive black draws nothing.
-        const g = JET_GLOW * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
+        const g = JET_GLOW * jetGlow(q) * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
           * nearFade(p.x, p.y, p.z, cam);
         jca[j * 3] = scratch.jet.r * g; jca[j * 3 + 1] = scratch.jet.g * g; jca[j * 3 + 2] = scratch.jet.b * g;
       }

@@ -201,6 +201,8 @@ async function fight(page, checks) {
     { timeoutMs: 10_000, intervalMs: 100 });
   const s1 = await readStore(page);
   checks.check("wave 1 spawns 3 saucers", w1.ok && (await nest(page)).saucers === 3, `wave=${s1.wave} contacts=${s1.contacts}`);
+  // The HUD's rAF loop writes the wave line on its next frame.
+  await pollUntil(async () => (await testIdText(page, "hud-nest-wave")) === "WAVE 1/3 · CONTACTS 3", { timeoutMs: 2000, intervalMs: 50 });
   checks.check("in the fighting area: store inNest, the hull row and the wave line show",
     s1.inNest === true && await shown(page, "hud-hull-label") && (await testIdText(page, "hud-nest-wave")) === "WAVE 1/3 · CONTACTS 3",
     `inNest=${s1.inNest} wave line=${await testIdText(page, "hud-nest-wave")}`);
