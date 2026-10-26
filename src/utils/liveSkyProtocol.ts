@@ -3,7 +3,7 @@ import { hasPlumeColour } from "../data/plumeColors";
 import { BODY_IDS, LEGACY_CHART_TOTAL } from "../data/bodyIds";
 
 /**
- * Live sky wire protocol (docs/superpowers/specs/2026-10-14-live-sky-design.md §3).
+ * Live sky wire protocol (docs/archive/specs/2026-10-14-live-sky-design.md §3).
  * Shared by the client and beacon-api's Sky room, so both validate the same way,
  * as src/utils/beacons.ts is for beacons.
  */

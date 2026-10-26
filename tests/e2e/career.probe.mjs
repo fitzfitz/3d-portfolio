@@ -1,7 +1,7 @@
 import { withPage, settle, lockFullFidelity, readStore, pollUntil, chatterText, grabProbe } from "./harness.mjs";
 
 /**
- * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md):
+ * Career landmarks (docs/archive/specs/2026-10-15-career-landmarks-design.md):
  * once the three probe dossiers are read the radio points at key 4, key 4
  * docks at the career station and opens the Career dossier, key 6 still
  * reaches the contact portal, the habitat ring turns, flying to a buoy shows

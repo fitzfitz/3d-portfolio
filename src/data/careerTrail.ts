@@ -2,7 +2,7 @@ import type { CareerEntry } from "./career";
 import { activeContent } from "./content";
 
 /**
- * Career landmarks (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1):
+ * Career landmarks (docs/archive/specs/2026-10-15-career-landmarks-design.md §1):
  * the station you dock at for the Career dossier, and a buoy per job (five in
  * the bundled list), oldest first, on a trail that climbs from the spawn pad up
  * to it. The buoys derive from the settled career list (src/data/content.ts,

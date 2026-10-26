@@ -270,7 +270,7 @@ export interface CrystalSlot { x: number; y: number; z: number; active: boolean 
  */
 export const crystalSlots: CrystalSlot[] = [];
 
-/** The running world event (docs/superpowers/specs/2026-10-12-world-events-design.md). */
+/** The running world event (docs/archive/specs/2026-10-12-world-events-design.md). */
 export interface WorldEventState {
   kind: WorldEventKind;
   id: number;

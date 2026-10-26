@@ -9,7 +9,7 @@ or broken, how the scene stands on each one, and where it is enforced.
 - **Convention**: a presentation choice every orrery and planetarium makes,
   disclosed to the visitor (P3 below). Nothing else is allowed to bend a law.
 - **Breaks → F*n***: not yet lawful; F*n* is its fix in
-  `docs/superpowers/specs/2026-10-16-universe-laws-fixes-design.md`.
+  `docs/archive/specs/2026-10-16-universe-laws-fixes-design.md`.
 
 `tests/universeRules.test.ts` enforces the laws marked *(tested)*.
 
@@ -25,7 +25,7 @@ Each body sits where JPL's "Approximate Positions of the Planets" puts it for
 the **orrery date** shown on the HUD, in every scan and on the system chart,
 so any planetarium app can check it. Nothing about the system is chosen: where
 a number is not NASA's or the IAU's, it is one of the conventions below.
-(Real-solar-system design: `docs/superpowers/specs/2026-10-20-real-solar-system-design.md`.)
+(Real-solar-system design: `docs/archive/specs/2026-10-20-real-solar-system-design.md`.)
 
 **P3. The disclosed conventions, the ones every orrery uses:**
 - **Sizes are enlarged** against distances, or the bodies would be invisible
@@ -193,4 +193,4 @@ The code source of these numbers is `src/utils/realUnits.ts`; `tests/realUnits.t
 - [Hubble's law and the expanding universe (arXiv)](https://ar5iv.arxiv.org/html/0904.2633): L38.
 - Guinness World Records, [Fastest spacecraft speed](https://www.guinnessworldrecords.com/world-records/66135-fastest-spacecraft-speed): Units.
 - Surface maps: the NASA/USGS/JPL public-domain mosaics pinned in `scripts/textures/fetch_nasa_maps.mjs` and listed in `assets-src/MANIFEST.md`.
-- Comet and planet appearance: the sources in the realistic-body specs under `docs/superpowers/specs/`.
+- Comet and planet appearance: the sources in the realistic-body specs under `docs/archive/specs/`.

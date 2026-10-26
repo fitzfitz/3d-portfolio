@@ -3,7 +3,7 @@
  * Saturn's, Uranus's and Neptune's surface maps (the real-solar-system spec
  * §5.5 keeps them: no true-colour global map of the three exists) — original
  * work, no source imagery
- * (spec docs/superpowers/specs/2026-10-17-new-worlds-design.md, "Assets").
+ * (spec docs/archive/specs/2026-10-17-new-worlds-design.md, "Assets").
  *
  *   node scripts/textures/gen_worlds.mjs                       # all, native widths
  *   node scripts/textures/gen_worlds.mjs w-blue --width=64 --out=/tmp/x

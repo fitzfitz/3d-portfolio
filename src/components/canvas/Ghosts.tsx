@@ -66,7 +66,7 @@ function releaseScan(slot: Slot) {
 }
 
 /**
- * Live sky (spec docs/superpowers/specs/2026-10-14-live-sky-design.md §4–§5):
+ * Live sky (spec docs/archive/specs/2026-10-14-live-sky-design.md §4–§5):
  * other pilots flying now, as up to 8 pooled ghost ships. Drives the
  * connection per frame. Mounted only when the live sky URL is configured; the
  * canvas (and so this) unmounts on the classic résumé, which closes the socket.

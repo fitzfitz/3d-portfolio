@@ -1,6 +1,6 @@
 /**
  * Shared, pure building blocks for the world reacting to the player's ship
- * (docs/superpowers/specs/2026-10-12-world-reactions-design.md). Every
+ * (docs/archive/specs/2026-10-12-world-reactions-design.md). Every
  * reaction is an eased offset on top of existing motion; these helpers do the
  * easing and the geometry. No three.js scene access, so all of it unit-tests.
  */

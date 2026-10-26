@@ -587,7 +587,7 @@ The real footprint is `scripts/perf/memory-footprint.mjs <dirA> [dirB ...]`
 (headed Chrome on the real GPU, fresh profile, network off, a fixed route,
 `footprint` per Chrome process, steady and post-GC "live" figures; it fails a
 run that drew under 20 frames a second). Results and method:
-`docs/superpowers/specs/2026-10-22-memory-budget-design.md`. The GPU process
+`docs/archive/specs/2026-10-22-memory-budget-design.md`. The GPU process
 sits ~600 MB above the ledger: Chrome's compositing, the canvas's swap chain
 and driver copies, which the ledger cannot see.
 

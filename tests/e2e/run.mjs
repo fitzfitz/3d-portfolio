@@ -5,7 +5,7 @@
 // nothing else on the machine (startup's ceiling and transition's counters
 // were measured that way). Phase 2 runs the rest on
 // the GPU, E2E_JOBS at a time (default 4), longest first. See
-// docs/superpowers/specs/2026-10-19-e2e-speedup-design.md.
+// docs/archive/specs/2026-10-19-e2e-speedup-design.md.
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

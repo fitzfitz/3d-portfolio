@@ -25,7 +25,7 @@ Delete an entry when it is fixed.
   - Look polish: the owner closed it at "realistic at normal viewing". Do not
     reopen close-up look work.
 
-- **Memory, past PR 53** (docs/superpowers/specs/2026-10-22-memory-budget-design.md;
+- **Memory, past PR 53** (docs/archive/specs/2026-10-22-memory-budget-design.md;
   Chrome's memory-infra dump, 2026-10-23, at 1512×802@2):
   - ~550 MB of the GPU process is Chrome's own for any WebGL page here (a blank
     WebGL2 canvas: ANGLE/Metal 252 MB, shared images 304 MB). ANGLE holds what
@@ -82,7 +82,7 @@ Delete an entry when it is fixed.
   replaces the well law; do not retune G alone, since 4,000 already brings a
   surface touch.
 - **Jellyfish guide, left for later** (spec
-  docs/superpowers/specs/2026-10-23-jellyfish-guide-design.md, PR #54):
+  docs/archive/specs/2026-10-23-jellyfish-guide-design.md, PR #54):
   - No gamepad button calls the guide (build ruling R2). The spec assumed J
     already had one; nothing maps to it in `utils/gamepad.ts`, and inventing
     one risked clashing with the layout: every face, shoulder and d-pad

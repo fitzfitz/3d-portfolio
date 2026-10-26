@@ -1,5 +1,5 @@
 # Space monster 1: the saucer alien (original work after the owner's reference
-# image, docs/superpowers/specs/assets/2026-10-23-saucer-alien-reference.png;
+# image, docs/archive/specs/assets/2026-10-23-saucer-alien-reference.png;
 # same character, proportions and parts, not a trace).
 #   $BLENDER --background --python scripts/blender/gen_saucer.py [-- --out DIR] [--stage=final|blockout]
 # Output: assets-src/saucer.glb, assets-src/saucer.blend, and (final stage)

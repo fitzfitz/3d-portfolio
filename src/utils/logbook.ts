@@ -5,7 +5,7 @@ import { projectById } from "../constants";
 import { isCartographer, type ChartRecord } from "./charting";
 
 /**
- * The pilot logbook (docs/superpowers/specs/2026-10-13-pilot-logbook-design.md):
+ * The pilot logbook (docs/archive/specs/2026-10-13-pilot-logbook-design.md):
  * essentials that tour the portfolio (a dossier per probe in play, then the
  * career station and the contact portal), then six flight badges that each
  * unlock a plume colour. Pure. Dossier and shard entries are derived from

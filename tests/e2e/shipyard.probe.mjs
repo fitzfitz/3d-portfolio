@@ -1,7 +1,7 @@
 import { withPage, settle, nextFrames, lockFullFidelity, readStore, pollUntil, chatterText } from "./harness.mjs";
 
 /**
- * Shipyard and dormant gate (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md):
+ * Shipyard and dormant gate (docs/archive/specs/2026-10-16-shipyard-gate-design.md):
  * key 5 docks at the shipyard and opens the Hangar, an unlocked plume can be
  * picked there (uniform change, no new shader program) while a locked one
  * cannot, Esc closes it, the crane trolley moves; the gate plays its

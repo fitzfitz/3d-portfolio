@@ -6,7 +6,7 @@ import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
 /**
  * Places you can jump to and dock at: the only bodies that dock (planets
  * are solid and scan-only, project probes spec §4.4)
- * (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §2). Every
+ * (docs/archive/specs/2026-10-15-career-landmarks-design.md §2). Every
  * consumer that used to special-case "contact" reads this table instead:
  * zone detection and lock (SpacePlanets), lock geometry and jumps
  * (Spaceship), jump validation and the dock badge (spaceStore), the radar,

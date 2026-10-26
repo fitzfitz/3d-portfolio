@@ -1,5 +1,5 @@
 /**
- * Schedules world events (docs/superpowers/specs/2026-10-12-world-events-design.md):
+ * Schedules world events (docs/archive/specs/2026-10-12-world-events-design.md):
  * the first at 45s of flying time, then one every 60–120s after the previous
  * ends, never the same kind twice running. Pure, with an injected RNG so the
  * sequence is testable. Its clock is flying time: it only advances on

@@ -1,7 +1,7 @@
 // Real-GPU memory of one or two production builds: what Activity Monitor
 // shows per Chrome process, next to the GPU ledger's byte count
 // (tests/e2e/gpuLedger.mjs). The measurement behind the memory budget
-// (docs/superpowers/specs/2026-10-22-memory-budget-design.md).
+// (docs/archive/specs/2026-10-22-memory-budget-design.md).
 //
 //   npm run build && cp -R dist /tmp/a    # one build per directory
 //   node scripts/perf/memory-footprint.mjs <dirA> [dirB ...up to 4] [--runs 3] [--sizes 1512x802,760x377] [--out dir]

@@ -5,7 +5,7 @@ import { BODY_COUNT } from "../../data/solarSystem";
 
 /**
  * The engine-plume picker (moved from the logbook to the shipyard's Hangar,
- * docs/superpowers/specs/2026-10-16-shipyard-gate-design.md §2). Pure: the
+ * docs/archive/specs/2026-10-16-shipyard-gate-design.md §2). Pure: the
  * Hangar passes the progress, the current colour and the setter.
  * Buttons, not radio inputs: a focused <input> counts as a text field to the
  * flight keys, so W/A/S/D and Esc would stop working after a click.

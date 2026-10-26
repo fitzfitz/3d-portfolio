@@ -1,7 +1,7 @@
 import type { Vec3 } from "./careerTrail";
 
 /**
- * The dormant gate (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md §1–2):
+ * The dormant gate (docs/archive/specs/2026-10-16-shipyard-gate-design.md §1–2):
  * a broken hexagonal arch far out in the system. It is found by flying, never
  * by a jump key or a waypoint, and names itself only to the scanner. What
  * wakes it is the secret-sector project's to decide.

@@ -1,7 +1,7 @@
 import { withPage, settle, readStore, pollUntil, chatterText, nextFrames, lockFullFidelity, jumpToProbe, holdBeamUntilOpen, grabProbe, probeRelocating, runParts } from "./harness.mjs";
 
 /**
- * Project probes (docs/superpowers/specs/2026-10-20-project-probes-design.md):
+ * Project probes (docs/archive/specs/2026-10-20-project-probes-design.md):
  * key 1 parks the ship by probe 1 without opening anything, holding F pulls
  * it in and opens its dossier (the scene freezes), closing it sends the
  * probe to its next spot with a burn and a radio line, the spot survives a

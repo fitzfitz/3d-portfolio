@@ -7,7 +7,7 @@ import {
 } from "./liveSkyProtocol";
 
 /**
- * Live sky, client side (spec docs/superpowers/specs/2026-10-14-live-sky-design.md §4):
+ * Live sky, client side (spec docs/archive/specs/2026-10-14-live-sky-design.md §4):
  * parsing the room's messages, smoothing ghosts between snapshots, and deciding
  * when this ship's pose is worth sending. Pure apart from liveSkyUrl().
  */

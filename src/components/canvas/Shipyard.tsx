@@ -11,7 +11,7 @@ const TROLLEY_PERIOD_S = 20;
 const POSITION: [number, number, number] = [SHIPYARD_POS[0], SHIPYARD_POS[1], SHIPYARD_POS[2]];
 
 /**
- * The shipyard (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md §1),
+ * The shipyard (docs/archive/specs/2026-10-16-shipyard-gate-design.md §1),
  * built by scripts/blender/gen_shipyard.py. Docking is SpacePlanets' zone
  * check on the destination table and opens the Hangar. No collider, as with
  * the station: the lock radius (7.2) lies outside the model (≤ 5.0) by more
