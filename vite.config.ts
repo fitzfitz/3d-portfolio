@@ -106,5 +106,7 @@ export default defineConfig({
   plugins: [react(), assetPack(), preloadApp()],
   // Agent worktrees under .claude/ are other branches' checkouts: their tests
   // read this checkout's public/ and fail on it.
-  test: { exclude: [...configDefaults.exclude, '.claude/**'] },
+  // Unit tests run in UTC everywhere, as CI does, so date-stamped snapshots
+  // match on any machine (a WIB laptop wrote CI-failing stamps once, PR 62).
+  test: { exclude: [...configDefaults.exclude, '.claude/**'], env: { TZ: 'UTC' } },
 })
