@@ -1,11 +1,43 @@
+/**
+ * The game's one zustand store, composed from slices (zustand's slices
+ * pattern). Each file in slices/ owns its state type, its actions and its
+ * initial values, localStorage reads included; persist.ts holds the storage
+ * helpers and keys. Consumers import everything from here, as before.
+ *
+ * Slices: flight (orbit and dock, warp, jumps), dossier (dossiers, probes),
+ * hud (panels, radio, world events), logbook (badges, plume, line queue),
+ * progress (shards, charting, race), settings (perf tier, warm-up, reduced
+ * motion, sound, changelog seen), sky (beacons, live sky).
+ *
+ * Cross-slice actions call the other slice's action through get():
+ *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination)
+ *   - logbook.recordBadge        -> logbook.announceLogbook -> hud.sendBroadcast
+ *                                   (announceLogbook also reads hud.broadcast)
+ *   - hud.setShowClassicCV(true) -> flight.breakOrbit + dossier.closeDossier
+ *   - hud.remountCanvas          -> flight.breakOrbit + dossier.closeDossier
+ *   - progress.chartWorld        -> logbook.announceLogbook
+ *   - progress.tellAurumOnce     -> logbook.announceLogbook
+ *   - hud.startWorldEvent        -> hud.sendBroadcast
+ *   - logbook.setPlumeColor reads dossier.visitedDossiers and progress
+ *     (shardsCollected, charted, legacyCartographer)
+ *
+ * Cross-slice writes, kept in the writer's own set() as before the split (one
+ * notification, not two):
+ *   - dossier.openProjectDossier sets flight.isWarping = false
+ *   - hud.setShowClassicCV(true) sets flight.isWarping = false
+ *   - hud.remountCanvas sets flight.isWarping = false
+ *
+ * Import-time order: the slice modules' own reads run at import (progress.ts
+ * writes the legacy-cartographer flag once; logbook.ts checks the stored plume
+ * against the stored dossiers, shards and charting). The settings slice's
+ * creator then switches the ambient clock and makes the first-visit changelog
+ * write as the store is created. tests/storeShape.test.ts pins all of it.
+ */
 import { create, type StateCreator } from "zustand";
-
-import { worldClock } from "./worldClock";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { WorldEventKind } from "../utils/eventDirector";
-import { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
 import { setLowPerfSource } from "../utils/hiResMaps";
-import { todayStamp, loadBadges, loadShards } from "./persist";
+import { worldClock } from "./worldClock";
 import { createFlightSlice, type FlightSlice } from "./slices/flight";
 import { createDossierSlice, type DossierSlice } from "./slices/dossier";
 import { createHudSlice, type HudSlice } from "./slices/hud";
@@ -14,33 +46,31 @@ import { createProgressSlice, type ProgressSlice } from "./slices/progress";
 import { createSettingsSlice, type SettingsSlice } from "./slices/settings";
 import { createSkySlice, type SkySlice } from "./slices/sky";
 
-export { todayStamp, loadBadges, loadShards };
+export { todayStamp, loadBadges, loadShards } from "./persist";
+export { hasWebGL, wantsResume, WEBGL_AVAILABLE } from "../utils/flightGate";
+export type { WorldEventState } from "./slices/hud";
 
-
-export { hasWebGL, wantsResume, WEBGL_AVAILABLE };
-
-// Per-frame objects, mutable outside React. Same objects, re-exported: importers keep using this path.
+// Per-frame objects, mutable outside React. The same objects, re-exported: importers keep using this path.
 export { flight, type FlightInput } from "./flightState";
 export { bodies } from "./bodies";
 export { crystalSlots, type CrystalSlot } from "./crystalSlots";
 export { worldClock } from "./worldClock";
-export type { WorldEventState } from "./slices/hud";
 
+export interface SpaceState
+  extends FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, SettingsSlice, SkySlice {}
 
-/** A zustand slice creator over the whole store (zustand's slices pattern; see slices/). */
+/** A slice creator over the whole store: a slice reads and calls the others through get(). */
 export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
 
-export interface SpaceState extends FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, SettingsSlice, SkySlice {}
-
 export const useSpaceStore = create<SpaceState>()(
-  subscribeWithSelector((set, get, api) => ({
-    ...createFlightSlice(set, get, api),
-    ...createDossierSlice(set, get, api),
-    ...createHudSlice(set, get, api),
-    ...createLogbookSlice(set, get, api),
-    ...createProgressSlice(set, get, api),
-    ...createSettingsSlice(set, get, api),
-    ...createSkySlice(set, get, api),
+  subscribeWithSelector((...a) => ({
+    ...createFlightSlice(...a),
+    ...createDossierSlice(...a),
+    ...createHudSlice(...a),
+    ...createLogbookSlice(...a),
+    ...createProgressSlice(...a),
+    ...createSettingsSlice(...a),
+    ...createSkySlice(...a),
   }))
 );
 
@@ -66,7 +96,11 @@ export function selectModalOpen(s: Pick<SpaceState, "isOrbitLocked" | "openDossi
   return s.isOrbitLocked || s.openDossier !== null;
 }
 
-/** Seconds since the running event of `kind` started, or null if none is running. */
+/**
+ * Seconds since the running event of `kind` started, or null if none is
+ * running. Kept here rather than in worldClock.ts: it reads the store, and
+ * worldClock.ts importing the store would make an import cycle.
+ */
 export function worldEventElapsed(kind: WorldEventKind): number | null {
   const ev = useSpaceStore.getState().worldEvent;
   return ev && ev.kind === kind ? worldClock.now - ev.startedAt : null;
