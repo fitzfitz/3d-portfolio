@@ -73,6 +73,7 @@ Controller's call. The table gains a `hidden` column (0/1, default 0). The owner
 - **API:**
   - `GET /beacons` returns at most 30 rows (`BOTTLE_LIMIT`), newest first, `hidden = 0`, each `{ id, x, y, z, text, at, country }`.
   - `POST /beacons` takes `{ x, y, z, text }`. It runs the filters, then the existing rate limits, then inserts. It still accepts the old `{ phrase }` body, mapping it to text, so a cached old client keeps working through the deploy.
+  - The request limiter (`LIMITER`, the per-request budget) runs before the filter, on purpose: a filter-rejected POST still spends a token, so probing the filter is budgeted too.
   - `KEEP_ROWS` stays 500.
 - **Deploy order:**
   1. Migrate.

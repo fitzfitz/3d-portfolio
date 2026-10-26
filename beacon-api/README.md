@@ -71,6 +71,10 @@ GET  /beacons
 
 POST /beacons   { x, y, z, text }
   201 { beacon: { id, x, y, z, text, at, country } }   text as stored (normalised)
+  403 { error: "origin" }                              Origin not in ALLOWED_ORIGINS
+  415 { error: "json only" }                           Content-Type is not application/json
+  413 { error: "too large" }                           body over the byte cap
+  400 { error: "bad json" }                            body is not JSON
   400 { error: "invalid beacon" }                      bad position, or no text
   400 { error: "rejected", reason }                    the filter refused the note:
         reason = too_short | too_long | contact | profanity | junk
@@ -81,8 +85,8 @@ POST /beacons   { x, y, z, text }
   429 { error: "slow down" }                           the request budget (LIMITER)
 ```
 
-Checks run in that order: the request budget, the position, the filter, then
-the drop limits in one insert. A refused note costs the pilot nothing but the
+Checks run in this order: the request budget, the origin, the body (type,
+size, JSON), the position, the filter, then the drop limits in one insert. A refused note costs the pilot nothing but the
 request.
 
 **Legacy body.** `POST { x, y, z, phrase }` (a `BEACON_PHRASES` index) still
@@ -159,7 +163,7 @@ Run these from the repo root. Wrangler is not a dependency of this repo, so
 
 ```bash
 # 1. Create the database, and paste its id into beacon-api/wrangler.toml
-npx wrangler d1 create fitz-beacons
+npx wrangler d1 create fitz-beacons --config beacon-api/wrangler.toml
 
 # 2. Create the tables: beacons, then the content tables and their first rows
 npx wrangler d1 execute fitz-beacons --remote --config beacon-api/wrangler.toml --file=beacon-api/schema.sql
@@ -212,7 +216,9 @@ Why this order: the new Worker writes the `text` column, so it fails on an
 unmigrated table; the old Worker ignores the new columns, so migrating first
 is safe. Rows the old Worker writes between steps 1 and 2 have no `text`; the
 new Worker reads them as their phrase's text. If only one of the two ALTERs
-ever landed, run the missing one by hand with `--command`.
+ever landed, run the missing one by hand with `--command`, then re-run the
+`UPDATE` from `bottles.sql` (safe to repeat), since the script stopped before
+it; until then the Worker's read-time mapping already shows those rows' phrase text.
 
 Then give the site the Worker's URL by setting `VITE_BEACON_API` in the
 committed [`.env.production`](../.env.production). Every production build
