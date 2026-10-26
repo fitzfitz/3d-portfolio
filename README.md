@@ -26,6 +26,7 @@ Tailwind, on Vite.
 | `P` | Photo mode |
 | `J` | Call the jellyfish guide, or send it back |
 | `B` | Leave a message in a bottle (only when a beacon API is configured) |
+| `R` | At the start gate: join a ring race, or leave its lobby (only when a live sky server is configured) |
 | `1`–`3` | Jump next to a project probe (grab it with `F` to open its dossier) |
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
@@ -45,11 +46,17 @@ sector list (bottom right) jumps on click, and a waypoint marks the next unread
 probe. `?cv` (or `#resume`) on the URL opens the classic résumé directly —
 the link to send someone who won't fly.
 
-**Time trial.** The amber ring in the inner system, near the sun, starts a lap of nine rings
-out past the orbits of Mercury and Venus and back. Fly them in order and finish through
-the start ring. Par is 0:35, and one tank of warp covers the whole loop, so par is easy to beat.
-Your best time is saved in this browser, and later laps race a ghost of that
-best lap. A jump or an orbit lock aborts the lap.
+**Ring race.** The amber start gate sits just sunward of the spawn pad. With a
+live sky server configured, `R` there (L3 on a pad, the JOIN RACE button on
+touch) joins the public race; INVITE FRIENDS in the lobby makes it private and
+copies a `?race=CODE` link that starts a friend on the grid. A second pilot
+starts a 15 s countdown (up to eight race); alone for 30 s, or with RACE THE
+BEST LAP, you race a replay of the course's best lap. Past the start gate, the
+course's rings show only to racers. Everyone on the grid is held to normal warp,
+with no jumps or docking, for a three-minute limit. The room stamps each ring as
+you pass it (signed, in order, never faster than warp allows), and the results
+and the stored best lap are built from those stamps alone
+(`beacon-api/README.md`). Joining turns live sky on for the race if it was off.
 
 **Messages in bottles.** If a beacon API is configured, `B` (or the BOTTLE (B)
 button) opens a small panel: write a note of up to 140 characters and Send

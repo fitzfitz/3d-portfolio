@@ -122,7 +122,8 @@ export function RacePanel(p: RacePanelProps) {
 
   const big = v.phase === "grid" || (v.phase === "running" && t.big !== "");
   return (<>
-    <div data-testid="race-hud" className="absolute top-5 left-1/2 -translate-x-1/2">
+    {/* Above the desktop controls card (top-24), which a lobby card reaches until the HUD goes quiet. */}
+    <div data-testid="race-hud" className="absolute top-5 left-1/2 -translate-x-1/2 z-10">
       <div className={card}>{body}</div>
     </div>
     {big && (

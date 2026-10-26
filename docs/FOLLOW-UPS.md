@@ -6,6 +6,34 @@ reproducible; none is urgent enough to have justified widening a branch.
 
 Delete an entry when it is fixed.
 
+- **Ring race, left for later** (spec 2026-10-26-ring-race-design, PR #66):
+  - Prizes: a finish could pay data shards. That belongs to the coins stage,
+    so the race pays only the Ring runner badge and the best time for now.
+  - One public lobby: the Sky room keeps a single public lobby open at a
+    time, so a ninth pilot is told the race is full instead of a second lobby
+    opening (`beacon-api/src/raceRoom.ts` join). More than one can wait for
+    real traffic.
+  - The e2e race is one page against a scripted fake room
+    (`tests/e2e/race.probe.mjs`), not the two-page race the spec names: the
+    harness has no real Worker. Two racers run end to end through the room's
+    logic in a unit test (beacon-api), and the adapter's pieces are tested,
+    but a bug in the socket wiring between `beacon-api/src/index.ts` and the
+    room shows only on staging. Fly a two-tab race on staging before a release.
+  - The start grid's eight slots (up to 38 u behind the start gate, ruling R6
+    moved the gate 17 u up for them) are not in `tests/helpers/solarClearance`'s
+    landmarks, so no test keeps the grid clear of the swept orbits. Add them
+    with the gate's radius plus the grid's spread.
+  - `raceLiveSkyRestore` (the race turned live sky on, so idle turns it off
+    again) lives in memory only: a reload mid-race leaves live sky on for good.
+    Persist it with the run, or clear live sky on a run-less load.
+  - Safari: INVITE FRIENDS copies the link when the private lobby's code comes
+    back from the room, after the click, so Safari's clipboard (gesture-bound)
+    refuses and the card shows the link to copy by hand. Copy a link built
+    before the reply, or ask the room for the code first.
+  - L3 leaves the lobby: the pad's race button also leaves, and a stray stick
+    click while waiting drops the pilot out. Leave on a held L3, or only from
+    the LEAVE button.
+
 - **Space monsters, for the combat stage** (notes for the stage that wires the
   saucer and tardigrade into the game, not new work now):
   - Saucer body vertex attributes: 15 of 16 WebGL2 slots are used. Free one by

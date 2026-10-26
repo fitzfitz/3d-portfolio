@@ -1,37 +1,7 @@
 import {
   withPage, settle, lockFullFidelity, readStore, sceneQuery, pollUntil, chatterText, toDeepSpace, hold,
-  SCENE_READY_TIMEOUT_MS,
+  SCENE_READY_TIMEOUT_MS, installFakeSky,
 } from "./harness.mjs";
-
-// Runs in the page before any script (evaluateOnNewDocument). Fakes only
-// fake:// sockets; everything else (Vite's HMR) gets the real WebSocket.
-function installFakeSky() {
-  const sky = { created: 0, sent: [], sockets: [] };
-  window.__fakeSky = sky;
-  class FakeSocket {
-    constructor(url) {
-      this.url = url;
-      this.readyState = 0;
-      this.onopen = null; this.onmessage = null; this.onclose = null; this.onerror = null;
-      sky.created++;
-      sky.sockets.push(this);
-      setTimeout(() => { if (this.readyState !== 0) return; this.readyState = 1; this.onopen?.(); }, 20);
-    }
-    send(d) { sky.sent.push(JSON.parse(d)); }
-    close() {
-      if (this.readyState === 3) return;
-      this.readyState = 3;
-      setTimeout(() => this.onclose?.(), 0);
-    }
-  }
-  sky.serve = (msg) => { for (const s of sky.sockets) if (s.readyState === 1) s.onmessage?.({ data: JSON.stringify(msg) }); };
-  sky.open = () => sky.sockets.filter((s) => s.readyState === 1).length;
-  window.WebSocket = new Proxy(window.WebSocket, {
-    construct(target, args) {
-      return String(args[0]).startsWith("fake://") ? new FakeSocket(args[0]) : Reflect.construct(target, args);
-    },
-  });
-}
 
 const inPage = (page, fn, arg) => page.evaluate(fn, arg);
 
