@@ -180,7 +180,7 @@ describe("the bounds margin covers every vertex's reach past its rest sphere", (
       // Conservative, not absurd: the padding never doubles the sphere.
       expect(margin, `${p.node} ${p.material}`).toBeLessThan(radius);
     }
-  });
+  }, 30_000); // every vertex x 24 poses x the sampled times: ~1.5 s idle, slow on a loaded machine
 
   it("tardigrade: swim, paddle, charge, recoil, hit and every stage of the curl stay inside the padded sphere", async () => {
     const rig = tardigradeRig();
@@ -195,7 +195,7 @@ describe("the bounds margin covers every vertex's reach past its rest sphere", (
       expect(worst, `${p.node} ${p.material}: reach past the rest sphere`).toBeLessThanOrEqual(margin);
       expect(margin, `${p.node} ${p.material}`).toBeLessThan(radius);
     }
-  });
+  }, 30_000); // every vertex x 80 poses x the sampled times: ~3.6 s idle, 13 s in the full suite (2026-10-26)
 
   it("prepareMonsterGeometry pads the rest sphere by exactly the margin it is given", () => {
     const g = new THREE.BufferGeometry();
