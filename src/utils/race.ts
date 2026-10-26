@@ -1,6 +1,7 @@
 /**
- * Time-trial logic, pure: gate crossing, the race state machine, and ghost
- * recording/playback. The scene component (RingCourse.tsx) feeds it positions.
+ * Ring race logic, pure: gate crossing, the start grid, and ghost recording,
+ * playback and the seed lap. The scene component (RingCourse.tsx) feeds it
+ * positions; lap rules shared with the server live in raceProtocol.ts.
  */
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -52,43 +53,6 @@ export function buildGates(points: readonly (readonly [number, number, number])[
 }
 function add(a: Vec3, b: Vec3): Vec3 { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
 
-export type RaceState =
-  | { phase: "idle" }
-  /** `next` is the ring to fly through; 0 means the finish (ring 0 again). */
-  | { phase: "running"; next: number; startClock: number }
-  /** `newBest` is set by the caller, which knows the previous best. */
-  | { phase: "finished"; time: number; newBest?: boolean };
-
-/**
- * One frame of race clock: the ship's own clamped dt, so a tab switch or a
- * slow frame stops the clock as it stops the ship. Paused in photo mode,
- * where the ship is frozen in place.
- */
-export function advanceRaceClock(now: number, delta: number, paused: boolean): number {
-  return paused ? now : now + Math.min(delta, 0.05);
-}
-
-export type RaceEvent = "start" | "gate" | "finish";
-
-/**
- * Advances the race for one frame's move a→b at race-clock time `clock`.
- * Only the next ring counts: flying through any other is ignored, including
- * doubling back through the start ring before the lap is done.
- */
-export function raceStep(
-  s: RaceState, a: Vec3, b: Vec3, clock: number, gates: readonly Gate[], radius: number,
-): { state: RaceState; event: RaceEvent | null } {
-  if (s.phase !== "running") {
-    if (crossesGate(a, b, gates[0], radius)) {
-      return { state: { phase: "running", next: 1, startClock: clock }, event: "start" };
-    }
-    return { state: s, event: null };
-  }
-  if (!crossesGate(a, b, gates[s.next], radius)) return { state: s, event: null };
-  if (s.next === 0) return { state: { phase: "finished", time: clock - s.startClock }, event: "finish" };
-  return { state: { ...s, next: (s.next + 1) % gates.length }, event: "gate" };
-}
-
 /** Ghost samples per second of race clock. */
 export const GHOST_HZ = 10;
 
@@ -111,6 +75,65 @@ export function sampleGhost(samples: readonly GhostSample[], t: number): GhostSa
     yaw: wrapAngle(a.yaw + wrapAngle(b.yaw - a.yaw) * k),
     pitch: lerp(a.pitch, b.pitch),
   };
+}
+
+/** Heading and pitch whose nose (see pitchFlight.ts noseDirection) points along unit vector d. */
+function poseAlong(d: Vec3): { heading: number; pitch: number } {
+  return { heading: Math.atan2(d.x, d.z), pitch: Math.asin(Math.max(-1, Math.min(1, d.y))) };
+}
+
+/** Start grid: rows this far behind the start gate, two pilots a row. */
+const GRID_ROWS = [14, 22, 30, 38] as const;
+/** Each column's distance from the gate's axis. */
+const GRID_HALF_GAP = 4;
+
+/**
+ * Start slot `slot` (0..7) behind `gate`: two columns 4 u either side of its
+ * axis, rows 14, 22, 30 and 38 u back along -n, every slot facing n. Even
+ * slots take the left column, odd the right (left and right as seen flying
+ * through, with world up as up).
+ */
+export function gridSlot(gate: Gate, slot: number): { p: Vec3; heading: number; pitch: number } {
+  const { c, n } = gate;
+  const back = GRID_ROWS[Math.floor(slot / 2) % GRID_ROWS.length];
+  // Right = n × up, flat; a gate facing straight up or down falls back to +x.
+  const flat = Math.hypot(n.x, n.z);
+  const right: Vec3 = flat < 1e-6 ? { x: 1, y: 0, z: 0 } : { x: -n.z / flat, y: 0, z: n.x / flat };
+  const side = slot % 2 === 0 ? -GRID_HALF_GAP : GRID_HALF_GAP;
+  return {
+    p: {
+      x: c.x - n.x * back + right.x * side,
+      y: c.y - n.y * back + right.y * side,
+      z: c.z - n.z * back + right.z * side,
+    },
+    ...poseAlong(n),
+  };
+}
+
+/**
+ * A steady lap for when no one has set a best yet: straight legs from ring 0
+ * through every ring and back to ring 0 at `speed` (u/s), sampled at GHOST_HZ
+ * and facing each leg. The last sample sits on ring 0's centre, so the run
+ * ends through the finish.
+ */
+export function seedLap(gates: readonly Gate[], speed: number): Ghost {
+  const pts = [...gates.map((g) => g.c), gates[0].c];
+  const legs = pts.slice(1).map((b, i) => len(sub(b, pts[i])));
+  const total = legs.reduce((a, b) => a + b, 0);
+  const time = total / speed;
+  const at = (d: number): GhostSample => {
+    let i = 0;
+    while (i < legs.length - 1 && d > legs[i]) d -= legs[i++];
+    const a = pts[i], dir = norm(sub(pts[i + 1], a));
+    const k = Math.min(d, legs[i]);
+    const { heading, pitch } = poseAlong(dir);
+    return { x: a.x + dir.x * k, y: a.y + dir.y * k, z: a.z + dir.z * k, yaw: heading, pitch };
+  };
+  const ticks = Math.ceil(time * GHOST_HZ - 1e-9);
+  const samples: GhostSample[] = [];
+  for (let k = 0; k < ticks; k++) samples.push(at((k / GHOST_HZ) * speed));
+  samples.push(at(total));
+  return { time, samples };
 }
 
 const FIELDS = 5;
