@@ -6,7 +6,7 @@ import {
 /**
  * The live sky room, free of Cloudflare bindings so it can be unit tested
  * (tests/skyRoom.test.ts). index.ts's Sky Durable Object wires it to
- * hibernatable WebSockets. Spec: docs/superpowers/specs/2026-10-14-live-sky-design.md §2.
+ * hibernatable WebSockets. Spec: docs/archive/specs/2026-10-14-live-sky-design.md §2.
  *
  * Nothing here is stored. A pilot is a random id, a public country code, and
  * their last pose, kept in the socket's attachment; closing the socket forgets them.

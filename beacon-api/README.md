@@ -59,7 +59,7 @@ the root `npm test`. `src/index.ts` is the D1 adapter.
 ## Live sky
 
 The same Worker relays live sky: other visitors flying right now appear as
-ghost ships (spec: `docs/superpowers/specs/2026-10-14-live-sky-design.md`).
+ghost ships (spec: `docs/archive/specs/2026-10-14-live-sky-design.md`).
 
 - **One room.** `GET /live` is a WebSocket upgrade into a single Durable Object,
   `Sky`, using the hibernation API. The room logic is pure and unit tested
@@ -149,7 +149,7 @@ up on the next deploy, with no per-host settings. For `npm run dev`, set it in
 
 `GET /content` serves the portfolio's projects and career history from two D1
 tables, `projects` and `career` (schema: [`content.sql`](content.sql); spec:
-`docs/superpowers/specs/2026-10-23-dynamic-content-design.md`). There is no
+`docs/archive/specs/2026-10-23-dynamic-content-design.md`). There is no
 admin page and no write endpoint: edit the rows in the Cloudflare dashboard,
 under **Storage & Databases → D1 → fitz-beacons → Console** (or the table
 browser next to it), or with `wrangler d1 execute --remote --command`.

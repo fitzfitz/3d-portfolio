@@ -1,7 +1,7 @@
 import { STATION_RADII, type Vec3 } from "./careerTrail";
 
 /**
- * The shipyard (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md §1):
+ * The shipyard (docs/archive/specs/2026-10-16-shipyard-gate-design.md §1):
  * an open dry dock in the inner system, above the plane on the spawn side, so
  * the hangar is a short trip after a jump. The scene and
  * tests/shipyardGate.test.ts read these same numbers.

@@ -12,7 +12,7 @@ import { assetUrl } from "../../utils/assetUrl";
 const POSITION: [number, number, number] = [GATE_POS[0], GATE_POS[1], GATE_POS[2]];
 
 /**
- * The dormant gate (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md),
+ * The dormant gate (docs/archive/specs/2026-10-16-shipyard-gate-design.md),
  * built by scripts/blender/gen_dormant_gate.py. Its opening (+Z) is turned to
  * face the sun. The glyph seams pulse faintly and flicker as a ship closes
  * in (gatePass.seamIntensity: a uniform change, no new shader program).

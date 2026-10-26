@@ -295,8 +295,8 @@ charted worlds, then merge the site.
 
 ## Docs
 
-`docs/superpowers/specs/` holds a design document per feature and
-`docs/superpowers/plans/` the implementation plan that followed it, each with a
+`docs/archive/specs/` holds a design document per feature and
+`docs/archive/plans/` the implementation plan that followed it, each with a
 verification record appended. They are the reasoning behind decisions the code
 cannot explain on its own — why fuel lives outside the store, why a refuel
 confirms only when it lifts you out of low, why the radar gates crystals on 3D

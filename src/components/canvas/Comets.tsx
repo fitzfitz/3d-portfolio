@@ -15,7 +15,7 @@ import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
-// Realistic comet per docs/superpowers/specs/2026-07-19-realistic-comet-spec.md:
+// Realistic comet per docs/archive/specs/2026-07-19-realistic-comet-spec.md:
 // coal-dark bilobed nucleus, green C2 coma, straight blue anti-sunward ion
 // tail, curved white dust tail, all activity scaled by heliocentric distance.
 

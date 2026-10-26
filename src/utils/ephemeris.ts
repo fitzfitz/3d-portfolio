@@ -5,7 +5,7 @@ export { JPL_HELD_AFTER_T, JPL_PLANETS } from "../data/jplElements";
 export { CERES, ENCKE, CHURYUMOV } from "../data/smallBodies";
 
 /**
- * Real-sky ephemeris (docs/superpowers/specs/2026-10-20-real-solar-system-design.md §4).
+ * Real-sky ephemeris (docs/archive/specs/2026-10-20-real-solar-system-design.md §4).
  * Planets follow JPL's "Approximate Positions of the Planets" Table 2a step list;
  * small bodies are pure two-body Kepler orbits from osculating SBDB elements.
  * Pure functions, no scene imports; allocation-free when `out` is given.

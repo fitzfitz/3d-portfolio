@@ -1,6 +1,6 @@
 // First-frame A/B between two production builds over a shared-bandwidth link
 // (shared-link-server.mjs), the measurement behind the asset packs (spec
-// docs/superpowers/specs/2026-10-19-asset-packs-design.md, "Measurement
+// docs/archive/specs/2026-10-19-asset-packs-design.md, "Measurement
 // conditions"). Chrome's DevTools throttling limits each request on its own,
 // which flatters many parallel files, so it is not used.
 //

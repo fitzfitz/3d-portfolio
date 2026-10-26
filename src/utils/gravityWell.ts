@@ -2,7 +2,7 @@ import type { Vec3 } from "./reactions";
 import { RADIO_BUSY_S } from "./cargoReaction";
 
 /**
- * Gravity wells (docs/superpowers/specs/2026-10-12-flight-feel-design.md §5).
+ * Gravity wells (docs/archive/specs/2026-10-12-flight-feel-design.md §5).
  *
  * The ship's flight model is heavily damped (thrust 25.2 u/s², drag ~1.09/s),
  * so gravity added to the pilot's velocity is erased: a tuning run measured

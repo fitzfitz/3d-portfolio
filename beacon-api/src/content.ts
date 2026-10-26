@@ -2,7 +2,7 @@ import { cors, json, rateKey, type RequestLimiter } from "./handler";
 
 /**
  * GET /content: the portfolio's projects and career, from the D1 tables in
- * beacon-api/content.sql (spec docs/superpowers/specs/2026-10-23-dynamic-content-design.md).
+ * beacon-api/content.sql (spec docs/archive/specs/2026-10-23-dynamic-content-design.md).
  * Read-only: the owner edits the rows in the Cloudflare D1 console. Rows go out
  * as stored (tech as JSON text, NULL for an absent optional field); the client
  * validates every row (src/utils/contentParse.ts). Free of Cloudflare

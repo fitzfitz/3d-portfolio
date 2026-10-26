@@ -10,7 +10,7 @@ const RING_SPIN = 0.12;
 const POSITION: [number, number, number] = [STATION_POS[0], STATION_POS[1], STATION_POS[2]];
 
 /**
- * The career station (docs/superpowers/specs/2026-10-15-career-landmarks-design.md §1),
+ * The career station (docs/archive/specs/2026-10-15-career-landmarks-design.md §1),
  * built by scripts/blender/gen_career_station.py. Docking is SpacePlanets'
  * zone check on the destination table and opens the Career dossier. There is
  * no collider, as with the portal: the lock radius (7.2) lies outside the

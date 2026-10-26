@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { Vec3 } from "../../utils/reactions";
 
 /**
- * Orbit lines as true ellipses (docs/superpowers/specs/2026-10-20-real-solar-system-design.md
+ * Orbit lines as true ellipses (docs/archive/specs/2026-10-20-real-solar-system-design.md
  * §6.2). The ribbon is built in the orbit's own perifocal frame (x toward
  * perihelion, y a quarter turn ahead along the motion, z the orbit normal; the
  * Sun at the origin, a focus), and its mesh is turned into the world by

@@ -7,7 +7,7 @@ import { SHIPYARD_BLUE } from "../../data/shipyard";
 import PlumePicker from "./PlumePicker";
 
 /**
- * The shipyard's dock dialog (docs/superpowers/specs/2026-10-16-shipyard-gate-design.md §2):
+ * The shipyard's dock dialog (docs/archive/specs/2026-10-16-shipyard-gate-design.md §2):
  * the one place to change the ship's look. Today that is the engine plume;
  * hull paint is added here by its own project. Same conventions as the
  * career dossier: a modal dialog, Esc or either button closes it (App's Esc

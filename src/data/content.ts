@@ -3,7 +3,7 @@ import { BUNDLED_CAREER, type CareerEntry } from "./career";
 
 /**
  * The portfolio's content: the projects and the career history
- * (docs/superpowers/specs/2026-10-23-dynamic-content-design.md). It comes
+ * (docs/archive/specs/2026-10-23-dynamic-content-design.md). It comes
  * from beacon-api's D1 tables (GET /content) when that answers, else from the
  * bundled snapshot below (projects.json, career.ts).
  *

@@ -7,7 +7,7 @@ import type { Vec3 } from "./reactions";
 import { setScannable } from "./scannables";
 
 /**
- * Where the nine bodies are (docs/superpowers/specs/2026-10-20-real-solar-system-design.md
+ * Where the nine bodies are (docs/archive/specs/2026-10-20-real-solar-system-design.md
  * §4): the ephemeris at the orrery date for `gameSeconds` of the ambient clock,
  * mapped into the world by eclipticToWorld. Allocation-free when `out` is given.
  */

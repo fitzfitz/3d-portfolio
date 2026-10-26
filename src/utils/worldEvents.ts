@@ -3,7 +3,7 @@ import { EVENT_DURATION } from "./eventDirector";
 import { LOCK_RETAIN_FACTOR } from "../constants";
 
 /**
- * Pure geometry for the world events (docs/superpowers/specs/2026-10-12-world-events-design.md).
+ * Pure geometry for the world events (docs/archive/specs/2026-10-12-world-events-design.md).
  * Components read these with the event's elapsed time; nothing here touches the scene.
  */
 
