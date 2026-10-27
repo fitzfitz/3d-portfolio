@@ -21,7 +21,7 @@ export default function Asteroids() {
   const gl = useThree((s) => s.gl);
   const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([null, null, null, null]);
 
-  // Each variant's geometry and material (asteroidVariants.ts; the Nest's rocks share them).
+  // Each variant's geometry and material (asteroidVariants.ts).
   const variants = useMemo(() => asteroidVariants(scene), [scene]);
 
   useEffect(() => {

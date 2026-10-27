@@ -44,7 +44,7 @@ const GLOW_FAR = NEST_GLOW_R + NEAR_FADE_FAR;
  *    gain × exposureCompensation × nearFade, so it reads the same at any
  *    exposure and fades out near the camera. Far from the centre with the
  *    compensation unchanged, nothing is written.
- * The rocks' colliders (NEST_ROCK_COLLIDERS) are Spaceship's, always on.
+ * The rocks' colliders (NEST_ROCK_COLLIDERS) are Spaceship's, near the Nest.
  * On unmount it disposes its geometries and the glow's material, not the
  * rocks' material (the model's, shared with the belt) or the maps.
  */

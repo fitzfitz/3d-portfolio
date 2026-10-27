@@ -123,7 +123,9 @@ describe("the Nest's rock cluster", () => {
       expect(dist(p, NEST_BUOY_POS)).toBeGreaterThan(100);
       expect(dist(p, [NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z])).toBeGreaterThan(100);
     });
-    expect(readFileSync("src/components/canvas/Spaceship.tsx", "utf8")).toMatch(/COLLIDERS = \[[^\]]*NEST_ROCK_COLLIDERS/);
+    // Solid to the ship: resolved together (they overlap), only within NEST_ROCK_CHECK_R of the centre.
+    expect(readFileSync("src/components/canvas/Spaceship.tsx", "utf8"))
+      .toMatch(/NEST_ROCK_CHECK_R[\s\S]{0,400}resolveCluster\([^)]*NEST_ROCK_COLLIDERS\)[\s\S]{0,40}impact\(time\)/);
   });
 
   it("draws the belt's low-poly rock (its geometry and material, so its program), at most 15k triangles in all (Ruling N4)", () => {

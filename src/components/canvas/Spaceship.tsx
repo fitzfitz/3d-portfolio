@@ -6,7 +6,7 @@ import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies, selectRaceFlying, combat } from "../../store/spaceStore";
 import { markShipTeleport } from "../../store/shipTeleport";
-import { NEST_JUMP_ID, NEST_TOW_POSE } from "../../data/nest";
+import { NEST_CENTRE, NEST_JUMP_ID, NEST_TOW_POSE } from "../../data/nest";
 import { beamUse } from "../../utils/combat/controls";
 import { takeTowRequest } from "../../utils/combat/director";
 import { padRumble } from "../../utils/padRumble";
@@ -21,9 +21,9 @@ import { probePos, probeRelocating } from "../../store/probeState";
 import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
 import { applyBackdrop, applyFill, cutExposure, glowScale } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
-import { resolveCollision } from "../../utils/collision";
+import { resolveCluster, resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
-import { NEST_ROCK_COLLIDERS } from "../../data/nestRocks";
+import { NEST_ROCK_CHECK_R, NEST_ROCK_COLLIDERS } from "../../data/nestRocks";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
@@ -105,8 +105,9 @@ const _aim = { x: 0, y: 0, z: 0 };
 /** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
 const FIRST_PROBE_HOME = PROBES[0].home;
 
-// Collisions: big scenery asteroids, the Nest's rocks + the sun (belt is decorative — excluded)
-const COLLIDERS = [...ASTEROID_COLLIDERS, ...NEST_ROCK_COLLIDERS, SUN_COLLIDER];
+// Collisions: big scenery asteroids + the sun (belt is decorative — excluded).
+// The Nest's rocks are resolved on their own, near the Nest (frame loop).
+const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 /**
  * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
  * entries and the moons' `moonPositions` entries. Merged once:
@@ -820,6 +821,10 @@ export default function Spaceship() {
         break;
       }
     }
+    // The Nest's rocks overlap, so they are resolved together (one push-out
+    // clear of them all, one impact), and only near the Nest: no cost elsewhere.
+    if (Math.hypot(pos.current.x - NEST_CENTRE[0], pos.current.y - NEST_CENTRE[1], pos.current.z - NEST_CENTRE[2]) < NEST_ROCK_CHECK_R
+      && resolveCluster(pos.current, vel.current, NEST_ROCK_COLLIDERS)) impact(time);
     // The bodies' and the moons' solid surfaces (worldCollide.ts):
     // they move, so each is read live from SOLID_CENTERS, at its equatorial
     // size. The rings are fly-through.

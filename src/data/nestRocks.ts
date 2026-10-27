@@ -3,18 +3,19 @@ import { NEST_CENTRE, type Vec3 } from "./nest";
 
 /**
  * The Nest's rock cluster and slime glow (spec 2026-10-27-nest-playable §2):
- * a hollow shell of the scenery asteroids' rocks around NEST_CENTRE, open in
- * a mouth toward the buoy so the glow inside shows from there. Static (no
- * tumble), seeded, so every load builds the same nest. Drawn by NestCluster
- * (the lazily loaded Nest chunk); the colliders are always on, in
- * Spaceship's COLLIDERS, so the rocks are solid to the ship. Bolts and
- * monsters ignore them.
+ * a hollow shell of rocks around NEST_CENTRE (the belt's low-poly rock,
+ * Ruling N4), open in a mouth toward the buoy so the glow inside shows from
+ * there. Static (no tumble), seeded, so every load builds the same nest.
+ * Drawn by NestCluster (the lazily loaded Nest chunk). The colliders are
+ * solid to the ship: Spaceship resolves them together (collision.ts
+ * resolveCluster, as some overlap), within NEST_ROCK_CHECK_R of the centre.
+ * Bolts and monsters ignore them.
  */
 export interface NestRock {
   /** From NEST_CENTRE (u). */
   offset: Vec3;
   scale: number;
-  /** Which sculpted mesh in asteroids.glb (as AsteroidData.variant). */
+  /** Which of NestCluster's four per-axis stretch presets shapes this rock. */
   variant: 0 | 1 | 2 | 3;
   /** Euler angles (rad). */
   rotation: Vec3;
@@ -28,6 +29,8 @@ export const NEST_SHELL_R: readonly [number, number] = [10, 14];
 export const NEST_ROCK_SCALE: readonly [number, number] = [1.2, 2.0];
 /** No rock within this angle of the buoy direction: the mouth. */
 export const NEST_MOUTH_RAD = 40 * Math.PI / 180;
+/** Spaceship tests the rocks only within this of the centre (u): every rock lies inside it with room to spare. */
+export const NEST_ROCK_CHECK_R = 40;
 /** The glow's points sit within this radius of the centre (u). */
 export const NEST_GLOW_R = 7;
 const NEST_GLOW_N = 40;
