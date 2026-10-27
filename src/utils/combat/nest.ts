@@ -33,7 +33,7 @@ import {
   SHIP_HIT_R, SLEEP_DROP_R, SPAWN_CONE_RAD, SPAWN_DIST, SPAWN_MAX_R, STRIKE_RING, TARDIGRADE_HIT_R, WAVE_GAP_S,
   WAVES, WAVES_LOW_PERF,
 } from "./constants";
-import { advanceBolt, clearBolts, createBoltPool, fireBolt, segmentHitsSphere, type BoltPool } from "./bolts";
+import { advanceBolt, clearBolts, createBoltPool, fireBolt, segmentHitsSphere, type Bolt, type BoltPool } from "./bolts";
 import { createHull, damageHull, regenHull, restoreAfterBreach, type Hull } from "./hull";
 import { acquireLock, clickAssist, leadAim, lockHolds, spreadDir } from "./aim";
 import { inNestArea } from "./controls";
@@ -470,7 +470,7 @@ export function stepNest(
       const k = shipBoltTarget(n, b.px, b.py, b.pz, b.x, b.y, b.z, mdt);
       if (k >= 0) {
         b.live = false;
-        recordStrike(n, b.x, b.y, b.z);
+        recordStrike(n, k, b, mdt);
         const ns = n.saucers.length;
         if (k < ns ? hitSaucer(n.saucers[k]) : hitTardigrade(n.tardigrades[k - ns])) ev.defeats++;
         continue;
@@ -517,10 +517,35 @@ function noseOrigin(inp: NestInput, out: V3): V3 {
   return out;
 }
 
-/** A ship bolt hit at (x, y, z): into the strike ring's next slot (no allocation). */
-function recordStrike(n: NestState, x: number, y: number, z: number): void {
+/**
+ * A ship bolt hit target k: where, into the strike ring's next slot (no
+ * allocation). Ruling N6: the sparks burst on the monster's surface, not at
+ * the bolt's step end (inside it, or past it). In the monster's frame (as
+ * boltHits sweeps it) the point is the segment's closest approach to the
+ * centre; when that lies inside the hit sphere (a solid hit, not a graze),
+ * it is pulled back along the segment to where the bolt entered the sphere.
+ * Placed about the monster's position now.
+ */
+function recordStrike(n: NestState, k: number, b: Bolt, mdt: number): void {
+  const m = n.targets[k];
+  const r = k < n.saucers.length ? SAUCER_HIT_R : TARDIGRADE_HIT_R;
+  // The segment a → a + d relative to the centre (at the origin).
+  const ax = b.px - (m.x - m.vx * mdt), ay = b.py - (m.y - m.vy * mdt), az = b.pz - (m.z - m.vz * mdt);
+  const dx = b.x - m.x - ax, dy = b.y - m.y - ay, dz = b.z - m.z - az;
+  const dd = dx * dx + dy * dy + dz * dz;
+  const ad = ax * dx + ay * dy + az * dz;
+  let t = dd > 0 ? -ad / dd : 0;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const qx = ax + dx * t, qy = ay + dy * t, qz = az + dz * t;
+  if (dd > 0 && qx * qx + qy * qy + qz * qz < r * r) {
+    // |a + d·s| = r, the smaller root (the entry), clamped to the segment.
+    const aa = ax * ax + ay * ay + az * az;
+    const disc = ad * ad - dd * (aa - r * r);
+    const s = (-ad - Math.sqrt(Math.max(0, disc))) / dd;
+    t = s < 0 ? 0 : s > t ? t : s;
+  }
   const p = n.strikes[n.strikeSeq % n.strikes.length];
-  p.x = x; p.y = y; p.z = z;
+  p.x = m.x + ax + dx * t; p.y = m.y + ay + dy * t; p.z = m.z + az + dz * t;
   n.strikeSeq++;
 }
 
@@ -564,6 +589,7 @@ export function debugStartWave(n: NestState, k: 1 | 2 | 3, inp: NestInput, rnd: 
   for (let i = 0; i < n.saucers.length; i++) leaveSaucer(n.saucers[i]);
   for (let i = 0; i < n.tardigrades.length; i++) leaveTardigrade(n.tardigrades[i]);
   n.outFor = 0;
+  n.lock = -1;
   startWave(n, k, inp, rnd, ev);
 }
 
@@ -583,6 +609,7 @@ export function debugClearWave(n: NestState, ev: NestEvents): void {
 export function debugClearAll(n: NestState, ev: NestEvents): void {
   debugClearWave(n, ev);
   dismissSleepers(n);
+  n.lock = -1;
   n.wave = 3;
   n.phase = "fighting"; n.phaseT = 0;
 }

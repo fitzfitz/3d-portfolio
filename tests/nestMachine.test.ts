@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   BOLT_SPEED, BOLT_RANGE, ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE, ENEMY_BOLT_SPEED, HULL_AFTER_BREACH, JET_DPS,
   LEAVE_S, NEST_LEASH_R, NEST_REST_S, NOSE_OFFSET, SAUCER_HITS, SLEEP_GROW_S, SPAWN_CONE_RAD, SPAWN_MAX_R, WAVE_GAP_S,
-  STRIKE_RING,
+  STRIKE_RING, SAUCER_HIT_R, TARDIGRADE_HIT_R, BOLT_R,
 } from "../src/utils/combat/constants";
 import type { ClickShot, NestSink, V3 } from "../src/utils/combat/types";
 import { fireBolt, type Bolt } from "../src/utils/combat/bolts";
@@ -1168,8 +1168,12 @@ describe("the Nest: lock-on, click assist and strikes", () => {
       expect(b.live).toBe(false);
       expect(n.strikeSeq).toBe(i + 1);
       const k = n.strikes[(n.strikeSeq - 1) % STRIKE_RING];
-      expect([k.x, k.y, k.z]).toEqual([b.x, b.y, b.z]);
-      points.push(v(b.x, b.y, b.z));
+      // On the surface, where the bolt enters the hit sphere (Ruling N6).
+      const y = 0.1 * i;
+      expect(k.x).toBeCloseTo(s.x + Math.sqrt(SAUCER_HIT_R * SAUCER_HIT_R - y * y), 9);
+      expect(k.y).toBeCloseTo(ship.y + y, 9);
+      expect(k.z).toBeCloseTo(ship.z, 9);
+      points.push(v(k.x, k.y, k.z));
     }
     expect(s.hp).toBe(90);
     expect(n.strikes).toHaveLength(STRIKE_RING);
@@ -1177,5 +1181,117 @@ describe("the Nest: lock-on, click assist and strikes", () => {
     // The ninth overwrote the first slot; the rest hold hits 2–8.
     expect([n.strikes[0].x, n.strikes[0].y, n.strikes[0].z]).toEqual([points[8].x, points[8].y, points[8].z]);
     for (let i = 1; i < 8; i++) expect(n.strikes[i].y).toBe(points[i].y);
+  });
+});
+
+describe("the Nest: ruling N6 (moving targets, debug paths, strikes on the surface)", () => {
+  /** Wave 1 frozen at 100 u, one saucer `d` u down the −X nose, `off` u above it (the rest parked above the ship). */
+  function strikeSetup(d: number, off: number) {
+    const f = setup(100);
+    debugStartWave(f.n, 1, f.inp, f.rnd, f.ev);
+    f.n.frozen = true;
+    const ship = f.inp.ship;
+    for (const s of f.n.saucers) { s.x = ship.x; s.y = ship.y + 60; s.z = ship.z; s.vx = 0; s.vy = 0; s.vz = 0; }
+    const m = f.n.saucers[0];
+    m.x = ship.x - d; m.y = ship.y + off; m.z = ship.z; m.hp = 99;
+    return { ...f, m };
+  }
+  const latest = (n: NestState) => n.strikes[(n.strikeSeq - 1) % STRIKE_RING];
+
+  it("a head-on hit strikes the near surface, not the centre or past it", () => {
+    const { n, inp, step, m } = strikeSetup(40, 0);
+    const ship = inp.ship;
+    // From 30 u ahead: the second 7 u step (0.05 s) runs from 3 u before the centre to 4 u past it.
+    fireBolt(n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1);
+    step(0.05);
+    step(0.05);
+    expect(n.strikeSeq).toBe(1);
+    const k = latest(n);
+    expect(k.x).toBeCloseTo(m.x + SAUCER_HIT_R, 9);
+    expect(k.y).toBeCloseTo(m.y, 9);
+    expect(k.z).toBeCloseTo(m.z, 9);
+  });
+
+  it("a grazing hit strikes at the segment's closest approach to the centre", () => {
+    const { n, inp, step, m } = strikeSetup(40, 0);
+    const ship = inp.ship;
+    m.y = ship.y + 2.8; // outside the 2.6 sphere, inside 2.6 + the bolt's 0.3
+    fireBolt(n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1);
+    step(0.05);
+    step(0.05);
+    expect(n.strikeSeq).toBe(1);
+    const k = latest(n);
+    expect(k.x).toBeCloseTo(m.x, 9);
+    expect(k.y).toBeCloseTo(ship.y, 9);
+    expect(k.z).toBeCloseTo(m.z, 9);
+  });
+
+  it("a hit on the tardigrade strikes its own (4.5 u) surface", () => {
+    const f = setup(100);
+    debugStartWave(f.n, 3, f.inp, f.rnd, f.ev);
+    f.n.frozen = true;
+    const ship = f.inp.ship;
+    for (const s of f.n.saucers) { s.x = ship.x; s.y = ship.y + 60; s.z = ship.z; s.vx = 0; s.vy = 0; s.vz = 0; }
+    const t = f.n.tardigrades[0];
+    t.x = ship.x - 40; t.y = ship.y; t.z = ship.z; t.vx = 0; t.vy = 0; t.vz = 0;
+    fireBolt(f.n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1);
+    f.step(0.05);
+    f.step(0.05);
+    expect(f.n.strikeSeq).toBe(1);
+    expect(latest(f.n).x).toBeCloseTo(t.x + TARDIGRADE_HIT_R, 9);
+  });
+
+  it("debugStartWave and debugClearAll clear the lock", () => {
+    for (const which of ["start", "clearAll"] as const) {
+      const { n, inp, rnd, ev, step, m } = strikeSetup(40, 0);
+      inp.fireHeld = true;
+      step();
+      expect(n.lock).toBe(0);
+      expect(m.alive).toBe(true);
+      if (which === "start") debugStartWave(n, 2, inp, rnd, ev);
+      else debugClearAll(n, ev);
+      expect(n.lock).toBe(-1);
+    }
+  });
+
+  it("a locked shot hits a saucer the AI is moving (~12 u/s, unfrozen, the nose within 25°), and every strike is on its surface", () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const f = setup(60);
+      const n = f.n, inp = f.inp, ev = f.ev;
+      const rnd = mulberry32(seed);
+      debugStartWave(n, 1, inp, rnd, ev);
+      expect(n.frozen).toBe(false);
+      let shots = 0, lockedShots = 0, hits = 0, speedSum = 0, speedN = 0;
+      for (let i = 0; i < 60 * 8; i++) {
+        const tgt = n.lock >= 0 ? n.targets[n.lock] : n.targets.find((t) => t.alive);
+        if (!tgt) break;
+        // The player keeps the nose about 10° off the saucer (inside the 25° acquire cone).
+        const d = unit(v(tgt.x - inp.ship.x, tgt.y - inp.ship.y, tgt.z - inp.ship.z));
+        inp.nose = v(d.x - 0.17 * d.z, d.y, d.z + 0.17 * d.x);
+        expect(angle(inp.nose, d)).toBeLessThan(25 * DEG);
+        inp.fireHeld = true;
+        n.hull.hp = 100; // the saucers shoot back; keep the fight going
+        const seq = n.strikeSeq, had = n.lock;
+        resetNestEvents(ev);
+        stepNest(n, inp, DT, rnd, sink, ev);
+        if (ev.shots) { shots++; if (n.lock >= 0) lockedShots++; }
+        if (had >= 0) { const t = n.targets[had]; speedSum += Math.hypot(t.vx, t.vy, t.vz); speedN++; }
+        if (n.strikeSeq > seq) {
+          hits += n.strikeSeq - seq;
+          // The struck saucer is the one whose surface the strike sits on.
+          const k = latest(n);
+          const nearest = Math.min(...n.saucers.map((s) => Math.hypot(k.x - s.x, k.y - s.y, k.z - s.z)));
+          expect(nearest).toBeGreaterThan(SAUCER_HIT_R - 1e-6);
+          expect(nearest).toBeLessThan(SAUCER_HIT_R + BOLT_R + 1e-6);
+        }
+      }
+      // Really moving: the locked saucer averaged about 12 u/s.
+      expect(speedSum / speedN).toBeGreaterThan(9);
+      expect(lockedShots).toBeGreaterThan(5);
+      // Every saucer of wave 1 went down to locked, led fire.
+      expect(hits).toBe(SAUCER_HITS * 3);
+      expect(hits / shots).toBeGreaterThan(0.7);
+      expect(aliveSaucers(n)).toBe(0);
+    }
   });
 });
