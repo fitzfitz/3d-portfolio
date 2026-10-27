@@ -162,6 +162,46 @@ Delete an entry when it is fixed.
     import scan has regex edge cases; the hull label reads 100% while the hull
     regens from 99.5 to 99.99; a stalled (not failed) model fetch keeps
     showing `CONTACT IN …` (harmless: no wave starts).
+  - **The Nest, playable** (PR 68; spec
+    `docs/superpowers/specs/2026-10-27-nest-playable-design.md`):
+    - Self-lit materials checked and left unscaled by `glowScale`: comets
+      (their coma and tails are sunlit dust whose activity already falls as
+      1/r² from the Sun, so the exposure lift is right for them, as for any
+      sunlit body); plasma anomalies (the click sparks: deliberately above 1.0,
+      `toneMapped: false`, short-lived click feedback near the ship, and in
+      the Nest a click fires a bolt instead); shooting stars (at most two
+      hair-thin streaks on the far sphere, full tier only and off under
+      reduced motion: a few pixels, never a wash); the warp tunnel (hair-thin
+      streaks shown only while warping; the bright rush is the effect); the
+      dormant gate's seam (a faint pulsed emissive on a sunlit model at
+      ~1.9 AU; scaled, its glyphs would vanish against the lit hull). Revisit
+      any of them if the `look` probe or a pilot finds it washed out.
+    - Point lights are not glow-scaled (lights are sunlight-like and
+      exposure is meant to lift them); only materials are.
+    - THE NEST has no gamepad button, and no number key once more than six
+      probes fly (keys 1–9 are taken; Ruling N1): the jump list row and the
+      radar rim marker find it. Add a key or pad mapping if pilots ask.
+    - The nest's rocks don't tumble (static instance matrices, set once;
+      their colliders are static too). Tumbling would need per-frame matrix
+      writes and moving colliders.
+    - Brightness guard: the sky's 3.5 AU headroom is 1.25× against a 1.3×
+      ceiling (the 1 AU camera sits at 1.036 AU); `glowScale`'s source-check
+      regex is weak (a structural test would be firmer).
+    - Tests that read source with regexes are brittle (rocks, sleepers,
+      `destinations.test`'s Spaceship check is satisfied by the import line);
+      there is no explicit test that the buoy axis stays clear of rocks (the
+      mouth test covers it indirectly).
+    - `towToNest` (Spaceship) is recreated each render (harmless: the frame
+      loop reads the latest); `NestCluster`'s `useMemo` InstancedMesh is
+      built twice under StrictMode in dev.
+    - Sleepers: the bob stops at once on waking (a pop of up to 0.35 u);
+      `wakeTardigrade` snaps its scale to 1 if it was still growing in; the
+      uncurl test's assertion is loose.
+    - Spawns pushed off the ship (Ruling N5) can sit 65–110° off the nose
+      near the fighting area's edge (off screen; the edge arrows point at
+      them).
+    - Edge arrows can sit under HUD panels (the corners and the radar); keep
+      them inside an inner ellipse as `WaypointDriver` does.
 
 - **Layout constants stay built at module load** (deferred from the store
   split, PR 62; spec docs/archive/specs/2026-10-26-store-split-design.md):

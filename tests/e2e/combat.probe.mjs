@@ -8,9 +8,12 @@ import {
 // independent pages, one job each (run.mjs PARTS):
 //  0. away: nothing of the fight exists or downloads in deep space, the radar
 //     shows only the Nest's rim marker, and a click makes a plasma spark as always;
-//  1. the fight: near the Nest the on-demand models load and warm; crossing
-//     the zone shows ENTERING THE NEST and wave 1's 3 saucers (on screen,
-//     screenshot); held fire defeats one; a click there fires a bolt, not a
+//  1. the fight: a jump to THE NEST lands at the tow pose and starts no
+//     fight; there the on-demand models load and warm, and the sleepers and
+//     the rock nest show (screenshot); crossing the zone shows ENTERING THE
+//     NEST and wave 1's 3 saucers, the sleepers woken (on screen,
+//     screenshot); turned away, edge arrows show; held F on a strafing saucer
+//     locks it, flashes HIT and defeats it; a click there fires a bolt, not a
 //     spark; saucer bolts take the hull down; a tardigrade's jet is caught
 //     mid-fire (screenshot); a breach tows the ship to the buoy with hull 60;
 //     clearing the Nest gives the `nest` badge; the warp hold inside the
@@ -25,10 +28,11 @@ import {
 const OUT = process.env.SCRATCH ?? "/tmp";
 
 // "In the Nest (wave 3)": 6 serial runs alone on the machine (SwiftShader,
-// 2026-10-27) read the same, 46 / 257,690 / 61; calls and triangles + 15%
-// rounded up to ten, programs + 1. See docs/PERF-BUDGETS.md.
-const NEST_CALLS_CEILING = 60; // baseline 46
-const NEST_TRIS_CEILING = 296350; // baseline 257690
+// 2026-10-27, the Nest playable: rock nest and glow added) read the same,
+// 48 / 259,530 / 61; calls and triangles + 15% rounded up to ten, programs
+// kept at 62 (first baseline 61 + 1). See docs/PERF-BUDGETS.md.
+const NEST_CALLS_CEILING = 60; // baseline 48 (was 46: + the rocks' call and the glow's)
+const NEST_TRIS_CEILING = 298460; // baseline 259530 (was 257690: + the rocks' 1,840)
 const NEST_PROGRAMS_CEILING = 62; // baseline 61 (the smoke's program included)
 
 const ONDEMAND = /\/models-ondemand\//;
@@ -147,12 +151,16 @@ const radarNestSpot = (page) => inPage(page, async () => {
   return { onRim: spot.onRim, x: +ex.toFixed(1), y: +ey.toFixed(1), nearest: Number.isFinite(nearest) ? +nearest.toFixed(2) : null };
 });
 
-/** Each live monster's place on screen (NDC), from the live camera; `on` when inside the frame and in front. */
-const onScreen = (page) => inPage(page, () => {
+/**
+ * Each live monster's place on screen (NDC), from the live camera; `on` when
+ * inside the frame and in front. `asleep` also counts the sleepers (phase
+ * "asleep", never alive).
+ */
+const onScreen = (page, asleep = false) => inPage(page, (withAsleep) => {
   const cam = window.__fitz.camera;
   const v = cam.matrixWorldInverse.elements, p = cam.projectionMatrix.elements;
   const n = window.__fitz.nest.combat.nest;
-  return [...n.saucers, ...n.tardigrades].filter((m) => m.alive).map((m) => {
+  return [...n.saucers, ...n.tardigrades].filter((m) => m.alive || (withAsleep && m.phase === "asleep")).map((m) => {
     const x = v[0] * m.x + v[4] * m.y + v[8] * m.z + v[12];
     const y = v[1] * m.x + v[5] * m.y + v[9] * m.z + v[13];
     const z = v[2] * m.x + v[6] * m.y + v[10] * m.z + v[14];
@@ -162,7 +170,10 @@ const onScreen = (page) => inPage(page, () => {
     const nx = cx / w, ny = cy / w;
     return { nx: +nx.toFixed(2), ny: +ny.toFixed(2), on: z < 0 && Math.abs(nx) < 1 && Math.abs(ny) < 1 };
   });
-});
+}, asleep);
+/** How many of the elements with this test id show (the overlay root shown too). */
+const shownCount = (page, id) => inPage(page, (t) => [...document.querySelectorAll(`[data-testid="${t}"]`)]
+  .filter((el) => getComputedStyle(el).display !== "none" && el.closest("[style*='display: none']") === null).length, id);
 
 const effects = (page) => inPage(page, () => window.__fitz.nestRender?.effects() ?? null);
 const instances = (page) => inPage(page, () => window.__fitz.nestRender?.instances() ?? null);
@@ -187,6 +198,36 @@ async function approach(page, D, timeoutMs = 30_000) {
     const warm = await inPage(page, () => window.__fitz.nest?.combat.warm === true);
     return warm && urls.some((u) => u.endsWith("saucer.glb")) && urls.some((u) => u.endsWith("tardigrade.glb")) ? urls : null;
   }, { timeoutMs, intervalMs: 250 });
+}
+
+/**
+ * Jumps to THE NEST from wherever the ship is (the start pose) and waits, as
+ * `approach` does, for both on-demand glbs and the warm-up. Returns the
+ * landing too: the ship's place and heading once it is within 1 u of the tow
+ * pose, and the most the fight showed (wave, contacts) in the 2 s after.
+ */
+async function jumpIn(page, D, timeoutMs = 30_000) {
+  await inPage(page, () => window.__fitz.store.getState().requestJump("the_nest"));
+  const landed = await pollUntil(async () => {
+    const f = await inPage(page, () => ({ x: window.__fitz.flight.x, y: window.__fitz.flight.y, z: window.__fitz.flight.z, heading: window.__fitz.flight.heading }));
+    return dist(f, D.tow) < 1 ? f : null;
+  }, { timeoutMs: 5000, intervalMs: 50 });
+  // No ambush: the landing is outside the fighting area, so nothing starts.
+  let quiet = { maxWave: 0, maxContacts: 0, phases: new Set(), inArea: false };
+  const end = Date.now() + 2000;
+  while (Date.now() < end) {
+    const s = await readStore(page);
+    const n = await nest(page);
+    quiet = { maxWave: Math.max(quiet.maxWave, s.wave, n.wave), maxContacts: Math.max(quiet.maxContacts, s.contacts),
+      phases: quiet.phases.add(n.phase), inArea: quiet.inArea || n.inArea };
+    await nextFrames(page, 2);
+  }
+  const loaded = await pollUntil(async () => {
+    const urls = await ondemandFetched(page);
+    const warm = await inPage(page, () => window.__fitz.nest?.combat.warm === true);
+    return warm && urls.some((u) => u.endsWith("saucer.glb")) && urls.some((u) => u.endsWith("tardigrade.glb")) ? urls : null;
+  }, { timeoutMs, intervalMs: 250 });
+  return { landed, quiet: { ...quiet, phases: [...quiet.phases] }, loaded };
 }
 
 /** Crosses the 70 u zone inward (from 150 u out, to 60 u). */
@@ -243,12 +284,45 @@ async function away(page, checks) {
 async function fight(page, checks) {
   const D = await nestData(page);
 
-  // Near: the models load (both glbs) and warm.
-  const loaded = await approach(page, D);
-  checks.check("near (150 u): both on-demand glbs load and the Nest warms", loaded.ok, JSON.stringify(loaded.value ?? await nest(page)));
+  // A jump to THE NEST (spec 2026-10-27-nest-playable §1) from the start pose:
+  // it lands as a breach tow does, and the models load (both glbs) and warm.
+  const { landed, quiet, loaded } = await jumpIn(page, D);
+  const landDist = landed.ok ? dist(landed.value, D.tow) : NaN;
+  const landYaw = landed.ok ? Math.abs(landed.value.heading - D.tow.yaw) : NaN;
+  checks.check("a jump to THE NEST lands within 1 u of the tow pose, nose on the centre",
+    landed.ok && landDist < 1 && landYaw < 1e-6 && dist(landed.value, D.c) > 110,
+    `off ${landDist.toFixed(3)} u, heading off ${landYaw} rad, ${landed.ok ? dist(landed.value, D.c).toFixed(1) : "?"} u from the centre`);
+  checks.check("the jump landing starts no fight (no ambush: wave 0, no contacts, never fighting, outside the area)",
+    quiet.maxWave === 0 && quiet.maxContacts === 0 && !quiet.phases.includes("fighting") && !quiet.inArea, JSON.stringify(quiet));
+  checks.check("near (the tow pose): both on-demand glbs load and the Nest warms", loaded.ok, JSON.stringify(loaded.value ?? await nest(page)));
   await nextFrames(page, 3);
   const red = await radarRed(page);
   checks.check("near: the radar shows the red Nest marker", red >= 6, `red pixels=${red}`);
+
+  // The sleepers: wave 1's saucers and the tardigrade asleep at home, grown in, on screen.
+  const asleep = await pollUntil(() => inPage(page, () => {
+    const n = window.__fitz.nest.combat.nest;
+    const ms = [...n.saucers.slice(0, 3), n.tardigrades[0]];
+    return ms.every((m) => m.phase === "asleep" && m.scale === 1 && !m.alive);
+  }), { timeoutMs: 5000, intervalMs: 100 });
+  await nextFrames(page, 3);
+  const sleepDrawn = await instances(page);
+  const sleepScreen = await onScreen(page, true);
+  const scenery = await inPage(page, () => Object.fromEntries(["NestRocks", "NestGlow"].map((name) => {
+    const o = window.__fitz.scene.getObjectByName(name);
+    let vis = !!o;
+    for (let p = o; p && vis; p = p.parent) vis = p.visible;
+    return [name, { found: !!o, visible: vis }];
+  })));
+  const sleepState = await nest(page);
+  checks.check("sleepers sit at home before the fight (saucers 0–2 and the tardigrade asleep, scale 1, not alive)",
+    asleep.ok && sleepState.saucers === 0 && sleepState.tardigrades === 0,
+    JSON.stringify({ saucers: sleepState.saucerPhases, tardigrades: sleepState.tardigradePhases }));
+  checks.check("the sleepers draw (instances ≥ 4)", (sleepDrawn ?? []).reduce((a, m) => a + m.count, 0) >= 4, JSON.stringify(sleepDrawn));
+  checks.check("all 4 sleepers are on screen from the landing", sleepScreen.length === 4 && sleepScreen.every((m) => m.on), JSON.stringify(sleepScreen));
+  checks.check("the rock nest (NestRocks) and its glow (NestGlow) are in the scene and visible",
+    scenery.NestRocks.found && scenery.NestRocks.visible && scenery.NestGlow.found && scenery.NestGlow.visible, JSON.stringify(scenery));
+  await shot(page, "sleepers", checks, "the rock nest and its sleepers from the jump's landing");
   const programsBefore = await programs(page);
 
   // Enter: the banner, then wave 1's 3 saucers.
@@ -261,6 +335,8 @@ async function fight(page, checks) {
     { timeoutMs: 10_000, intervalMs: 100 });
   const s1 = await readStore(page);
   checks.check("wave 1 spawns 3 saucers", w1.ok && (await nest(page)).saucers === 3, `wave=${s1.wave} contacts=${s1.contacts}`);
+  const slots = await inPage(page, () => window.__fitz.nest.combat.nest.saucers.flatMap((m, i) => (m.alive ? [i] : [])));
+  checks.check("wave 1 is the sleepers woken (the alive saucers are slots 0–2)", slots.join() === "0,1,2", JSON.stringify(slots));
   // The HUD's rAF loop writes the wave line on its next frame.
   await pollUntil(async () => (await testIdText(page, "hud-nest-wave")) === "WAVE 1/3 · CONTACTS 3", { timeoutMs: 2000, intervalMs: 50 });
   checks.check("in the fighting area: store inNest, the hull row and the wave line show",
@@ -276,15 +352,45 @@ async function fight(page, checks) {
   checks.check("the monster meshes draw instances", (drawn ?? []).reduce((a, m) => a + m.count, 0) >= 3, JSON.stringify(drawn));
   await shot(page, "wave1", checks, "wave 1's saucers on screen");
 
-  // Fire: aim at the first saucer and hold F until it is defeated.
+  // Edge arrows: turned away, the three saucers are behind; the chase camera
+  // swings round over ~30 frames.
+  const att0 = await inPage(page, () => ({ yaw: window.__fitz.flight.heading, pitch: window.__fitz.flight.pitch }));
+  await inPage(page, (a) => window.__fitz.setAttitude(a.yaw + Math.PI, 0), att0);
+  await nextFrames(page, 30);
+  const arrowsAway = await shownCount(page, "nest-arrow");
+  const screenAway = await onScreen(page);
+  checks.check("edge arrows point at monsters behind (turned away: 3 arrows)", arrowsAway === 3,
+    `arrows=${arrowsAway} monsters=${JSON.stringify(screenAway)}`);
+  // Back to the formation's own attitude (it lined up along the nose, pitch included).
+  await inPage(page, (a) => window.__fitz.setAttitude(a.yaw, a.pitch), att0);
+  await nextFrames(page, 30);
+  const arrowsBack = await shownCount(page, "nest-arrow");
+  checks.check("turned back, no edge arrow shows", arrowsBack === 0, `arrows=${arrowsBack} monsters=${JSON.stringify(await onScreen(page))}`);
+
+  // Fire at a strafing saucer: the AI resumes, aim at the first saucer and
+  // hold F until it is defeated; the lock reticle and HIT show on the way.
+  await inPage(page, () => window.__fitz.nest.resume());
   const first = await inPage(page, () => { const s = window.__fitz.nest.combat.nest.saucers.find((m) => m.alive); return { x: s.x, y: s.y, z: s.z }; });
   await aimAt(page, first);
-  await nextFrames(page, 3);
   await page.keyboard.down("KeyF");
-  const defeated = await pollUntil(async () => (await readStore(page)).contacts === 2, { timeoutMs: 10_000, intervalMs: 100 });
+  const seen = { lock: false, hit: false, strikes: 0 };
+  const defeated = await pollUntil(async () => {
+    const o = await inPage(page, () => {
+      const vis = (t) => {
+        const el = document.querySelector(`[data-testid="${t}"]`);
+        return !!el && getComputedStyle(el).display !== "none" && el.closest("[style*='display: none']") === null;
+      };
+      return { lock: vis("nest-lock"), hit: vis("nest-hit"), strikes: window.__fitz.nest.combat.nest.strikeSeq,
+        contacts: window.__fitz.store.getState().contacts };
+    });
+    seen.lock ||= o.lock; seen.hit ||= o.hit; seen.strikes = o.strikes;
+    return o.contacts === 2;
+  }, { timeoutMs: 10_000, intervalMs: 20 });
   await page.keyboard.up("KeyF");
   const after = await nest(page);
-  checks.check("holding F defeats a saucer (contacts 3 → 2)", defeated.ok && after.saucerPhases.includes("defeated"),
+  checks.check("held F locks a strafing saucer: the reticle shows", seen.lock, JSON.stringify(seen));
+  checks.check("a hit flashes HIT (strikeSeq > 0, nest-hit shown)", seen.strikes > 0 && seen.hit, JSON.stringify(seen));
+  checks.check("holding F defeats a strafing saucer (contacts 3 → 2)", defeated.ok && after.saucerPhases.includes("defeated"),
     JSON.stringify(after.saucerPhases));
 
   // A click inside the fighting area fires a bolt, not a spark.

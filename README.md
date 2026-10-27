@@ -61,13 +61,19 @@ only checked for plausibility against them (`beacon-api/README.md`). Joining
 turns live sky on for the race if it was off.
 
 **The Nest.** A hostile zone waits below the orbital plane, marked by a red
-warning buoy on its sunward side; the radar shows it (and its creatures) in
-red once you are within range, and scanning the buoy warns you. Nothing there
-can reach you outside it. Cross its edge and, three seconds later, saucer
-aliens attack in three waves: 3 saucers, then 5, then a tardigrade with 3
-more (2, 3 and 1 + 2 on low-perf). Inside the fighting area a left click
-fires the plasma gun where you click; holding `F` (`LB` on a pad, `FIRE` on
-touch) fires along your nose with a little aim assist. The hull (shown under
+warning buoy on its sunward side. THE_NEST in the sector list (bottom
+right) flies you straight to it, landing just past the buoy;
+from anywhere the radar keeps a red dot on its rim pointing the way, and
+within range it shows the Nest (and its creatures) in red. Scanning the buoy
+warns you. Its monsters sleep among a ring of dark rocks around a green slime
+glow, and nothing there can reach you outside it. Cross its edge and they
+wake: three seconds later they attack in three waves: 3 saucers, then 5, then
+a tardigrade (it uncurls where it slept) with 3 more (2, 3 and 1 + 2 on
+low-perf). Inside the fighting area a left click fires the plasma gun where
+you click, with a little aim assist; holding `F` (`LB` on a pad, `FIRE` on
+touch) locks on to the monster nearest your nose (a red reticle) and leads
+it. HIT flashes when a shot lands, and red arrows at the screen's edge point
+at monsters out of view. The hull (shown under
 the fuel bar) repairs itself after 4 s without a hit; at zero you are towed
 back to the buoy with 60% and lose nothing. Warp is held to normal speed in
 there but still outruns them, and 20 s outside ends the fight. Clearing all
@@ -152,8 +158,9 @@ a single probe with its own server and stops it the same way.
 `transition` (the draw-call and triangle budgets) run first, alone, on
 SwiftShader, where `docs/PERF-BUDGETS.md` was measured. Every other probe then
 runs on the real GPU, four at a time; the full suite takes about five minutes.
-The `combat` probe flies the Nest (no download away from it, a fight, a
-breach, the badge, reduced motion, the offline line) and holds the "In the
+The `combat` probe flies the Nest (no download away from it, the jump in,
+the sleepers, a fight with the lock, HIT and edge arrows, a breach, the
+badge, reduced motion, the offline line) and holds the "In the
 Nest (wave 3)" budget on SwiftShader on one of its pages.
 `E2E_JOBS=1` runs them one by one, `E2E_BACKEND=swiftshader` puts every
 unpinned probe back on the CPU rasterizer, and `E2E_TIMING_OUT=file.json`

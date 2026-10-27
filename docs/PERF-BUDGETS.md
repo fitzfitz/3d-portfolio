@@ -84,7 +84,7 @@ further runs after the close approach was pinned to Earth's live position
 | Close approach (Earth, pose pinned at the read) | 76 | 339962 | 56 | 4 | 90 / 390960 / 84 / 5 |
 | Modal open (an open probe dossier) | 57 | 333636 | 56 | 4 | 70 / 383690 / 84 / 5 |
 | 40 anomalies, facing away | 42 | 263904 | 57 | 4 | 50 / 303490 / 79 / 5 |
-| In the Nest (wave 3), debug formation | 46 | 257690 | 61 | 4 | 60 / 296350 / 62 / `LIGHT_BUDGET` (4) |
+| In the Nest (wave 3), debug formation | 48 | 259530 | 61 | 4 | 60 / 298460 / 62 / `LIGHT_BUDGET` (4) |
 
 **In the Nest (wave 3), added 2026-10-27 (the combat stage, PR 67).** Asserted
 by `tests/e2e/combat.probe.mjs` (its perf page), not `transition.probe.mjs`:
@@ -112,6 +112,21 @@ every other state's guards its own; it is not a cap on every fight. **No other
 ceiling changed:** nothing of the Nest draws or loads outside 200 u of its
 centre, and the Nest is placed more than 200 u from every other state and
 every stop on the programs tour (`tests/nestPlacement.test.ts`).
+
+**Re-measured 2026-10-27 (the Nest, playable, PR 68).** The same frame, 6
+serial runs of `node tests/e2e/run-one.mjs combat#2` alone on the machine,
+read the same every time: 48 calls, 259,530 triangles, 61 programs, 4 lights
+(was 46 / 257,690 / 61 / 4). The Nest's own share is now 9 calls and 19,632
+triangles (was 7 / 17,792). The cause: the rock nest is one InstancedMesh of
+the belt's 80-triangle rock in the belt's material (Ruling N4: one call for
+all four variants, which differ by a per-instance stretch; 23 rocks, 1,840
+triangles, the belt's program), and the slime glow is one Points call (the
+ship sparks' material settings, no triangles); the hit sparks are extra
+instances in the existing bolt mesh (no call, none live in this frame). So
++2 calls, inside the spec's allowance of the rocks (≤ 4) and the glow (1).
+The ceilings follow the rule: 48 × 1.15 → 60 (unchanged), 259,530 × 1.15 →
+298,460; programs stay at 62, lights `LIGHT_BUDGET`. The sleepers are not in
+this frame: `startWave(3)` dismisses them.
 
 The New Worlds C1 table this replaced (2026-10-19, 11 runs; modal 2026-10-20, 12
 runs): deep space 35 / 241916 / 57, facing the sun 118 / 401672 / 57, ringed
