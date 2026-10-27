@@ -103,11 +103,8 @@ describe("the radar's Nest marker", () => {
     expect(s).toMatch(/nestRadarSpot\(/);
     expect(s).toMatch(/NEST_ZONE_R \* scale/);
     expect(s).toMatch(/combat\.nest\.saucers/);
-    // The ring and the blips sit under the in-range branch.
-    const m = /if \(!(\w+)\.onRim\)\s*\{/.exec(s);
-    expect(m).not.toBeNull();
-    const body = s.slice(m!.index);
-    expect(body.indexOf("NEST_ZONE_R * scale")).toBeGreaterThan(-1);
-    expect(body.indexOf("combat.nest.saucers")).toBeGreaterThan(-1);
+    // The ring and the blips sit inside `if (!spot.onRim) { … }` blocks.
+    expect(s).toMatch(/if \(!\w+\.onRim\)\s*\{[^}]*NEST_ZONE_R \* scale[^}]*\}/);
+    expect(s).toMatch(/if \(!\w+\.onRim\)\s*\{\s*drawMonsterBlips\(combat\.nest\.saucers\);\s*drawMonsterBlips\(combat\.nest\.tardigrades\);\s*\}/);
   });
 });
