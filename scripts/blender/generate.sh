@@ -30,7 +30,7 @@ mkdir -p assets-src
 # Message bottle (2026-10-26): Poly Haven's CC0 "Wine Bottles 01" (pinned
 # SHA-256, kept in assets-src/polyhaven-src/), with a rolled note and a cork.
 "$BLENDER" --background --python scripts/blender/gen_bottle.py
-# Space monsters (2026-10-23): dormant, optimized into public/models-lab/.
+# Space monsters (2026-10-23): optimized into public/models-ondemand/ (loaded on demand, out of the packs).
 "$BLENDER" --background --python scripts/blender/gen_saucer.py
 "$BLENDER" --background --python scripts/blender/gen_tardigrade.py
 # The real bodies' maps (2026-10-20, real-solar-system spec §5.5): NASA/USGS

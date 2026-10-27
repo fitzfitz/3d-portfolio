@@ -11,8 +11,8 @@ const withBadges = (...ids: string[]): LogbookProgress => ({ ...empty, badges: i
 const byId = (id: string) => LOGBOOK.find((e) => e.id === id)!;
 
 describe("LOGBOOK", () => {
-  it("has 5 essentials then 6 badges, ids unique", () => {
-    expect(LOGBOOK.map((e) => e.section)).toEqual([...Array(5).fill("essential"), ...Array(6).fill("badge")]);
+  it("has 5 essentials then 7 badges, ids unique", () => {
+    expect(LOGBOOK.map((e) => e.section)).toEqual([...Array(5).fill("essential"), ...Array(7).fill("badge")]);
     expect(new Set(LOGBOOK.map((e) => e.id)).size).toBe(LOGBOOK.length);
   });
   it("has a dossier essential for every project, by its id", () => {
@@ -49,8 +49,8 @@ describe("entryDone", () => {
 
 describe("progress", () => {
   it("counts done entries", () => {
-    expect(logbookCount(empty)).toEqual({ done: 0, total: 11 });
-    expect(logbookCount({ ...withBadges("slingshot"), visitedDossiers: ["fuxx"] })).toEqual({ done: 2, total: 11 });
+    expect(logbookCount(empty)).toEqual({ done: 0, total: 12 });
+    expect(logbookCount({ ...withBadges("slingshot"), visitedDossiers: ["fuxx"] })).toEqual({ done: 2, total: 12 });
   });
   it("points at the first unfinished essential, then badges, then nothing", () => {
     expect(nextGoal(empty)?.id).toBe(LOGBOOK[0].id);
@@ -58,7 +58,7 @@ describe("progress", () => {
     expect(essentialsDone(essentials)).toBe(true);
     expect(nextGoal(essentials)?.id).toBe("slingshot");
     const everything: LogbookProgress = {
-      ...withBadges("career", "contact", "slingshot", "comet", "ring", "ore", "convoy"),
+      ...withBadges("career", "contact", "slingshot", "comet", "ring", "ore", "convoy", "nest"),
       visitedDossiers: projects.map((p) => p.id), shardsCollected: [1, 2, 3],
     };
     expect(allDone(everything)).toBe(true);
@@ -68,8 +68,20 @@ describe("progress", () => {
 
 describe("isRecordable", () => {
   it("accepts recorded entries only", () => {
-    for (const id of ["career", "contact", "slingshot", "comet", "ring", "ore", "convoy"]) expect(isRecordable(id)).toBe(true);
+    for (const id of ["career", "contact", "slingshot", "comet", "ring", "ore", "convoy", "nest"]) expect(isRecordable(id)).toBe(true);
     for (const id of ["fuxx", "shards", "nope"]) expect(isRecordable(id)).toBe(false);
+  });
+});
+
+describe("the Nest breaker badge", () => {
+  it("is a recordable badge with a plume and a short hint", () => {
+    expect(isRecordable("nest")).toBe(true);
+    expect(byId("nest").section).toBe("badge");
+    expect(byId("nest").plume).toBe(true);
+    expect(byId("nest").hintShort.length).toBeLessThanOrEqual(18);
+  });
+  it("announces CRIMSON", () => {
+    expect(badgeLine("nest", "CRIMSON")).toBe("LOGBOOK // NEST BREAKER EARNED — CRIMSON PLUME UNLOCKED. DOCK AT THE SHIPYARD [5]");
   });
 });
 
@@ -118,7 +130,7 @@ describe("plumeAllowed", () => {
 describe("milestoneFor", () => {
   const essentials: LogbookProgress = { ...withBadges("career", "contact"), visitedDossiers: projects.map((p) => p.id) };
   const all: LogbookProgress = {
-    ...withBadges("career", "contact", "slingshot", "comet", "ring", "ore", "convoy"),
+    ...withBadges("career", "contact", "slingshot", "comet", "ring", "ore", "convoy", "nest"),
     visitedDossiers: projects.map((p) => p.id), shardsCollected: [1, 2, 3],
   };
   it("fires on the transition into essentials-done and into all-done", () => {
@@ -139,7 +151,7 @@ describe("returning visitors (progress saved before the career essential existed
   it("are one essential short, and are pointed at the career dossier", () => {
     expect(essentialsDone(oldEssentials)).toBe(false);
     expect(nextGoal(oldEssentials)?.id).toBe("career");
-    expect(logbookCount(oldEssentials)).toEqual({ done: 4, total: 11 });
+    expect(logbookCount(oldEssentials)).toEqual({ done: 4, total: 12 });
   });
 
   it("get the tour milestone once, when they dock at the station", () => {
@@ -149,7 +161,7 @@ describe("returning visitors (progress saved before the career essential existed
 
   it("who had everything keep their plumes, and complete the logbook again only by docking", () => {
     const old: LogbookProgress = {
-      ...withBadges("contact", "slingshot", "comet", "ring", "ore", "convoy"),
+      ...withBadges("contact", "slingshot", "comet", "ring", "ore", "convoy", "nest"),
       visitedDossiers: projects.map((p) => p.id), shardsCollected: [1, 2, 3],
     };
     expect(allDone(old)).toBe(false);

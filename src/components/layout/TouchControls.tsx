@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { requestGuideToggle, subscribeGuideActive, isGuideActive } from "../../utils/guideToggle";
+import { beamLabel } from "../../utils/combat/controls";
 
 const RADIUS = 56; // px travel of the joystick knob
 
@@ -10,6 +11,8 @@ export default function TouchControls() {
   const isCoarse = useMediaQuery("(pointer: coarse)");
   const modalOpen = useSpaceStore(selectModalOpen);
   const scanTarget = useSpaceStore((s) => s.scanTarget);
+  // In the Nest's fighting area the beam button fires the plasma gun (an event-rate flag).
+  const inNest = useSpaceStore((s) => s.inNest);
   const guiding = useSyncExternalStore(subscribeGuideActive, isGuideActive);
   // The spawn card (App.tsx) covers PHOTO's spot on a phone; it goes as soon as you fly off.
   const spawnCardUp = useSpaceStore((s) => s.sceneReady && s.isNearSpawn && s.activeZone === null);
@@ -174,7 +177,8 @@ export default function TouchControls() {
       </button>
 
       {/* Tractor beam: hold to pull pebbles and probes, or reel toward a shard.
-          Beside ▼ PITCH, clear of BOOST, so a thumb reaching for boost never beams. */}
+          Beside ▼ PITCH, clear of BOOST, so a thumb reaching for boost never beams.
+          In the Nest's fighting area it reads FIRE and fires while held. */}
       <button
         className="fixed bottom-48 right-28 z-40 pointer-events-auto touch-none w-14 h-14 rounded-full border border-primary/40 bg-black/50 font-mono text-[10px] text-primary active:bg-primary/20"
         data-testid="touch-beam"
@@ -195,7 +199,7 @@ export default function TouchControls() {
           flight.input.beam = false;
         }}
       >
-        BEAM
+        {beamLabel(inNest)}
       </button>
 
       {/* Guide: a tap calls the jellyfish guide or sends it back, as J does

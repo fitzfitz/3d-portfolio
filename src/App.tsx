@@ -13,6 +13,7 @@ import CustomCursor from "./components/layout/CustomCursor";
 import HUDOverlay from "./components/layout/HUDOverlay";
 import TouchControls from "./components/layout/TouchControls";
 import EdgeHaze from "./components/layout/EdgeHaze";
+import NestOverlay from "./components/layout/NestOverlay";
 import LogbookPanel from "./components/layout/LogbookPanel";
 import CareerDossier from "./components/layout/CareerDossier";
 import ProjectDossier from "./components/layout/ProjectDossier";
@@ -220,6 +221,8 @@ export default function App() {
       {/* Edge-of-universe nebula haze: above the canvas, under the scanlines
           and HUD. Kept in photo mode, where the ship can sit in it. */}
       {!showClassicCV && <EdgeHaze />}
+      {/* The Nest's red edge haze, hull-hit flash and banners (a DOM layer too). */}
+      {!showClassicCV && <NestOverlay />}
 
       {import.meta.env.DEV && <PerfOverlay />}
 

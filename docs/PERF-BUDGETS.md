@@ -84,6 +84,34 @@ further runs after the close approach was pinned to Earth's live position
 | Close approach (Earth, pose pinned at the read) | 76 | 339962 | 56 | 4 | 90 / 390960 / 84 / 5 |
 | Modal open (an open probe dossier) | 57 | 333636 | 56 | 4 | 70 / 383690 / 84 / 5 |
 | 40 anomalies, facing away | 42 | 263904 | 57 | 4 | 50 / 303490 / 79 / 5 |
+| In the Nest (wave 3), debug formation | 46 | 257690 | 61 | 4 | 60 / 296350 / 62 / `LIGHT_BUDGET` (4) |
+
+**In the Nest (wave 3), added 2026-10-27 (the combat stage, PR 67).** Asserted
+by `tests/e2e/combat.probe.mjs` (its perf page), not `transition.probe.mjs`:
+the combat probe already has the Nest's setup. SwiftShader, full fidelity
+(`lockFullFidelity`), 1280x800. The ship sits at the Nest's centre + (0, 0,
+40), nose on −Z (yaw π, level); wave 3 is started with the debug handle
+(`__fitz.nest.startWave(3)`: 3 saucers and the tardigrade), then
+`formation()` lines the saucers up 25 u ahead, 6 u apart, and the tardigrade
+45 u ahead, all still and facing the ship, with the AI frozen; the read comes
+after a 1.5 s settle and three frames. 6 serial runs of `node
+tests/e2e/run-one.mjs combat#2`, alone on the machine, read the same every
+time: 46 calls, 257,690 triangles, 61 programs, 4 lights. The ceilings follow
+the rule: 46 × 1.15 → 60, 257,690 × 1.15 → 296,350, programs 61 + 1 = 62,
+lights `LIGHT_BUDGET` (the Nest adds none). The 61 programs include the smoke's
+one (the Nest's only new program outside the shared ones; the Task 8 browser
+check read 61 too); the fight page of the same probe asserts that a whole
+fight, jet and smoke included, compiles nothing after the Nest's warm-up. In
+this frame the Nest's own share (the same frame with its group hidden) is 7
+calls and 17,792 triangles: saucers on LOD1 (3 calls: body, dome, fur), the
+tardigrade on LOD1 (3 calls), and the bolt mesh drawing the three thrust
+glows (1 call). A real fight can come closer: monsters within 12.1 u (saucer)
+or 15.4 u (tardigrade) switch to LOD0, which costs far more triangles (see
+"Space monsters in the game" below). The ceiling guards this fixed frame, as
+every other state's guards its own; it is not a cap on every fight. **No other
+ceiling changed:** nothing of the Nest draws or loads outside 200 u of its
+centre, and the Nest is placed more than 200 u from every other state and
+every stop on the programs tour (`tests/nestPlacement.test.ts`).
 
 The New Worlds C1 table this replaced (2026-10-19, 11 runs; modal 2026-10-20, 12
 runs): deep space 35 / 241916 / 57, facing the sun 118 / 401672 / 57, ringed
@@ -606,9 +634,39 @@ run that drew under 20 frames a second). Results and method:
 sits ~600 MB above the ledger: Chrome's compositing, the canvas's swap chain
 and driver copies, which the ledger cannot see.
 
-## Space monsters (not yet in a scene)
+## Space monsters in the game
 
-The saucer alien and the tardigrade (branch `feat/space-monsters`) exist only in the dev-only lab (`/monster-lab.html`); no game scene imports them, so **no ceiling above changes**. The combat stage re-baselines these numbers with the owner's graphics-first rule. Figures are from the glbs, the lab's `renderer.info` (GPU backend, 1512x802) and the Task 5/6 reports.
+The saucer alien and the tardigrade are the Nest's monsters (the combat
+stage, PR 67; spec `docs/archive/specs/2026-10-27-combat-design.md`).
+Their two glbs live in `public/models-ondemand/` as loose files, outside
+`public/models/`, so they are in no asset pack: the Nest's load gate
+(`src/components/canvas/nest/NestGate.tsx`) downloads them, with the
+renderer's own lazily loaded chunk (`NestMonsters`: the monster materials, the
+effects and the warm-up, 34,643 B min / 12,035 B gzip), only once the ship
+comes within 200 u of the Nest's centre, then compiles their programs and
+uploads their maps before wave 1 can start. A visitor who never goes near
+downloads none of it, and no other state's numbers change. The monster lab
+(`/monster-lab.html`, dev only) loads the same files.
+
+**Startup code** (2026-10-27, Ruling C27): the combat stage adds 29,216 B
+minified / 12,060 B gzip to the startup JS (2,027,878 → 2,057,094 B min,
+641,089 → 653,149 B gzip; every `dist/assets/*.js` but the lazy `NestMonsters`
+chunk and the basis transcoder, gzip as Node's `zlib.gzipSync` default, both
+`vite build`s with the same `.env`). That is the always-on machine and
+director, the HUD overlay, the radar and HUD edits and the rig JSONs. Moving
+`NestEffects` (and `effects.ts`) into the lazy chunk saved 5,489 B min /
+2,294 B gzip (from +34,705 / +14,354); `nestWarmup` was already there. The
+final review's +42 kB figure built main without `.env`, which drops the
+contact form's code (~7.6 kB) from the base.
+
+In the game the monsters stay instanced: saucers draw 4 calls per LOD level in
+use (LOD1 3: no fur cards), the tardigrade 3, whatever the count; the bolts and
+the saucers' thrust glows one instanced call, the tardigrade's jet one, the
+smoke one. "In the Nest (wave 3)" above is the in-game figure: 7 calls and
+17,792 triangles for 3 saucers and the tardigrade on LOD1 at 25 and 45 u.
+
+The asset figures, from the glbs, the lab's `renderer.info` (GPU backend,
+1512x802) and the space-monsters Task 5/6 reports:
 
 | | Saucer | Tardigrade |
 |---|---|---|
@@ -619,12 +677,13 @@ The saucer alien and the tardigrade (branch `feat/space-monsters`) exist only in
 | Shader programs | 3 (body, dome, fur; cards share the fur program) | 2 (body, fur) |
 | glb size (meshopt geometry, WebP textures via `EXT_texture_webp`) | 1,539 KB | 1,321 KB |
 
-Fight of 6 saucers + 2 tardigrades, triangles submitted (fur shells thin out with distance: 16, 12, 8, 4, 1). These totals were measured before the 2026-10-26 look fixes, about 6–7% low; re-measure in the combat stage. The last column is a rough corrected estimate from the per-LOD deltas (saucer LOD0 +1,790, tardigrade LOD0 +232 and LOD1 +108, saucer LOD1 unchanged), assuming the fur cards are drawn once rather than per shell, so it is likely a floor:
+A close fight costs more than the formation frame. The lab measured 6 saucers
++ 2 tardigrades (more than any wave: at most 5 saucers or 3 + 1) before the
+2026-10-26 look fixes, about 6–7% low; the last column is a rough corrected
+estimate, likely a floor:
 
 | Camera | Calls | Triangles (measured, old) | Estimate now |
 |---|---|---|---|
 | near, 6 u (LOD0, 16 shells) | 7 | 185,372 | ~197,000 |
 | mid, 11 u (LOD0, 8 / 12 shells) | 7 | 154,380 | ~166,000 |
 | far, 30 u (LOD1, 4 shells) | 6 | 36,928 | ~37,100 |
-
-Five monster programs in all. For scale, the deep-space baseline is 264k triangles against a 303k ceiling, so (no ceiling change) a near fight is a combat-stage cost to be budgeted, not absorbed. The lab's own default fight camera (about 11 u out) reads 147,620 triangles in 7 calls.

@@ -101,6 +101,18 @@ describe("boot order (main.tsx)", () => {
     }
   });
 
+  // The monsters (public/models-ondemand) are loose files fetched only by the
+  // Nest's load gate: neither the startup modules nor the asset packs name them.
+  it("never names the on-demand monster models at startup or in the pack loader", () => {
+    const assets = readFileSync(join(ROOT, "src/utils/monsters/monsterAssets.ts"), "utf8");
+    expect(assets).toMatch(/"\/models-ondemand\/saucer\.glb"/);
+    const packGraph = [...graph(join(ROOT, "src/utils/assetPack.ts"))].map((f) => relative(ROOT, f));
+    for (const f of new Set([...loaded, ...packGraph])) {
+      expect(f).not.toBe("src/utils/monsters/monsterAssets.ts");
+      expect(readFileSync(join(ROOT, f), "utf8"), f).not.toMatch(/models-ondemand|saucer\.glb|tardigrade\.glb/);
+    }
+  });
+
   it("leaves App and the debug bridge to dynamic imports", () => {
     for (const f of ["src/App.tsx", "src/debug/bridge.ts", "src/constants.ts", "src/store/spaceStore.ts"]) {
       expect(loaded, f).not.toContain(f);

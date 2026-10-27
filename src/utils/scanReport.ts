@@ -5,6 +5,7 @@ import { isBodyId } from "../data/bodyIds";
 import { bodyById } from "../data/solarSystem";
 import { bodyReport } from "./bodyReports";
 import { COMET_ELEMENTS, COMET_LABELS, COMET_SCAN_IDS } from "../data/smallBodyField";
+import { NEST_LABEL, NEST_SCAN_ID } from "../data/nest";
 
 /** One real-orbit report per comet: semi-major axis, eccentricity and period from its SBDB elements. */
 const COMET_REPORTS = new Map(COMET_SCAN_IDS.map((id, i) => {
@@ -24,6 +25,8 @@ const FIXED_REPORTS: Record<string, string> = {
   shipyard: "SCAN[DRYDOCK_01] // CRANE RUNNING. ENGINE PLUMES ARE REFITTED HERE. DOCK TO OPEN THE HANGAR",
   dormant_gate: "SCAN[UNKNOWN_STRUCTURE] // ORIGIN UNKNOWN // DORMANT // NO RESPONSE TO HAIL",
   race_start: "SCAN[RACE_START] // FLY IN AND PRESS R TO RACE OTHER PILOTS",
+  // The Nest's warning buoy (spec 2026-10-27-combat, copy verbatim).
+  [NEST_SCAN_ID]: `SCAN[${NEST_LABEL}] // HOSTILE LIFEFORMS · ENTER AT YOUR OWN RISK · F OR CLICK TO FIRE`,
 };
 
 const ELEMENTS = ["FE", "NI", "SI", "MG", "H2O-ICE", "IR", "AU", "CAFFEINE"];

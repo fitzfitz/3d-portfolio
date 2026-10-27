@@ -15,6 +15,8 @@ import { SHARDS, SHARD_PICKUP_RADIUS } from "../../src/data/shards";
 import { ASTEROID_COLLIDERS } from "../../src/data/asteroids";
 import { JELLY_PATH } from "../../src/data/jellyfishPath";
 import { JELLY_RADIUS } from "../../src/utils/jellyMood";
+import { NEST_CENTRE, NEST_BUOY_POS } from "../../src/data/nest";
+import { NEST_LEASH_R } from "../../src/utils/combat/constants";
 import { DEEP_SPACE_POINT } from "../e2e/deepSpacePoint.mjs";
 
 /**
@@ -126,6 +128,8 @@ export const LANDMARKS: Landmark[] = [
   ...SHARDS.map((s, i) => ({ name: `shard ${i}`, pos: s.pos as Vec3, radius: SHARD_PICKUP_RADIUS })),
   ...ASTEROID_COLLIDERS.map((a) => ({ name: `scenery ${a.id}`, pos: [a.x, a.y, a.z] as Vec3, radius: a.r })),
   { name: "spawn", pos: [SPAWN.x, SPAWN.y, SPAWN.z], radius: SPAWN_RADIUS },
+  { name: "the nest (fighting area)", pos: NEST_CENTRE, radius: NEST_LEASH_R },
+  { name: "nest buoy", pos: NEST_BUOY_POS, radius: BUOY_CARD_R },
   { name: "deep-space point", pos: DEEP_SPACE_POINT as unknown as Vec3, radius: 0 },
 ];
 

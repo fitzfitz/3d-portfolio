@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { flight, useSpaceStore, selectModalOpen, type SpaceState } from "../store/spaceStore";
 import { requestGuideToggle } from "../utils/guideToggle";
 import { raceKey } from "../utils/raceJoin";
+import { padRumble, standardPad } from "../utils/padRumble";
 import {
   PAD_NEUTRAL, padActions, padFlightChanges, pressedButtons, readPadFlight,
   type PadAction, type PadFlight,
@@ -9,15 +10,6 @@ import {
 
 export const LINKED_MESSAGE = "CONTROLLER LINKED // L-STICK FLY · R-STICK PITCH · RB WARP · LB BEAM · A SCAN · Y PHOTO · X LOGBOOK · R3 GUIDE · L3 RACE · D-PAD JUMP · VIEW SHIPYARD · MENU CONTACT";
 
-/**
- * First pad reporting the W3C standard layout. Flight sticks, wheels and some
- * adapters report `mapping: ""` with their own axis order — a throttle axis
- * resting at -1 would read as a permanent climb — so they are ignored.
- */
-function firstPad(): Gamepad | null {
-  for (const p of navigator.getGamepads()) if (p?.connected && p.mapping === "standard") return p;
-  return null;
-}
 
 type PadStore = Pick<SpaceState,
   "showClassicCV" | "bottlePanelOpen" | "photoMode" | "isOrbitLocked" | "openDossier" | "logbookOpen" |
@@ -80,7 +72,7 @@ export function useGamepadInput() {
 
     const tick = () => {
       raf = 0;
-      const pad = firstPad();
+      const pad = standardPad();
       if (!pad) { lost(); return; }
       if (pad.index !== padIndex) { padIndex = pad.index; buttons = null; }
       const next = pressedButtons(pad);
@@ -98,7 +90,7 @@ export function useGamepadInput() {
     const start = () => { if (!raf) raf = requestAnimationFrame(tick); };
 
     const onConnect = () => {
-      if (!firstPad()) return; // a non-standard device
+      if (!standardPad()) return; // a non-standard device
       const s = useSpaceStore.getState();
       if (!s.padConnected) {
         s.setPadConnected(true);
@@ -106,14 +98,10 @@ export function useGamepadInput() {
       }
       start();
     };
-    const onDisconnect = () => { if (!firstPad()) lost(); };
+    const onDisconnect = () => { if (!standardPad()) lost(); };
 
     // Rumble on impacts. Chrome only; elsewhere vibrationActuator is absent.
-    const unsubImpact = useSpaceStore.subscribe((s) => s.impactCount, () => {
-      firstPad()?.vibrationActuator?.playEffect("dual-rumble", {
-        duration: 140, strongMagnitude: 0.7, weakMagnitude: 0.4,
-      }).catch(() => { /* rumble is a nicety */ });
-    });
+    const unsubImpact = useSpaceStore.subscribe((s) => s.impactCount, padRumble);
 
     window.addEventListener("gamepadconnected", onConnect);
     window.addEventListener("gamepaddisconnected", onDisconnect);

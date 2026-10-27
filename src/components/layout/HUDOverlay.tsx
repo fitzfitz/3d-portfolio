@@ -8,7 +8,9 @@ import { PROBES, PROBE_IDS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeTipText, relocationSettled, probeDossiersRead } from "../../utils/probes";
 import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
-import { flight, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
+import { flight, combat, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
+import { hullBarColor, hullLabel, hullShown, waveReadout } from "../../utils/combat/nestHud";
+import { HULL_MAX } from "../../utils/combat/constants";
 import { SHARDS } from "../../data/shards";
 import { FUEL_MAX, FUEL_LOW } from "../../utils/fuel";
 import { beamState } from "../../store/beamState";
@@ -101,11 +103,17 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
   const fuelFillRef = useRef<HTMLDivElement>(null);
   const fuelLabelRef = useRef<HTMLDivElement>(null);
   const oreRef = useRef<HTMLDivElement>(null);
+  const hullLabelRef = useRef<HTMLDivElement>(null);
+  const hullRowRef = useRef<HTMLDivElement>(null);
+  const hullBarRef = useRef<HTMLDivElement>(null);
+  const waveRef = useRef<HTMLDivElement>(null);
   const probeRowRefs = useRef<Record<string, HTMLSpanElement | null>>({});
 
   // Telemetry readout: rAF straight to the DOM — zero React renders.
   useEffect(() => {
     let raf: number;
+    // The wave line's last inputs: its string is rebuilt only when they change.
+    let lastWave = -1, lastContacts = -1;
     const tick = () => {
       // setText / setStyle skip unchanged writes (utils/domWrite.ts): at rest
       // nothing here changes, and each rewrite was a relayout and garbage.
@@ -129,6 +137,26 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
         const show = performance.now() - beamState.oreAt < 2000;
         setStyle(oreRef.current, "display", show ? "" : "none");
         if (show) setText(oreRef.current, oreReadout(beamState.ore));
+      }
+      // The Nest's hull row (spec 2026-10-27-combat): in the fighting area, or
+      // anywhere while the hull is below full. Red below 30%.
+      const hp = combat.nest.hull.hp;
+      const hullOn = hullShown(combat.inArea, hp);
+      setStyle(hullLabelRef.current, "display", hullOn ? "" : "none");
+      setStyle(hullRowRef.current, "display", hullOn ? "" : "none");
+      setStyle(hullBarRef.current, "display", hullOn ? "" : "none");
+      if (hullOn) {
+        setText(hullLabelRef.current, hullLabel(hp));
+        setStyle(hullBarRef.current, "width", `${Math.max(0, Math.min(100, (hp / HULL_MAX) * 100)).toFixed(1)}%`);
+        setStyle(hullBarRef.current, "backgroundColor", hullBarColor(hp));
+      }
+      // The wave line, from the store's wave and contacts (event-rate values).
+      const st = useSpaceStore.getState();
+      if (st.wave !== lastWave || st.contacts !== lastContacts) {
+        lastWave = st.wave; lastContacts = st.contacts;
+        const line = waveReadout(st.wave, st.contacts);
+        setText(waveRef.current, line);
+        setStyle(waveRef.current, "display", line ? "" : "none");
       }
       for (const def of PROBES) {
         const b = probePos[def.id];
@@ -235,6 +263,14 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             className="h-full rounded-full transition-none"
             style={{ width: "100%", backgroundColor: "#00ff87" }} />
         </div>
+        {/* The Nest's hull, under the fuel bar; the loop shows it (hullShown). */}
+        <div ref={hullLabelRef} data-testid="hud-hull-label" className="text-[#ff8a95]" style={{ display: "none" }}>HULL: 100%</div>
+        <div ref={hullRowRef} className="w-32 h-1 rounded-full bg-white/10 overflow-hidden" style={{ display: "none" }}>
+          <div ref={hullBarRef} data-testid="hud-hull-bar"
+            className="h-full rounded-full transition-none"
+            style={{ display: "none", width: "100%", backgroundColor: "#00ff87" }} />
+        </div>
+        <div ref={waveRef} data-testid="hud-nest-wave" className="text-[#ff8a95]" style={{ display: "none" }} />
         <div ref={oreRef} data-testid="hud-ore" className="text-[#3ff2d0]" style={{ display: "none" }} />
       </div>
 

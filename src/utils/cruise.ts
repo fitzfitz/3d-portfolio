@@ -24,12 +24,24 @@ export function stepCruise(current: number, limit: number, dt: number): number {
 }
 
 /**
- * Warp speed after one frame for the ship: a racer is held to the base warp
- * speed (RACE_SPEED, the same for every pilot), anyone else builds speed with
- * the free space (stepCruise).
+ * Warp speed after one frame for the ship: a held warp (`held`: racing, or in
+ * the Nest's fighting area, see shipWarpSpeed) stays at the base warp speed
+ * (RACE_SPEED for a racer, the same for every pilot); otherwise it builds
+ * with the free space (stepCruise).
  */
-export function raceWarpSpeed(current: number, racing: boolean, limit: number, dt: number): number {
-  return racing ? SHIP_WARP_SPEED : stepCruise(current, limit, dt);
+export function raceWarpSpeed(current: number, held: boolean, limit: number, dt: number): number {
+  return held ? SHIP_WARP_SPEED : stepCruise(current, limit, dt);
+}
+
+/**
+ * The ship's warp speed after one frame: held at the base warp speed while
+ * racing or inside the Nest's fighting area (a 468 u/s warp would cross the
+ * 110 u area in a quarter second), else built with the free space. Only
+ * racers are also speed-clamped (clampRaceVelocity): in the Nest, gravity
+ * and thrust are untouched.
+ */
+export function shipWarpSpeed(current: number, racing: boolean, inNest: boolean, limit: number, dt: number): number {
+  return raceWarpSpeed(current, racing || inNest, limit, dt);
 }
 
 /**

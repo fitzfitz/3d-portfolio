@@ -7,6 +7,9 @@ import * as THREE from "three";
 import { makeStarMaterial, STAR_RENDER_ORDER } from "./starLayer";
 import { softSprite } from "./softSprite";
 import Spaceship from "./Spaceship";
+import NestDirector from "./NestDirector";
+import NestBuoy from "./nest/NestBuoy";
+import NestGate from "./nest/NestGate";
 import TractorBeam from "./TractorBeam";
 import ProjectProbes from "./ProjectProbes";
 import SpacePlanets from "./SpacePlanets";
@@ -42,7 +45,9 @@ import { beaconApiUrl } from "../../utils/beaconApi";
 import Scanner from "./Scanner";
 import WaypointDriver from "./WaypointDriver";
 import SkyBackdrop from "./SkyBackdrop";
-import { flight, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../../store/spaceStore";
+import { flight, combat, useSpaceStore, selectSceneFrozen, worldEventElapsed } from "../../store/spaceStore";
+import { clickUse } from "../../utils/combat/controls";
+import { clickAimPoint } from "../../utils/combat/aim";
 import { flareLevel } from "../../utils/worldEvents";
 import {
   SUN_COLOR, SUN_LIGHT_INTENSITY, SUN_FLARE_SWELL, targetExposure, stepExposure, setExposureCompensation,
@@ -342,6 +347,14 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
         // and the touch joystick reach this raycast too. Only a press that
         // landed on the canvas itself is a click into the void.
         if (!(e.nativeEvent.target instanceof HTMLCanvasElement)) return;
+        // In the Nest's fighting area a click fires the plasma gun at the
+        // point 80 u past the ship on the camera ray (NestDirector takes it);
+        // elsewhere it makes a plasma spark, as always.
+        if (clickUse(combat.inArea) === "fire") {
+          clickAimPoint(e.ray.origin, e.ray.direction, flight, combat.click);
+          combat.click.pending = true;
+          return;
+        }
         if (e.point) onSpawn(e.point.clone());
       }}>
       <planeGeometry args={[180, 180]} />
@@ -634,6 +647,12 @@ function GlobalCanvas() {
 
             {/* Spaceship craft */}
             <Spaceship />
+            {/* After Spaceship: it reads this frame's ship telemetry. */}
+            <NestDirector />
+            {/* The Nest's warning buoy (always; the career buoys' program) and its
+                load gate: the monsters and effects load within 200 u, on demand */}
+            <NestBuoy />
+            <NestGate />
             <TractorBeam />
             {/* The three project probes: grabbed by the beam, so after it */}
             <ProjectProbes />

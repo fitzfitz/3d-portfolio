@@ -124,6 +124,12 @@ describe("parseContent: projects", () => {
     for (const p of projectsJson) expect(isReservedId(p.id), p.id).toBe(false);
   });
 
+  it("reserves the Nest's scene id and its badge id", () => {
+    expect(isReservedId("the_nest")).toBe(true);
+    expect(isReservedId("nest")).toBe(true);
+    expect(BADGE_IDS).toContain("nest");
+  });
+
   it("names the logbook's badge ids, which a project id may not take", () => {
     expect([...BADGE_IDS].sort()).toEqual(LOGBOOK.filter((e) => e.section === "badge").map((e) => e.id).sort());
   });

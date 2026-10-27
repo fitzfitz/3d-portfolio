@@ -27,9 +27,34 @@ describe("e2e affected-probe selection", () => {
     }
   });
 
-  it("runs only the monster lab's probe for the dev-only monsters (the game imports none of them)", () => {
-    for (const f of ["src/lab/MonsterLab.tsx", "src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-lab/tardigrade.glb", "monster-lab.html"]) {
+  it("runs only the monster lab's probe for the dev-only lab", () => {
+    for (const f of ["src/lab/MonsterLab.tsx", "monster-lab.html"]) {
       expect(affectedProbes([f]), f).toEqual(["monsterlab"]);
+    }
+  });
+
+  it("runs the combat probe and the budgets for the monsters the game now draws", () => {
+    for (const f of ["src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-ondemand/saucer.glb", "public/models-ondemand/tardigrade.glb"]) {
+      const picked = affectedProbes([f]);
+      for (const p of ["monsterlab", "combat", "programs", "memory", "perf", "transition", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
+    }
+  });
+
+  it("runs the combat probe for the Nest's canvas, rules, data and HUD", () => {
+    for (const f of ["src/components/canvas/nest/NestMonsters.tsx", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) {
+      const picked = affectedProbes([f]);
+      expect(picked, f).toContain("combat");
+      expect(picked, f).toContain("programs");
+      expect(picked, f).not.toEqual(ALL);
+    }
+    expect(affectedProbes(["src/utils/combat/nest.ts"])).toEqual(["smoke", "flight", "gameplay", "touch", "gamepad", "reactions", "combat", "memory"]);
+    for (const f of ["src/utils/combat/nestRadio.ts", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) expect(affectedProbes([f]), f).toContain("reactions");
+    expect(affectedProbes(["src/components/layout/NestOverlay.tsx"])).toEqual(["smoke", "reducedmotion", "combat"]);
+  });
+
+  it("runs the idle-allocation probe for the Nest's per-frame code (C28)", () => {
+    for (const f of ["src/utils/combat/nest.ts", "src/utils/combat/effects.ts", "src/utils/combat/renderPose.ts", "src/utils/combat/monsterFrame.ts"]) {
+      expect(affectedProbes([f]), f).toContain("memory");
     }
   });
 

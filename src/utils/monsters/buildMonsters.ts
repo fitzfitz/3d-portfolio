@@ -1,25 +1,27 @@
 import * as THREE from "three";
-import { bakeNodeTransform } from "../utils/bakeNodeTransform";
-import { prepareMonsterGeometry, splitFurGeometry, type InstanceLayout } from "../utils/monsters/monsterInstances";
+import { bakeNodeTransform } from "../bakeNodeTransform";
+import { prepareMonsterGeometry, splitFurGeometry, type InstanceLayout } from "./monsterInstances";
 import {
   SAUCER_INSTANCE_ATTRIBUTES, createSaucerMaterials, saucerBoundsMargin, type SaucerLod, type SaucerRig,
-} from "../utils/monsters/saucerMaterial";
+} from "./saucerMaterial";
 import {
   TARDIGRADE_INSTANCE_ATTRIBUTES, createTardigradeMaterials, tardigradeBoundsMargin, type TardigradeLod, type TardigradeRig,
-} from "../utils/monsters/tardigradeMaterial";
+} from "./tardigradeMaterial";
 
 /**
- * Builds the lab's instanced monsters from the loaded glbs, following Task
- * 5's contract: each LOD node's primitives baked to float with their world
- * matrix (GLTFLoader puts the quantization transform on the node's Group),
+ * Builds the instanced monsters from the loaded glbs (moved out of src/lab so
+ * the game never imports the lab; the glbs load on demand from
+ * monsterAssets.ts's URLs), following the space monsters' Task 5 contract:
+ * each LOD node's primitives baked to float with their world matrix
+ * (GLTFLoader puts the quantization transform on the node's Group),
  * the fur split into its base and its lock cards (R19), every piece prepared
  * with its instance layout and the model's bounds margin, and one
  * InstancedMesh per piece per LOD. The cards share the fur's material; the
  * dome draws after the body.
  */
 
-/** One monster InstancedMesh, as the lab's debug hook reports it. */
-export interface LabMesh {
+/** One monster InstancedMesh, as the debug hooks report it. */
+export interface MonsterMesh {
   mesh: THREE.InstancedMesh;
   model: "saucer" | "tardigrade";
   lod: number;
@@ -28,14 +30,14 @@ export interface LabMesh {
   triangles: number;
 }
 
-export interface BuiltSaucer { lods: SaucerLod[]; meshes: LabMesh[] }
-export interface BuiltTardigrade { lods: TardigradeLod[]; meshes: LabMesh[] }
+export interface BuiltSaucer { lods: SaucerLod[]; meshes: MonsterMesh[] }
+export interface BuiltTardigrade { lods: TardigradeLod[]; meshes: MonsterMesh[] }
 
 /** The primitives of one LOD node, by material name. */
 function lodPrimitives(scene: THREE.Object3D, node: string): Map<string, THREE.Mesh> {
   scene.updateMatrixWorld(true);
   const root = scene.getObjectByName(node);
-  if (!root) throw new Error(`monster lab: no node ${node} in the glb`);
+  if (!root) throw new Error(`monsters: no node ${node} in the glb`);
   const out = new Map<string, THREE.Mesh>();
   root.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -46,7 +48,7 @@ function lodPrimitives(scene: THREE.Object3D, node: string): Map<string, THREE.M
 
 function piece(prims: Map<string, THREE.Mesh>, material: string): THREE.Mesh {
   const m = prims.get(material);
-  if (!m) throw new Error(`monster lab: no ${material} primitive`);
+  if (!m) throw new Error(`monsters: no ${material} primitive`);
   return m;
 }
 
@@ -66,7 +68,7 @@ const triangles = (g: THREE.BufferGeometry) => (g.getIndex()?.count ?? g.getAttr
 export function buildSaucer(scene: THREE.Object3D, rig: SaucerRig, capacity: number): BuiltSaucer {
   const margin = saucerBoundsMargin(rig);
   const lods: SaucerLod[] = [];
-  const meshes: LabMesh[] = [];
+  const meshes: MonsterMesh[] = [];
   let materials: { body: THREE.MeshStandardMaterial; dome: THREE.MeshStandardMaterial; fur: THREE.MeshStandardMaterial } | null = null;
   ["Saucer_LOD0", "Saucer_LOD1"].forEach((node, lod) => {
     const prims = lodPrimitives(scene, node);
@@ -103,7 +105,7 @@ export function buildSaucer(scene: THREE.Object3D, rig: SaucerRig, capacity: num
 export function buildTardigrade(scene: THREE.Object3D, rig: TardigradeRig, capacity: number): BuiltTardigrade {
   const margin = tardigradeBoundsMargin(rig);
   const lods: TardigradeLod[] = [];
-  const meshes: LabMesh[] = [];
+  const meshes: MonsterMesh[] = [];
   let materials: { body: THREE.MeshStandardMaterial; fur: THREE.MeshStandardMaterial } | null = null;
   ["Tardigrade_LOD0", "Tardigrade_LOD1"].forEach((node, lod) => {
     const prims = lodPrimitives(scene, node);

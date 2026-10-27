@@ -1,5 +1,5 @@
-// Re-encodes 3D assets from assets-src/ into public/models/ (and the dormant
-// LAB_MODELS into public/models-lab/).
+// Re-encodes 3D assets from assets-src/ into public/models/ (and the
+// ONDEMAND_MODELS into public/models-ondemand/).
 // Geometry is NEVER simplified (spec constraint) — only welded, deduped,
 // quantized, and meshopt-compressed (all visually lossless).
 // Fallback if meshopt decoding ever fails at runtime: remove the meshopt()
@@ -13,9 +13,10 @@ import { statSync, existsSync, mkdirSync } from "node:fs";
 
 const SRC = "assets-src";
 const OUT = "public/models";
-// Dormant models: compressed for the game but kept out of public/models, whose
+// On-demand models: compressed for the game but kept out of public/models, whose
 // every file vite.config.ts packs into the asset packs each visitor downloads.
-const LAB_OUT = "public/models-lab";
+// They ship as loose files, fetched only when a stage needs them.
+const ONDEMAND_OUT = "public/models-ondemand";
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
   "meshopt.encoder": MeshoptEncoder,
@@ -54,8 +55,8 @@ const TEXTURE_OPTS = {
   comet_head: { quality: 88, resize: [512, 512] },
   asteroids: { quality: 85 },
   probe: { quality: 88 },
-  // The space monsters (saucer, tardigrade) are viewed close up but sit in the
-  // lab folder until a game stage uses them, so they get the probe's q88.
+  // The space monsters (saucer, tardigrade) are viewed close up but load on
+  // demand (only in the Nest), so they get the probe's q88.
   saucer: { quality: 88 },
   tardigrade: { quality: 88 },
   // The message bottle (gen_bottle.py) has one 256² parchment/cork map and is
@@ -66,9 +67,9 @@ const DEFAULT_TEXTURE_OPTS = { quality: 92 };
 // Every Blender-authored model, in one list, so a new model cannot get texture
 // settings without also being processed (or the other way round).
 const MODELS = ["asteroids", "spaceship", "portal_gateway", "space_crystal", "data_shard", "cargo_ship", "creature", "phobos", "deimos", "comet_head", "career_station", "buoy", "shipyard", "dormant_gate", "probe", "bottle"];
-// Dormant space monsters: output goes to public/models-lab/, never to the packs.
-const LAB_MODELS = ["saucer", "tardigrade"];
-for (const k of [...MODELS, ...LAB_MODELS]) {
+// Space monsters: output goes to public/models-ondemand/, never to the packs.
+const ONDEMAND_MODELS = ["saucer", "tardigrade"];
+for (const k of [...MODELS, ...ONDEMAND_MODELS]) {
   TEXTURE_OPTS[k] ??= DEFAULT_TEXTURE_OPTS;
 }
 
@@ -85,14 +86,14 @@ for (const name of MODELS) {
   await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })]);
 }
 
-for (const name of LAB_MODELS) {
+for (const name of ONDEMAND_MODELS) {
   if (!wanted(name)) continue;
   if (!existsSync(`${SRC}/${name}.glb`)) {
     console.log(`skip ${name}.glb (not in assets-src)`);
     continue;
   }
-  mkdirSync(LAB_OUT, { recursive: true });
-  await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })], LAB_OUT);
+  mkdirSync(ONDEMAND_OUT, { recursive: true });
+  await processGlb(name, [textureCompress({ encoder: sharp, targetFormat: "webp", ...TEXTURE_OPTS[name] })], ONDEMAND_OUT);
 }
 
 // Saturn's, Uranus's and Neptune's seeded maps and Saturn's ring strip

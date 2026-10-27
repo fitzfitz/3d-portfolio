@@ -25,7 +25,7 @@ beforeAll(async () => {
   io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ "meshopt.decoder": MeshoptDecoder });
 });
 
-// Keyed by directory too, so a public/models-lab model never collides with a
+// Keyed by directory too, so a public/models-ondemand model never collides with a
 // same-named public/models entry.
 async function load(name: string, dir = "public/models"): Promise<Document> {
   const key = `${dir}/${name}`;
@@ -36,7 +36,7 @@ async function load(name: string, dir = "public/models"): Promise<Document> {
 const materialNames = (doc: Document) => doc.getRoot().listMaterials().map((m) => m.getName()).sort();
 const nodeNames = (doc: Document) => doc.getRoot().listNodes().map((n) => n.getName()).sort();
 const kb = (name: string) => statSync(`public/models/${name}.glb`).size / 1024;
-const labKb = (name: string) => statSync(`public/models-lab/${name}.glb`).size / 1024;
+const onDemandKb = (name: string) => statSync(`public/models-ondemand/${name}.glb`).size / 1024;
 const close = (a: number[], b: number[], tol: number) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
 
 function triangles(doc: Document, material?: string): number {
@@ -807,29 +807,39 @@ describe("public/models", () => {
   });
 });
 
-describe("dormant monsters", () => {
+describe("on-demand monsters", () => {
   it("no monster file is in public/models (so no asset pack carries one)", () => {
     const names = readdirSync("public/models");
     for (const m of ["saucer", "tardigrade"]) expect(names.some((f) => f.startsWith(m))).toBe(false);
   });
 
-  it("both monsters are optimized into public/models-lab", () => {
-    for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-lab/${m}.glb`)).toBe(true);
+  it("both monsters are optimized into public/models-ondemand", () => {
+    for (const m of ["saucer", "tardigrade"]) expect(existsSync(`public/models-ondemand/${m}.glb`)).toBe(true);
   });
 
-  it("the lab monsters stay inside their download budgets (1,600 KB each: R11, R15)", () => {
-    expect(labKb("saucer")).toBeLessThanOrEqual(1600);
-    expect(labKb("tardigrade")).toBeLessThanOrEqual(1600);
+  it("public/models-lab is gone", () => {
+    expect(existsSync("public/models-lab")).toBe(false);
+  });
+
+  it("the on-demand monsters stay inside their download budgets (1,600 KB each: R11, R15)", () => {
+    expect(onDemandKb("saucer")).toBeLessThanOrEqual(1600);
+    expect(onDemandKb("tardigrade")).toBeLessThanOrEqual(1600);
+  });
+
+  it("only public/models is packed: vite.config.ts never names models-ondemand", () => {
+    const config = readFileSync("vite.config.ts", "utf8");
+    expect(config).toMatch(/resolve\('public\/models'\)/);
+    expect(config).not.toMatch(/models-ondemand/);
   });
 });
 
 describe("saucer (saucer.glb)", () => {
   // The saucer alien (scripts/blender/gen_saucer.py, whose header holds the
-  // full contract). Dormant: optimized into public/models-lab for the combat
-  // stage, which draws each LOD's primitives as one InstancedMesh per
+  // full contract). Optimized into public/models-ondemand (loose, out of the
+  // packs) for the combat stage, which draws each LOD's primitives as one InstancedMesh per
   // material (3 draw calls for a group) and plays every move in the vertex
   // shader from _MOTION, _FUR and src/data/saucerRig.json.
-  const lab = () => load("saucer", "public/models-lab");
+  const lab = () => load("saucer", "public/models-ondemand");
   const rig = () => JSON.parse(readFileSync("src/data/saucerRig.json", "utf8"));
   const MATS = ["SaucerBaked", "SaucerDome", "SaucerFur"];
   // 0 hull, 1 body, 2 tentacle, 3 eye L, 4 eye R, 5 eye top, 6 jaw, 7 cannon, 8 goo, then the drips by
@@ -1100,17 +1110,17 @@ describe("saucer (saucer.glb)", () => {
   });
 
   it("stays inside its 1,600 KB download budget (R11)", () => {
-    expect(labKb("saucer")).toBeLessThanOrEqual(1600);
+    expect(onDemandKb("saucer")).toBeLessThanOrEqual(1600);
   });
 });
 
 describe("tardigrade (tardigrade.glb)", () => {
   // The tardigrade (scripts/blender/gen_tardigrade.py, whose header holds the
-  // full contract). Dormant: optimized into public/models-lab for the combat
-  // stage, which draws each LOD's two primitives as one InstancedMesh per
+  // full contract). Optimized into public/models-ondemand (loose, out of the
+  // packs) for the combat stage, which draws each LOD's two primitives as one InstancedMesh per
   // material (2 draw calls for a group) and plays every move in the vertex
   // shader from _MOTION, _FUR and src/data/tardigradeRig.json.
-  const lab = () => load("tardigrade", "public/models-lab");
+  const lab = () => load("tardigrade", "public/models-ondemand");
   const rig = () => JSON.parse(readFileSync("src/data/tardigradeRig.json", "utf8"));
   const MATS = ["TardigradeBaked", "TardigradeFur"];
   // 0 body, 1–8 legs (front-left 1, front-right 2, … back-right 8), 9 mouth tube, 10 crystals, 11 eyes,
@@ -1419,6 +1429,6 @@ describe("tardigrade (tardigrade.glb)", () => {
   });
 
   it("stays inside its 1,600 KB download budget (R15)", () => {
-    expect(labKb("tardigrade")).toBeLessThanOrEqual(1600);
+    expect(onDemandKb("tardigrade")).toBeLessThanOrEqual(1600);
   });
 });

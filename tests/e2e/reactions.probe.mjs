@@ -59,7 +59,28 @@ const nearestTo = (rocks, p) => rocks.reduce((best, r) => {
 }, { r: null, d: Infinity });
 const shipPos = (page) => page.evaluate(() => [window.__fitz.flight.x, window.__fitz.flight.y, window.__fitz.flight.z]);
 
+/**
+ * Plays the Nest's rumour line out of the way first. It goes out once per
+ * visit, the first time the ship comes within 400 u of the Nest, and a cargo
+ * route can pass that close: then it takes the radio just before the hail,
+ * which (rightly) never talks over a recent line. 300 u out is inside the
+ * rumour's reach and outside the Nest's 200 u load radius. Then the radio is
+ * left to go quiet (RADIO_BUSY_S, 6 s).
+ */
+async function tellNestRumour(page) {
+  await page.evaluate(async () => {
+    const { NEST_CENTRE: [x, y, z] } = await import("/src/data/nest.ts");
+    const l = Math.hypot(x, y, z);
+    window.__fitz.teleport(x - (x / l) * 300, y - (y / l) * 300, z - (z / l) * 300);
+  });
+  const told = await pollUntil(() => page.evaluate(() =>
+    window.__fitz.store.getState().broadcast?.text.includes("SOMETHING IS NESTING") ?? false), { timeoutMs: 10_000, intervalMs: 100 });
+  await settle(page, 6500);
+  return told.ok;
+}
+
 async function reacting(page, checks) {
+  checks.check("the Nest's rumour line is played out of the way first (precondition)", await tellNestRumour(page));
   // ---- cargo: swerve + hail ----
   const hailPool = await page.evaluate(async () => (await import("/src/data/chatterLines.ts")).chatterPools.hail);
   const i = await safestCargo(page);

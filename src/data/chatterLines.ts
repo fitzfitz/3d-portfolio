@@ -175,3 +175,10 @@ export const guideLines: GuideLines = {
 
 /** Broadcast (via ReturnBurnLineGate) while the return burn is pushing the ship back in. */
 export const RETURN_BURN_LINE = "FLIGHT COMPUTER // RETURN BURN — EDGE OF THE SYSTEM";
+
+/** The Nest (spec 2026-10-27-combat): once per page, the first time the ship comes within 400 u of it. */
+export const NEST_RUMOUR_LINE = "RADIO // SOMETHING IS NESTING BELOW THE PLANE. PILOTS REPORT SAUCERS";
+/** The Nest: the hull breached; the ship is towed to the buoy. */
+export const NEST_BREACH_LINE = "RADIO // HULL BREACH · TOWED TO THE BUOY · THE NEST IS STILL HUNGRY";
+/** The Nest: wave 3 cleared. */
+export const NEST_CLEARED_LINE = "RADIO // NEST CLEARED · THE CRITTERS WILL BE BACK";

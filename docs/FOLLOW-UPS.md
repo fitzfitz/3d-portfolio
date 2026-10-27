@@ -91,31 +91,77 @@ Delete an entry when it is fixed.
     done race and rule 1 for `rstart`, `rsolo` and `ragain`; the isolate's
     `best` cache keeps the first `env.DB` (test-only); the deep-link pose test
     lives in `raceHud.test`, not the flightGate test. In e2e,
-    `tests/e2e/run.mjs` still costs the race probe at 13 though it runs about
-    10 s longer; `race.probe.mjs`'s jumps check has no positive control, its
+    `race.probe.mjs`'s jumps check has no positive control, its
     cleanup is skipped on a throw, and the INVITE check forces `data-quiet`.
   - Docs: `beacon-api/README.md` deploys D1, then the secret, then the Worker;
     the stated order is secret, D1, Worker, site. Both are safe (it says steps
     2 and 3 may swap); mention it in the deploy request.
 
-- **Space monsters, for the combat stage** (notes for the stage that wires the
-  saucer and tardigrade into the game, not new work now):
-  - Saucer body vertex attributes: 15 of 16 WebGL2 slots are used. Free one by
-    packing the band as a paint index before adding any attribute.
-  - Material maths: no test ties the GLSL to the TypeScript mirrors. The
-    per-shell pose is re-packed per shell (pack once, copy). Normals are not
-    corrected under the tardigrade's anisotropic hit/recoil scale, or for the
-    goo.
-  - Download packs: the `public/models-lab/` glbs ship in `dist/` as unused
-    loose files (~2.8 MB). Move them into a pack when the game loads them.
-  - e2e affected mapping: `tests/e2e/affected.mjs` assumes the game imports no
-    monster code. Once the game imports `src/utils/monsters`, update the
-    mapping, or add an import-graph test (like `labBoot.test.ts`) that keeps
-    `src/main.tsx` from reaching `src/lab`.
-  - Bounds sweeps: `tests/monsterGeometry.test.ts` uses 30 s timeouts. Watch the
-    first CI run on ubuntu; raise to 60-90 s if needed.
+- **Space monsters** (the combat stage, PR 67, put the saucer and the
+  tardigrade in the game):
+  - Done: the glbs moved from `public/models-lab/` to `public/models-ondemand/`,
+    loose files outside the asset packs that the Nest's load gate fetches only
+    within 200 u of the Nest (the packs are startup downloads by design); the
+    e2e affected mapping runs the combat probe and the budgets for monster
+    changes, and `tests/labBoot.test.ts` keeps the game from importing
+    `src/lab`; the saucer body's vertex attributes were left alone (no
+    attribute added, 15 of 16 WebGL2 slots still used: free one by packing the
+    band as a paint index before adding any).
+  - Still open: no test ties the GLSL to the TypeScript mirrors (the per-shell
+    pose is re-packed per shell: pack once, copy); normals are not corrected
+    under the tardigrade's anisotropic hit/recoil scale, or for the goo;
+    `tests/monsterGeometry.test.ts`'s bounds sweeps use 30 s timeouts (watch
+    the first CI run on ubuntu; raise to 60-90 s if needed).
+  - The on-demand glbs are unhashed, and the service worker serves same-origin
+    files cache-first: after a model update, a returning visitor gets the old
+    model for one visit (the new one is fetched behind it). Hash the names or
+    give the folder a network-first rule if that ever matters.
   - Look polish: the owner closed it at "realistic at normal viewing". Do not
     reopen close-up look work.
+
+- **Combat, for the coins stage** (the Nest, PR 67; spec
+  `docs/archive/specs/2026-10-27-combat-design.md`):
+  - Shards as money, rewards on clearing the Nest, and the hull as an upgrade
+    slot (with shields) are the next stage's; the Nest gives only the badge
+    and the CRIMSON plume today.
+  - **Merge gate:** redeploy `beacon-api` (with the owner's word, always
+    `--config beacon-api/wrangler.toml`) **before merging to main**, not just
+    before the site release: staging (Pages) uses the production Worker. Until
+    then the deployed Worker's plume check rejects `nest`, so every pose from a
+    pilot wearing CRIMSON is dropped: they are invisible in live sky and
+    cannot race (ring stamps read the stored pose, so each is refused). The
+    new Worker accepts a superset, so older clients are fine. At merge, also
+    update `assets-src/MANIFEST.md` (its own repo): the monsters now ship from
+    `public/models-ondemand/`, no longer dormant.
+  - Loading: a renderer chunk that fails to load is never retried: React.lazy
+    caches the failure for the page's life, so the Nest stays offline until a
+    reload (a remounted canvas refetches the glbs, not the chunk; within one
+    canvas a transient failure is not retried on a later approach either).
+    Create the lazy component per gate mount if that matters. Offline, the
+    GLTF loader's "Could not load /models-ondemand/…" also logs an unhandled
+    rejection in production (harmless: the HUD says NEST OFFLINE).
+  - Fight flow: the warm gate covers wave 1 only, so after a remount or a
+    PostFX flip mid-fight, waves 2 and 3 compile their variants on first use
+    (a one-time hitch; check `warm` in the gap too to fix). Wave 1 still
+    spawns when the ship left during the 3 s countdown (harmless: the monsters
+    hold fire while the ship is out and the fight ends after 20 s; optionally
+    stay in countdown while `!inArea`).
+  - Tests: watch `combat#2` (the perf page) for flakes under parallel load; it
+    read identically under suite load, but move it to SERIAL if it flakes.
+  - Small leftovers from the build reviews: the hull regen applies a whole
+    frame's regen at the 4 s mark; the bolt's 160 u range and the 12° assist
+    cone's exact boundaries are untested; the hot loops use `Math.hypot`
+    (the jet's `nearFade` too: ~720 calls per frame, ~0.1 ms, only while a
+    jet fires);
+    `monsterMatrix` can flip its up axis when a monster faces near-vertically;
+    `debugStartWave` does not clear the debug formation's freeze and repeats
+    `endFight`'s leave loops; a redundant `as MonsterBody` in `nest.ts`; the
+    out timer is not reset when the Nest is cleared; the placement test copies
+    the programs tour's stop literals (they can drift; read them from the probe
+    or pin them) and its names test is tautological; `labBoot.test.ts`'s
+    import scan has regex edge cases; the hull label reads 100% while the hull
+    regens from 99.5 to 99.99; a stalled (not failed) model fetch keeps
+    showing `CONTACT IN …` (harmless: no wave starts).
 
 - **Layout constants stay built at module load** (deferred from the store
   split, PR 62; spec docs/archive/specs/2026-10-26-store-split-design.md):

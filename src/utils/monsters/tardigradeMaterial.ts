@@ -5,6 +5,10 @@ import {
   monsterVertexMain, patchFurFragment, shareMonsterUniforms, translucencyHeader,
 } from "./monsterShading";
 import { claimSlot, clamp01, pickLod, writeShell, writeSlot, wrap01, type MonsterLodState } from "./monsterInstances";
+import type { TardigradePose, TardigradeRig } from "./monsterRig";
+
+// The rig and pose types live in monsterRig.ts (Ruling C16), re-exported here.
+export type { TardigradePose, TardigradeRig } from "./monsterRig";
 
 /**
  * The tardigrade's instanced materials and motion (space monsters, Task 5).
@@ -31,22 +35,6 @@ import { claimSlot, clamp01, pickLod, writeShell, writeSlot, wrap01, type Monste
  * the charge's glow, swell and drool. tardigradeDeformPoint is the vertex
  * shader's TS mirror.
  */
-
-type Vec3 = readonly number[];
-
-export interface TardigradeRig {
-  hips: readonly Vec3[];
-  axis: { tail: Vec3; mouth: Vec3 };
-  curlCentre: Vec3;
-  mouth: Vec3;
-  furMaxLength: number;
-  furAtlas: { shells: readonly number[]; locks: readonly number[]; lockVariants: number };
-  furShells: number;
-  lod1Distance: number;
-}
-
-/** One tardigrade's pose, written per instance each frame. `phase` wraps (0 → 1); the rest are 0 → 1 and clamp. */
-export interface TardigradePose { phase: number; swim: number; charge: number; recoil: number; hit: number; curl: number }
 
 /**
  * One LOD level's InstancedMeshes (each geometry from prepareMonsterGeometry):

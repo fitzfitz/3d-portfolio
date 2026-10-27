@@ -10,7 +10,7 @@ import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
-import { flight, useSpaceStore, bodies, selectModalOpen, selectRaceFlying } from "../../store/spaceStore";
+import { flight, useSpaceStore, bodies, selectModalOpen } from "../../store/spaceStore";
 import { ZONE_FACTOR } from "../../constants";
 import { SOLAR_BODIES } from "../../data/solarSystem";
 import { damp } from "../../utils/reactions";
@@ -24,6 +24,7 @@ import type { LogbookProgress } from "../../utils/logbook";
 import { GuideRadio } from "../../utils/guideRadio";
 import { takeGuideToggle, requestGuideToggle, setGuideActive } from "../../utils/guideToggle";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
+import { guideOfferBlocked, nestKeepOut } from "../../utils/jellyNest";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
 import { soundManager } from "../../audio/soundManager";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
@@ -188,7 +189,11 @@ export default function SpaceJellyfish() {
   const basePos = useMemo(() => new THREE.Vector3(), []);
   const tangent = useMemo(() => new THREE.Vector3(), []);
   const keepOut = useMemo<JellyKeepOut[]>(
-    () => SOLAR_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size * ZONE_FACTOR + JELLY_RADIUS, body: b.size + JELLY_RADIUS })), []);
+    () => [
+      ...SOLAR_BODIES.map((b) => ({ x: 0, y: 0, z: 0, r: b.size * ZONE_FACTOR + JELLY_RADIUS, body: b.size + JELLY_RADIUS })),
+      // The Nest's fighting area (C9): fixed, after the bodies (the frame loop updates only theirs).
+      nestKeepOut(),
+    ], []);
   /** The guide's target (spec, build ruling R1) and the logbook progress it reads, reused every frame. */
   const target = useMemo(createWaypointTarget, []);
   const guideTarget = useMemo(makeGuideTarget, []);
@@ -396,11 +401,11 @@ export default function SpaceJellyfish() {
     // Offer blockers (spec "Offering itself"): docked or orbit-locked, a dossier
     // open, racing, photo mode, the classic résumé, or the radio held by a fresh
     // broadcast (RADIO_BUSY_S, as the hails and callouts wait) or a queued
-    // logbook line.
+    // logbook line, or the ship in the Nest's fighting area.
     const now = Date.now();
     const lastLine = store.broadcast;
     const radioBusy = (lastLine !== null && now - lastLine.at < RADIO_BUSY_S * 1000) || now < store.logbookLineAt;
-    fi.blocked = selectModalOpen(store) || selectRaceFlying(store) || store.photoMode || store.showClassicCV || radioBusy;
+    fi.blocked = guideOfferBlocked(store, radioBusy);
 
     stepJellyFrame(frame, fi, frameDt);
     // The touch GUIDE button's pressed state; notifies only on a change.

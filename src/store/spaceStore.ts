@@ -4,10 +4,12 @@
  * initial values, localStorage reads included; persist.ts holds the storage
  * helpers and keys. Consumers import everything from here, as before.
  *
- * Slices: flight (orbit and dock, warp, jumps), dossier (dossiers, probes),
- * hud (panels, radio, world events), logbook (badges, plume, line queue),
- * progress (shards, charting), race (race view, best lap), settings (perf
- * tier, warm-up, reduced motion, sound, changelog seen), sky (beacons, live sky).
+ * Slices, in the order they compose: combat (the Nest fight: wave, contacts,
+ * breach and cleared marks), flight (orbit and dock, warp, jumps), dossier
+ * (dossiers, probes), hud (panels, radio, world events), logbook (badges,
+ * plume, line queue), progress (shards, charting), race (race view, best lap),
+ * settings (perf tier, warm-up, reduced motion, sound, changelog seen), sky
+ * (beacons, live sky).
  *
  * Cross-slice actions call the other slice's action through get():
  *   - flight.setOrbitLocked      -> logbook.recordBadge (docking at a destination);
@@ -18,6 +20,7 @@
  *   - hud.remountCanvas          -> flight.breakOrbit + dossier.closeDossier
  *   - progress.chartWorld        -> logbook.announceLogbook
  *   - progress.tellAurumOnce     -> logbook.announceLogbook
+ *   - combat.markNestCleared     -> logbook.recordBadge ("nest")
  *   - race.setRaceView(idle)     -> sky.setLiveSky(false) (when racing turned it on)
  *   - hud.startWorldEvent        -> hud.sendBroadcast
  *   - logbook.setPlumeColor reads dossier.visitedDossiers and progress
@@ -41,6 +44,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import type { WorldEventKind } from "../utils/eventDirector";
 import { setLowPerfSource } from "../utils/hiResMaps";
 import { worldClock } from "./worldClock";
+import { createCombatSlice, type CombatSlice } from "./slices/combat";
 import { createFlightSlice, type FlightSlice } from "./slices/flight";
 import { createDossierSlice, type DossierSlice } from "./slices/dossier";
 import { createHudSlice, type HudSlice } from "./slices/hud";
@@ -57,16 +61,18 @@ export type { WorldEventState } from "./slices/hud";
 // Per-frame objects, mutable outside React. The same objects, re-exported: importers keep using this path.
 export { flight, type FlightInput } from "./flightState";
 export { bodies } from "./bodies";
+export { combat } from "./combatState";
 export { worldClock } from "./worldClock";
 
 export interface SpaceState
-  extends FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, RaceSlice, SettingsSlice, SkySlice {}
+  extends CombatSlice, FlightSlice, DossierSlice, HudSlice, LogbookSlice, ProgressSlice, RaceSlice, SettingsSlice, SkySlice {}
 
 /** A slice creator over the whole store: a slice reads and calls the others through get(). */
 export type SliceCreator<T> = StateCreator<SpaceState, [["zustand/subscribeWithSelector", never]], [], T>;
 
 export const useSpaceStore = create<SpaceState>()(
   subscribeWithSelector((...a) => ({
+    ...createCombatSlice(...a),
     ...createFlightSlice(...a),
     ...createDossierSlice(...a),
     ...createHudSlice(...a),

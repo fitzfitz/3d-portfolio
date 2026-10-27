@@ -9,6 +9,7 @@ import type { WorldEventKind } from "../utils/eventDirector";
 import type { LiveSkyConnection } from "../utils/liveSkyConnection";
 import { liveRadar } from "../utils/liveSky";
 import { orreryEpochJd, setOrreryEpochJd } from "../utils/orreryClock";
+import type { combat } from "../store/combatState";
 
 /**
  * Dev-only surface for e2e probes. Holds live references (never copies) so a
@@ -36,6 +37,42 @@ export interface JellyGuideDebug {
   returning: boolean;
   /** The guide state machine itself, live (event, timers, the offer's decline clock). */
   guide: GuideState;
+}
+
+/**
+ * The Nest fight's debug handle (dev and probes only), registered by
+ * NestDirector. The calls act at once; their events are read on the next frame.
+ */
+export interface NestDebug {
+  /** The live combat state (combatState.ts), by reference. */
+  combat: typeof combat;
+  /** Starts wave k now (live monsters leave first). */
+  startWave(k: 1 | 2 | 3): void;
+  /** Defeats every live monster now. */
+  clearWave(): void;
+  /** Wave 3 with every monster defeated: the next frame clears the Nest. */
+  clearAll(): void;
+  /** Lines the live monsters up ahead of the ship and freezes the AI (the perf probe's fixed frame). */
+  formation(): void;
+  /** Unfreezes the AI after `formation`. */
+  resume(): void;
+  setHull(hp: number): void;
+  /** MONSTER_UNIFORMS.uMotion.value (0 under reduced motion), read through `nestRender`; NaN until the renderer loads. */
+  motion(): number;
+}
+
+/**
+ * The Nest's renderer (components/canvas/nest/NestMonsters.tsx, a lazily
+ * loaded chunk, dev only): registered when it mounts, within the load
+ * radius, so the always-loaded code never imports the monster materials.
+ */
+export interface NestRenderDebug {
+  /** MONSTER_UNIFORMS.uMotion.value (0 under reduced motion). */
+  motion(): number;
+  /** The monster meshes and the instances each drew last frame. */
+  instances(): { name: string; count: number }[];
+  /** The Nest's effect meshes (bolts, jet, smoke) and what each drew last frame. */
+  effects(): { name: string; count: number }[];
 }
 
 export interface FitzDebug {
@@ -135,6 +172,10 @@ export interface FitzDebug {
   sunShadowDebug: typeof import("../components/canvas/sunShadow").sunShadowDebug | null;
   /** Set `holdRegen` to pause the fuel auto-refill (e2e fuel probe). Registered by Spaceship in dev. */
   fuelDebug: typeof import("../utils/fuel").fuelDebug | null;
+  /** The Nest fight (NestDirector, dev only). Null until mounted. */
+  nest: NestDebug | null;
+  /** The Nest's renderer (NestMonsters, dev only). Null until it loads within the load radius. */
+  nestRender: NestRenderDebug | null;
   /** Orrery epoch (JD at game time 0): read, or set to jump the date. */
   orrery: { epochJd: () => number; setEpochJd: (jd: number) => void };
 }
@@ -169,5 +210,7 @@ export const fitzDebug: FitzDebug = {
   shipShadow: null,
   sunShadowDebug: null,
   fuelDebug: null,
+  nest: null,
+  nestRender: null,
   orrery: { epochJd: orreryEpochJd, setEpochJd: setOrreryEpochJd },
 };

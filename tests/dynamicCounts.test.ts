@@ -16,11 +16,11 @@ describe("logbook essentials follow the probes", () => {
     { id: "fuxx", title: "fuxx" }, { id: "atlas", title: "Atlas Mapper" },
   ];
 
-  it("is one dossier essential per probe, in order, then career and contact, then the six badges", () => {
+  it("is one dossier essential per probe, in order, then career and contact, then the seven badges", () => {
     const book = buildLogbook(four);
     expect(book.map((e) => e.id).slice(0, 6)).toEqual(["ruangrapi", "portfolio", "fuxx", "atlas", "career", "contact"]);
     expect(book.filter((e) => e.section === "essential")).toHaveLength(6);
-    expect(book.filter((e) => e.section === "badge")).toHaveLength(6);
+    expect(book.filter((e) => e.section === "badge")).toHaveLength(7);
     expect(buildLogbook(four.slice(0, 1)).filter((e) => e.section === "essential")).toHaveLength(3);
   });
 
