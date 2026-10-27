@@ -10,7 +10,8 @@ import { ambientTime } from "../../utils/ambientTime";
 import { driftedHue } from "../../utils/nebulaHue";
 import { setScannable } from "../../utils/scannables";
 import { assetUrl } from "../../utils/assetUrl";
-import { backdropDim } from "../../utils/sunLight";
+import { backdropDim, glowScale, glowScaleUnmapped } from "../../utils/sunLight";
+import { applyGlow, collectGlowMaterials } from "./glowMaterials";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
 
 /**
@@ -72,6 +73,7 @@ const membraneVertex = /* glsl */ `
 `;
 const membraneFragment = /* glsl */ `
   uniform float uTime;
+  uniform float uGlow;
   varying vec2 vUv;
   ${LOG_DEPTH_FRAG_PARS}
   void main() {
@@ -88,7 +90,7 @@ const membraneFragment = /* glsl */ `
     vec3 col = mix(vec3(0.45, 0.05, 0.55), vec3(1.0, 0.25, 0.75), bands); // deep violet -> neon pink
     col = mix(col, vec3(1.0, 0.9, 0.6), core * (0.6 + bands * 0.4));       // white-hot center
     float alpha = (0.35 + bands * 0.5) * (1.0 - smoothstep(0.8, 1.05, r)) + core * 0.5;
-    gl_FragColor = vec4(col * (0.8 + core), alpha);
+    gl_FragColor = vec4(col * (0.8 + core) * uGlow, alpha);
   }
 `;
 
@@ -190,9 +192,20 @@ function NebulaCluster({ position, color, size, opacity }: NebulaClusterProps) {
   );
 }
 
+/** The portal's auras' and core's colours at 1 AU; the frame loop writes them × glowScale. */
+const PORTAL_OUTER_AURA = new THREE.Color("#ff3300");
+const PORTAL_INNER_AURA = new THREE.Color("#ff7700");
+const PORTAL_CORE = new THREE.Color("#ffe600");
+
 /**
  * The contact portal, its destinations' scannables and docking, and the
  * nebulae. The bodies are SolarBodies'.
+ * The portal's self-lit parts hold their 1 AU glow far out (sunLight.ts,
+ * UNIVERSE-RULES L19; it sits at 1.84 AU): the gateway's Neon_* strips, the
+ * auras and the core (built-in, tone-mapped: glowScale) and the membrane
+ * (a ShaderMaterial without <tonemapping_fragment>: glowScaleUnmapped, a
+ * uniform). PortalRing does its rings and swarm. Uniform and colour writes
+ * only: no new program.
  */
 export default function SpacePlanets() {
   const nebulaeGroupRef = useRef<THREE.Group>(null);
@@ -208,7 +221,7 @@ export default function SpacePlanets() {
   const membraneMaterial = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, uGlow: glowScaleUnmapped },
         vertexShader: membraneVertex,
         fragmentShader: membraneFragment,
         transparent: true,
@@ -225,6 +238,9 @@ export default function SpacePlanets() {
     return () => membraneMaterial.dispose();
   }, [portalScene, membraneMaterial]);
 
+  // The gateway's neon strips (Neon_Pink, Neon_Cyan): base × glowScale each frame.
+  const portalNeons = useMemo(() => collectGlowMaterials(portalScene, /^neon_/i), [portalScene]);
+
   // Destinations are static; the bodies are re-registered every frame (updateBodies).
   useEffect(() => {
     for (const d of DESTINATIONS) setScannable(d.id, d.pos[0], d.pos[1], d.pos[2], d.scanLabel);
@@ -239,6 +255,9 @@ export default function SpacePlanets() {
       portalFrameRef.current.rotation.z = time * 0.08;
     }
     membraneMaterial.uniforms.uTime.value = time;
+    // Self-lit: held at the 1 AU glow far out (the membrane reads glowScaleUnmapped itself).
+    const glow = glowScale.value;
+    applyGlow(portalNeons, glow);
 
     if (nebulaeGroupRef.current) nebulaeGroupRef.current.rotation.y = time * 0.005;
 
@@ -250,6 +269,7 @@ export default function SpacePlanets() {
       const mat = portalOuterAuraRef.current.material as THREE.MeshBasicMaterial;
       if (mat) {
         mat.opacity = 0.3 + (Math.sin(time * 18.0) * 0.08 + Math.cos(time * 29.0) * 0.04);
+        mat.color.copy(PORTAL_OUTER_AURA).multiplyScalar(glow);
       }
     }
     if (portalInnerAuraRef.current) {
@@ -261,11 +281,13 @@ export default function SpacePlanets() {
       const mat = portalInnerAuraRef.current.material as THREE.MeshBasicMaterial;
       if (mat) {
         mat.opacity = 0.28 + Math.sin(time * 32.0) * 0.08;
+        mat.color.copy(PORTAL_INNER_AURA).multiplyScalar(glow);
       }
     }
     if (portalInnerCoreRef.current) {
       const coreScale = 1.0 + (Math.sin(time * 28.0) * 0.15 + Math.cos(time * 42.0) * 0.05);
       portalInnerCoreRef.current.scale.set(coreScale, coreScale, coreScale);
+      (portalInnerCoreRef.current.material as THREE.MeshBasicMaterial).color.copy(PORTAL_CORE).multiplyScalar(glow);
     }
 
     // 2. Proximity: read mutable telemetry, write store only on change.

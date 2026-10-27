@@ -92,7 +92,7 @@
   - Drawn in the lazy Nest chunk (`NestCluster`, mounted by `NestMonsters` beside `NestEffects`): one InstancedMesh per variant used (≤ 4 calls), frustum-culled with a fixed bounding sphere.
 - **The glow:**
   - 40 seeded points within 7 u of the centre, sprite size 6 u, slime green `#7dff6a`, gain 0.6;
-  - per-frame vertex colour = base × `exposureCompensation` × `nearFade`;
+  - per-frame vertex colour = base × `mappedCompensation` × `nearFade` (corrected 2026-10-27 in the final review's fix: `mappedCompensation`, 1 / exposure in both tiers, since a PointsMaterial is tone-mapped and the renderer exposes it in low-perf; `exposureCompensation` is 1 there);
   - one call.
 - **Sleepers:**
   - **Placement.** Three offsets 22 u from the centre, 45° off the buoy axis, 120° apart around it (`NEST_SLEEPERS`). The saucers face outward along their offsets. The tardigrade sleeps at the centre, facing the mean of the offsets.
@@ -439,7 +439,7 @@ Expected: FAIL (`nestRocks` missing).
   - `useModel(assetUrl("/models/asteroids.glb"))` → `asteroidVariants`.
   - One InstancedMesh per variant present. Matrices are set once (position `NEST_CENTRE + offset`, the rotation, the scale), with `computeBoundingSphere()` and `frustumCulled` left true.
   - The glow is one `Points` with the ship sparks' material settings (`vertexColors`, `map: softSprite`, `transparent`, `opacity 1`, `AdditiveBlending`, `depthWrite false`), at size 6.
-  - Each frame the glow's colour is `#7dff6a × 0.6 × exposureCompensation.value × nearFade(p, camera)`.
+  - Each frame the glow's colour is `#7dff6a × 0.6 × mappedCompensation.value × nearFade(p, camera)` (corrected 2026-10-27 in the final review's fix: `mappedCompensation`, 1 / exposure in both tiers, since a PointsMaterial is tone-mapped and the renderer exposes it in low-perf; `exposureCompensation` is 1 there).
   - Dispose the geometries and material clones on unmount (not the textures).
 - **`NestMonsters.tsx`:** render `<NestCluster />` beside `<NestEffects />`, inside the Nest group, so `warmNest` walks it.
 - **`Spaceship.tsx`:** `COLLIDERS = [...ASTEROID_COLLIDERS, ...NEST_ROCK_COLLIDERS, SUN_COLLIDER]`.

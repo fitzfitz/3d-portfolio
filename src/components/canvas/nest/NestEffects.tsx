@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { combat, useSpaceStore } from "../../../store/spaceStore";
-import { exposureCompensation } from "../../../utils/sunLight";
+import { exposureCompensation, mappedCompensation } from "../../../utils/sunLight";
 import { PLUME_COLORS } from "../../../data/plumeColors";
 import { softSprite } from "../softSprite";
 import { BOLT_POOL, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES, STRIKE_RING } from "../../../utils/combat/constants";
@@ -24,7 +24,7 @@ const SHIP_BOLT_LENGTH = 1.8;
 const ENEMY_BOLT_LENGTH = 1.2;
 /** The far end's share of the jet's brightness. */
 const JET_FAR = 0.35;
-/** The smoke's grey (lit dust, compensated like the overlays so it reads the same at any exposure) and puff size. */
+/** The smoke's grey (lit dust, compensated so it reads the same at any exposure) and puff size. */
 const SMOKE_GREY: readonly [number, number, number] = [0.42, 0.4, 0.38];
 const SMOKE_SIZE = 2.2;
 
@@ -47,6 +47,11 @@ const JETS = JET_PARTICLES * MAX_TARDIGRADES;
  *    PointsMaterial settings, so their program);
  *  - one Points for the smoke trailing each defeated saucer for its 3 s
  *    drift (normal blending, vertex alphas).
+ * Their exposure factors follow their material (sunLight.ts): the bolts'
+ * mesh is toneMapped: false, so only the post pass exposes it and it takes
+ * exposureCompensation (1 in low-perf); the jet and the smoke are
+ * PointsMaterials, tone-mapped, which the renderer exposes in low-perf, so
+ * they take mappedCompensation (1 / exposure in both tiers).
  * A paused fight freezes them (dt 0). Each draws only while it has something
  * to show. The jet's and the smoke's sprites fade out within a few units of
  * the camera (effects.ts nearFade), so none fills the screen as it passes;
@@ -132,7 +137,9 @@ export default function NestEffects() {
     const s = useSpaceStore.getState();
     const n = combat.nest;
     const dt = nestPaused(s) ? 0 : Math.min(delta, 0.05);
+    // toneMapped: false (the bolts) vs tone-mapped (the jet and the smoke).
     const comp = exposureCompensation.value;
+    const mapped = mappedCompensation.value;
     // The camera, for the sprites' near fade (nearFade).
     const cam = scratch.cam;
     cam.x = state.camera.position.x; cam.y = state.camera.position.y; cam.z = state.camera.position.z;
@@ -201,7 +208,7 @@ export default function NestEffects() {
         // Fades toward the far end.
         const along = ((p.x - t.jx) * t.jdx + (p.y - t.jy) * t.jdy + (p.z - t.jz) * t.jdz) / l;
         // Faded out near the camera: additive black draws nothing.
-        const g = JET_GLOW * jetGlow(q) * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
+        const g = JET_GLOW * jetGlow(q) * mapped * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
           * nearFade(p.x, p.y, p.z, cam);
         jca[j * 3] = scratch.jet.r * g; jca[j * 3 + 1] = scratch.jet.g * g; jca[j * 3 + 2] = scratch.jet.b * g;
       }
@@ -221,7 +228,7 @@ export default function NestEffects() {
       const f = puffs[i];
       if (!f.live) continue;
       spa[m * 3] = f.x; spa[m * 3 + 1] = f.y; spa[m * 3 + 2] = f.z;
-      sca[m * 4] = SMOKE_GREY[0] * comp; sca[m * 4 + 1] = SMOKE_GREY[1] * comp; sca[m * 4 + 2] = SMOKE_GREY[2] * comp;
+      sca[m * 4] = SMOKE_GREY[0] * mapped; sca[m * 4 + 1] = SMOKE_GREY[1] * mapped; sca[m * 4 + 2] = SMOKE_GREY[2] * mapped;
       sca[m * 4 + 3] = smokeAlpha(f.age) * nearFade(f.x, f.y, f.z, cam);
       m++;
     }

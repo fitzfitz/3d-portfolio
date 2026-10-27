@@ -96,9 +96,11 @@ the combat probe already has the Nest's setup. SwiftShader, full fidelity
 45 u ahead, all still and facing the ship, with the AI frozen; the read comes
 after a 1.5 s settle and three frames. 6 serial runs of `node
 tests/e2e/run-one.mjs combat#2`, alone on the machine, read the same every
-time: 46 calls, 257,690 triangles, 61 programs, 4 lights. The ceilings follow
-the rule: 46 × 1.15 → 60, 257,690 × 1.15 → 296,350, programs 61 + 1 = 62,
-lights `LIGHT_BUDGET` (the Nest adds none). The 61 programs include the smoke's
+time. *The original baseline (PR 67), superseded by the PR 68 re-measure
+below:* 46 calls, 257,690 triangles, 61 programs, 4 lights, and ceilings by
+the rule 46 × 1.15 → 60, 257,690 × 1.15 → 296,350, programs 61 + 1 = 62,
+lights `LIGHT_BUDGET` (the Nest adds none). The row above carries the
+current numbers. The 61 programs include the smoke's
 one (the Nest's only new program outside the shared ones; the Task 8 browser
 check read 61 too); the fight page of the same probe asserts that a whole
 fight, jet and smoke included, compiles nothing after the Nest's warm-up. In

@@ -32,12 +32,14 @@ Tailwind, on Vite.
 | `4` | Jump to the career station (opens the Career dossier) |
 | `5` | Jump to the shipyard (opens the Hangar: engine plume colours) |
 | `6` | Jump to the contact portal |
+| `7` | Jump to the Nest (three projects only; with more it has no number key, so use THE_NEST in the sector list) |
 | `Esc` | Close the open dossier, hangar, contact form or bottle panel |
 
 The keys above are for the three projects the site has today. The probes come
 first, one key each, then the three destinations, so with more projects every
 destination key moves up by one (six projects: career `7`, shipyard `8`,
-contact `9`).
+contact `9`). The Nest comes last, so with six projects it is tenth and has no
+number key: THE_NEST in the sector list (or the spawn card) jumps there.
 
 The buttons along the bottom left carry their own keys: LOGBOOK (`L`, `X` on a
 pad), PATCH_NOTES (`N`) and, with a beacon API, BOTTLE (`B`).

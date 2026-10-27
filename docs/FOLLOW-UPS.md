@@ -178,6 +178,17 @@ Delete an entry when it is fixed.
       any of them if the `look` probe or a pilot finds it washed out.
     - Point lights are not glow-scaled (lights are sunlight-like and
       exposure is meant to lift them); only materials are.
+    - Bloom halos are lost far out: Bloom's luminance threshold (0.2) applies
+      before the ToneMapping pass's exposure, and far out the self-lit glows
+      are pre-scaled below it (the ship's neon ~0.16 at 3.5 AU), so they lose
+      their halo, as lit surfaces already did. To keep halos, scale the
+      threshold by 1 / exposure or apply the exposure before Bloom.
+    - The slime glow (`NestCluster`) keeps rewriting its 40 vertex colours
+      after a visit: NestGate keeps the chunk mounted, and the far-skip holds
+      only while the compensation is unchanged, which it is not while the
+      exposure eases (whenever the ship moves radially). Write the exposure
+      factor through `material.color.setScalar` (as the bolts do) and touch
+      the vertex colours only within `GLOW_FAR`.
     - THE NEST has no gamepad button, and no number key once more than six
       probes fly (keys 1–9 are taken; Ruling N1): the jump list row and the
       radar rim marker find it. Add a key or pad mapping if pilots ask.

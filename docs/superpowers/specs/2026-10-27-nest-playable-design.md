@@ -47,7 +47,7 @@ Two causes:
 - **A rock cluster.** A hollow cluster of the existing scenery asteroid rocks (the same model and material as the asteroids in `data/asteroids.ts`; no new program) forms a rough shell of radius about 10–14 u around `NEST_CENTRE`, with gaps.
   - About 18–24 rocks, deterministic placement (seeded).
   - The rocks are solid to the ship: they are added to the ship's colliders. Bolts and monsters ignore them.
-- **Slime glow inside.** A code-drawn green glow fills the cluster: one Points or sprite call, reusing an existing additive material config so there is no new program. It uses the shared `exposureCompensation`. Visible from the buoy.
+- **Slime glow inside.** A code-drawn green glow fills the cluster: one Points or sprite call, reusing an existing additive material config so there is no new program. It uses the shared exposure compensation for tone-mapped materials (`mappedCompensation`, 1 / exposure in both tiers; the plan's `exposureCompensation` was 1 in low-perf and over-exposed it there). Visible from the buoy.
 - **Monsters at home.**
   - Once the models are loaded (within 200 u) and the Nest is **ready**, wave 1's three saucers sit parked around the cluster, bobbing slowly with eyes closed (blink held, idle pose).
   - The tardigrade sleeps curled in its tun ball inside the cluster (curl pose).

@@ -2,8 +2,9 @@
  * The saucer's AI: it circles the ship, warns with a porthole chase, then
  * fires a 3-bolt burst led at the ship. At home it sleeps (`asleep`: not a
  * target, never fires, only grows in), and the zone crossing wakes it
- * (`waking`: it rises and turns to the ship until wave 1 spawns it in place). Allocation-free: one module scratch
- * set, monsters are reused objects (`createSaucer` once, `spawnSaucer` per wave).
+ * (`waking`: it rises and turns to the ship until wave 1 spawns it in
+ * place). Allocation-free: one module scratch set, monsters are reused
+ * objects (`createSaucer` once, `spawnSaucer` per wave).
  */
 import {
   ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE, ENEMY_BOLT_SPEED, DEFEAT_DRIFT, SAUCER_ATTACK_EVERY, SAUCER_BURST,

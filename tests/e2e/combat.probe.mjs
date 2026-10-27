@@ -374,7 +374,18 @@ async function fight(page, checks) {
   await aimAt(page, first);
   await page.keyboard.down("KeyF");
   const seen = { lock: false, hit: false, strikes: 0 };
+  // Re-aim at the first alive saucer every ~250 ms: a strafing saucer can
+  // drift out of the lock's 40° hold before it falls (hardening, not a rule).
+  let reaimAt = Date.now() + 250;
   const defeated = await pollUntil(async () => {
+    if (Date.now() >= reaimAt) {
+      reaimAt = Date.now() + 250;
+      const target = await inPage(page, () => {
+        const s = window.__fitz.nest.combat.nest.saucers.find((m) => m.alive);
+        return s ? { x: s.x, y: s.y, z: s.z } : null;
+      });
+      if (target) await aimAt(page, target);
+    }
     const o = await inPage(page, () => {
       const vis = (t) => {
         const el = document.querySelector(`[data-testid="${t}"]`);

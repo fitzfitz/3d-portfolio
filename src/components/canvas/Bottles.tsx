@@ -6,7 +6,7 @@ import { BOTTLES_SHOWN_MAX, bottleRegistry, bottleScanId, bottleVisible, type Bo
 import { activeBottle, bottleCardState } from "../../utils/bottleCard";
 import { setScannable, removeScannable } from "../../utils/scannables";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
-import { exposureCompensation } from "../../utils/sunLight";
+import { mappedCompensation } from "../../utils/sunLight";
 import { useModel } from "../../utils/sceneAssets";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
@@ -60,15 +60,16 @@ const smooth01 = (x: number) => { const k = Math.min(1, Math.max(0, x)); return 
  *    as a tiny highlight.
  *  - Rim: a Fresnel term, emissive and a little more opaque at grazing
  *    angles, so the glass outline reads against black space even backlit.
- * Both are emissive, so they multiply by the shared exposureCompensation
- * (sunLight.ts), as the monsters' glows do: the same glint at 1 AU and at
- * 30 AU. A uniform object, so no recompile and no new cache key.
+ * Both are emissive, so they multiply by the shared mappedCompensation
+ * (sunLight.ts, 1 / exposure in both tiers: the glass is a patched built-in,
+ * tone-mapped, so the renderer exposes it in low-perf), as the monsters'
+ * glows do: the same glint at 1 AU and at 30 AU. A uniform object, so no recompile and no new cache key.
  */
 function patchGlassMaterial(m: THREE.MeshStandardMaterial): void {
   m.vertexColors = false;
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uBottleTime = bottleTime;
-    shader.uniforms.uExposureComp = exposureCompensation;
+    shader.uniforms.uExposureComp = mappedCompensation;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
 attribute vec4 bottleMask;

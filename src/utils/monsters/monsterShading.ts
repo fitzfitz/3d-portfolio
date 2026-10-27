@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { FOCAL_PX } from "../sphereLod";
-import { exposureCompensation } from "../sunLight";
+import { mappedCompensation } from "../sunLight";
 
 /**
  * Shading shared by both space monsters (Task 5): the shader-patch helper,
@@ -327,10 +327,13 @@ export function patchFurFragment(src: string, shellsRect: readonly number[], tra
 
 /**
  * R22: the monsters' emissives (the saucer's portholes, the tardigrade's
- * throat and crystals) multiply by the game's shared `exposureCompensation`
- * (sunLight.ts: 1/exposure while the post pass exposes, 1 in low-perf), so a
- * glow looks as bright at 30 AU, where the exposure is about 1,350x, as at
- * 1 AU instead of blooming into a white blob. It is a uniform (the same
+ * throat and crystals) multiply by the game's shared `mappedCompensation`
+ * (sunLight.ts: 1/exposure in both tiers, since the monsters' materials are
+ * patched built-ins that keep `<tonemapping_fragment>`, so the renderer
+ * exposes them in low-perf; until 2026-10-27 they used exposureCompensation,
+ * 1 in low-perf, and glowed 13–25× too bright there), so a glow looks as
+ * bright at 30 AU, where the exposure is about 1,350x, as at 1 AU instead of
+ * blooming into a white blob. It is a uniform (the same
  * object the sun and the guide lines reference), so it adds no program and
  * changes no cache key. Lit matter (the fur, the skin, the dome) is NOT
  * compensated: it follows the exposure like the planets. The TS mirrors
@@ -343,5 +346,5 @@ export const EMISSIVE_COMP_UNIFORM = "uExposureComp";
 export function shareMonsterUniforms(shader: THREE.WebGLProgramParametersWithUniforms): void {
   shader.uniforms.uTime = MONSTER_UNIFORMS.uTime;
   shader.uniforms.uMotion = MONSTER_UNIFORMS.uMotion;
-  shader.uniforms[EMISSIVE_COMP_UNIFORM] = exposureCompensation;
+  shader.uniforms[EMISSIVE_COMP_UNIFORM] = mappedCompensation;
 }

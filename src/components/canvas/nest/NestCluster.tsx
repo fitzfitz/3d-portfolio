@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useModel } from "../../../utils/sceneAssets";
 import { assetUrl } from "../../../utils/assetUrl";
-import { exposureCompensation } from "../../../utils/sunLight";
+import { mappedCompensation } from "../../../utils/sunLight";
 import { NEST_CENTRE } from "../../../data/nest";
 import { NEST_GLOW, NEST_GLOW_R, NEST_ROCKS } from "../../../data/nestRocks";
 import { NEAR_FADE_FAR, nearFade } from "../../../utils/combat/effects";
@@ -41,9 +41,12 @@ const GLOW_FAR = NEST_GLOW_R + NEAR_FADE_FAR;
  *    sphere for culling.
  *  - The glow: one Points, the ship sparks' PointsMaterial settings (so
  *    their program), its vertex colours written each frame as slime green ×
- *    gain × exposureCompensation × nearFade, so it reads the same at any
- *    exposure and fades out near the camera. Far from the centre with the
- *    compensation unchanged, nothing is written.
+ *    gain × mappedCompensation × nearFade, so it reads the same at any
+ *    exposure and fades out near the camera. A PointsMaterial is tone-mapped,
+ *    exposed by the renderer in low-perf, so it takes 1 / exposure in both
+ *    tiers (mappedCompensation, sunLight.ts), not exposureCompensation (1 in
+ *    low-perf: the glow read 13–25× too bright there). Far from the centre
+ *    with the compensation unchanged, nothing is written.
  * The rocks' colliders (NEST_ROCK_COLLIDERS) are Spaceship's, near the Nest.
  * On unmount it disposes its geometries and the glow's material, not the
  * rocks' material (the model's, shared with the belt) or the maps.
@@ -102,7 +105,7 @@ export default function NestCluster() {
   }), []);
 
   useFrame((state) => {
-    const comp = exposureCompensation.value;
+    const comp = mappedCompensation.value;
     const c = state.camera.position;
     const S = scratch;
     const far = Math.hypot(c.x - NEST_CENTRE[0], c.y - NEST_CENTRE[1], c.z - NEST_CENTRE[2]) > GLOW_FAR;
