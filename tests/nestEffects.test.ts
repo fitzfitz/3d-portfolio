@@ -38,6 +38,7 @@ describe("the plasma jet's particles", () => {
     const out = v(0, 0, 0);
     let checked = 0;
     let notOut = 0;
+    let nonFinite = 0;
     let minAlong = Infinity;
     let maxAlong = -Infinity;
     let maxOff = -Infinity;
@@ -47,6 +48,7 @@ describe("the plasma jet's particles", () => {
           const t = k * 0.05;
           if (jetParticle(i, JET_PARTICLES, t, mouth.x, mouth.y, mouth.z, d.x, d.y, d.z, out) !== out) notOut++;
           const { along, off } = inJet(out, mouth, d);
+          if (!Number.isFinite(along) || !Number.isFinite(off)) nonFinite++;
           if (along < minAlong) minAlong = along;
           if (along > maxAlong) maxAlong = along;
           if (off > maxOff) maxOff = off;
@@ -55,6 +57,7 @@ describe("the plasma jet's particles", () => {
       }
     }
     expect(notOut).toBe(0);
+    expect(nonFinite).toBe(0);
     expect(minAlong).toBeGreaterThanOrEqual(-1e-9);
     expect(maxAlong).toBeLessThanOrEqual(JET_RANGE + 1e-9);
     expect(maxOff).toBeLessThanOrEqual(JET_RADIUS + 1e-9);
