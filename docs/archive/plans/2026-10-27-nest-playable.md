@@ -15,7 +15,7 @@
 
 **Tech Stack:** TypeScript, React 19, React Three Fiber 9, three 0.185, zustand, Vitest, the Puppeteer e2e harness (`tests/e2e/`).
 
-**Spec:** `docs/superpowers/specs/2026-10-27-nest-playable-design.md` (builds on `docs/archive/specs/2026-10-27-combat-design.md` and the archived plan `docs/archive/plans/2026-10-27-combat.md`).
+**Spec:** `docs/archive/specs/2026-10-27-nest-playable-design.md` (builds on `docs/archive/specs/2026-10-27-combat-design.md` and the archived plan `docs/archive/plans/2026-10-27-combat.md`).
 
 **Decomposition:** the brief's seven tasks, kept.
 - The rock cluster (Task 3) comes before the sleepers (Task 4), because the sleepers' placement test checks clearance from the rocks.

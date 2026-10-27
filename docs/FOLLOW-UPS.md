@@ -163,7 +163,7 @@ Delete an entry when it is fixed.
     regens from 99.5 to 99.99; a stalled (not failed) model fetch keeps
     showing `CONTACT IN …` (harmless: no wave starts).
   - **The Nest, playable** (PR 68; spec
-    `docs/superpowers/specs/2026-10-27-nest-playable-design.md`):
+    `docs/archive/specs/2026-10-27-nest-playable-design.md`):
     - Self-lit materials checked and left unscaled by `glowScale`: comets
       (their coma and tails are sunlit dust whose activity already falls as
       1/r² from the Sun, so the exposure lift is right for them, as for any
@@ -189,7 +189,7 @@ Delete an entry when it is fixed.
       exposure eases (whenever the ship moves radially). Write the exposure
       factor through `material.color.setScalar` (as the bolts do) and touch
       the vertex colours only within `GLOW_FAR`.
-    - THE NEST has no gamepad button, and no number key once more than six
+    - THE NEST has no gamepad button, and no number key once six or more
       probes fly (keys 1–9 are taken; Ruling N1): the jump list row and the
       radar rim marker find it. Add a key or pad mapping if pilots ask.
     - The nest's rocks don't tumble (static instance matrices, set once;
