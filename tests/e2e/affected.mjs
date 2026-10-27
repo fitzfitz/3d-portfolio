@@ -28,8 +28,9 @@ export const RULES = [
   [/^src\/components\/canvas\/ProjectProbes\b/, () => [...BUDGETS, "probes"]],
   [/^src\/components\/canvas\/(CareerStation|CareerTrail|guideLine)\b/, () => [...BUDGETS, "career", "careerphone"]],
   [/^src\/components\/canvas\/(Shipyard|DormantGate|PortalRing|SpacePlanets)\b/, () => [...BUDGETS, "shipyard", "contact"]],
-  // The scenery asteroids' variants are the Nest's rocks too (nest/NestCluster).
-  [/^src\/components\/canvas\/(AsteroidBelt|Asteroids|asteroidVariants)\b/, () => [...BUDGETS, "mechanics", "gameplay", "combat"]],
+  // The belt's rock is the Nest's rocks too (nest/NestCluster).
+  [/^src\/components\/canvas\/(AsteroidBelt|beltRock)\b/, () => [...BUDGETS, "mechanics", "gameplay", "combat"]],
+  [/^src\/components\/canvas\/(Asteroids|asteroidVariants)\b/, () => [...BUDGETS, "mechanics", "gameplay"]],
   [/^src\/components\/canvas\/(PlasmaAnomalies|DataShards|Scanner)\b/, () => [...BUDGETS, "fuel", "gameplay"]],
   [/^src\/components\/canvas\/SpaceJellyfish\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
   // The guide's pure logic (the creature's frame, posture and radio gate); waypointTarget also feeds the HUD, so it stays with ALL.

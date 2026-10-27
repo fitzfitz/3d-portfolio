@@ -5,9 +5,8 @@ const VARIANTS = 4;
 
 /**
  * Each sculpted variant's geometry and material from asteroids.glb, by
- * variant (0 boulder, 1 shard, 2 contact binary, 3 rubble chunk): the
- * scenery asteroids (Asteroids.tsx) and the Nest's rocks (NestCluster.tsx)
- * draw them, so both share one program. Quantized GLBs store the
+ * variant (0 boulder, 1 shard, 2 contact binary, 3 rubble chunk), for the
+ * scenery asteroids (Asteroids.tsx). Quantized GLBs store the
  * dequantization transform on the node matrix: it is baked into a geometry
  * clone so instancing matrices stay pure position/rotation/scale. The
  * caller owns (and disposes) the geometry and material clones; the maps are

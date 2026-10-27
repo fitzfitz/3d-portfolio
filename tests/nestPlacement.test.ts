@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { NEST_CENTRE, NEST_BUOY_POS, NEST_TOW_POSE, NEST_SCAN_ID, NEST_LABEL, NEST_RED } from "../src/data/nest";
-import { NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, NEST_ZONE_R, TOW_PAST_BUOY } from "../src/utils/combat/constants";
+import { NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, NEST_ZONE_R, TOW_PAST_BUOY, TOW_SIDE } from "../src/utils/combat/constants";
 import {
   buildNestRocks, NEST_ROCK_SEED, NEST_ROCKS, NEST_ROCK_COLLIDERS, NEST_GLOW, NEST_GLOW_R,
 } from "../src/data/nestRocks";
+import { beltRockGeometry, BELT_ROCK_RADIUS } from "../src/components/canvas/beltRock";
 import { noseDirection } from "../src/utils/pitchFlight";
 import { SPAWN } from "../src/data/spawn";
 import { PROBE_SLOTS } from "../src/data/probes";
@@ -61,17 +62,24 @@ describe("the Nest's placement", () => {
     for (const p of JELLY_POINTS) expect(dist(NEST_CENTRE, p)).toBeGreaterThan(NEST_LEASH_R + JELLY_KEEP_RADIUS);
   });
 
-  it("puts the buoy 120 u toward the Sun and the tow outside the fighting area, nose on the Nest", () => {
+  it("puts the buoy 120 u toward the Sun and the tow outside the fighting area, beside the buoy, nose on the Nest", () => {
     expect(Math.abs(dist(NEST_BUOY_POS, NEST_CENTRE) - NEST_BUOY_R)).toBeLessThan(1e-9);
     expect(NEST_BUOY_R).toBe(120);
     const toSun = unit([-NEST_CENTRE[0], -NEST_CENTRE[1], -NEST_CENTRE[2]]);
     expect(dot(unit(sub(NEST_BUOY_POS, NEST_CENTRE)), toSun)).toBeGreaterThan(1 - 1e-9);
     const tow: Vec3 = [NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z];
-    expect(Math.abs(dist(tow, NEST_CENTRE) - (NEST_BUOY_R + TOW_PAST_BUOY))).toBeLessThan(1e-9);
+    // TOW_PAST_BUOY past the buoy along the Sun line, TOW_SIDE off it (Ruling N3).
+    const along = dot(sub(tow, NEST_CENTRE), toSun);
+    expect(along).toBeCloseTo(NEST_BUOY_R + TOW_PAST_BUOY, 9);
+    expect(dist(tow, [NEST_CENTRE[0] + toSun[0] * along, NEST_CENTRE[1] + toSun[1] * along, NEST_CENTRE[2] + toSun[2] * along]))
+      .toBeCloseTo(TOW_SIDE, 9);
+    expect(TOW_SIDE).toBe(16);
+    expect(dist(tow, NEST_CENTRE)).toBeGreaterThanOrEqual(120);
     expect(dist(tow, NEST_CENTRE)).toBeGreaterThan(NEST_LEASH_R);
-    expect(dot(unit(sub(tow, NEST_CENTRE)), toSun)).toBeGreaterThan(1 - 1e-9);
     const n = noseDirection(NEST_TOW_POSE.yaw, NEST_TOW_POSE.pitch);
     expect(dot([n.x, n.y, n.z], unit(sub(NEST_CENTRE, tow)))).toBeGreaterThan(1 - 1e-9);
+    // The buoy stands to one side of the view, not in front of the cluster.
+    expect(angle(sub(NEST_BUOY_POS, tow), sub(NEST_CENTRE, tow))).toBeGreaterThan(10 * DEG);
   });
 
   it("names the Nest for the scan, the radar and the HUD", () => {
@@ -116,6 +124,17 @@ describe("the Nest's rock cluster", () => {
       expect(dist(p, [NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z])).toBeGreaterThan(100);
     });
     expect(readFileSync("src/components/canvas/Spaceship.tsx", "utf8")).toMatch(/COLLIDERS = \[[^\]]*NEST_ROCK_COLLIDERS/);
+  });
+
+  it("draws the belt's low-poly rock (its geometry and material, so its program), at most 15k triangles in all (Ruling N4)", () => {
+    const g = beltRockGeometry();
+    const tris = (g.index ? g.index.count : g.getAttribute("position").count) / 3;
+    expect(tris * NEST_ROCKS.length).toBeLessThanOrEqual(15_000);
+    expect(BELT_ROCK_RADIUS).toBe(1.1);
+    const belt = readFileSync("src/components/canvas/AsteroidBelt.tsx", "utf8");
+    const cluster = readFileSync("src/components/canvas/nest/NestCluster.tsx", "utf8");
+    for (const src of [belt, cluster]) expect(src).toMatch(/beltRockGeometry\(\)[\s\S]*beltRockMaterial\(|beltRockMaterial\([\s\S]*beltRockGeometry\(\)/);
+    expect(cluster).not.toMatch(/asteroidVariants|\.clone\(\)/);
   });
 
   it("glows inside: 40 points within NEST_GLOW_R (7 u) of the centre", () => {

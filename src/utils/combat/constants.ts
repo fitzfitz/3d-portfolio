@@ -112,3 +112,5 @@ export const BOLT_POOL = 48;
 export const NEST_RUMOUR_R = 400;
 /** A breach tow lands this far past the buoy. */
 export const TOW_PAST_BUOY = 8;
+/** …and this far to the side of the buoy's line, so the buoy never stands in front of the Nest (Ruling N3). */
+export const TOW_SIDE = 16;

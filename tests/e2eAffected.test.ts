@@ -53,8 +53,8 @@ describe("e2e affected-probe selection", () => {
     expect(affectedProbes(["src/components/layout/NestOverlay.tsx"])).toEqual(["smoke", "reducedmotion", "combat"]);
   });
 
-  it("runs the combat probe with the scenery asteroids, whose model and material the Nest's rocks reuse", () => {
-    for (const f of ["src/components/canvas/Asteroids.tsx", "src/components/canvas/asteroidVariants.ts"]) {
+  it("runs the combat probe with the belt's rock, which the Nest's rocks reuse", () => {
+    for (const f of ["src/components/canvas/AsteroidBelt.tsx", "src/components/canvas/beltRock.ts"]) {
       const picked = affectedProbes([f]);
       for (const p of ["combat", "mechanics", "gameplay", "programs", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
       expect(picked, f).not.toEqual(ALL);

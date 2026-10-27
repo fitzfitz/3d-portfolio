@@ -1,4 +1,4 @@
-import { NEST_BUOY_R, TOW_PAST_BUOY } from "../utils/combat/constants";
+import { NEST_BUOY_R, TOW_PAST_BUOY, TOW_SIDE } from "../utils/combat/constants";
 import { headingToward } from "../utils/pitchFlight";
 
 export type Vec3 = readonly [number, number, number];
@@ -16,12 +16,21 @@ const along = (r: number): Vec3 => [
 /** The buoy, NEST_BUOY_R from the centre on the side facing the Sun. */
 export const NEST_BUOY_POS: Vec3 = along(NEST_BUOY_R);
 
-const TOW = along(NEST_BUOY_R + TOW_PAST_BUOY);
-/** Where a breach tow lands: past the buoy, nose on the Nest's centre. */
+/** Horizontal and square to the Sun line: TO_SUN × up, normalised. */
+const SIDE_LEN = Math.hypot(TO_SUN[2], TO_SUN[0]);
+const SIDE: Vec3 = [-TO_SUN[2] / SIDE_LEN, 0, TO_SUN[0] / SIDE_LEN];
+const PAST = along(NEST_BUOY_R + TOW_PAST_BUOY);
+const TOW: Vec3 = [PAST[0] + SIDE[0] * TOW_SIDE, PAST[1] + SIDE[1] * TOW_SIDE, PAST[2] + SIDE[2] * TOW_SIDE];
+const TOW_R = Math.hypot(TOW[0] - NEST_CENTRE[0], TOW[1] - NEST_CENTRE[1], TOW[2] - NEST_CENTRE[2]);
+/**
+ * Where a breach tow (and a jump to the Nest) lands: past the buoy and off to
+ * its side (Ruling N3), so the buoy stands beside the view instead of in front
+ * of the cluster's mouth; nose on the Nest's centre, outside the fighting area.
+ */
 export const NEST_TOW_POSE: { x: number; y: number; z: number; yaw: number; pitch: number } = {
   x: TOW[0], y: TOW[1], z: TOW[2],
   yaw: headingToward(TOW[0], TOW[2], NEST_CENTRE[0], NEST_CENTRE[2]),
-  pitch: Math.asin((NEST_CENTRE[1] - TOW[1]) / (NEST_BUOY_R + TOW_PAST_BUOY)),
+  pitch: Math.asin((NEST_CENTRE[1] - TOW[1]) / TOW_R),
 };
 
 export const NEST_SCAN_ID = "the_nest";
