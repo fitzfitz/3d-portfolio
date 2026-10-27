@@ -12,6 +12,7 @@ import { cargoSwerveTarget, curvatureRoll, HailGate, CARGO_REACT_RADIUS, RADIO_B
 import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
+import { glowScale } from "../../utils/sunLight";
 
 /** The wake narrows to nothing at its oldest point. */
 const wakeTaper = (t: number) => t * t;
@@ -118,6 +119,8 @@ export default function CargoTraffic() {
     const broadcastId = store.broadcast?.id ?? 0;
     if (broadcastId !== lastBroadcast.current.id) lastBroadcast.current = { id: broadcastId, at: now };
     const radioBusy = now - lastBroadcast.current.at < RADIO_BUSY_S;
+    // Nav lights and engines are self-lit: held at their 1 AU glow far out.
+    const glowK = glowScale.value;
     for (let i = 0; i < count; i++) {
       const def = SHIPS[i];
       const ship = ships[i];
@@ -175,11 +178,11 @@ export default function CargoTraffic() {
       const blink = dist < CARGO_REACT_RADIUS
         ? (Math.sin(time * 14 + i) > 0 ? 6 : 0.4)
         : (Math.sin(time * 3 + i * 1.7) > 0.82 ? 4.5 : 0.3);
-      for (const m of ship.navMats) m.emissiveIntensity = blink;
+      for (const m of ship.navMats) m.emissiveIntensity = blink * glowK;
 
       // Engine burn: uneven thruster flicker, per-ship phase
       const burn = 2.6 + Math.sin(time * 7.3 + i * 2.3) * 0.6 + Math.sin(time * 13.7 + i) * 0.3;
-      for (const m of ship.engineMats) m.emissiveIntensity = burn;
+      for (const m of ship.engineMats) m.emissiveIntensity = burn * glowK;
 
       // Radar dish: constant spin, on the ambient clock like everything else
       // in this loop (dt would keep it spinning under reduced motion).
@@ -203,9 +206,9 @@ export default function CargoTraffic() {
       lookTarget.set(c.x + convoyAhead.x, c.y + convoyAhead.y, c.z + convoyAhead.z);
       ship.group.lookAt(lookTarget);
       const blink = Math.sin(time * 3 + k * 1.7) > 0.82 ? 4.5 : 0.3;
-      for (const m of ship.navMats) m.emissiveIntensity = blink;
+      for (const m of ship.navMats) m.emissiveIntensity = blink * glowK;
       const burn = 2.6 + Math.sin(time * 7.3 + k * 2.3) * 0.6;
-      for (const m of ship.engineMats) m.emissiveIntensity = burn;
+      for (const m of ship.engineMats) m.emissiveIntensity = burn * glowK;
     }
   });
 

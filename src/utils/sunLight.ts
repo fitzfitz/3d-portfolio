@@ -99,27 +99,29 @@ export const BACKDROP_EXPOSURE_POWER = 1.5;
 
 /**
  * The most the backdrop's net brightness (backdropScale × exposure) may gain:
- * the old 480 u edge's value, (480 / AU)^1.5 ≈ 8.5. The system is now 3,600 u
- * across, and the Milky Way band glared (Task 13) beyond that gain.
+ * 2.2, a little above its 1 AU value (EXPOSURE_LIFT, 1.5). L19 lets the
+ * camera lift the unlit sky a little, not 5×: at 8.5 (the old 480 u edge's
+ * value, until 2026-10-27) the painted sky read 2.8× its 1 AU luma from
+ * 3.5 AU out and the scene washed out (docs/PERF-BUDGETS.md "Look budget").
  */
-export const BACKDROP_NET_MAX = 8.5;
+export const BACKDROP_NET_MAX = 2.2;
 
 /**
  * The one disclosed factor that tones the backdrop down (L19): the exposure's
  * growth beyond the power-1.5 curve, undone, (AU / d)^(EXPOSURE_POWER −
  * BACKDROP_EXPOSURE_POWER) with d held to [AU, SYSTEM_RADIUS], so it only ever
  * dims (1 at 1 AU and inward), and capped so the net gain never passes
- * BACKDROP_NET_MAX (≈ 0.179 at the 3,600 u edge). The backdrop then follows
- * EXPOSURE_LIFT × (d / AU)^1.5 from 1 AU to ≈ 365 u (480 u before the lift),
- * flat beyond and the exposure's (d / AU)^2 inside 1 AU. The stars are not
- * toned: they may brighten.
+ * BACKDROP_NET_MAX (≈ 0.0015 at the 3,600 u edge). The backdrop then follows
+ * EXPOSURE_LIFT × (d / AU)^1.5 from 1 AU to ≈ 148 u, where it reaches the
+ * cap, flat beyond and the exposure's (d / AU)^2 inside 1 AU. The stars are
+ * not toned: they may brighten.
  */
 export function backdropScale(cameraDistance: number): number {
   const d = Math.min(SYSTEM_RADIUS, Math.max(AU, cameraDistance));
   const toned = (AU / d) ** (EXPOSURE_POWER - BACKDROP_EXPOSURE_POWER);
-  // Past the old 480 u edge the power-1.5 curve would keep climbing; the net
-  // gain holds at BACKDROP_NET_MAX instead, so scale × exposure never exceeds
-  // it and never falls (the exposure is (d / AU)^2 there, the scale its inverse).
+  // Past ≈ 148 u the power-1.5 curve would keep climbing; the net gain holds
+  // at BACKDROP_NET_MAX instead, so scale × exposure never exceeds it and
+  // never falls (the exposure is (d / AU)^2 there, the scale its inverse).
   return Math.min(toned, BACKDROP_NET_MAX / targetExposure(d));
 }
 
@@ -186,17 +188,40 @@ export const exposureCompensation = { value: 1 };
 export const litExposure = { value: 1 };
 
 /**
+ * Self-lit things (emissive strips and lamps, plumes, sparks, the jellyfish)
+ * are not sunlit, so nothing cancels the exposure for them: at 13 AU it is
+ * 169× its 1 AU value and they glared. They multiply their light by one of
+ * these, min(1, EXPOSURE_LIFT / exposure), so they read the same from 1 AU
+ * out; 1 inside 1 AU, where the exposure is below the lift, so the inner
+ * system looks as it did (spec 2026-10-27-nest-playable §5). Two tiers,
+ * since the two kinds of material are exposed by different stages:
+ *  - glowScale: built-in tone-mapped materials (and custom shaders that
+ *    include `<tonemapping_fragment>`). The renderer exposes them in
+ *    low-perf and the composer's ToneMapping pass in the full tier, so the
+ *    factor is the same in both.
+ *  - glowScaleUnmapped: custom shaders without `<tonemapping_fragment>` and
+ *    `toneMapped: false` materials. Only the ToneMapping pass exposes them,
+ *    so it is glowScale when that pass runs and 1 otherwise.
+ * Lights are not scaled. Referenced directly, like exposureCompensation, and
+ * written by setExposureCompensation, so a camera cut sets them too.
+ */
+export const glowScale = { value: 1 };
+export const glowScaleUnmapped = { value: 1 };
+
+/**
  * Sets the compensation. Its users are never exposed by the renderer: the
  * custom ShaderMaterials include no `<tonemapping_fragment>`, and the course
  * gates are `toneMapped: false`. Only the composer's ToneMapping pass exposes
  * them, and it exposes every pixel. So they need 1 / exposure exactly when that
  * pass runs (PostFX enabled, i.e. not low-perf), and 1 otherwise. Lit matter
  * in custom shaders needs the opposite: litExposure, 1 when that pass runs and
- * the exposure otherwise.
+ * the exposure otherwise. Also writes the two glow factors (glowScale).
  */
 export function setExposureCompensation(exposure: number, postPassExposes: boolean): void {
   exposureCompensation.value = postPassExposes ? 1 / exposure : 1;
   litExposure.value = postPassExposes ? 1 : exposure;
+  glowScale.value = Math.min(1, EXPOSURE_LIFT / exposure);
+  glowScaleUnmapped.value = postPassExposes ? glowScale.value : 1;
 }
 
 /**

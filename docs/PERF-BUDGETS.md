@@ -687,3 +687,45 @@ estimate, likely a floor:
 | near, 6 u (LOD0, 16 shells) | 7 | 185,372 | ~197,000 |
 | mid, 11 u (LOD0, 8 / 12 shells) | 7 | 154,380 | ~166,000 |
 | far, 30 u (LOD1, 4 shells) | 6 | 36,928 | ~37,100 |
+
+## Look budget: brightness far from the Sun
+
+The camera's exposure grows as (d / AU)² to cancel the falling sunlight
+(UNIVERSE-RULES L19), which also brightens everything that is not sunlit. Far
+out the scene washed out: the unlit backdrop's net gain reached 8.5× and the
+self-lit materials grew with the full exposure (169× at 13 AU). Since
+2026-10-27 (the Nest, playable, Task 1) the backdrop's net gain is capped at
+2.2 (`BACKDROP_NET_MAX`, reached past ≈ 148 u) and self-lit things multiply by
+`glowScale` = min(1, 1.5 / exposure) (`sunLight.ts`), so they read the same
+from 1 AU out and are unchanged inside it.
+
+The `look` probe (`tests/e2e/look.probe.mjs`, GPU, full fidelity) guards it:
+
+- the ship placed 1, 3.5 and 13 AU out along the unit heading
+  (-0.62, 0.30, 0.72), turned `setAttitude(atan2(-ux, -uz) + 0.5,
+  asin(-uy) × 0.6)`;
+- each read at least 6 s later, once `toneMappingExposure` is within 1% of
+  `targetExposure(camera distance)`;
+- `readPixels` over the whole drawing buffer in a double rAF; the mean
+  Rec. 709 luma (0.2126 R + 0.7152 G + 0.0722 B, 0–255) over every 7th pixel;
+- "sky alone": every scene child hidden for 3 frames (the painted backdrop is
+  `scene.background`, so it stays), then each restored. The probe never writes
+  `scene.backgroundIntensity`; `applyBackdrop` rewrites it every frame.
+
+Ceilings: the whole screen at 3.5 and 13 AU at most **1.25×** its 1 AU value;
+the sky alone at most **1.3×**.
+
+| Mean luma | 1 AU | 3.5 AU | 13 AU |
+|---|---|---|---|
+| Whole screen, before (controller) | 63 | 100 | 130 |
+| Sky alone, before (controller) | 37 | 92 | 90 |
+| Whole screen, before (the probe, 2026-10-27) | 61.6 | 100.5 (1.63×) | 114.7 (1.86×) |
+| Sky alone, before (the probe) | 33.8 | 94.7 (2.80×) | 94.7 (2.80×) |
+| Whole screen, after | 61.7 | 47.0 (0.76×) | 48.4 (0.78×) |
+| Sky alone, after | 33.8 | 42.3 (1.25×) | 42.4 (1.25×) |
+
+The controller's 13 AU reading had the jellyfish (+28) and the ship (+17) in
+view. The 1 AU view is unchanged (61.6 → 61.7, sky 33.8 both): the camera is a
+little beyond 1 AU there (exposure 1.61, so `glowScale` 0.93), and the spawn
+pad, 105 u from the Sun, keeps `glowScale` at 1. The sky alone sits near its
+ceiling (1.25× of 1.3×): its 2.2 / 1.5 net gain is all of it.

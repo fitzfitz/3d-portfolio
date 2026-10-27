@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
+import { glowScaleUnmapped } from "../../utils/sunLight";
 
 /**
  * Engine plume: an open tube per nozzle that fans out and fades along its
@@ -42,6 +43,7 @@ const FRAG = /* glsl */ `
   uniform float uSeed;
   uniform vec3 uColor;   // the plume's cool end (engine cyan by default)
   uniform float uRoot;   // share of the length the root fades in over (0 = none; plumeRootFade)
+  uniform float uGlow;   // glowScaleUnmapped: holds the plume at its 1 AU brightness far out
   varying float vAlong;
   varying float vWiden;
   varying vec3 vNormal;
@@ -67,7 +69,7 @@ const FRAG = /* glsl */ `
     // The same exhaust over a wider cross-section is thinner: fade with the widening.
     float thin = 1.0 / pow(vWiden, 0.6);
     float a = core * fall * thin * flicker * (0.25 + 0.55 * min(uPower, 1.6)) * plumeRoot( t, uRoot );
-    gl_FragColor = vec4(col * (1.0 + 0.6 * uPower), a);
+    gl_FragColor = vec4(col * (1.0 + 0.6 * uPower) * uGlow, a);
   }
 `;
 
@@ -89,6 +91,9 @@ export function makePlumeMaterial(seed: number, color: THREE.Color = ENGINE_COOL
       uColor: { value: color.clone() },
       uSpread: { value: 0 },
       uRoot: { value: 0 },
+      // The shared object itself: every plume (the ship, the ghosts' flames,
+      // the probe burns, the tractor cone) follows the one write a frame.
+      uGlow: glowScaleUnmapped,
     },
   });
 }

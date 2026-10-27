@@ -3,6 +3,7 @@ import { createPortal, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { LOG_DEPTH_VERT_PARS, LOG_DEPTH_VERT, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_FRAG } from "./logDepth";
 import { WakeGeometry } from "./wakeGeometry";
+import { glowScale } from "../../utils/sunLight";
 
 /**
  * A ribbon that trails an object: drei's <Trail> drawn the same way (its
@@ -54,9 +55,10 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   ${LOG_DEPTH_FRAG_PARS}
   uniform vec3 color;
+  uniform float uGlow;  // glowScale (tone-mapped: it includes <tonemapping_fragment>)
   void main() {
     ${LOG_DEPTH_FRAG}
-    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor = vec4(color * uGlow, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
@@ -87,6 +89,8 @@ export default function EngineWake({ target, width, length, color, attenuation }
       lineWidth: { value: 0.1 * width },
       color: { value: new THREE.Color(color) },
       resolution: { value: new THREE.Vector2(1, 1) },
+      // The shared object itself: the wakes hold their 1 AU brightness far out.
+      uGlow: glowScale,
     },
   }), [width, color]);
   useEffect(() => { material.uniforms.resolution.value.set(size.width, size.height); }, [material, size]);

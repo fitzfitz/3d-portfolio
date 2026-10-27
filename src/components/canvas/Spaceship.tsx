@@ -19,7 +19,7 @@ import { escapePosition } from "../../utils/orbitEscape";
 import { PROBES, PROBE_JUMP_STANDOFF, PROBE_RADIUS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
-import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
+import { applyBackdrop, applyFill, cutExposure, glowScale } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
@@ -131,6 +131,14 @@ const slingshotLines = new ChatterScheduler(chatterPools);
  * non-stock plume must not capture the tint as "stock".
  */
 const stockEmissive = new WeakMap<THREE.Material, THREE.Color>();
+/**
+ * Each Neon_* strip's own emissive intensity, captured the first time the
+ * cached GLTF material is seen (it outlives a remount), so the frame loop can
+ * write base × glowScale without compounding.
+ */
+const neonBase = new WeakMap<THREE.Material, number>();
+/** The warp streaks' colour at 1 AU; the frame loop writes it × glowScale. */
+const STREAK_BASE = new THREE.Color("#00f0ff");
 const PLUME_NOZZLE_R = 0.07;
 
 /** Spark base colour for the current plume (written on plume change, read by the spark loop). */
@@ -165,6 +173,20 @@ export default function Spaceship() {
       }
     });
     return engine as THREE.MeshStandardMaterial | null;
+  }, [scene]);
+  // The Neon_* strips are self-lit: held at their 1 AU glow far out (glowScale).
+  const neonMats = useMemo(() => {
+    const out: { mat: THREE.MeshStandardMaterial; base: number }[] = [];
+    const seen = new Set<THREE.Material>();
+    scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh) || !child.material) return;
+      const mat = child.material as THREE.MeshStandardMaterial;
+      if (seen.has(mat) || !mat.emissive || !/^neon_/i.test(mat.name)) return;
+      seen.add(mat);
+      if (!neonBase.has(mat)) neonBase.set(mat, mat.emissiveIntensity);
+      out.push({ mat, base: neonBase.get(mat)! });
+    });
+    return out;
   }, [scene]);
   // Eclipses: every lit hull material (the GLB's own; the race ghost and the
   // live-sky ghosts clone the scene and swap in their own materials) scales
@@ -840,7 +862,8 @@ export default function Spaceship() {
       // Bloom saturates above ~0.2 luminance, so throttling emissive up only
       // grows the aura — hold the idle level and let the exhaust visuals
       // (plume length and brightness, sparks) carry the sense of thrust.
-      const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06);
+      // × glowScale: the nozzles are self-lit, so they hold their 1 AU glow far out.
+      const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06) * glowScale.value;
       engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
     }
 
@@ -926,6 +949,13 @@ export default function Spaceship() {
   // them after this component runs: a frame old, a few hundredths of a unit.
   useFrame(() => {
     SHIP_SUN_VIS.value = sunVisibility(pos.current, allOccluders, SUN_RADIUS);
+    // The self-lit parts hold their 1 AU glow far out (glowScale, sunLight.ts):
+    // the neon strips, the sparks and the warp streaks. Here, not in the
+    // flight loop, so a parked or orbit-locked ship follows the exposure too.
+    const g = glowScale.value;
+    for (let i = 0; i < neonMats.length; i++) neonMats[i].mat.emissiveIntensity = neonMats[i].base * g;
+    if (particlesRef.current) (particlesRef.current.material as THREE.PointsMaterial).color.setScalar(g);
+    if (streaksRef.current) (streaksRef.current.material as THREE.LineBasicMaterial).color.copy(STREAK_BASE).multiplyScalar(g);
   });
 
   return (

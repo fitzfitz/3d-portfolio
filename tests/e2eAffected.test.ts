@@ -36,7 +36,7 @@ describe("e2e affected-probe selection", () => {
   it("runs the combat probe and the budgets for the monsters the game now draws", () => {
     for (const f of ["src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-ondemand/saucer.glb", "public/models-ondemand/tardigrade.glb"]) {
       const picked = affectedProbes([f]);
-      for (const p of ["monsterlab", "combat", "programs", "memory", "perf", "transition", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
+      for (const p of ["monsterlab", "combat", "programs", "memory", "perf", "transition", "look", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
     }
   });
 
@@ -60,7 +60,7 @@ describe("e2e affected-probe selection", () => {
 
   it("runs the budget probes with a canvas change, and nothing for docs", () => {
     const wake = affectedProbes(["src/components/canvas/EngineWake.tsx"]);
-    for (const p of ["programs", "memory", "perf", "transition", "events"]) expect(wake).toContain(p);
+    for (const p of ["programs", "memory", "perf", "transition", "look", "events"]) expect(wake).toContain(p);
     expect(affectedProbes(["docs/PERF-BUDGETS.md", "tests/changelog.test.ts"])).toEqual([]);
   });
 });

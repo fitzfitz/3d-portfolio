@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { ALL } from "./probeList.mjs";
 
 /** Probes that hold the scene's budgets: any change to what the canvas draws runs them. */
-const BUDGETS = ["smoke", "programs", "memory", "perf", "transition"];
+const BUDGETS = ["smoke", "programs", "memory", "perf", "transition", "look"];
 
 /** [pattern, probes]; the first rule that matches a file decides it. "ALL" means the full suite. */
 export const RULES = [

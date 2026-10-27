@@ -20,6 +20,7 @@ import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { fitzDebug } from "../../debug/bridge";
+import { glowScale } from "../../utils/sunLight";
 
 const N = PROBES.length;
 /** Idle spin about the vertical (rad/s); frozen under reduced motion through ambientTime. */
@@ -306,6 +307,8 @@ export default function ProjectProbes() {
     const fp = flareGeometry.attributes.position.array as Float32Array;
     const fc = flareGeometry.attributes.color.array as Float32Array;
     let flaring = false;
+    // The beacon lamp, the RCS puff and the burn are self-lit: held at their 1 AU glow far out.
+    const glowK = glowScale.value;
     for (let i = 0; i < N; i++) {
       const id = PROBES[i].id, p = probePos[id];
       dummy.position.set(p.x, p.y, p.z);
@@ -353,15 +356,18 @@ export default function ProjectProbes() {
       const fl = level > 1e-3 ? level * 1.6 * burnFlare(cam.distanceTo(_v.set(fp[i * 3], fp[i * 3 + 1], fp[i * 3 + 2]))) : 0;
       fc[i * 3] = PLUME_WARM.r * fl; fc[i * 3 + 1] = PLUME_WARM.g * fl; fc[i * 3 + 2] = PLUME_WARM.b * fl;
       if (level > 1e-3) flaring = true;
-      ga[i * 2] = beaconLevel(t, (i * 2 * Math.PI) / N);
-      ga[i * 2 + 1] = probeRelocating[id] ? BURN_GLOW : rcsPuff(t, i * 2);
+      ga[i * 2] = beaconLevel(t, (i * 2 * Math.PI) / N) * glowK;
+      ga[i * 2 + 1] = (probeRelocating[id] ? BURN_GLOW : rcsPuff(t, i * 2)) * glowK;
     }
     mesh.instanceMatrix.needsUpdate = true;
     glow.needsUpdate = true;
     const flare = flareRef.current;
     if (flare) {
       flare.visible = flaring;
-      if (flaring) { flareGeometry.attributes.position.needsUpdate = true; flareGeometry.attributes.color.needsUpdate = true; }
+      if (flaring) {
+        flareGeometry.attributes.position.needsUpdate = true; flareGeometry.attributes.color.needsUpdate = true;
+        (flare.material as THREE.PointsMaterial).color.setScalar(glowK);
+      }
     }
 
     // HUD tip and chatter: the nearest probe in range, and whether the beam

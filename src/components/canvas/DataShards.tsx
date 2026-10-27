@@ -8,6 +8,10 @@ import { useModel } from "../../utils/sceneAssets";
 import { assetUrl } from "../../utils/assetUrl";
 import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { ambientTime } from "../../utils/ambientTime";
+import { glowScale } from "../../utils/sunLight";
+
+/** The data traces' emissive gain at 1 AU; written × glowScale each frame. */
+const SHARD_GLOW = 1.6;
 
 const dummy = new THREE.Object3D();
 const ZERO_SCALE = new THREE.Vector3(0, 0, 0);
@@ -41,7 +45,7 @@ export default function DataShards() {
     const g = bakeNodeTransform(src, { center: true });
     g.scale(0.95, 0.95, 0.95);
     const m = (src.material as THREE.MeshStandardMaterial).clone();
-    m.emissiveIntensity = 1.6;
+    m.emissiveIntensity = SHARD_GLOW;
     return { geometry: g, material: m };
   }, [scene]);
 
@@ -60,6 +64,8 @@ export default function DataShards() {
     const mesh = meshRef.current;
     if (!mesh) return;
     const t = ambientTime(state.clock.getElapsedTime());
+    // Self-lit traces: held at their 1 AU glow far out.
+    material.emissiveIntensity = SHARD_GLOW * glowScale.value;
     const store = useSpaceStore.getState();
     const collected = store.shardsCollected;
 
