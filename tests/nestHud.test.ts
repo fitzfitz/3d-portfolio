@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   FLASH_S, NEST_HAZE_MAX, NEST_OFFLINE_LINE, flashOpacity, hullBarColor, hullLabel, hullShown, markNestLoadFailed,
-  nestBanner, nestHazeOpacity, nestRadarShown, waveReadout, type NestBannerText,
+  nestBanner, nestHazeOpacity, nestRadarShown, nestRadarSpot, waveReadout, type NestBannerText,
 } from "../src/utils/combat/nestHud";
 import { monsterFrameNeeded, monstersOnShow } from "../src/utils/combat/renderPose";
 import { createNest, createNestEvents, stepNest, contactCount, type NestInput } from "../src/utils/combat/nest";
 import { HULL_MAX, NEST_HAZE_BAND, NEST_ZONE_R } from "../src/utils/combat/constants";
 import type { NestSink } from "../src/utils/combat/types";
-import { RADAR_RANGE } from "../src/utils/radarTransform";
+import { RADAR_RANGE, worldToRadar } from "../src/utils/radarTransform";
 import SafeErrorBoundary from "../src/components/canvas/SafeErrorBoundary";
 
 const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
@@ -89,13 +89,29 @@ describe("the Nest HUD's pure parts", () => {
 });
 
 describe("the radar's Nest marker", () => {
-  it("shows within radar range of the centre only (never rim-clamped)", () => {
+  it("is in range within RADAR_RANGE of the centre (3D)", () => {
     expect(nestRadarShown(0, 0, 0)).toBe(true);
     expect(nestRadarShown(RADAR_RANGE, 0, 0)).toBe(true);
     expect(nestRadarShown(RADAR_RANGE + 1, 0, 0)).toBe(false);
     // In 3D: far below the plane is out of range even straight under the ship.
     expect(nestRadarShown(0, -(RADAR_RANGE + 1), 0)).toBe(false);
     expect(nestRadarShown(150, -150, 0)).toBe(true);
+  });
+});
+
+describe("the radar's rim marker", () => {
+  it("draws the Nest unclamped in range, and on the rim along its horizontal direction beyond", () => {
+    const out = { px: 0, py: 0, onRim: false }; const scale = 68 / RADAR_RANGE, rimR = 68;
+    nestRadarSpot(100, 0, 0, 0, scale, rimR, out); // in range: unclamped
+    expect(out.onRim).toBe(false); expect(Math.hypot(out.px, out.py)).toBeCloseTo(100 * scale, 9);
+    nestRadarSpot(-510, -209, -80, 0.3, scale, rimR, out); // beyond: on the rim, the horizontal direction kept
+    expect(out.onRim).toBe(true); expect(Math.hypot(out.px, out.py)).toBeCloseTo(rimR - 3, 9);
+    const w = worldToRadar(-510, -80, 0.3); expect(Math.atan2(out.py, out.px)).toBeCloseTo(Math.atan2(-w.up, w.x), 9);
+    nestRadarSpot(100, -300, 0, 0, scale, rimR, out); // beyond in 3D, inside horizontally: still on the rim
+    expect(Math.hypot(out.px, out.py)).toBeCloseTo(rimR - 3, 9);
+    nestRadarSpot(0, -300, 0, 0, scale, rimR, out); // straight below: the centre, no NaN
+    expect([out.px, out.py, out.onRim]).toEqual([0, 0, true]);
+    expect(nestRadarSpot(1, 2, 3, 0, scale, rimR, out)).toBe(out);
   });
 });
 

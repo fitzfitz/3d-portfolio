@@ -6,7 +6,7 @@ import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies, selectRaceFlying, combat } from "../../store/spaceStore";
 import { markShipTeleport } from "../../store/shipTeleport";
-import { NEST_TOW_POSE } from "../../data/nest";
+import { NEST_JUMP_ID, NEST_TOW_POSE } from "../../data/nest";
 import { beamUse } from "../../utils/combat/controls";
 import { takeTowRequest } from "../../utils/combat/director";
 import { padRumble } from "../../utils/padRumble";
@@ -290,6 +290,26 @@ export default function Spaceship() {
   // loop, so the jump first breaks orbit and lands on the next live frame.
   const pendingJump = useRef<string | null>(null);
   const snapCamera = useRef(true); // first frame snaps: the camera starts at the spawn, not the canvas default
+  /**
+   * Put the ship just past the Nest's buoy, nose on its centre, at rest
+   * (NEST_TOW_POSE, outside the fighting area). The breach tow and a jump to
+   * the Nest (NEST_JUMP_ID, spec 2026-10-27-nest-playable §1) both land here.
+   */
+  const towToNest = () => {
+    pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
+    vel.current.set(0, 0, 0);
+    zeroGravity();
+    angle.current = NEST_TOW_POSE.yaw;
+    pitch.current = NEST_TOW_POSE.pitch;
+    turnVelocity.current = 0;
+    pitchVel.current = 0;
+    warpSpeed.current = WARP_SPEED;
+    hasFlown.current = true;
+    flight.hasFlown = true;
+    snapCamera.current = true;
+    markShipTeleport();
+    useSpaceStore.getState().triggerTeleportFlash();
+  };
   /** The race grid slot the ship was last put on (raceScene.ts gridPose key): placed once per race and slot. */
   const placedFor = useRef<string | null>(null);
   useEffect(() => useSpaceStore.subscribe(
@@ -600,7 +620,11 @@ export default function Spaceship() {
     // Jump: drop in nose-on, level with the target, at its standoff. A probe
     // has no lock and opens nothing: the pilot grabs it with the beam. The
     // post-break cooldown is cleared so a destination's lock engages at once.
-    if (pendingJump.current) {
+    if (pendingJump.current === NEST_JUMP_ID) {
+      // The Nest is not a probe or a destination: it lands as a breach tow does.
+      pendingJump.current = null;
+      towToNest();
+    } else if (pendingJump.current) {
       const id = pendingJump.current;
       pendingJump.current = null;
       // A probe mid-burn is headed for its next spot: aim there (probeJumpTarget).
@@ -628,21 +652,7 @@ export default function Spaceship() {
 
     // The Nest's breach tow (NestDirector asks): like a jump, to just past the
     // buoy, nose on the Nest, at rest.
-    if (takeTowRequest(combat, false)) {
-      pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
-      vel.current.set(0, 0, 0);
-      zeroGravity();
-      angle.current = NEST_TOW_POSE.yaw;
-      pitch.current = NEST_TOW_POSE.pitch;
-      turnVelocity.current = 0;
-      pitchVel.current = 0;
-      warpSpeed.current = WARP_SPEED;
-      hasFlown.current = true;
-      flight.hasFlown = true;
-      snapCamera.current = true;
-      markShipTeleport();
-      store.triggerTeleportFlash();
-    }
+    if (takeTowRequest(combat, false)) towToNest();
 
     // A Nest hull hit (NestDirector bumps combat.hits, throttled to one per
     // 0.25 s): a shake (the camera skips it under reduced motion), the impact

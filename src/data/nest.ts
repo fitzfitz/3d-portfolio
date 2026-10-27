@@ -27,3 +27,12 @@ export const NEST_TOW_POSE: { x: number; y: number; z: number; yaw: number; pitc
 export const NEST_SCAN_ID = "the_nest";
 export const NEST_LABEL = "THE_NEST";
 export const NEST_RED = "#ff3b4a";
+
+/**
+ * The Nest as a jump target (spec 2026-10-27-nest-playable §1): the last
+ * JUMP_TARGETS row, landing at NEST_TOW_POSE as a breach tow does. Not a
+ * Destination (no dock, zone, lock or waypoint); the id is the reserved
+ * scan id, so no project can claim it.
+ */
+export const NEST_JUMP_ID = NEST_SCAN_ID;
+export const NEST_JUMP_LABEL = "The Nest";

@@ -86,12 +86,28 @@ describe("the touch BEAM button", () => {
   });
 });
 
+describe("the sector list's Nest row", () => {
+  it("jumps to the Nest after the destinations, with its key, red dot and centre", () => {
+    const html = renderToStaticMarkup(<HUDOverlay />);
+    const row = html.indexOf("THE_NEST ([-250, -390, 60])");
+    expect(row).toBeGreaterThan(html.indexOf("PORTAL_SUN"));
+    expect(html).toMatch(/title="Jump to the Nest \[\d+\]"/);
+    expect(html.slice(0, row)).toMatch(/background-color:#ff3b4a[^>]*><\/span><span>$/);
+  });
+});
+
 describe("the radar's Nest marker", () => {
-  it("draws the Nest dot and zone ring in range only, never rim-clamped, and red monster blips", () => {
+  it("always places the Nest (nestRadarSpot); the zone ring and red monster blips only when it is not on the rim", () => {
     const s = src("src/components/layout/RadarMap.tsx");
     expect(s).toMatch(/NEST_RED/);
+    expect(s).toMatch(/nestRadarSpot\(/);
     expect(s).toMatch(/NEST_ZONE_R \* scale/);
-    expect(s).toMatch(/nestRadarShown\(/);
     expect(s).toMatch(/combat\.nest\.saucers/);
+    // The ring and the blips sit under the in-range branch.
+    const m = /if \(!(\w+)\.onRim\)\s*\{/.exec(s);
+    expect(m).not.toBeNull();
+    const body = s.slice(m!.index);
+    expect(body.indexOf("NEST_ZONE_R * scale")).toBeGreaterThan(-1);
+    expect(body.indexOf("combat.nest.saucers")).toBeGreaterThan(-1);
   });
 });

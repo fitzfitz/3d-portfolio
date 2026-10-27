@@ -147,7 +147,7 @@ export default function App() {
         raceKey();
         return;
       }
-      // Number keys jump to JUMP_TARGETS in order: probes, then destinations.
+      // Number keys jump to JUMP_TARGETS in order: probes, then destinations, then the Nest.
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit && !s.photoMode) {
         const target = JUMP_TARGETS[Number(digit[1]) - 1];
@@ -283,7 +283,8 @@ export default function App() {
                         className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 font-mono text-[10px] text-white/80 hover:text-white cursor-pointer transition-colors"
                         style={{ borderColor: `${t.color}55` }}
                       >
-                        {!isCoarse && <span className="text-white/40 mr-1">[{i + 1}]</span>}
+                        {/* Keys 1-9 only: a tenth target (the Nest with six probes) has none (Ruling N1). */}
+                        {!isCoarse && i < 9 && <span className="text-white/40 mr-1">[{i + 1}]</span>}
                         {t.label}
                       </button>
                     ))}

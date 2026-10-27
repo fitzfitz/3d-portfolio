@@ -1,5 +1,6 @@
 import { PROBE_IDS } from "../../data/probes";
 import { destinationById } from "../../data/destinations";
+import { NEST_JUMP_ID } from "../../data/nest";
 import { flight } from "../flightState";
 import { racingView } from "../../utils/raceScene";
 import type { SliceCreator } from "../spaceStore";
@@ -86,7 +87,7 @@ export const createFlightSlice: SliceCreator<FlightSlice> = (set, get) => ({
   requestJump: (id) => {
     // Racing: the ship stays on the course (spec: jumps are off while racing).
     if (flight.racing) return;
-    if (!destinationById(id) && !PROBE_IDS.includes(id)) return;
+    if (!destinationById(id) && !PROBE_IDS.includes(id) && id !== NEST_JUMP_ID) return;
     set({ jumpRequest: { id, seq: (get().jumpRequest?.seq ?? 0) + 1 } });
   },
   impactCount: 0,

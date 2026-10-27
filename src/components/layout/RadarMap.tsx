@@ -9,7 +9,7 @@ import { SOLAR_BODIES } from "../../data/solarSystem";
 import { flight, useSpaceStore, bodies, combat } from "../../store/spaceStore";
 import { NEST_CENTRE, NEST_RED } from "../../data/nest";
 import { NEST_ZONE_R } from "../../utils/combat/constants";
-import { nestRadarShown } from "../../utils/combat/nestHud";
+import { nestRadarSpot } from "../../utils/combat/nestHud";
 import { worldToRadar, altitudeCue, radarBlip, RADAR_RANGE } from "../../utils/radarTransform";
 import { liveRadar } from "../../utils/liveSky";
 
@@ -24,6 +24,8 @@ const PROBE_DIAMOND = 3.5;
 const PROBE_DIAMOND_RIM = "rgba(0, 0, 0, 0.8)";
 
 const blip = { px: 0, py: 0, onRim: false };
+/** The Nest's spot (nestRadarSpot's scratch). */
+const nestSpot = { px: 0, py: 0, onRim: false };
 
 /** A blip. */
 interface RadarTarget { name: string; x: number; y: number; z: number; color: string }
@@ -224,18 +226,21 @@ export default function RadarMap() {
         }
       }
 
-      // The Nest: a red dot and its 70 u zone ring, in range only and never
-      // rim-clamped (like the gate dot), with the altitude chevron (it lies
-      // below the plane). Its monsters are small red dots, in range only.
+      // The Nest, always (spec 2026-10-27-nest-playable §1). In range: a red
+      // dot and its 70 u zone ring, never rim-clamped, and its monsters as
+      // small red dots. Beyond range (3D): a dimmed dot on the rim along its
+      // horizontal direction, as live pilots' rim markers are, with no ring
+      // and no monsters. The altitude chevron either way (it lies below the
+      // plane); straight above or below, the dot sits at the centre.
       {
         const dx = (NEST_CENTRE[0] - flight.x);
         const dz = (NEST_CENTRE[2] - flight.z);
         const dy = (NEST_CENTRE[1] - flight.y);
-        if (nestRadarShown(dx, dy, dz)) {
-          const { x: sx, up } = worldToRadar(dx, dz, a);
-          const px = c + sx * scale, py = c - up * scale;
-          ctx.fillStyle = NEST_RED;
-          ctx.strokeStyle = NEST_RED;
+        const spot = nestRadarSpot(dx, dy, dz, a, scale, rimR, nestSpot);
+        const px = c + spot.px, py = c + spot.py;
+        ctx.fillStyle = NEST_RED;
+        ctx.strokeStyle = NEST_RED;
+        if (!spot.onRim) {
           // The ring is clipped to the radar's rim (the dot near the rim would spill it).
           ctx.save();
           ctx.beginPath();
@@ -247,22 +252,24 @@ export default function RadarMap() {
           ctx.arc(px, py, NEST_ZONE_R * scale, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
-          ctx.globalAlpha = 0.95;
+        }
+        ctx.globalAlpha = spot.onRim ? 0.55 : 0.95;
+        ctx.beginPath();
+        ctx.arc(px, py, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        const cue = altitudeCue(dy);
+        if (cue.dir !== 0) {
+          ctx.globalAlpha = cue.alpha * (spot.onRim ? 0.55 : 0.9);
+          const by = py - cue.dir * 6;
           ctx.beginPath();
-          ctx.arc(px, py, 2.4, 0, Math.PI * 2);
+          ctx.moveTo(px - 2.5, by + cue.dir * 2.5);
+          ctx.lineTo(px, by);
+          ctx.lineTo(px + 2.5, by + cue.dir * 2.5);
+          ctx.closePath();
           ctx.fill();
-          const cue = altitudeCue(dy);
-          if (cue.dir !== 0) {
-            ctx.globalAlpha = cue.alpha * 0.9;
-            const by = py - cue.dir * 6;
-            ctx.beginPath();
-            ctx.moveTo(px - 2.5, by + cue.dir * 2.5);
-            ctx.lineTo(px, by);
-            ctx.lineTo(px + 2.5, by + cue.dir * 2.5);
-            ctx.closePath();
-            ctx.fill();
-          }
-          ctx.globalAlpha = 1;
+        }
+        ctx.globalAlpha = 1;
+        if (!spot.onRim) {
           drawMonsterBlips(combat.nest.saucers);
           drawMonsterBlips(combat.nest.tardigrades);
         }

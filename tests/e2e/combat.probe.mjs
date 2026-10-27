@@ -7,7 +7,7 @@ import {
 // The Nest (spec docs/archive/specs/2026-10-27-combat-design.md), five
 // independent pages, one job each (run.mjs PARTS):
 //  0. away: nothing of the fight exists or downloads in deep space, the radar
-//     shows no Nest, and a click makes a plasma spark as always;
+//     shows only the Nest's rim marker, and a click makes a plasma spark as always;
 //  1. the fight: near the Nest the on-demand models load and warm; crossing
 //     the zone shows ENTERING THE NEST and wave 1's 3 saucers (on screen,
 //     screenshot); held fire defeats one; a click there fires a bolt, not a
@@ -96,6 +96,27 @@ const radarRed = (page) => inPage(page, (red) => {
   return n;
 }, NEST_RED);
 
+/**
+ * Each Nest-red radar pixel's distance from the canvas centre, in CSS px (the
+ * radar is 148 CSS px, its rim marker 65 px out: spec 2026-10-27-nest-playable §1).
+ */
+const radarRedDistances = (page) => inPage(page, (red) => {
+  const cv = document.querySelector('[data-testid="radar-canvas"]');
+  const ctx = cv?.getContext("2d");
+  if (!ctx) return null;
+  const k = cv.width / cv.clientWidth; // device px per CSS px
+  const { data } = ctx.getImageData(0, 0, cv.width, cv.height);
+  const out = [];
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 100) continue;
+    if (Math.abs(data[i] - red[0]) <= 16 && Math.abs(data[i + 1] - red[1]) <= 24 && Math.abs(data[i + 2] - red[2]) <= 24) {
+      const p = i / 4, x = (p % cv.width) + 0.5, y = Math.floor(p / cv.width) + 0.5;
+      out.push(Math.hypot(x - cv.width / 2, y - cv.height / 2) / k);
+    }
+  }
+  return out;
+}, NEST_RED);
+
 /** Each live monster's place on screen (NDC), from the live camera; `on` when inside the frame and in front. */
 const onScreen = (page) => inPage(page, () => {
   const cam = window.__fitz.camera;
@@ -163,8 +184,12 @@ async function away(page, checks) {
   const s = await readStore(page);
   checks.check("away: not in the Nest (store inNest false, wave 0)", s.inNest === false && s.wave === 0 && !state.inArea,
     `inNest=${s.inNest} wave=${s.wave} inArea=${state.inArea}`);
-  const red = await radarRed(page);
-  checks.check("away: the radar shows no Nest marker (out of range)", red === 0, `red pixels=${red}`);
+  // Out of range, the Nest is a dimmed dot on the rim (no zone ring, no
+  // monster blips): every red pixel sits near the rim, none inside.
+  const reds = await radarRedDistances(page);
+  const nearest = reds?.length ? Math.min(...reds) : null;
+  checks.check("away: the radar shows only the Nest's rim marker", reds !== null && reds.length >= 3 && nearest >= 55,
+    `red pixels=${reds?.length ?? "no canvas"} nearest=${nearest?.toFixed(1)} CSS px from the centre`);
 
   const before = await inPage(page, () => window.__fitz.anomalies?.filter((a) => a.active).length ?? -1);
   await inPage(page, () => {
