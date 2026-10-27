@@ -403,6 +403,8 @@ export default function Spaceship() {
     }
   };
   const particlesRef = useRef<THREE.Points>(null);
+  /** The nozzles' burn level at 1 AU, eased by the flight loop; written × glowScale below. */
+  const engineBurn = useRef(0.7);
 
   // Logbook plume colour (spec §5): uniform and CPU colour changes only, once
   // per change. The hot white core stays; the cool end, sparks, engine light
@@ -862,9 +864,9 @@ export default function Spaceship() {
       // Bloom saturates above ~0.2 luminance, so throttling emissive up only
       // grows the aura — hold the idle level and let the exhaust visuals
       // (plume length and brightness, sparks) carry the sense of thrust.
-      // × glowScale: the nozzles are self-lit, so they hold their 1 AU glow far out.
-      const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06) * glowScale.value;
-      engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
+      // The level at 1 AU; the second frame hook writes it × glowScale (the nozzles are self-lit).
+      const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06);
+      engineBurn.current = THREE.MathUtils.lerp(engineBurn.current, targetBurn, frameLerp(0.3, dt));
     }
 
     // 4. Exhaust particles (velocities were per-frame — scale by dt*60)
@@ -950,9 +952,11 @@ export default function Spaceship() {
   useFrame(() => {
     SHIP_SUN_VIS.value = sunVisibility(pos.current, allOccluders, SUN_RADIUS);
     // The self-lit parts hold their 1 AU glow far out (glowScale, sunLight.ts):
-    // the neon strips, the sparks and the warp streaks. Here, not in the
-    // flight loop, so a parked or orbit-locked ship follows the exposure too.
+    // the nozzles, the neon strips, the sparks and the warp streaks. Here, not
+    // in the flight loop, so a parked, photo-mode or orbit-locked ship follows
+    // the exposure too.
     const g = glowScale.value;
+    if (engineMat) engineMat.emissiveIntensity = engineBurn.current * g;
     for (let i = 0; i < neonMats.length; i++) neonMats[i].mat.emissiveIntensity = neonMats[i].base * g;
     if (particlesRef.current) (particlesRef.current.material as THREE.PointsMaterial).color.setScalar(g);
     if (streaksRef.current) (streaksRef.current.material as THREE.LineBasicMaterial).color.copy(STREAK_BASE).multiplyScalar(g);

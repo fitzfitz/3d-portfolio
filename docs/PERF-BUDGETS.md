@@ -713,7 +713,10 @@ The `look` probe (`tests/e2e/look.probe.mjs`, GPU, full fidelity) guards it:
   `scene.backgroundIntensity`; `applyBackdrop` rewrites it every frame.
 
 Ceilings: the whole screen at 3.5 and 13 AU at most **1.25×** its 1 AU value;
-the sky alone at most **1.3×**.
+the sky alone at most **1.3×**. Floors, so a blank or broken read far out
+cannot pass the ceilings silently: the whole screen at least **0.6×**, the sky
+alone at least **1.0×** (the backdrop's net gain never falls with distance),
+and every read at every stop non-blank (whole > 1, sky > 0.5 luma).
 
 | Mean luma | 1 AU | 3.5 AU | 13 AU |
 |---|---|---|---|

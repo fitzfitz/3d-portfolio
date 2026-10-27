@@ -9,7 +9,9 @@ import { withPage, settle, pollUntil, nextFrames, lockFullFidelity } from "./har
  * Along one fixed heading, at 1, 3.5 and 13 AU, after the exposure settles:
  *  - the whole screen's mean luma may be at most 1.25 × the 1 AU value;
  *  - the sky alone (every scene child hidden, the painted backdrop left) at
- *    most 1.3 ×.
+ *    most 1.3 ×;
+ *  - floors: the whole screen at least 0.6 ×, the sky alone at least 1.0 ×,
+ *    and every read non-blank, so a blank read far out cannot pass.
  * Luma is Rec. 709 over every 7th pixel of the drawing buffer, read in a
  * double rAF. scene.backgroundIntensity is never written: applyBackdrop
  * rewrites it every frame. The readings are recorded in docs/PERF-BUDGETS.md.
@@ -20,6 +22,9 @@ const HEADING = [-0.62, 0.30, 0.72];
 const SETTLE_MS = 6000;
 const WHOLE_MAX = 1.25;
 const SKY_MAX = 1.3;
+/** Floors, so a blank or broken read far out cannot pass the ceilings silently. */
+const WHOLE_MIN = 0.6;
+const SKY_MIN = 1.0;
 
 /** Mean Rec. 709 luma (0–255) over every 7th pixel of the drawing buffer, read in a double rAF. */
 const readLuma = (page) => page.evaluate(() => new Promise((resolve) => {
@@ -85,12 +90,16 @@ export default function run() {
       sky[r] = await readSky(page);
     }
     const f = (v) => v.toFixed(1);
-    checks.check("1 AU reads drew something", whole[1] > 1 && sky[1] > 0.5, `whole ${f(whole[1])}, sky ${f(sky[1])}`);
+    for (const r of STOPS_AU) {
+      checks.check(`${r} AU reads drew something`, whole[r] > 1 && sky[r] > 0.5, `whole ${f(whole[r])}, sky ${f(sky[r])}`);
+    }
     for (const r of [3.5, 13]) {
-      checks.check(`whole screen at ${r} AU ≤ ${WHOLE_MAX} × 1 AU`, whole[r] <= WHOLE_MAX * whole[1],
-        `${f(whole[r])} vs ${f(whole[1])} (${(whole[r] / whole[1]).toFixed(2)}×)`);
-      checks.check(`sky alone at ${r} AU ≤ ${SKY_MAX} × 1 AU`, sky[r] <= SKY_MAX * sky[1],
-        `${f(sky[r])} vs ${f(sky[1])} (${(sky[r] / sky[1]).toFixed(2)}×)`);
+      const wk = `${f(whole[r])} vs ${f(whole[1])} (${(whole[r] / whole[1]).toFixed(2)}×)`;
+      const sk = `${f(sky[r])} vs ${f(sky[1])} (${(sky[r] / sky[1]).toFixed(2)}×)`;
+      checks.check(`whole screen at ${r} AU ≤ ${WHOLE_MAX} × 1 AU`, whole[r] <= WHOLE_MAX * whole[1], wk);
+      checks.check(`whole screen at ${r} AU ≥ ${WHOLE_MIN} × 1 AU`, whole[r] >= WHOLE_MIN * whole[1], wk);
+      checks.check(`sky alone at ${r} AU ≤ ${SKY_MAX} × 1 AU`, sky[r] <= SKY_MAX * sky[1], sk);
+      checks.check(`sky alone at ${r} AU ≥ ${SKY_MIN} × 1 AU`, sky[r] >= SKY_MIN * sky[1], sk);
     }
     checks.note("mean luma (1 / 3.5 / 13 AU)",
       `whole ${STOPS_AU.map((r) => f(whole[r])).join(" / ")}; sky ${STOPS_AU.map((r) => f(sky[r])).join(" / ")}`);
