@@ -23,6 +23,7 @@ import { applyBackdrop, applyFill, cutExposure, glowScale } from "../../utils/su
 import { jumpPoint } from "../../utils/navigation";
 import { resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
+import { NEST_ROCK_COLLIDERS } from "../../data/nestRocks";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
@@ -104,8 +105,8 @@ const _aim = { x: 0, y: 0, z: 0 };
 /** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
 const FIRST_PROBE_HOME = PROBES[0].home;
 
-// Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
-const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
+// Collisions: big scenery asteroids, the Nest's rocks + the sun (belt is decorative — excluded)
+const COLLIDERS = [...ASTEROID_COLLIDERS, ...NEST_ROCK_COLLIDERS, SUN_COLLIDER];
 /**
  * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
  * entries and the moons' `moonPositions` entries. Merged once:

@@ -41,7 +41,8 @@ describe("e2e affected-probe selection", () => {
   });
 
   it("runs the combat probe for the Nest's canvas, rules, data and HUD", () => {
-    for (const f of ["src/components/canvas/nest/NestMonsters.tsx", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) {
+    for (const f of ["src/components/canvas/nest/NestMonsters.tsx", "src/components/canvas/nest/NestCluster.tsx", "src/components/canvas/NestDirector.tsx",
+      "src/data/nest.ts", "src/data/nestRocks.ts"]) {
       const picked = affectedProbes([f]);
       expect(picked, f).toContain("combat");
       expect(picked, f).toContain("programs");
@@ -50,6 +51,15 @@ describe("e2e affected-probe selection", () => {
     expect(affectedProbes(["src/utils/combat/nest.ts"])).toEqual(["smoke", "flight", "gameplay", "touch", "gamepad", "reactions", "combat", "memory"]);
     for (const f of ["src/utils/combat/nestRadio.ts", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) expect(affectedProbes([f]), f).toContain("reactions");
     expect(affectedProbes(["src/components/layout/NestOverlay.tsx"])).toEqual(["smoke", "reducedmotion", "combat"]);
+  });
+
+  it("runs the combat probe with the scenery asteroids, whose model and material the Nest's rocks reuse", () => {
+    for (const f of ["src/components/canvas/Asteroids.tsx", "src/components/canvas/asteroidVariants.ts"]) {
+      const picked = affectedProbes([f]);
+      for (const p of ["combat", "mechanics", "gameplay", "programs", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
+      expect(picked, f).not.toEqual(ALL);
+    }
+    expect(affectedProbes(["src/data/nestRocks.ts"])).toContain("reactions");
   });
 
   it("runs the idle-allocation probe for the Nest's per-frame code (C28)", () => {

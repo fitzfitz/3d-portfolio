@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { NEST_CENTRE, NEST_BUOY_POS, NEST_TOW_POSE, NEST_SCAN_ID, NEST_LABEL, NEST_RED } from "../src/data/nest";
-import { NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, TOW_PAST_BUOY } from "../src/utils/combat/constants";
+import { NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, NEST_ZONE_R, TOW_PAST_BUOY } from "../src/utils/combat/constants";
+import {
+  buildNestRocks, NEST_ROCK_SEED, NEST_ROCKS, NEST_ROCK_COLLIDERS, NEST_GLOW, NEST_GLOW_R,
+} from "../src/data/nestRocks";
 import { noseDirection } from "../src/utils/pitchFlight";
 import { SPAWN } from "../src/data/spawn";
 import { PROBE_SLOTS } from "../src/data/probes";
@@ -15,6 +19,8 @@ const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b
 const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v); return [v[0] / l, v[1] / l, v[2] / l]; };
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const angle = (a: Vec3, b: Vec3) => Math.acos(Math.min(1, Math.max(-1, dot(unit(a), unit(b)))));
+const DEG = Math.PI / 180;
 
 describe("the Nest's placement", () => {
   it("sits below the plane, 300–500 u from spawn", () => {
@@ -72,5 +78,49 @@ describe("the Nest's placement", () => {
     expect(NEST_SCAN_ID).toBe("the_nest");
     expect(NEST_LABEL).toBe("THE_NEST");
     expect(NEST_RED).toBe("#ff3b4a");
+  });
+});
+
+describe("the Nest's rock cluster", () => {
+  /** The buoy direction from the centre: the cluster's mouth faces it. */
+  const L = unit(sub(NEST_BUOY_POS, NEST_CENTRE));
+
+  it("is seeded: the same seed builds the same rocks", () => {
+    expect(buildNestRocks(NEST_ROCK_SEED)).toEqual(NEST_ROCKS);
+  });
+
+  it("is a shell of 18–24 rocks, 10–14 u out, scale 1.2–2.0, with its mouth toward the buoy", () => {
+    expect(NEST_ROCKS.length).toBeGreaterThanOrEqual(18);
+    expect(NEST_ROCKS.length).toBeLessThanOrEqual(24);
+    for (const r of NEST_ROCKS) {
+      const d = Math.hypot(...r.offset);
+      expect(d).toBeGreaterThanOrEqual(10);
+      expect(d).toBeLessThanOrEqual(14);
+      expect(r.scale).toBeGreaterThanOrEqual(1.2);
+      expect(r.scale).toBeLessThanOrEqual(2.0);
+      expect(angle(r.offset, L)).toBeGreaterThan(40 * DEG); // the mouth faces the buoy
+    }
+  });
+
+  it("is solid to the ship, clear of the centre's sleeper, the zone line, the buoy and the tow", () => {
+    expect(NEST_ROCK_COLLIDERS).toHaveLength(NEST_ROCKS.length);
+    NEST_ROCK_COLLIDERS.forEach((c, i) => {
+      expect(c.id).toBe(`nest_rock_${i}`);
+      const p: Vec3 = [c.x, c.y, c.z];
+      expect(dist(p, [NEST_CENTRE[0] + NEST_ROCKS[i].offset[0], NEST_CENTRE[1] + NEST_ROCKS[i].offset[1],
+        NEST_CENTRE[2] + NEST_ROCKS[i].offset[2]])).toBeLessThan(1e-9);
+      expect(c.r).toBeCloseTo(2.2 * NEST_ROCKS[i].scale, 12);
+      expect(dist(p, NEST_CENTRE) - c.r).toBeGreaterThanOrEqual(4.5); // the sleeping tardigrade's new hit radius (Task 5)
+      expect(dist(p, NEST_CENTRE) + c.r).toBeLessThanOrEqual(NEST_ZONE_R - 40);
+      expect(dist(p, NEST_BUOY_POS)).toBeGreaterThan(100);
+      expect(dist(p, [NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z])).toBeGreaterThan(100);
+    });
+    expect(readFileSync("src/components/canvas/Spaceship.tsx", "utf8")).toMatch(/COLLIDERS = \[[^\]]*NEST_ROCK_COLLIDERS/);
+  });
+
+  it("glows inside: 40 points within NEST_GLOW_R (7 u) of the centre", () => {
+    expect(NEST_GLOW_R).toBe(7);
+    expect(NEST_GLOW).toHaveLength(40);
+    for (const g of NEST_GLOW) expect(Math.hypot(...g)).toBeLessThanOrEqual(NEST_GLOW_R);
   });
 });

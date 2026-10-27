@@ -26,6 +26,7 @@ import { nestEffectMeshes } from "./nestEffectMeshes";
 import { markNestLoadFailed } from "../../../utils/combat/nestHud";
 import SafeErrorBoundary from "../SafeErrorBoundary";
 import NestEffects from "./NestEffects";
+import NestCluster from "./NestCluster";
 
 const SAUCER_RIG = saucerRigJson as SaucerRig;
 const TARDIGRADE_RIG = tardigradeRigJson as TardigradeRig;
@@ -42,12 +43,19 @@ const onLoadError = () => markNestLoadFailed(combat);
  * The monsters' own Suspense and error boundary keep their load from hiding
  * the effects; a failed glb load marks `combat.loadFailed` (Ruling C22).
  * Both sit under NestGate's Nest group (`warmRoot`), as before, so the
- * warm-up walks the same tree.
+ * warm-up walks the same tree; so does the rock cluster and its glow
+ * (NestCluster), which mount beside the effects with a Suspense of their own.
  */
 export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
   return (
     <>
       <NestEffects />
+      {/* The rock cluster and the glow: their own Suspense (asteroids.glb is the scenery's, normally cached), so they never hide the effects or the monsters. */}
+      <SafeErrorBoundary>
+        <Suspense fallback={null}>
+          <NestCluster />
+        </Suspense>
+      </SafeErrorBoundary>
       <SafeErrorBoundary onError={onLoadError}>
         <Suspense fallback={null}>
           <Monsters warmRoot={warmRoot} />

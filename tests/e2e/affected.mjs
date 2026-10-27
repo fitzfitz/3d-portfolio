@@ -28,7 +28,8 @@ export const RULES = [
   [/^src\/components\/canvas\/ProjectProbes\b/, () => [...BUDGETS, "probes"]],
   [/^src\/components\/canvas\/(CareerStation|CareerTrail|guideLine)\b/, () => [...BUDGETS, "career", "careerphone"]],
   [/^src\/components\/canvas\/(Shipyard|DormantGate|PortalRing|SpacePlanets)\b/, () => [...BUDGETS, "shipyard", "contact"]],
-  [/^src\/components\/canvas\/(AsteroidBelt|Asteroids)\b/, () => [...BUDGETS, "mechanics", "gameplay"]],
+  // The scenery asteroids' variants are the Nest's rocks too (nest/NestCluster).
+  [/^src\/components\/canvas\/(AsteroidBelt|Asteroids|asteroidVariants)\b/, () => [...BUDGETS, "mechanics", "gameplay", "combat"]],
   [/^src\/components\/canvas\/(PlasmaAnomalies|DataShards|Scanner)\b/, () => [...BUDGETS, "fuel", "gameplay"]],
   [/^src\/components\/canvas\/SpaceJellyfish\b/, () => [...BUDGETS, "reactions", "jellyguide"]],
   // The guide's pure logic (the creature's frame, posture and radio gate); waypointTarget also feeds the HUD, so it stays with ALL.
@@ -40,7 +41,7 @@ export const RULES = [
   // The Nest (the combat stage): its director, load gate, renderer and effects
   // (reactions: the director's rumour line shares the radio with the cargo hail).
   [/^src\/components\/canvas\/(NestDirector|nest\/)/, () => [...BUDGETS, "combat", "reactions"]],
-  [/^src\/data\/nest\.ts$/, () => [...BUDGETS, "combat", "reactions"]],
+  [/^src\/data\/nest(Rocks)?\.ts$/, () => [...BUDGETS, "combat", "reactions"]],
   // GlobalCanvas, PostFX and anything else in the canvas: everything.
   [/^src\/components\/canvas\//, () => "ALL"],
   // The HUD and panels.

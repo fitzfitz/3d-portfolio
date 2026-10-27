@@ -59,6 +59,7 @@ const LAZY_FX = [
   "src/components/canvas/nest/NestEffects.tsx",
   "src/utils/combat/effects.ts",
   "src/components/canvas/nest/nestWarmup.ts",
+  "src/components/canvas/nest/NestCluster.tsx",
 ];
 
 describe("the Nest's renderer loads on demand (C16)", () => {
