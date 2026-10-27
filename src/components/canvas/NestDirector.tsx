@@ -13,6 +13,7 @@ import {
   applyNestEvents, createShipTrack, maybeRumour, noseFrom, takeClick, trackShip, type NestEffects,
 } from "../../utils/combat/director";
 import { nestPaused } from "../../utils/combat/nestRadio";
+import { nestScreen, updateNestScreen } from "../../utils/combat/nestScreen";
 import { saucerMuzzleWorld, tardigradeMouthWorld } from "../../utils/combat/monsterFrame";
 import type { ClickShot, NestSink, V3 } from "../../utils/combat/types";
 // The rig types only (Ruling C16): the renderer and its materials load on demand (nest/NestGate.tsx).
@@ -93,7 +94,7 @@ export default function NestDirector() {
     return () => { fitzDebug.nest = null; };
   }, []);
 
-  useFrame((_, delta) => {
+  useFrame(({ camera, size }, delta) => {
     const s = useSpaceStore.getState();
     // Spaceship moved the ship by the same clamped step.
     const dt = Math.min(delta, 0.05);
@@ -109,7 +110,19 @@ export default function NestDirector() {
     inp.click = takeClick(combat, clickAim, inp.paused, dt);
     stepNest(combat.nest, inp, dt, Math.random, SINK, ev);
     const nowMs = Date.now();
-    applyNestEvents(combat, ev, FX, performance.now() / 1000, nowMs);
+    const now = performance.now() / 1000;
+    applyNestEvents(combat, ev, FX, now, nowMs);
+    // The HUD's reticle, HIT and edge arrows (NestOverlay reads them). The
+    // camera was placed this frame (Spaceship): bring its inverse up to date
+    // first, or the reticle trails the monster by a frame. At rest (ready,
+    // no lock, no HIT showing or due) updateNestScreen projects nothing, and
+    // the matrix update is skipped too.
+    const n = combat.nest;
+    if (n.phase !== "ready" || n.lock >= 0 || n.strikeSeq !== nestScreen.seenSeq || nestScreen.hit.on) {
+      camera.updateMatrixWorld();
+    }
+    updateNestScreen(n, camera.matrixWorldInverse.elements, camera.projectionMatrix.elements,
+      size.width, size.height, now, nestScreen);
 
     const dist = Math.hypot(flight.x - CENTRE.x, flight.y - CENTRE.y, flight.z - CENTRE.z);
     const last = s.broadcast;

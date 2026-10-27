@@ -64,6 +64,27 @@ describe("NestOverlay", () => {
     expect(html).toContain('data-testid="nest-banner-sub"');
   });
 
+  it("holds the lock reticle, the HIT marker and 8 edge arrows, each hidden at rest", () => {
+    const lock = tag(html, "nest-lock");
+    expect(lock).not.toBeNull();
+    expect(lock).toContain("display:none");
+    const hit = tag(html, "nest-hit");
+    expect(hit).not.toBeNull();
+    expect(hit).toContain("display:none");
+    expect(hit).toContain('data-mode="fade"');
+    expect(html).toMatch(/data-testid="nest-hit"[^>]*>HIT</);
+    const arrows = html.match(/<[a-z]+[^>]*data-testid="nest-arrow"[^>]*>/g) ?? [];
+    expect(arrows).toHaveLength(8);
+    for (const a of arrows) expect(a).toContain("display:none");
+  });
+
+  it("drives the reticle, HIT and arrows from the shared screen state in the same loop", () => {
+    const s = src("src/components/layout/NestOverlay.tsx");
+    expect(s).toMatch(/nestScreen\./);
+    expect(s).toMatch(/hitMarkOpacity\(now, nestScreen\.hitAt, reduced\)/);
+    expect(s).toMatch(/MAX_EDGE_ARROWS/);
+  });
+
   it("drives them from one rAF loop with skip-unchanged writes, with no CSS animation", () => {
     const s = src("src/components/layout/NestOverlay.tsx");
     expect((s.match(/requestAnimationFrame\(tick\)/g) ?? []).length).toBe(2); // start + reschedule

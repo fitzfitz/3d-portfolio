@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  FLASH_S, NEST_HAZE_MAX, NEST_OFFLINE_LINE, flashOpacity, hullBarColor, hullLabel, hullShown, markNestLoadFailed,
+  FLASH_S, HIT_MARK_S, NEST_HAZE_MAX, hitMarkOpacity, NEST_OFFLINE_LINE, flashOpacity, hullBarColor, hullLabel, hullShown, markNestLoadFailed,
   nestBanner, nestHazeOpacity, nestRadarShown, nestRadarSpot, waveReadout, type NestBannerText,
 } from "../src/utils/combat/nestHud";
 import { monsterFrameNeeded, monstersOnShow } from "../src/utils/combat/renderPose";
@@ -35,6 +35,20 @@ describe("the Nest HUD's pure parts", () => {
     expect(flashOpacity(5, -Infinity, true)).toBe(0);
     // Static: the same tint all through the window (no fade under reduced motion).
     expect(flashOpacity(1.01, 1, true)).toBe(flashOpacity(1.3, 1, true));
+  });
+
+  it("the HIT marker fades 1 → 0 over 0.25 s, or holds a static 1 under reduced motion", () => {
+    expect(HIT_MARK_S).toBe(0.25);
+    for (const t of [0, 3.7, 1234.567]) {
+      expect(hitMarkOpacity(t, t, false)).toBe(1);
+      expect(hitMarkOpacity(t + 0.125, t, false)).toBeCloseTo(0.5, 9);
+      expect(hitMarkOpacity(t + 0.25, t, false)).toBe(0);
+      expect(hitMarkOpacity(t + 0.2, t, true)).toBe(1);
+      expect(hitMarkOpacity(t + 0.25, t, true)).toBe(0);
+      expect(hitMarkOpacity(t - 0.01, t, false)).toBe(0);
+    }
+    expect(hitMarkOpacity(5, -Infinity, false)).toBe(0);
+    expect(hitMarkOpacity(5, -Infinity, true)).toBe(0);
   });
 
   it("banners: the countdown, waiting on warm-up, cleared and breach", () => {

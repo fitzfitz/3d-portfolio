@@ -61,6 +61,21 @@ export function flashOpacity(now: number, flashAt: number, reduced: boolean): nu
   return reduced ? FLASH_STATIC : FLASH_PEAK * (1 - age / FLASH_S);
 }
 
+/** How long the HIT marker shows after a strike (s). */
+export const HIT_MARK_S = 0.25;
+
+/**
+ * The HIT marker's opacity: 1 fading to 0 over HIT_MARK_S after a strike, or
+ * a static 1 for HIT_MARK_S under reduced motion (no fade). 0 outside it. A
+ * hair of slack at the end, so `hitAt + 0.25` reads as over whatever the
+ * float rounding of `now − hitAt`.
+ */
+export function hitMarkOpacity(now: number, hitAt: number, reduced: boolean): number {
+  const age = now - hitAt;
+  if (!(age >= 0 && age < HIT_MARK_S - 1e-9)) return 0;
+  return reduced ? 1 : 1 - age / HIT_MARK_S;
+}
+
 export interface NestBannerText { title: string; sub: string }
 
 /** The `combat` stamps a banner reads (store/combatState.ts). Times in performance.now() / 1000. */
