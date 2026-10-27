@@ -637,7 +637,7 @@ and driver copies, which the ledger cannot see.
 ## Space monsters in the game
 
 The saucer alien and the tardigrade are the Nest's monsters (the combat
-stage, PR 67; spec `docs/superpowers/specs/2026-10-27-combat-design.md`).
+stage, PR 67; spec `docs/archive/specs/2026-10-27-combat-design.md`).
 Their two glbs live in `public/models-ondemand/` as loose files, outside
 `public/models/`, so they are in no asset pack: the Nest's load gate
 (`src/components/canvas/nest/NestGate.tsx`) downloads them, with the

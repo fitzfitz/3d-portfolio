@@ -120,7 +120,7 @@ Delete an entry when it is fixed.
     reopen close-up look work.
 
 - **Combat, for the coins stage** (the Nest, PR 67; spec
-  `docs/superpowers/specs/2026-10-27-combat-design.md`):
+  `docs/archive/specs/2026-10-27-combat-design.md`):
   - Shards as money, rewards on clearing the Nest, and the hull as an upgrade
     slot (with shields) are the next stage's; the Nest gives only the badge
     and the CRIMSON plume today.

@@ -4,7 +4,7 @@ import {
   isFontHost, respondInertFont,
 } from "./harness.mjs";
 
-// The Nest (spec docs/superpowers/specs/2026-10-27-combat-design.md), five
+// The Nest (spec docs/archive/specs/2026-10-27-combat-design.md), five
 // independent pages, one job each (run.mjs PARTS):
 //  0. away: nothing of the fight exists or downloads in deep space, the radar
 //     shows no Nest, and a click makes a plasma spark as always;

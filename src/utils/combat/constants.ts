@@ -1,5 +1,5 @@
 /**
- * The Nest's numbers. Spec values (docs/superpowers/specs/2026-10-27-combat-design.md)
+ * The Nest's numbers. Spec values (docs/archive/specs/2026-10-27-combat-design.md)
  * first, then the controller's values the spec leaves open. Distances in world
  * units (u), times in seconds, angles in radians.
  */
