@@ -33,21 +33,34 @@ describe("the plasma jet's particles", () => {
   const dirs = [v(0.3, -0.5, 0.8), v(0, 1, 0), v(0, -3, 0), v(-1, 0, 0), v(2, 2, -1)];
 
   it("jet particles stay inside the jet: 0–90 u along the axis, within 2.5 u of it", () => {
+    // 90,000 samples: track the extremes and assert once, since one expect()
+    // per sample (360k calls) ran past vitest's 5 s timeout on CI.
     const out = v(0, 0, 0);
     let checked = 0;
+    let notOut = 0;
+    let nonFinite = 0;
+    let minAlong = Infinity;
+    let maxAlong = -Infinity;
+    let maxOff = -Infinity;
     for (const d of dirs) {
       for (let i = 0; i < JET_PARTICLES; i++) {
         for (let k = 0; k <= 24; k++) {
           const t = k * 0.05;
-          expect(jetParticle(i, JET_PARTICLES, t, mouth.x, mouth.y, mouth.z, d.x, d.y, d.z, out)).toBe(out);
+          if (jetParticle(i, JET_PARTICLES, t, mouth.x, mouth.y, mouth.z, d.x, d.y, d.z, out) !== out) notOut++;
           const { along, off } = inJet(out, mouth, d);
-          expect(along).toBeGreaterThanOrEqual(-1e-9);
-          expect(along).toBeLessThanOrEqual(JET_RANGE + 1e-9);
-          expect(off).toBeLessThanOrEqual(JET_RADIUS + 1e-9);
+          if (!Number.isFinite(along) || !Number.isFinite(off)) nonFinite++;
+          if (along < minAlong) minAlong = along;
+          if (along > maxAlong) maxAlong = along;
+          if (off > maxOff) maxOff = off;
           checked++;
         }
       }
     }
+    expect(notOut).toBe(0);
+    expect(nonFinite).toBe(0);
+    expect(minAlong).toBeGreaterThanOrEqual(-1e-9);
+    expect(maxAlong).toBeLessThanOrEqual(JET_RANGE + 1e-9);
+    expect(maxOff).toBeLessThanOrEqual(JET_RADIUS + 1e-9);
     expect(checked).toBe(dirs.length * JET_PARTICLES * 25);
   });
 
