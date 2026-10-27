@@ -89,7 +89,7 @@ export default function NestOverlay() {
       setStyle(hitRef.current, "display", hit > 0 ? "" : "none");
       if (hit > 0) {
         setStyle(hitRef.current, "opacity", hit.toFixed(3));
-        setStyle(hitRef.current, "transform", `translate(${Math.round(sc.hit.x)}px, ${Math.round(sc.hit.y)}px) translate(-50%, -34px)`);
+        setStyle(hitRef.current, "transform", `translate(${Math.round(sc.hit.x)}px, ${Math.round(sc.hit.y)}px) translate(-50%, -42px)`);
       }
       if (hitRef.current && hitRef.current.dataset.mode !== mode) hitRef.current.dataset.mode = mode;
       for (let i = 0; i < MAX_EDGE_ARROWS; i++) {
