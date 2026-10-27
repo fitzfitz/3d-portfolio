@@ -1,12 +1,12 @@
 /**
  * The Nest's effects, as pure maths the renderer (components/canvas/nest/
  * NestEffects.tsx) writes into its pooled buffers every frame: the plasma
- * jet's particles, the defeated saucers' smoke puffs, and the instance
- * matrices of the bolts and the saucers' thrust glows. Allocation-free:
+ * jet's particles, the defeated saucers' smoke puffs, the hit sparks, and the
+ * instance matrices of the bolts, the saucers' thrust glows and the sparks. Allocation-free:
  * pools are built once, every function writes into a caller's object.
  */
 import type * as THREE from "three";
-import { JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
+import { BOLT_R, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
 import { monsterMatrix } from "./monsterFrame";
 import type { Saucer } from "./saucerAi";
 import type { V3 } from "./types";
@@ -164,6 +164,70 @@ export function smokeAlpha(age: number): number {
   return k > 0 ? SMOKE_ALPHA * k * k : 0;
 }
 
+// ── Hit sparks (extra instances in the bolt mesh) ─────────────────────────
+
+/** Sparks per ship-bolt hit… */
+export const HIT_SPARKS = 4;
+/** …from a fixed ring of this many (six strikes' worth; the oldest is reused). */
+export const SPARK_POOL = 24;
+/** A spark's life (s): it shrinks from SPARK_R to nothing over it. */
+export const SPARK_LIFE_S = 0.3;
+/** Sparks fly out from the hit point at this speed (u/s), each in a random direction. */
+export const SPARK_SPEED = 6;
+/** A spark's radius at birth (u). */
+export const SPARK_R = 0.12;
+
+export interface Spark { live: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number }
+
+/** A fixed ring of sparks; `next` is the oldest slot (sparks share one life). */
+export interface SparkPool { sparks: Spark[]; next: number }
+
+export function createSparks(n: number = SPARK_POOL): SparkPool {
+  const sparks: Spark[] = [];
+  for (let i = 0; i < n; i++) sparks.push({ live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0 });
+  return { sparks, next: 0 };
+}
+
+/**
+ * A strike's burst: HIT_SPARKS sparks at (x, y, z) in the ring's oldest
+ * slots, flying out at SPARK_SPEED in random directions (uniform over the
+ * sphere); `still` (reduced motion): they burst and shrink but hold still.
+ */
+export function emitSparks(p: SparkPool, x: number, y: number, z: number, rnd: () => number, still: boolean): void {
+  for (let i = 0; i < HIT_SPARKS; i++) {
+    const s = p.sparks[p.next];
+    p.next = (p.next + 1) % p.sparks.length;
+    s.live = true; s.age = 0;
+    s.x = x; s.y = y; s.z = z;
+    const cz = 2 * rnd() - 1, a = 2 * Math.PI * rnd();
+    const k = still ? 0 : SPARK_SPEED * Math.sqrt(1 - cz * cz);
+    s.vx = k * Math.cos(a); s.vy = k * Math.sin(a); s.vz = still ? 0 : SPARK_SPEED * cz;
+  }
+}
+
+/** One step: sparks age, fly and expire at SPARK_LIFE_S. dt 0 (a paused fight) changes nothing. Returns the live sparks. */
+export function stepSparks(p: SparkPool, dt: number): number {
+  const sparks = p.sparks;
+  let live = 0;
+  for (let i = 0; i < sparks.length; i++) {
+    const s = sparks[i];
+    if (!s.live) continue;
+    if (dt > 0) {
+      s.age += dt;
+      if (s.age >= SPARK_LIFE_S) { s.live = false; continue; }
+      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+    }
+    live++;
+  }
+  return live;
+}
+
+/** A spark's instance: a sphere at its position, SPARK_R across at birth, shrinking linearly to nothing at SPARK_LIFE_S. */
+export function sparkMatrix(s: Spark, out: THREE.Matrix4): THREE.Matrix4 {
+  const k = SPARK_R * Math.max(0, 1 - s.age / SPARK_LIFE_S);
+  return out.makeScale(k, k, k).setPosition(s.x, s.y, s.z);
+}
+
 // ── Near the camera ────────────────────────────────────────────────────────
 
 /** Point sprites fade out from this far from the camera (u)… */
@@ -182,6 +246,30 @@ export const NEAR_FADE_NEAR = 2;
 export function nearFade(px: number, py: number, pz: number, cam: V3): number {
   const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
   const x = (d - NEAR_FADE_NEAR) / (NEAR_FADE_FAR - NEAR_FADE_NEAR);
+  return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+}
+
+// Bolts near the camera (ruling N7). A fresh ship bolt is ~6 u from the
+// chase camera, where a BOLT_GLOW_R sphere is a 60–90 px saturated disc for a
+// frame or two (enemy bolts passing close the same). Render only: the hit
+// tests keep the bolts' real radius.
+
+/** A bolt's glow radius: its hit radius and a little haze. */
+export const BOLT_GLOW_R = BOLT_R + 0.08;
+/** The cross radius is at most this × the distance to the camera: ~16 px across at 1280×800 (60° fov). */
+export const BOLT_NEAR_K = 0.012;
+/** A bolt's colour fades from 1 at BOLT_FADE_FAR to 0 at BOLT_FADE_NEAR from the camera (u). */
+export const BOLT_FADE_NEAR = 3;
+export const BOLT_FADE_FAR = 12;
+
+/** A bolt's drawn cross radius at `d` u from the camera: min(BOLT_GLOW_R, d × BOLT_NEAR_K). */
+export function boltCrossRadius(d: number): number {
+  return Math.min(BOLT_GLOW_R, d * BOLT_NEAR_K);
+}
+
+/** A bolt's colour factor at `d` u from the camera: 0 inside BOLT_FADE_NEAR, smoothstepping to 1 at BOLT_FADE_FAR. */
+export function boltNearFade(d: number): number {
+  const x = (d - BOLT_FADE_NEAR) / (BOLT_FADE_FAR - BOLT_FADE_NEAR);
   return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 }
 

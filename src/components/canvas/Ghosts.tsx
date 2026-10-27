@@ -21,6 +21,7 @@ import { onRaceServer } from "../../utils/raceController";
 import { onLiveSkyHello, watchRaceJoin } from "../../utils/raceJoin";
 import { makePlumeGeometry, makePlumeMaterial, plumeSpreadFor, PLUME_HALF_ANGLE_DEG, NOZZLE_Y, NOZZLE_Z } from "./enginePlume";
 import { fitzDebug } from "../../debug/bridge";
+import { glowScaleUnmapped } from "../../utils/sunLight";
 
 /** RaceCourse's race-ghost wash strength. */
 const GHOST_WASH = 0.55;
@@ -31,7 +32,8 @@ const NONE: GhostPose[] = [];
 /** This ship's pose for conn.tick, reused every frame. */
 const me: ShipState = { p: [0, 0, 0], q: [0, 0, 0, 1], plume: "stock", ch: 0 };
 
-interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE.ShaderMaterial; plume: string; scanId: string | null }
+/** `tint` is the plume's colour; the hull draws tint × GHOST_WASH × glowScaleUnmapped each frame. */
+interface Slot { group: THREE.Group; hull: THREE.MeshBasicMaterial; flame: THREE.ShaderMaterial; plume: string; tint: THREE.Color; scanId: string | null }
 
 function makeSlot(shipScene: THREE.Object3D, flameGeometry: THREE.BufferGeometry, i: number): Slot {
   const stock = new THREE.Color(PLUME_COLORS.stock.hex);
@@ -58,7 +60,7 @@ function makeSlot(shipScene: THREE.Object3D, flameGeometry: THREE.BufferGeometry
   group.name = `LiveGhost_${i}`;
   group.visible = false;
   group.add(model, plume);
-  return { group, hull, flame, plume: "stock", scanId: null };
+  return { group, hull, flame, plume: "stock", tint: stock.clone(), scanId: null };
 }
 
 function releaseScan(slot: Slot) {
@@ -180,9 +182,11 @@ export default function Ghosts() {
       if (slot.plume !== g.plume) {
         slot.plume = g.plume;
         const hex = (PLUME_COLORS[g.plume] ?? PLUME_COLORS.stock).hex;
-        slot.hull.color.set(hex).multiplyScalar(GHOST_WASH);
+        slot.tint.set(hex);
         (slot.flame.uniforms.uColor.value as THREE.Color).set(hex);
       }
+      // The hull is toneMapped: false (self-lit), so it holds its 1 AU glow far out.
+      slot.hull.color.copy(slot.tint).multiplyScalar(GHOST_WASH * glowScaleUnmapped.value);
       slot.hull.opacity = g.alpha;
       slot.flame.uniforms.uPower.value = GHOST_PLUME_POWER * g.alpha;
       slot.flame.uniforms.uTime.value = t;

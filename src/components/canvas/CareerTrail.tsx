@@ -11,6 +11,7 @@ import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
 import { arcPlacement } from "../../utils/trailGuide";
 import { makeGuideLineMaterial, withGuideOffsets } from "./guideLine";
+import { glowScale } from "../../utils/sunLight";
 
 /** The model is ~3.3 tall; at 1.8x a buoy reads from the next one, 43 units away (see TRAIL_ARC). */
 const BUOY_SCALE = 1.8;
@@ -79,7 +80,8 @@ export default function CareerTrail() {
     // Nav-light blink: a short full-strength flash about every 2.5 s. ambientTime
     // freezes under reduced motion, which leaves the glow steady.
     const phase = (ambientTime(state.clock.getElapsedTime()) * 0.4) % 1;
-    material.emissiveIntensity = BUOY_GLOW * (phase < 0.12 ? 1 : 0.55);
+    // × glowScale: the nav light is self-lit, so it holds its 1 AU glow far out.
+    material.emissiveIntensity = BUOY_GLOW * (phase < 0.12 ? 1 : 0.55) * glowScale.value;
     // Fly-by card (BuoyCard reads this). gameTime survives the clock reset an
     // orbit lock causes, and keeps running under reduced motion.
     const prev = buoyCardState.index >= 0 ? buoyCardState.index : null;

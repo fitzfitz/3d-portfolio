@@ -325,8 +325,8 @@ describe("L19 inverse-square light, a camera that adapts, a backdrop that never 
       expect(sunIrradiance(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT * SUN_IRRADIANCE_AT_AU, 9);
     }
   });
-  it("the backdrop's net gain never passes BACKDROP_NET_MAX (8.5, the old 480 u edge's)", () => {
-    expect(BACKDROP_NET_MAX).toBe(8.5);
+  it("the backdrop's net gain never passes BACKDROP_NET_MAX (2.2: a little lift on the sky, not 5×)", () => {
+    expect(BACKDROP_NET_MAX).toBe(2.2);
     for (let d = 10; d <= SYSTEM_RADIUS; d += 10) expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeLessThanOrEqual(BACKDROP_NET_MAX + 1e-9);
   });
 });

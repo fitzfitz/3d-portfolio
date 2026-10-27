@@ -8,6 +8,7 @@ import { PROBES, PROBE_IDS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeTipText, relocationSettled, probeDossiersRead } from "../../utils/probes";
 import { DESTINATIONS, afterProbes, jumpKey, destinationById } from "../../data/destinations";
+import { NEST_CENTRE, NEST_JUMP_ID, NEST_LABEL, NEST_RED } from "../../data/nest";
 import { flight, combat, useSpaceStore, selectModalOpen } from "../../store/spaceStore";
 import { hullBarColor, hullLabel, hullShown, waveReadout } from "../../utils/combat/nestHud";
 import { HULL_MAX } from "../../utils/combat/constants";
@@ -27,6 +28,13 @@ import WaypointMarker from "./WaypointMarker";
 import LogbookTracker from "./LogbookTracker";
 import { CHANGELOG, hasUnseen } from "../../data/changelog";
 import { setText, setStyle } from "../../utils/domWrite";
+
+/**
+ * The Nest's number key: 7 with the bundled three probes; none past 9 (six
+ * live probes make it tenth), where the row shows no key (Ruling N1).
+ */
+const NEST_KEY = jumpKey(NEST_JUMP_ID);
+const NEST_KEY_TAG = NEST_KEY >= 1 && NEST_KEY <= 9 ? `[${NEST_KEY}]` : "";
 
 /**
  * Module-level, NOT a ref: App.tsx conditionally unmounts HUDOverlay for
@@ -450,6 +458,15 @@ export default function HUDOverlay({ beaconsEnabled = false }: { beaconsEnabled?
             <span className="w-3" />
           </button>
         ))}
+        {/* The Nest: a jump target, not a destination (spec 2026-10-27-nest-playable §1). */}
+        <button onClick={() => requestJump(NEST_JUMP_ID)}
+          title={`Jump to the Nest${NEST_KEY_TAG ? ` ${NEST_KEY_TAG}` : ""}`}
+          className="pointer-events-auto cursor-pointer flex items-center gap-1.5 transition-colors hover:text-white text-white/40">
+          <span className="text-white/30">{NEST_KEY_TAG}</span>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: NEST_RED }} />
+          <span>{NEST_LABEL} ([{NEST_CENTRE.join(", ")}])</span>
+          <span className="w-3" />
+        </button>
       </div>
     </div>
   );

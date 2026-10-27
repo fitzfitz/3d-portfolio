@@ -2,16 +2,24 @@ import { useRef, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ambientTime } from "../../utils/ambientTime";
+import { glowScale } from "../../utils/sunLight";
 
 /** The portal light blends between these by its two flickers' ratio. */
 const PORTAL_RED = new THREE.Color("#ff3300");
 const PORTAL_AMBER = new THREE.Color("#ffaa00");
+/** The rings' emissive gains and the particles' colour at 1 AU; written × glowScale each frame. */
+const OUTER_GLOW = 2.5;
+const INNER_GLOW = 3.0;
+const PARTICLE_COLOR = new THREE.Color("#ff6600");
 
 export default function PortalRing() {
   const outerRingRef = useRef<THREE.Mesh>(null);
   const innerRingRef = useRef<THREE.Mesh>(null);
   const particleGroupRef = useRef<THREE.Group>(null);
   const lightRef = useRef<THREE.PointLight>(null);
+  const outerMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const innerMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const particleMatRef = useRef<THREE.PointsMaterial>(null);
 
   // Generate orbital particles around the portal
   const particleCount = 40;
@@ -46,6 +54,13 @@ export default function PortalRing() {
       particleGroupRef.current.rotation.z = time * 0.1;
     }
 
+    // The rings and the swarm are self-lit: held at their 1 AU glow far out.
+    // The light is not scaled (lights never are).
+    const g = glowScale.value;
+    if (outerMatRef.current) outerMatRef.current.emissiveIntensity = OUTER_GLOW * g;
+    if (innerMatRef.current) innerMatRef.current.emissiveIntensity = INNER_GLOW * g;
+    if (particleMatRef.current) particleMatRef.current.color.copy(PARTICLE_COLOR).multiplyScalar(g);
+
     // Light flicker. These two were the only entirely static parts of an
     // otherwise elaborately animated wormhole — the rings, aura, membrane and
     // core all pulse, while the light *sources* sat at fixed intensity, which
@@ -73,9 +88,10 @@ export default function PortalRing() {
       <mesh ref={outerRingRef}>
         <torusGeometry args={[1.5, 0.05, 16, 100]} />
         <meshStandardMaterial
+          ref={outerMatRef}
           color="#ff3300"
           emissive="#ff3300"
-          emissiveIntensity={2.5}
+          emissiveIntensity={OUTER_GLOW}
           wireframe={true}
         />
       </mesh>
@@ -84,9 +100,10 @@ export default function PortalRing() {
       <mesh ref={innerRingRef} scale={0.88}>
         <torusGeometry args={[1.4, 0.03, 12, 80]} />
         <meshStandardMaterial
+          ref={innerMatRef}
           color="#ffaa00"
           emissive="#ffaa00"
-          emissiveIntensity={3.0}
+          emissiveIntensity={INNER_GLOW}
           wireframe={true}
         />
       </mesh>
@@ -115,6 +132,7 @@ export default function PortalRing() {
             />
           </bufferGeometry>
           <pointsMaterial
+            ref={particleMatRef}
             color="#ff6600"
             size={0.06}
             transparent={true}

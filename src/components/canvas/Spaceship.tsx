@@ -6,7 +6,7 @@ import { PLAYER_SHIP_SCALE, SHIP_MAX_SPEED, SHIP_WARP_SPEED, SUN_RADIUS, SYSTEM_
 import { destinationById, escapeR } from "../../data/destinations";
 import { flight, useSpaceStore, bodies, selectRaceFlying, combat } from "../../store/spaceStore";
 import { markShipTeleport } from "../../store/shipTeleport";
-import { NEST_TOW_POSE } from "../../data/nest";
+import { NEST_CENTRE, NEST_JUMP_ID, NEST_TOW_POSE } from "../../data/nest";
 import { beamUse } from "../../utils/combat/controls";
 import { takeTowRequest } from "../../utils/combat/director";
 import { padRumble } from "../../utils/padRumble";
@@ -19,10 +19,11 @@ import { escapePosition } from "../../utils/orbitEscape";
 import { PROBES, PROBE_JUMP_STANDOFF, PROBE_RADIUS } from "../../data/probes";
 import { probePos, probeRelocating } from "../../store/probeState";
 import { probeJumpTarget, spawnAimPoint } from "../../utils/probes";
-import { applyBackdrop, applyFill, cutExposure } from "../../utils/sunLight";
+import { applyBackdrop, applyFill, cutExposure, glowScale } from "../../utils/sunLight";
 import { jumpPoint } from "../../utils/navigation";
-import { resolveCollision } from "../../utils/collision";
+import { resolveCluster, resolveCollision } from "../../utils/collision";
 import { ASTEROID_COLLIDERS, SUN_COLLIDER } from "../../data/asteroids";
+import { NEST_ROCK_CHECK_R, NEST_ROCK_COLLIDERS } from "../../data/nestRocks";
 import { soundManager } from "../../audio/soundManager";
 import { ambientTime, gameTime } from "../../utils/ambientTime";
 import { stepFuel, fuelDebug } from "../../utils/fuel";
@@ -104,7 +105,8 @@ const _aim = { x: 0, y: 0, z: 0 };
 /** Probe 1's home: the spot the ship faces from the spawn point (src/data/spawn.ts). */
 const FIRST_PROBE_HOME = PROBES[0].home;
 
-// Collisions: big scenery asteroids + the sun (belt is decorative — excluded)
+// Collisions: big scenery asteroids + the sun (belt is decorative — excluded).
+// The Nest's rocks are resolved on their own, near the Nest (frame loop).
 const COLLIDERS = [...ASTEROID_COLLIDERS, SUN_COLLIDER];
 /**
  * Every solid body's live centre, by SOLID_BODIES id: the bodies' `bodies`
@@ -131,6 +133,14 @@ const slingshotLines = new ChatterScheduler(chatterPools);
  * non-stock plume must not capture the tint as "stock".
  */
 const stockEmissive = new WeakMap<THREE.Material, THREE.Color>();
+/**
+ * Each Neon_* strip's own emissive intensity, captured the first time the
+ * cached GLTF material is seen (it outlives a remount), so the frame loop can
+ * write base × glowScale without compounding.
+ */
+const neonBase = new WeakMap<THREE.Material, number>();
+/** The warp streaks' colour at 1 AU; the frame loop writes it × glowScale. */
+const STREAK_BASE = new THREE.Color("#00f0ff");
 const PLUME_NOZZLE_R = 0.07;
 
 /** Spark base colour for the current plume (written on plume change, read by the spark loop). */
@@ -165,6 +175,20 @@ export default function Spaceship() {
       }
     });
     return engine as THREE.MeshStandardMaterial | null;
+  }, [scene]);
+  // The Neon_* strips are self-lit: held at their 1 AU glow far out (glowScale).
+  const neonMats = useMemo(() => {
+    const out: { mat: THREE.MeshStandardMaterial; base: number }[] = [];
+    const seen = new Set<THREE.Material>();
+    scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh) || !child.material) return;
+      const mat = child.material as THREE.MeshStandardMaterial;
+      if (seen.has(mat) || !mat.emissive || !/^neon_/i.test(mat.name)) return;
+      seen.add(mat);
+      if (!neonBase.has(mat)) neonBase.set(mat, mat.emissiveIntensity);
+      out.push({ mat, base: neonBase.get(mat)! });
+    });
+    return out;
   }, [scene]);
   // Eclipses: every lit hull material (the GLB's own; the race ghost and the
   // live-sky ghosts clone the scene and swap in their own materials) scales
@@ -268,6 +292,26 @@ export default function Spaceship() {
   // loop, so the jump first breaks orbit and lands on the next live frame.
   const pendingJump = useRef<string | null>(null);
   const snapCamera = useRef(true); // first frame snaps: the camera starts at the spawn, not the canvas default
+  /**
+   * Put the ship just past the Nest's buoy, nose on its centre, at rest
+   * (NEST_TOW_POSE, outside the fighting area). The breach tow and a jump to
+   * the Nest (NEST_JUMP_ID, spec 2026-10-27-nest-playable §1) both land here.
+   */
+  const towToNest = () => {
+    pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
+    vel.current.set(0, 0, 0);
+    zeroGravity();
+    angle.current = NEST_TOW_POSE.yaw;
+    pitch.current = NEST_TOW_POSE.pitch;
+    turnVelocity.current = 0;
+    pitchVel.current = 0;
+    warpSpeed.current = WARP_SPEED;
+    hasFlown.current = true;
+    flight.hasFlown = true;
+    snapCamera.current = true;
+    markShipTeleport();
+    useSpaceStore.getState().triggerTeleportFlash();
+  };
   /** The race grid slot the ship was last put on (raceScene.ts gridPose key): placed once per race and slot. */
   const placedFor = useRef<string | null>(null);
   useEffect(() => useSpaceStore.subscribe(
@@ -381,6 +425,8 @@ export default function Spaceship() {
     }
   };
   const particlesRef = useRef<THREE.Points>(null);
+  /** The nozzles' burn level at 1 AU, eased by the flight loop; written × glowScale below. */
+  const engineBurn = useRef(0.7);
 
   // Logbook plume colour (spec §5): uniform and CPU colour changes only, once
   // per change. The hot white core stays; the cool end, sparks, engine light
@@ -576,7 +622,11 @@ export default function Spaceship() {
     // Jump: drop in nose-on, level with the target, at its standoff. A probe
     // has no lock and opens nothing: the pilot grabs it with the beam. The
     // post-break cooldown is cleared so a destination's lock engages at once.
-    if (pendingJump.current) {
+    if (pendingJump.current === NEST_JUMP_ID) {
+      // The Nest is not a probe or a destination: it lands as a breach tow does.
+      pendingJump.current = null;
+      towToNest();
+    } else if (pendingJump.current) {
       const id = pendingJump.current;
       pendingJump.current = null;
       // A probe mid-burn is headed for its next spot: aim there (probeJumpTarget).
@@ -604,21 +654,7 @@ export default function Spaceship() {
 
     // The Nest's breach tow (NestDirector asks): like a jump, to just past the
     // buoy, nose on the Nest, at rest.
-    if (takeTowRequest(combat, false)) {
-      pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
-      vel.current.set(0, 0, 0);
-      zeroGravity();
-      angle.current = NEST_TOW_POSE.yaw;
-      pitch.current = NEST_TOW_POSE.pitch;
-      turnVelocity.current = 0;
-      pitchVel.current = 0;
-      warpSpeed.current = WARP_SPEED;
-      hasFlown.current = true;
-      flight.hasFlown = true;
-      snapCamera.current = true;
-      markShipTeleport();
-      store.triggerTeleportFlash();
-    }
+    if (takeTowRequest(combat, false)) towToNest();
 
     // A Nest hull hit (NestDirector bumps combat.hits, throttled to one per
     // 0.25 s): a shake (the camera skips it under reduced motion), the impact
@@ -785,6 +821,10 @@ export default function Spaceship() {
         break;
       }
     }
+    // The Nest's rocks overlap, so they are resolved together (one push-out
+    // clear of them all, one impact), and only near the Nest: no cost elsewhere.
+    if (Math.hypot(pos.current.x - NEST_CENTRE[0], pos.current.y - NEST_CENTRE[1], pos.current.z - NEST_CENTRE[2]) < NEST_ROCK_CHECK_R
+      && resolveCluster(pos.current, vel.current, NEST_ROCK_COLLIDERS)) impact(time);
     // The bodies' and the moons' solid surfaces (worldCollide.ts):
     // they move, so each is read live from SOLID_CENTERS, at its equatorial
     // size. The rings are fly-through.
@@ -840,8 +880,9 @@ export default function Spaceship() {
       // Bloom saturates above ~0.2 luminance, so throttling emissive up only
       // grows the aura — hold the idle level and let the exhaust visuals
       // (plume length and brightness, sparks) carry the sense of thrust.
+      // The level at 1 AU; the second frame hook writes it × glowScale (the nozzles are self-lit).
       const targetBurn = (warpActive ? 4.5 : 0.7) * (0.94 + Math.sin(time * 23) * 0.06);
-      engineMat.emissiveIntensity = THREE.MathUtils.lerp(engineMat.emissiveIntensity, targetBurn, frameLerp(0.3, dt));
+      engineBurn.current = THREE.MathUtils.lerp(engineBurn.current, targetBurn, frameLerp(0.3, dt));
     }
 
     // 4. Exhaust particles (velocities were per-frame — scale by dt*60)
@@ -926,6 +967,15 @@ export default function Spaceship() {
   // them after this component runs: a frame old, a few hundredths of a unit.
   useFrame(() => {
     SHIP_SUN_VIS.value = sunVisibility(pos.current, allOccluders, SUN_RADIUS);
+    // The self-lit parts hold their 1 AU glow far out (glowScale, sunLight.ts):
+    // the nozzles, the neon strips, the sparks and the warp streaks. Here, not
+    // in the flight loop, so a parked, photo-mode or orbit-locked ship follows
+    // the exposure too.
+    const g = glowScale.value;
+    if (engineMat) engineMat.emissiveIntensity = engineBurn.current * g;
+    for (let i = 0; i < neonMats.length; i++) neonMats[i].mat.emissiveIntensity = neonMats[i].base * g;
+    if (particlesRef.current) (particlesRef.current.material as THREE.PointsMaterial).color.setScalar(g);
+    if (streaksRef.current) (streaksRef.current.material as THREE.LineBasicMaterial).color.copy(STREAK_BASE).multiplyScalar(g);
   });
 
   return (

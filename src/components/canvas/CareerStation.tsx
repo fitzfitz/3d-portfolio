@@ -4,6 +4,8 @@ import { useModel } from "../../utils/sceneAssets";
 import { STATION_POS } from "../../data/careerTrail";
 import { ambientTime } from "../../utils/ambientTime";
 import { assetUrl } from "../../utils/assetUrl";
+import { glowScale } from "../../utils/sunLight";
+import { applyGlow, collectGlowMaterials } from "./glowMaterials";
 
 /** rad/s: one turn in about 50 s, slow enough to read as mass. */
 const RING_SPIN = 0.12;
@@ -17,12 +19,17 @@ const POSITION: [number, number, number] = [STATION_POS[0], STATION_POS[1], STAT
  * model (≤ 5.3) by more than the ship's half length, so an approaching ship
  * docks before its nose reaches the hull. The
  * habitat ring stops turning under reduced motion (ambientTime freezes).
+ * The dock light (DockLight, emissive strength 6) is self-lit: it holds its
+ * 1 AU glow far out (× glowScale; the station sits at 1.7 AU), a uniform
+ * write each frame.
  */
 export default function CareerStation() {
   const { scene } = useModel(assetUrl("/models/career_station.glb"));
   const ring = useMemo(() => scene.getObjectByName("HabitatRing") ?? null, [scene]);
+  const dockLights = useMemo(() => collectGlowMaterials(scene, /^docklight$/i), [scene]);
   useFrame((state) => {
     if (ring) ring.rotation.y = ambientTime(state.clock.getElapsedTime()) * RING_SPIN;
+    applyGlow(dockLights, glowScale.value);
   });
   return <primitive object={scene} position={POSITION} />;
 }

@@ -2,14 +2,14 @@ import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { combat, useSpaceStore } from "../../../store/spaceStore";
-import { exposureCompensation } from "../../../utils/sunLight";
+import { exposureCompensation, mappedCompensation } from "../../../utils/sunLight";
 import { PLUME_COLORS } from "../../../data/plumeColors";
 import { softSprite } from "../softSprite";
-import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
+import { BOLT_POOL, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES, STRIKE_RING } from "../../../utils/combat/constants";
 import { nestPaused } from "../../../utils/combat/nestRadio";
 import {
-  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetGlow, jetParticle, nearFade, smokeAlpha,
-  stepSmoke, thrustMatrix,
+  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, SPARK_POOL, THRUST_HEX, boltMatrix, createSmoke, createSparks,
+  emitSparks, jetGlow, jetParticle, nearFade, boltCrossRadius, boltNearFade, smokeAlpha, sparkMatrix, stepSmoke, stepSparks, thrustMatrix,
 } from "../../../utils/combat/effects";
 import type { V3 } from "../../../utils/combat/types";
 import { nestEffectMeshes } from "./nestEffectMeshes";
@@ -22,15 +22,14 @@ const JET_GLOW = 0.75;
 /** A ship bolt's and an enemy bolt's glowing length (u): longer for the faster ship bolt. */
 const SHIP_BOLT_LENGTH = 1.8;
 const ENEMY_BOLT_LENGTH = 1.2;
-/** Glow radius: the bolt's hit radius and a little haze. */
-const BOLT_GLOW_R = BOLT_R + 0.08;
 /** The far end's share of the jet's brightness. */
 const JET_FAR = 0.35;
-/** The smoke's grey (lit dust, compensated like the overlays so it reads the same at any exposure) and puff size. */
+/** The smoke's grey (lit dust, compensated so it reads the same at any exposure) and puff size. */
 const SMOKE_GREY: readonly [number, number, number] = [0.42, 0.4, 0.38];
 const SMOKE_SIZE = 2.2;
 
-const BOLTS = BOLT_POOL + MAX_SAUCERS;
+/** Bolts, thrust glows and hit sparks share the one instanced mesh. */
+const BOLTS = BOLT_POOL + MAX_SAUCERS + SPARK_POOL;
 const JETS = JET_PARTICLES * MAX_TARDIGRADES;
 
 /**
@@ -40,15 +39,24 @@ const JETS = JET_PARTICLES * MAX_TARDIGRADES;
  * from `combat.nest`, its count set to what is live, nothing allocated:
  *  - one additive InstancedMesh for every bolt, the ship's in its plume
  *    colour and the saucers' green-yellow, plus a thrust glow under each live
- *    saucer scaled by its speed. RaceCourse's ring material configuration
+ *    saucer scaled by its speed, and the hit sparks (a few per ship-bolt
+ *    hit, in the plume colour, shrinking away over 0.3 s; still under
+ *    reduced motion). RaceCourse's ring material configuration
  *    (MeshBasic, additive, instance colours, toneMapped off), so its program;
  *  - one Points for the tardigrade's plasma jet (the ship sparks' exact
  *    PointsMaterial settings, so their program);
  *  - one Points for the smoke trailing each defeated saucer for its 3 s
  *    drift (normal blending, vertex alphas).
+ * Their exposure factors follow their material (sunLight.ts): the bolts'
+ * mesh is toneMapped: false, so only the post pass exposes it and it takes
+ * exposureCompensation (1 in low-perf); the jet and the smoke are
+ * PointsMaterials, tone-mapped, which the renderer exposes in low-perf, so
+ * they take mappedCompensation (1 / exposure in both tiers).
  * A paused fight freezes them (dt 0). Each draws only while it has something
  * to show. The jet's and the smoke's sprites fade out within a few units of
- * the camera (effects.ts nearFade), so none fills the screen as it passes.
+ * the camera (effects.ts nearFade), so none fills the screen as it passes;
+ * a bolt near the camera is drawn thinner (boltCrossRadius) and faded
+ * (boltNearFade) for the same reason (ruling N7).
  */
 export default function NestEffects() {
   const bolts = useMemo(() => {
@@ -107,6 +115,10 @@ export default function NestEffects() {
     bolts.dispose();
   }, [bolts, jet, smoke]);
 
+  // The hit sparks' pool, and the strikes already turned into sparks: from the
+  // count at mount, so a remount never replays old hits.
+  const sparks = useMemo(() => ({ pool: createSparks(SPARK_POOL), seen: combat.nest.strikeSeq }), []);
+
   // Per-frame scratch.
   const scratch = useMemo(() => ({
     m: new THREE.Matrix4(), c: new THREE.Color(), ship: new THREE.Color(), enemy: new THREE.Color(ENEMY_BOLT_HEX),
@@ -125,7 +137,9 @@ export default function NestEffects() {
     const s = useSpaceStore.getState();
     const n = combat.nest;
     const dt = nestPaused(s) ? 0 : Math.min(delta, 0.05);
+    // toneMapped: false (the bolts) vs tone-mapped (the jet and the smoke).
     const comp = exposureCompensation.value;
+    const mapped = mappedCompensation.value;
     // The camera, for the sprites' near fade (nearFade).
     const cam = scratch.cam;
     cam.x = state.camera.position.x; cam.y = state.camera.position.y; cam.z = state.camera.position.z;
@@ -142,9 +156,11 @@ export default function NestEffects() {
       const b = pool[i];
       if (!b.live) continue;
       const ship = b.owner === "ship";
-      bolts.setMatrixAt(k, boltMatrix(b.x, b.y, b.z, b.dx, b.dy, b.dz, BOLT_GLOW_R,
+      // Near the camera a bolt is drawn thin and faded (ruling N7): no saturated disc on screen.
+      const d = Math.hypot(b.x - cam.x, b.y - cam.y, b.z - cam.z);
+      bolts.setMatrixAt(k, boltMatrix(b.x, b.y, b.z, b.dx, b.dy, b.dz, boltCrossRadius(d),
         ship ? SHIP_BOLT_LENGTH : ENEMY_BOLT_LENGTH, scratch.m));
-      bolts.setColorAt(k, scratch.c.copy(ship ? scratch.ship : scratch.enemy).multiplyScalar(BOLT_GLOW));
+      bolts.setColorAt(k, scratch.c.copy(ship ? scratch.ship : scratch.enemy).multiplyScalar(BOLT_GLOW * boltNearFade(d)));
       k++;
     }
     for (let i = 0; i < n.saucers.length; i++) {
@@ -153,6 +169,22 @@ export default function NestEffects() {
       bolts.setMatrixAt(k, thrustMatrix(sc, scratch.m));
       bolts.setColorAt(k, scratch.c.copy(scratch.thrust).multiplyScalar(THRUST_GLOW));
       k++;
+    }
+    // New strikes (at most the ring's worth) burst into sparks; they freeze while paused.
+    const seq = n.strikeSeq;
+    for (let q = Math.max(sparks.seen, seq - STRIKE_RING); q < seq; q++) {
+      const p = n.strikes[q % STRIKE_RING];
+      emitSparks(sparks.pool, p.x, p.y, p.z, Math.random, s.reducedMotion);
+    }
+    sparks.seen = seq;
+    if (stepSparks(sparks.pool, dt) > 0) {
+      const spk = sparks.pool.sparks;
+      for (let i = 0; i < spk.length; i++) {
+        if (!spk[i].live) continue;
+        bolts.setMatrixAt(k, sparkMatrix(spk[i], scratch.m));
+        bolts.setColorAt(k, scratch.c.copy(scratch.ship).multiplyScalar(BOLT_GLOW));
+        k++;
+      }
     }
     bolts.count = k;
     bolts.visible = k > 0;
@@ -176,7 +208,7 @@ export default function NestEffects() {
         // Fades toward the far end.
         const along = ((p.x - t.jx) * t.jdx + (p.y - t.jy) * t.jdy + (p.z - t.jz) * t.jdz) / l;
         // Faded out near the camera: additive black draws nothing.
-        const g = JET_GLOW * jetGlow(q) * comp * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
+        const g = JET_GLOW * jetGlow(q) * mapped * (1 - (1 - JET_FAR) * Math.min(1, Math.max(0, along / JET_RANGE)))
           * nearFade(p.x, p.y, p.z, cam);
         jca[j * 3] = scratch.jet.r * g; jca[j * 3 + 1] = scratch.jet.g * g; jca[j * 3 + 2] = scratch.jet.b * g;
       }
@@ -196,7 +228,7 @@ export default function NestEffects() {
       const f = puffs[i];
       if (!f.live) continue;
       spa[m * 3] = f.x; spa[m * 3 + 1] = f.y; spa[m * 3 + 2] = f.z;
-      sca[m * 4] = SMOKE_GREY[0] * comp; sca[m * 4 + 1] = SMOKE_GREY[1] * comp; sca[m * 4 + 2] = SMOKE_GREY[2] * comp;
+      sca[m * 4] = SMOKE_GREY[0] * mapped; sca[m * 4 + 1] = SMOKE_GREY[1] * mapped; sca[m * 4 + 2] = SMOKE_GREY[2] * mapped;
       sca[m * 4 + 3] = smokeAlpha(f.age) * nearFade(f.x, f.y, f.z, cam);
       m++;
     }

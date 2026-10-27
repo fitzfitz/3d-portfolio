@@ -155,6 +155,7 @@ export function stepFade(m: MonsterBody, ship: V3, centre: V3, dt: number, holdS
     m.vx = 0; m.vy = 0; m.vz = 0;
     return true;
   }
-  m.scale = s <= 0 ? 1 : 1 - s;
+  // Never grows: a sleeper sent away before it had grown in shrinks from its own size.
+  m.scale = Math.min(m.scale, s <= 0 ? 1 : 1 - s);
   return false;
 }

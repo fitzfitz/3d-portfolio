@@ -21,7 +21,7 @@ import { ChatterScheduler } from "../../utils/chatterScheduler";
 import { chatterPools } from "../../data/chatterLines";
 import { fitzDebug } from "../../debug/bridge";
 import { assetUrl } from "../../utils/assetUrl";
-import { lowPolyRock } from "../../utils/lowPolyRock";
+import { beltRockGeometry, beltRockMaterial } from "./beltRock";
 
 /** Rock radius per unit of FieldRock.scale (scales 0.6-1.5 land on the old 0.05-0.22). */
 const ROCK_SCALE = 0.14;
@@ -152,7 +152,6 @@ function BeltRing({ geometry, material, count, rocks, rMin, rMax, name, ring }: 
 // Orbit-distance bands: belt a 2.1-3.3 AU, e <= 0.3; Trojans a = 5.2 AU, e < 0.15.
 const BELT_R_MIN = 2.1 * 0.7 * AU, BELT_R_MAX = 3.3 * 1.3 * AU;
 const TROJAN_R_MIN = 5.2 * 0.85 * AU, TROJAN_R_MAX = 5.2 * 1.15 * AU;
-const BELT_ROCK_RADIUS = 1.1;
 
 export default function AsteroidBelt() {
   const { scene } = useModel(assetUrl("/models/asteroids.glb"));
@@ -166,21 +165,8 @@ export default function AsteroidBelt() {
   const belt = useMemo(() => makeBelt(BELT_COUNT, 42), []);
   const trojans = useMemo(() => makeTrojans(TROJAN_COUNT, 1337), []);
 
-  const { geometry, material } = useMemo(() => {
-    let src: THREE.Mesh | undefined;
-    scene.traverse((c) => {
-      if (!src && c instanceof THREE.Mesh && c.name.startsWith("Asteroid1")) src = c;
-    });
-    if (!src) throw new Error("asteroids.glb is missing mesh Asteroid1");
-    // Size-matched stand-in, not the hero mesh: Asteroid1 is 1,244 triangles,
-    // and drawing it 560 times at scale 0.05-0.22 was ~85% of the whole
-    // scene's triangles for detail nobody can see. The hero asteroids
-    // (Asteroids.tsx) keep the real mesh; the belt keeps its material.
-    // Fixed radius rather than measured from the hero mesh: the hero rocks
-    // are authored at radius ~2 to match their colliders, and the belt's
-    // per-instance scales (0.05-0.22) were tuned against a ~1.1u rock.
-    return { geometry: lowPolyRock(BELT_ROCK_RADIUS, 42), material: src.material as THREE.Material };
-  }, [scene]);
+  // The belt's rock (beltRock.ts): an 80-triangle stand-in in the hero Asteroid1's material, shared with the Nest's rocks.
+  const { geometry, material } = useMemo(() => ({ geometry: beltRockGeometry(), material: beltRockMaterial(scene) }), [scene]);
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   return (

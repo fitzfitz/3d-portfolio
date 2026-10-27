@@ -49,7 +49,16 @@ export const HULL_AFTER_BREACH = 60;
 export const FIRE_INTERVAL_S = 0.2;
 export const BOLT_SPEED = 140;
 export const BOLT_RANGE = 160;
-export const AIM_ASSIST_RAD = 12 * DEG;
+
+// ── Lock-on and click assist (spec 2026-10-27-nest-playable §4) ───────────
+/** Held fire locks the nearest live monster within this of the nose (and `BOLT_RANGE`)… */
+export const LOCK_ACQUIRE_RAD = 25 * DEG;
+/** …and keeps it while it stays alive and within this, fire held or not. */
+export const LOCK_HOLD_RAD = 40 * DEG;
+/** A click aims, with lead, at the live monster nearest its camera ray within this. */
+export const CLICK_ASSIST_RAD = 6 * DEG;
+/** The last ship-bolt hits' points, for the sparks (a fixed ring). */
+export const STRIKE_RING = 8;
 
 // ── Monsters ───────────────────────────────────────────────────────────────
 export const SAUCER_HITS = 3;
@@ -83,8 +92,10 @@ export const JET_RADIUS = 2.5;
 export const JET_DPS = 25;
 
 // ── Controller's values (not in the spec) ──────────────────────────────────
-export const SAUCER_HIT_R = 1.8;
-export const TARDIGRADE_HIT_R = 3.5;
+/** The monsters' hit spheres, grown for the player (spec 2026-10-27-nest-playable §4: 1.8 → 2.6, 3.5 → 4.5). */
+export const SAUCER_HIT_R = 2.6;
+export const TARDIGRADE_HIT_R = 4.5;
+/** The ship's own is unchanged, so the monsters' accuracy is too. */
 export const SHIP_HIT_R = 1.4;
 export const BOLT_R = 0.3;
 export const TARDIGRADE_HIT_POSE_S = 0.25;
@@ -93,8 +104,6 @@ export const TARDIGRADE_DEFEAT_S = 4;
 export const LEAVE_S = 2;
 /** Defeated monsters drift at this speed (u/s). */
 export const DEFEAT_DRIFT = 4;
-/** Monsters spawn this far from the centre, on the side away from the ship. */
-export const SPAWN_R = 30;
 /** Facing slew, rad/s. */
 export const SAUCER_TURN_RATE = 3;
 export const TARDIGRADE_TURN_RATE = 1.5;
@@ -112,3 +121,21 @@ export const BOLT_POOL = 48;
 export const NEST_RUMOUR_R = 400;
 /** A breach tow lands this far past the buoy. */
 export const TOW_PAST_BUOY = 8;
+/** …and this far to the side of the buoy's line, so the buoy never stands in front of the Nest (Ruling N3). */
+export const TOW_SIDE = 16;
+
+// ── At home and spawning in front (spec 2026-10-27-nest-playable §2–3) ─────
+/** Waves 2 and 3 (and any wave-1 saucer without a sleeper) spawn within this of the ship's nose… */
+export const SPAWN_CONE_RAD = 50 * DEG;
+/** …this far from the ship (u)… */
+export const SPAWN_DIST: readonly [number, number] = [30, 40];
+/** …pulled in radially to at most this far from the centre, inside the fighting area. */
+export const SPAWN_MAX_R = NEST_LEASH_R - 5;
+/** Sleepers grow in (scale 0 → 1) over this long. */
+export const SLEEP_GROW_S = 1;
+/** Beyond this from the centre the sleepers are dropped at once (C21's frame skip then holds). */
+export const SLEEP_DROP_R = NEST_LOAD_R + 20;
+/** Waking saucers rise at this speed (u/s) through the countdown. */
+export const WAKE_RISE_SPEED = 2;
+/** A woken tardigrade uncurls (curl 1 → 0) over this long, holding still. */
+export const UNCURL_S = 1;

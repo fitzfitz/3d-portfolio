@@ -152,9 +152,10 @@ function budget({ label, tier, lowPerf }) {
 
     // Every jump target in order (probes, then destinations), Escape after
     // each so a docking modal closes: the tour must allocate nothing new.
+    // The Nest is skipped: its on-demand load is budgeted by the combat probe.
     const ids = await page.evaluate(async () => {
       const { JUMP_TARGETS } = await import("/src/data/destinations.ts");
-      return JUMP_TARGETS.map((t) => t.id);
+      return JUMP_TARGETS.map((t) => t.id).filter((id) => id !== "the_nest");
     });
     for (const id of ids) {
       await page.evaluate((i) => window.__fitz.store.getState().requestJump(i), id);

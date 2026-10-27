@@ -2,6 +2,7 @@ import { PORTAL_POS, PORTAL_ZONE_R, PORTAL_LOCK_R, PORTAL_RETAIN_R, PORTAL_ORBIT
 import { STATION_POS, STATION_RADII, CAREER_AMBER } from "./careerTrail";
 import { PROBE_IDS } from "./probes";
 import { SHIPYARD_POS, SHIPYARD_RADII, SHIPYARD_BLUE } from "./shipyard";
+import { NEST_JUMP_ID, NEST_JUMP_LABEL, NEST_RED } from "./nest";
 
 /**
  * Places you can jump to and dock at: the only bodies that dock (planets
@@ -86,13 +87,19 @@ export function escapeR(d: Destination): number {
 
 export interface JumpTarget { id: string; label: string; color: string }
 
-/** Number keys, the spawn card and the d-pad, in order: each project's probe, then every destination. */
+/**
+ * Number keys, the spawn card and the d-pad, in order: each project's probe,
+ * then every destination, then the Nest. The Nest comes last: key 7 with the
+ * bundled three probes, and no number key with six (it is tenth), so copy
+ * never names its key; the sector list and the radar find it (Ruling N1).
+ */
 export const JUMP_TARGETS: readonly JumpTarget[] = [
   ...PROBE_IDS.map((id) => {
     const proj = projectById(id);
     return { id, label: proj?.title ?? id, color: proj?.color ?? "#00ff87" };
   }),
   ...DESTINATIONS.map((d) => ({ id: d.id, label: d.jumpLabel, color: d.color })),
+  { id: NEST_JUMP_ID, label: NEST_JUMP_LABEL, color: NEST_RED },
 ];
 
 /** The number key (1-based) that jumps to `id`; 0 if nothing does. */

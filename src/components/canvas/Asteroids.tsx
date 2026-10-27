@@ -5,8 +5,8 @@ import { useModel } from "../../utils/sceneAssets";
 import { asteroidInstances, ASTEROID_COLLIDERS } from "../../data/asteroids";
 import { setScannable } from "../../utils/scannables";
 import { ambientTime } from "../../utils/ambientTime";
-import { bakeNodeTransform } from "../../utils/bakeNodeTransform";
 import { assetUrl } from "../../utils/assetUrl";
+import { asteroidVariants } from "./asteroidVariants";
 
 const VARIANTS = 4;
 const dummy = new THREE.Object3D();
@@ -21,37 +21,13 @@ export default function Asteroids() {
   const gl = useThree((s) => s.gl);
   const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([null, null, null, null]);
 
-  // Extract each variant's geometry+material. Quantized GLBs store the
-  // dequantization transform on the node matrix — bake it into a geometry
-  // clone so instancing matrices stay pure position/rotation/scale.
-  const variants = useMemo(() => {
-    const found: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
-    for (let v = 0; v < VARIANTS; v++) {
-      let mesh: THREE.Mesh | undefined;
-      scene.traverse((o) => {
-        if (!mesh && o instanceof THREE.Mesh && o.name.startsWith(`Asteroid${v}`)) mesh = o;
-      });
-      if (!mesh) throw new Error(`asteroids.glb is missing mesh Asteroid${v}`);
-      // Float-safe and recentred. The four variants sit side by side in the
-      // GLB (node x up to ±4.5); baking that offset straight into the
-      // quantized [-1, 1] storage clamped every rock into a flat slab, and
-      // even un-clamped it would pivot each rock 4.5u off its collider.
-      const geometry = bakeNodeTransform(mesh, { center: true });
-      const material = (mesh.material as THREE.MeshStandardMaterial).clone();
-      // Slightly glossier than the baked default so tumbling facets catch
-      // the sun — the "glint" is free specular from sharp facet normals.
-      material.roughness = 0.72;
-      material.metalness = 0.15;
-      found.push({ geometry, material });
-    }
-    return found;
-  }, [scene]);
+  // Each variant's geometry and material (asteroidVariants.ts).
+  const variants = useMemo(() => asteroidVariants(scene), [scene]);
 
   useEffect(() => {
     const maxAniso = gl.capabilities.getMaxAnisotropy();
     for (const { material } of variants) {
-      const mat = material as THREE.MeshStandardMaterial;
-      for (const tex of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap]) {
+      for (const tex of [material.map, material.normalMap, material.roughnessMap, material.metalnessMap]) {
         if (tex) { tex.anisotropy = maxAniso; tex.needsUpdate = true; }
       }
     }

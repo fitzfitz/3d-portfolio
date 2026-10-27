@@ -2,20 +2,23 @@ import { describe, it, expect } from "vitest";
 import {
   NEST_ZONE_R, NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, NEST_HAZE_BAND,
   WAVES, WAVES_LOW_PERF, BOLT_SPEED, BOLT_RANGE, ENEMY_BOLT_SPEED, ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE,
-  JET_RANGE, JET_RADIUS, JET_DPS, JET_S, TARDIGRADE_CHARGE_S, AIM_ASSIST_RAD, SAUCER_SPREAD_RAD,
+  JET_RANGE, JET_RADIUS, JET_DPS, JET_S, TARDIGRADE_CHARGE_S, SAUCER_SPREAD_RAD,
   CONTACT_DELAY_S, WAVE_GAP_S, NEST_REST_S, OUT_LIMIT_S,
   HULL_MAX, HULL_REGEN_PER_S, HULL_REGEN_DELAY_S, HULL_AFTER_BREACH, FIRE_INTERVAL_S,
   SAUCER_HITS, TARDIGRADE_HITS, SAUCER_ORBIT, SAUCER_SPEED, SAUCER_ATTACK_EVERY, SAUCER_WARN_S,
   SAUCER_BURST, SAUCER_BURST_GAP_S, SAUCER_HIT_POSE_S, SAUCER_DEFEAT_S,
   TARDIGRADE_SPEED, TARDIGRADE_STANDOFF, TARDIGRADE_ATTACK_EVERY,
   SAUCER_HIT_R, TARDIGRADE_HIT_R, SHIP_HIT_R, BOLT_R, TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S,
-  LEAVE_S, DEFEAT_DRIFT, SPAWN_R, SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S,
+  LEAVE_S, DEFEAT_DRIFT, SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S,
   CLICK_AIM_DEPTH, NOSE_OFFSET, MAX_SAUCERS, MAX_TARDIGRADES, BOLT_POOL, NEST_RUMOUR_R, TOW_PAST_BUOY,
+  SPAWN_CONE_RAD, SPAWN_DIST, SPAWN_MAX_R, SLEEP_GROW_S, SLEEP_DROP_R, WAKE_RISE_SPEED, UNCURL_S,
+  LOCK_ACQUIRE_RAD, LOCK_HOLD_RAD, CLICK_ASSIST_RAD, STRIKE_RING,
 } from "../src/utils/combat/constants";
+import * as constants from "../src/utils/combat/constants";
 import type { AimTarget, V3 } from "../src/utils/combat/types";
 import { createHull, damageHull, regenHull, restoreAfterBreach } from "../src/utils/combat/hull";
 import { advanceBolt, createBoltPool, fireBolt, clearBolts, segmentHitsSphere, type BoltPool } from "../src/utils/combat/bolts";
-import { aimAssist, leadAim, spreadDir, clickAimPoint } from "../src/utils/combat/aim";
+import { acquireLock, clickAssist, leadAim, lockHolds, spreadDir, clickAimPoint } from "../src/utils/combat/aim";
 import { inNestArea, clickUse, beamUse, beamLabel } from "../src/utils/combat/controls";
 import { mulberry32 } from "../src/utils/mulberry32";
 
@@ -36,7 +39,6 @@ describe("constants", () => {
     expect(WAVES_LOW_PERF).toEqual([{ saucers: 2, tardigrades: 0 }, { saucers: 3, tardigrades: 0 }, { saucers: 2, tardigrades: 1 }]);
     expect([BOLT_SPEED, BOLT_RANGE, ENEMY_BOLT_SPEED, ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE]).toEqual([140, 160, 48, 6, 120]);
     expect([JET_RANGE, JET_RADIUS, JET_DPS, JET_S, TARDIGRADE_CHARGE_S]).toEqual([90, 2.5, 25, 1.2, 1.6]);
-    expect(AIM_ASSIST_RAD).toBeCloseTo((12 * Math.PI) / 180, 12);
   });
   it("pins the rest of the spec's table", () => {
     expect([CONTACT_DELAY_S, WAVE_GAP_S, NEST_REST_S, OUT_LIMIT_S]).toEqual([3, 5, 120, 20]);
@@ -52,11 +54,24 @@ describe("constants", () => {
     expect(TARDIGRADE_ATTACK_EVERY).toEqual([6, 8]);
   });
   it("pins the controller's values", () => {
-    expect([SAUCER_HIT_R, TARDIGRADE_HIT_R, SHIP_HIT_R, BOLT_R]).toEqual([1.8, 3.5, 1.4, 0.3]);
-    expect([TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S, LEAVE_S, DEFEAT_DRIFT, SPAWN_R]).toEqual([0.25, 4, 2, 4, 30]);
+    expect([SAUCER_HIT_R, TARDIGRADE_HIT_R, SHIP_HIT_R, BOLT_R]).toEqual([2.6, 4.5, 1.4, 0.3]);
+    expect([TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S, LEAVE_S, DEFEAT_DRIFT]).toEqual([0.25, 4, 2, 4]);
     expect([SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S, CLICK_AIM_DEPTH, NOSE_OFFSET])
       .toEqual([3, 1.5, 0.25, 80, 1.3]);
     expect([MAX_SAUCERS, MAX_TARDIGRADES, BOLT_POOL, NEST_RUMOUR_R, TOW_PAST_BUOY]).toEqual([5, 1, 48, 400, 8]);
+  });
+  it("pins the sleepers' and the front spawn's values (spec 2026-10-27-nest-playable §2–3)", () => {
+    expect([SPAWN_DIST, SPAWN_MAX_R, SLEEP_GROW_S, SLEEP_DROP_R, WAKE_RISE_SPEED, UNCURL_S]).toEqual([[30, 40], 105, 1, 220, 2, 1]);
+    expect(SPAWN_CONE_RAD).toBeCloseTo(50 * Math.PI / 180, 12);
+    expect(SPAWN_MAX_R).toBe(NEST_LEASH_R - 5);
+    expect(SLEEP_DROP_R).toBe(NEST_LOAD_R + 20);
+  });
+  it("pins the lock-on, click assist and strike values (spec 2026-10-27-nest-playable §4)", () => {
+    expect(LOCK_ACQUIRE_RAD).toBeCloseTo(25 * DEG, 12);
+    expect(LOCK_HOLD_RAD).toBeCloseTo(40 * DEG, 12);
+    expect(CLICK_ASSIST_RAD).toBeCloseTo(6 * DEG, 12);
+    expect(STRIKE_RING).toBe(8);
+    expect("AIM_ASSIST_RAD" in constants).toBe(false);
   });
   it("sizes the monster slots for the biggest wave", () => {
     for (const w of [...WAVES, ...WAVES_LOW_PERF]) {
@@ -151,33 +166,39 @@ describe("bolts", () => {
 describe("aim", () => {
   const origin = v(0, 0, 0);
   const nose = v(0, 0, 1);
-  it("aim assist locks the nearest live target inside 12° and 160 u, else flies straight", () => {
-    const out = v(9, 9, 9);
-    const t10 = target(10, 50);
-    expect(aimAssist(origin, nose, [t10], out)).toBe(0);
-    expect(len(out)).toBeCloseTo(1, 12);
-    expect(angle(out, t10)).toBeCloseTo(0, 9);
-
-    expect(aimAssist(origin, nose, [target(13, 50)], out)).toBe(-1);
-    expect(out).toEqual({ x: 0, y: 0, z: 1 });
-    expect(aimAssist(origin, nose, [target(5, 50, false)], out)).toBe(-1);
-    expect(aimAssist(origin, nose, [target(0, 170)], out)).toBe(-1);
-    expect(aimAssist(origin, nose, [], out)).toBe(-1);
-
-    // two in the cone → the nearer one's index; out is unit
-    const ts = [target(13, 20), target(3, 100), target(8, 50), target(1, 30, false)];
-    expect(aimAssist(origin, nose, ts, out)).toBe(2);
-    expect(len(out)).toBeCloseTo(1, 12);
-    expect(angle(out, ts[2])).toBeCloseTo(0, 9);
-  });
-  it("aim assist works from any origin and returns a unit nose when nothing locks", () => {
-    const out = v(0, 0, 0);
+  it("lock-on acquires the nearest live target within 25° of the nose and 160 u, else -1", () => {
+    expect(acquireLock(origin, nose, [target(24, 50)])).toBe(0);
+    expect(acquireLock(origin, nose, [target(26, 50)])).toBe(-1);
+    expect(acquireLock(origin, nose, [target(5, 50, false)])).toBe(-1);
+    expect(acquireLock(origin, nose, [target(0, 170)])).toBe(-1);
+    expect(acquireLock(origin, nose, [])).toBe(-1);
+    // Several in the cone: the nearer one, not the one nearest the nose.
+    expect(acquireLock(origin, nose, [target(26, 20), target(3, 100), target(20, 50), target(1, 30, false)])).toBe(2);
+    // From any origin, with a nose of any length.
     const o = v(10, -5, 3);
-    const rel = target(6, 80);
+    const rel = target(20, 80);
     const t = { ...rel, x: o.x + rel.x, y: o.y + rel.y, z: o.z + rel.z };
-    expect(aimAssist(o, v(0, 0, 4), [t], out)).toBe(0);
-    expect(aimAssist(o, v(0, 4, 0), [t], out)).toBe(-1);
-    expect(out).toEqual({ x: 0, y: 1, z: 0 });
+    expect(acquireLock(o, v(0, 0, 4), [t])).toBe(0);
+    expect(acquireLock(o, v(0, 4, 0), [t])).toBe(-1);
+  });
+  it("a lock holds while the target is alive and within 40° of the nose", () => {
+    expect(lockHolds(origin, nose, target(39, 50))).toBe(true);
+    expect(lockHolds(origin, nose, target(41, 50))).toBe(false);
+    expect(lockHolds(origin, nose, target(5, 50, false))).toBe(false);
+    expect(lockHolds(origin, v(0, 0, 7), target(39, 50))).toBe(true);
+  });
+  it("click assist picks the smallest angle within 6° of the ray, ahead of its origin", () => {
+    // Ray from (0,0,-10) along +Z; the targets are placed relative to the ray's origin.
+    const o = v(0, 0, -10);
+    const d = v(0, 0, 1);
+    const at = (t: AimTarget): AimTarget => ({ ...t, x: t.x + o.x, y: t.y + o.y, z: t.z + o.z });
+    expect(clickAssist(o, d, [at(target(5, 50))])).toBe(0);
+    expect(clickAssist(o, d, [at(target(7, 50))])).toBe(-1);
+    expect(clickAssist(o, d, [at(target(180, 5))])).toBe(-1); // behind the ray's origin
+    expect(clickAssist(o, d, [at(target(5, 20)), at(target(2, 80))])).toBe(1); // the smallest angle, not the nearest
+    expect(clickAssist(o, d, [at(target(1, 50, false))])).toBe(-1);
+    expect(clickAssist(o, v(0, 0, 3), [at(target(5, 50))])).toBe(0); // any ray length
+    expect(clickAssist(o, d, [])).toBe(-1);
   });
   it("lead aim meets a crossing target; falls back to direct when it cannot", () => {
     const out = v(0, 0, 0);

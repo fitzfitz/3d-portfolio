@@ -2,10 +2,12 @@
  * Aiming, allocation-free: every function writes into `out` (which may be one
  * of its inputs) and returns it or an index.
  */
-import { AIM_ASSIST_RAD, BOLT_RANGE, CLICK_AIM_DEPTH } from "./constants";
+import { BOLT_RANGE, CLICK_AIM_DEPTH, CLICK_ASSIST_RAD, LOCK_ACQUIRE_RAD, LOCK_HOLD_RAD } from "./constants";
 import type { AimTarget, V3 } from "./types";
 
-const COS_ASSIST = Math.cos(AIM_ASSIST_RAD);
+const COS_ACQUIRE = Math.cos(LOCK_ACQUIRE_RAD);
+const COS_HOLD = Math.cos(LOCK_HOLD_RAD);
+const COS_CLICK = Math.cos(CLICK_ASSIST_RAD);
 
 function setUnit(out: V3, x: number, y: number, z: number): V3 {
   const l = Math.hypot(x, y, z) || 1;
@@ -13,32 +15,56 @@ function setUnit(out: V3, x: number, y: number, z: number): V3 {
   return out;
 }
 
+/** The cosine of the angle between `dir` (any length) and the line from `origin` to `t`; -2 when `t` sits on the origin. */
+function cosTo(origin: V3, dir: V3, t: V3): number {
+  const dx = t.x - origin.x, dy = t.y - origin.y, dz = t.z - origin.z;
+  const d = Math.hypot(dx, dy, dz);
+  const l = Math.hypot(dir.x, dir.y, dir.z);
+  if (d === 0 || l === 0) return -2;
+  return (dx * dir.x + dy * dir.y + dz * dir.z) / (d * l);
+}
+
 /**
- * Held-fire assist: the nearest live target within `AIM_ASSIST_RAD` of the
- * nose and `BOLT_RANGE` of the origin. Returns its index in `targets` and
- * writes the unit direction to it into `out`; with no lock, returns -1 and
- * `out` is the unit nose. The caller leads the locked target with `leadAim`.
+ * Lock-on, acquiring (held fire only): the nearest live target within
+ * `LOCK_ACQUIRE_RAD` of the nose and `BOLT_RANGE` of the origin. Its index in
+ * `targets`, else -1. The caller leads it with `leadAim`.
  */
-export function aimAssist(origin: V3, nose: V3, targets: readonly AimTarget[], out: V3): number {
-  const nl = Math.hypot(nose.x, nose.y, nose.z) || 1;
-  const nx = nose.x / nl, ny = nose.y / nl, nz = nose.z / nl;
+export function acquireLock(origin: V3, nose: V3, targets: readonly AimTarget[]): number {
   let best = -1;
   let bestD = Infinity;
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i];
     if (!t.alive) continue;
-    const dx = t.x - origin.x, dy = t.y - origin.y, dz = t.z - origin.z;
-    const d = Math.hypot(dx, dy, dz);
-    if (d > BOLT_RANGE || d >= bestD || d === 0) continue;
-    if ((dx * nx + dy * ny + dz * nz) / d < COS_ASSIST) continue;
+    const d = Math.hypot(t.x - origin.x, t.y - origin.y, t.z - origin.z);
+    if (d > BOLT_RANGE || d >= bestD) continue;
+    if (cosTo(origin, nose, t) < COS_ACQUIRE) continue;
     best = i; bestD = d;
   }
-  if (best < 0) {
-    setUnit(out, nx, ny, nz);
-    return -1;
+  return best;
+}
+
+/** Lock-on, holding: the locked target is still alive and within `LOCK_HOLD_RAD` of the nose (fire held or not). */
+export function lockHolds(origin: V3, nose: V3, t: AimTarget): boolean {
+  return t.alive && cosTo(origin, nose, t) >= COS_HOLD;
+}
+
+/**
+ * Click assist: the live target at the smallest angle from the click's
+ * camera ray, within `CLICK_ASSIST_RAD` and ahead of the ray's origin. Its
+ * index in `targets`, else -1 (the shot goes at the click point). Never a lock.
+ */
+export function clickAssist(rayOrigin: V3, rayDir: V3, targets: readonly AimTarget[]): number {
+  let best = -1;
+  let bestCos = COS_CLICK;
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    if (!t.alive) continue;
+    const c = cosTo(rayOrigin, rayDir, t);
+    // c > 0: ahead of the origin (CLICK_ASSIST_RAD < 90°, so the cone test already implies it).
+    if (c < bestCos || c <= 0) continue;
+    if (c === bestCos && best >= 0) continue;
+    best = i; bestCos = c;
   }
-  const t = targets[best];
-  setUnit(out, t.x - origin.x, t.y - origin.y, t.z - origin.z);
   return best;
 }
 

@@ -2,7 +2,7 @@
  * The Nest's HUD rules (spec 2026-10-27-combat "HUD"), pure so they are
  * unit-tested (tests/nestHud.test.ts): the zone-edge haze, the hull-hit
  * flash, the banners, the hull row, the wave line and the radar marker's
- * range. The DOM layers (layout/NestOverlay.tsx, layout/HUDOverlay.tsx,
+ * range and spot. The DOM layers (layout/NestOverlay.tsx, layout/HUDOverlay.tsx,
  * layout/RadarMap.tsx) call these from their rAF loops, so nothing here
  * allocates on a frame: the banner writes into a caller's object and its
  * strings are built once.
@@ -59,6 +59,21 @@ export function flashOpacity(now: number, flashAt: number, reduced: boolean): nu
   const age = now - flashAt;
   if (!(age >= 0 && age < FLASH_S)) return 0;
   return reduced ? FLASH_STATIC : FLASH_PEAK * (1 - age / FLASH_S);
+}
+
+/** How long the HIT marker shows after a strike (s). */
+export const HIT_MARK_S = 0.25;
+
+/**
+ * The HIT marker's opacity: 1 fading to 0 over HIT_MARK_S after a strike, or
+ * a static 1 for HIT_MARK_S under reduced motion (no fade). 0 outside it. A
+ * hair of slack at the end, so `hitAt + 0.25` reads as over whatever the
+ * float rounding of `now − hitAt`.
+ */
+export function hitMarkOpacity(now: number, hitAt: number, reduced: boolean): number {
+  const age = now - hitAt;
+  if (!(age >= 0 && age < HIT_MARK_S - 1e-9)) return 0;
+  return reduced ? 1 : 1 - age / HIT_MARK_S;
 }
 
 export interface NestBannerText { title: string; sub: string }
@@ -120,9 +135,41 @@ export function waveReadout(wave: number, contacts: number): string {
   return wave > 0 ? `WAVE ${wave}/${WAVES.length} · CONTACTS ${contacts}` : "";
 }
 
-/** The radar's Nest marker shows within RADAR_RANGE of the centre (a 3D distance; never rim-clamped). */
+/** The Nest is in radar range within RADAR_RANGE of the centre (a 3D distance). */
 export function nestRadarShown(dx: number, dy: number, dz: number): boolean {
   return Math.hypot(dx, dy, dz) <= RADAR_RANGE;
+}
+
+export interface RadarSpot { px: number; py: number; onRim: boolean }
+
+/**
+ * Where the radar draws the Nest (offsets from the radar's centre, px), from
+ * the ship-to-centre delta. In range (nestRadarShown, 3D) it is scaled as
+ * any blip, unclamped. Beyond, it sits on the rim (rimR − 3, where live
+ * pilots' rim markers sit) along its horizontal direction, even when the
+ * horizontal distance alone is inside the rim; straight above or below it
+ * sits at the centre. Matches worldToRadar's axes (tests/nestHud.test.ts).
+ * Written into `out` (the radar's scratch), no allocation.
+ */
+export function nestRadarSpot(
+  dx: number, dy: number, dz: number, heading: number, scale: number, rimR: number, out: RadarSpot,
+): RadarSpot {
+  // worldToRadar inlined: no object on a frame.
+  const cosA = Math.cos(heading), sinA = Math.sin(heading);
+  const sx = dz * sinA - dx * cosA, up = dx * sinA + dz * cosA;
+  if (nestRadarShown(dx, dy, dz)) {
+    out.px = sx * scale;
+    out.py = -up * scale;
+    out.onRim = false;
+    return out;
+  }
+  const h = Math.hypot(sx, up);
+  out.onRim = true;
+  if (h < 1e-6) { out.px = 0; out.py = 0; return out; }
+  const k = (rimR - 3) / h;
+  out.px = sx * k;
+  out.py = -up * k;
+  return out;
 }
 
 /**

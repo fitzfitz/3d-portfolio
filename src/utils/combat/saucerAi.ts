@@ -1,12 +1,15 @@
 /**
  * The saucer's AI: it circles the ship, warns with a porthole chase, then
- * fires a 3-bolt burst led at the ship. Allocation-free: one module scratch
- * set, monsters are reused objects (`createSaucer` once, `spawnSaucer` per wave).
+ * fires a 3-bolt burst led at the ship. At home it sleeps (`asleep`: not a
+ * target, never fires, only grows in), and the zone crossing wakes it
+ * (`waking`: it rises and turns to the ship until wave 1 spawns it in
+ * place). Allocation-free: one module scratch set, monsters are reused
+ * objects (`createSaucer` once, `spawnSaucer` per wave).
  */
 import {
   ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE, ENEMY_BOLT_SPEED, DEFEAT_DRIFT, SAUCER_ATTACK_EVERY, SAUCER_BURST,
   SAUCER_BURST_GAP_S, SAUCER_DEFEAT_S, SAUCER_HIT_POSE_S, SAUCER_HITS, SAUCER_ORBIT, SAUCER_SPEED,
-  SAUCER_SPREAD_RAD, SAUCER_TURN_RATE, SAUCER_WARN_S,
+  SAUCER_SPREAD_RAD, SAUCER_TURN_RATE, SAUCER_WARN_S, CONTACT_DELAY_S, SLEEP_GROW_S, WAKE_RISE_SPEED,
 } from "./constants";
 import { fireBolt, type BoltPool } from "./bolts";
 import { leadAim, spreadDir } from "./aim";
@@ -16,7 +19,7 @@ import {
 } from "./monsterMotion";
 import type { FightView, NestSink, V3 } from "./types";
 
-export type SaucerPhase = "idle" | "warn" | "burst" | "defeated" | "leaving" | "gone";
+export type SaucerPhase = "asleep" | "waking" | "idle" | "warn" | "burst" | "defeated" | "leaving" | "gone";
 
 export interface Saucer extends MonsterBody {
   /** Tint seed (`saucerTint(seed)`). */
@@ -86,6 +89,28 @@ export function spawnSaucer(s: Saucer, seed: number, x: number, y: number, z: nu
   s.scale = 1;
 }
 
+/**
+ * Parks a sleeping saucer at (x, y, z), facing (fx, fy, fz) (any length): not
+ * alive (no target, no fire), scale 0, growing in over `SLEEP_GROW_S`.
+ */
+export function sleepSaucer(s: Saucer, seed: number, x: number, y: number, z: number, fx: number, fy: number, fz: number): void {
+  s.seed = seed;
+  s.x = x; s.y = y; s.z = z; s.vx = 0; s.vy = 0; s.vz = 0;
+  s.alive = false; s.phase = "asleep"; s.phaseT = 0; s.hp = SAUCER_HITS;
+  s.attackIn = 0; s.shotsLeft = 0; s.shotIn = 0; s.hitT = 0;
+  s.fx = 0; s.fy = 0; s.fz = 1;
+  faceToward(s, fx, fy, fz);
+  s.ax = s.fx; s.ay = s.fy; s.az = s.fz;
+  s.pose.chase = -1; s.pose.fire = 0; s.pose.hit = 0; s.pose.defeat = 0;
+  s.scale = 0;
+}
+
+/** The zone crossing: a sleeping saucer opens its eyes and rises (still not a target). */
+export function wakeSaucer(s: Saucer): void {
+  if (s.phase !== "asleep") return;
+  s.phase = "waking"; s.phaseT = 0;
+}
+
 /** Points the cannon (`a*`) at the lead point from the current muzzle; leaves `_muzzle`, `_lead` set. */
 function aimCannon(s: Saucer, v: FightView, sink: NestSink): void {
   sink.muzzle(s, _muzzle);
@@ -104,6 +129,17 @@ function fireShot(s: Saucer, v: FightView, rnd: () => number, sink: NestSink, bo
 
 export function stepSaucer(s: Saucer, v: FightView, dt: number, rnd: () => number, sink: NestSink, bolts: BoltPool): void {
   if (s.phase === "gone") return;
+  if (s.phase === "asleep" || s.phase === "waking") {
+    s.scale = Math.min(1, s.scale + dt / SLEEP_GROW_S);
+    if (s.phase === "asleep") return;
+    // Waking: straight up for at most the countdown's length (a held countdown hovers), turning to the ship.
+    const rise = Math.max(0, Math.min(dt, CONTACT_DELAY_S - s.phaseT));
+    s.phaseT += dt;
+    s.vx = 0; s.vy = rise > 0 ? WAKE_RISE_SPEED : 0; s.vz = 0;
+    s.y += WAKE_RISE_SPEED * rise;
+    slewFacing(s, v.ship.x - s.x, v.ship.y - s.y, v.ship.z - s.z, SAUCER_TURN_RATE * dt);
+    return;
+  }
   s.phaseT += dt;
   s.pose.hit = flinch(s, dt, SAUCER_HIT_POSE_S);
   s.pose.fire = Math.max(0, s.pose.fire - dt / FIRE_EASE_S);
@@ -174,9 +210,12 @@ export function hitSaucer(s: Saucer): boolean {
   return true;
 }
 
-/** The fight ended: a live saucer shrinks away over `LEAVE_S`. A defeated one finishes its own fade. */
+/**
+ * The fight ended (or the sleepers are dismissed): a live, sleeping or waking
+ * saucer shrinks away over `LEAVE_S`. A defeated one finishes its own fade.
+ */
 export function leaveSaucer(s: Saucer): void {
-  if (!s.alive) return;
+  if (!s.alive && s.phase !== "asleep" && s.phase !== "waking") return;
   s.phase = "leaving";
   startFade(s);
   s.pose.chase = -1;

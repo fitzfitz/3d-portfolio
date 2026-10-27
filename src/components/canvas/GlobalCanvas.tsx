@@ -348,11 +348,16 @@ function FollowingClickPlane({ onSpawn }: { onSpawn: (p: THREE.Vector3) => void 
         // landed on the canvas itself is a click into the void.
         if (!(e.nativeEvent.target instanceof HTMLCanvasElement)) return;
         // In the Nest's fighting area a click fires the plasma gun at the
-        // point 80 u past the ship on the camera ray (NestDirector takes it);
+        // point 80 u past the ship on the camera ray, or at a monster within
+        // 6° of that ray (NestDirector takes it);
         // elsewhere it makes a plasma spark, as always.
         if (clickUse(combat.inArea) === "fire") {
-          clickAimPoint(e.ray.origin, e.ray.direction, flight, combat.click);
-          combat.click.pending = true;
+          const k = combat.click, o = e.ray.origin, d = e.ray.direction;
+          clickAimPoint(o, d, flight, k);
+          // The ray too: the click assist aims at a monster within 6° of it.
+          k.ox = o.x; k.oy = o.y; k.oz = o.z;
+          k.dx = d.x; k.dy = d.y; k.dz = d.z;
+          k.pending = true;
           return;
         }
         if (e.point) onSpawn(e.point.clone());

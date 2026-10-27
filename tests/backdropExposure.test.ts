@@ -17,14 +17,18 @@ const src = (...p: string[]) => readFileSync(join("src", ...p), "utf8");
 describe("the backdrop follows a power-1.5 curve from 1 AU out (L19, L22)", () => {
   it("is the exposure's growth beyond the power-1.5 curve, undone", () => {
     expect(BACKDROP_EXPOSURE_POWER).toBe(1.5);
-    // Up to where the net gain reaches BACKDROP_NET_MAX (~365 u under the 1.5 lift; the old 480 u edge without it).
-    for (const d of [AU, 150, 185, 242, 300, 360]) {
+    // Up to where the net gain reaches BACKDROP_NET_MAX (≈ 148 u).
+    for (const d of [AU, 130, 140, 148]) {
       expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(EXPOSURE_LIFT * (d / AU) ** BACKDROP_EXPOSURE_POWER, 9);
     }
   });
-  it("caps the net backdrop gain at the old edge's value, non-decreasing out to the 3,600 u edge", () => {
-    expect(BACKDROP_NET_MAX).toBe(8.5);
-    expect((480 / AU) ** BACKDROP_EXPOSURE_POWER).toBeCloseTo(BACKDROP_NET_MAX, 1);
+  it("caps the net backdrop gain a little above its 1 AU value, non-decreasing out to the 3,600 u edge", () => {
+    // L19: the camera may lift the unlit sky a little, not 5× (spec 2026-10-27-nest-playable §5).
+    expect(BACKDROP_NET_MAX).toBe(2.2);
+    expect(AU * (BACKDROP_NET_MAX / EXPOSURE_LIFT) ** (1 / BACKDROP_EXPOSURE_POWER)).toBeCloseTo(148.4, 0);
+    for (const d of [3.5 * AU, 13 * AU, SYSTEM_RADIUS]) {
+      expect(backdropScale(d) * targetExposure(d), `d=${d}`).toBeCloseTo(2.2, 9);
+    }
     let prev = 0;
     for (let d = AU; d <= SYSTEM_RADIUS; d += 7) {
       const net = backdropScale(d) * targetExposure(d);

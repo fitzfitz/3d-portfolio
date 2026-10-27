@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, combat } from "../../store/spaceStore";
 import { shipTeleport } from "../../store/shipTeleport";
-import { NEST_CENTRE } from "../../data/nest";
+import { NEST_CENTRE, NEST_SLEEPERS } from "../../data/nest";
 import { soundManager } from "../../audio/soundManager";
 import { fitzDebug } from "../../debug/bridge";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
@@ -13,8 +13,9 @@ import {
   applyNestEvents, createShipTrack, maybeRumour, noseFrom, takeClick, trackShip, type NestEffects,
 } from "../../utils/combat/director";
 import { nestPaused } from "../../utils/combat/nestRadio";
+import { nestScreen, nestScreenActive, updateNestScreen } from "../../utils/combat/nestScreen";
 import { saucerMuzzleWorld, tardigradeMouthWorld } from "../../utils/combat/monsterFrame";
-import type { NestSink, V3 } from "../../utils/combat/types";
+import type { ClickShot, NestSink, V3 } from "../../utils/combat/types";
 // The rig types only (Ruling C16): the renderer and its materials load on demand (nest/NestGate.tsx).
 import type { SaucerRig, TardigradeRig } from "../../utils/monsters/monsterRig";
 import saucerRigJson from "../../data/saucerRig.json";
@@ -30,14 +31,17 @@ const SINK: NestSink = {
 };
 
 const CENTRE: V3 = { x: NEST_CENTRE[0], y: NEST_CENTRE[1], z: NEST_CENTRE[2] };
+/** Where wave 1's saucers sleep, from the centre (built once). */
+const SLEEPERS: readonly V3[] = NEST_SLEEPERS.map(([x, y, z]) => ({ x, y, z }));
 
 // ── Reused every frame (the loop allocates nothing) ────────────────────────
 const ev = createNestEvents();
 const track = createShipTrack();
-const clickAim: V3 = { x: 0, y: 0, z: 0 };
+const clickAim: ClickShot = { x: 0, y: 0, z: 0, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 };
 const inp: NestInput = {
   ship: { x: flight.x, y: flight.y, z: flight.z }, shipVel: { x: 0, y: 0, z: 0 }, nose: { x: 0, y: 0, z: 1 },
   centre: CENTRE, racing: false, paused: false, lowPerf: false, warm: false, fireHeld: false, click: null,
+  sleepers: SLEEPERS,
 };
 /** The rumour plays once per page visit. */
 const rumour = { told: false };
@@ -90,7 +94,7 @@ export default function NestDirector() {
     return () => { fitzDebug.nest = null; };
   }, []);
 
-  useFrame((_, delta) => {
+  useFrame(({ camera, size }, delta) => {
     const s = useSpaceStore.getState();
     // Spaceship moved the ship by the same clamped step.
     const dt = Math.min(delta, 0.05);
@@ -106,7 +110,17 @@ export default function NestDirector() {
     inp.click = takeClick(combat, clickAim, inp.paused, dt);
     stepNest(combat.nest, inp, dt, Math.random, SINK, ev);
     const nowMs = Date.now();
-    applyNestEvents(combat, ev, FX, performance.now() / 1000, nowMs);
+    const now = performance.now() / 1000;
+    applyNestEvents(combat, ev, FX, now, nowMs);
+    // The HUD's reticle, HIT and edge arrows (NestOverlay reads them). The
+    // camera was placed this frame (Spaceship): bring its inverse up to date
+    // first, or the reticle trails the monster by a frame. When the screen
+    // state is inactive (nestScreenActive, the same test updateNestScreen
+    // early-outs on) it projects nothing, and the matrix update is skipped.
+    const n = combat.nest;
+    if (nestScreenActive(n, nestScreen)) camera.updateMatrixWorld();
+    updateNestScreen(n, camera.matrixWorldInverse.elements, camera.projectionMatrix.elements,
+      size.width, size.height, now, nestScreen);
 
     const dist = Math.hypot(flight.x - CENTRE.x, flight.y - CENTRE.y, flight.z - CENTRE.z);
     const last = s.broadcast;

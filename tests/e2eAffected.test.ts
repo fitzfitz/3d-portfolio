@@ -36,12 +36,13 @@ describe("e2e affected-probe selection", () => {
   it("runs the combat probe and the budgets for the monsters the game now draws", () => {
     for (const f of ["src/utils/monsters/saucerMaterial.ts", "src/data/saucerRig.json", "public/models-ondemand/saucer.glb", "public/models-ondemand/tardigrade.glb"]) {
       const picked = affectedProbes([f]);
-      for (const p of ["monsterlab", "combat", "programs", "memory", "perf", "transition", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
+      for (const p of ["monsterlab", "combat", "programs", "memory", "perf", "transition", "look", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
     }
   });
 
   it("runs the combat probe for the Nest's canvas, rules, data and HUD", () => {
-    for (const f of ["src/components/canvas/nest/NestMonsters.tsx", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) {
+    for (const f of ["src/components/canvas/nest/NestMonsters.tsx", "src/components/canvas/nest/NestCluster.tsx", "src/components/canvas/NestDirector.tsx",
+      "src/data/nest.ts", "src/data/nestRocks.ts"]) {
       const picked = affectedProbes([f]);
       expect(picked, f).toContain("combat");
       expect(picked, f).toContain("programs");
@@ -52,6 +53,15 @@ describe("e2e affected-probe selection", () => {
     expect(affectedProbes(["src/components/layout/NestOverlay.tsx"])).toEqual(["smoke", "reducedmotion", "combat"]);
   });
 
+  it("runs the combat probe with the belt's rock, which the Nest's rocks reuse", () => {
+    for (const f of ["src/components/canvas/AsteroidBelt.tsx", "src/components/canvas/beltRock.ts"]) {
+      const picked = affectedProbes([f]);
+      for (const p of ["combat", "mechanics", "gameplay", "programs", "smoke"]) expect(picked, `${f}: ${p}`).toContain(p);
+      expect(picked, f).not.toEqual(ALL);
+    }
+    expect(affectedProbes(["src/data/nestRocks.ts"])).toContain("reactions");
+  });
+
   it("runs the idle-allocation probe for the Nest's per-frame code (C28)", () => {
     for (const f of ["src/utils/combat/nest.ts", "src/utils/combat/effects.ts", "src/utils/combat/renderPose.ts", "src/utils/combat/monsterFrame.ts"]) {
       expect(affectedProbes([f]), f).toContain("memory");
@@ -60,7 +70,7 @@ describe("e2e affected-probe selection", () => {
 
   it("runs the budget probes with a canvas change, and nothing for docs", () => {
     const wake = affectedProbes(["src/components/canvas/EngineWake.tsx"]);
-    for (const p of ["programs", "memory", "perf", "transition", "events"]) expect(wake).toContain(p);
+    for (const p of ["programs", "memory", "perf", "transition", "look", "events"]) expect(wake).toContain(p);
     expect(affectedProbes(["docs/PERF-BUDGETS.md", "tests/changelog.test.ts"])).toEqual([]);
   });
 });

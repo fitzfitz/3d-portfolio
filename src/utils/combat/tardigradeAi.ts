@@ -1,11 +1,14 @@
 /**
  * The tardigrade's AI: it swims to 40 u from the ship, always turning to
  * face it, charges for 1.6 s, then fires a plasma jet for 1.2 s along the
- * line it faced when the charge ended. Allocation-free.
+ * line it faced when the charge ended. At home it sleeps curled in its tun
+ * (`asleep`: not a target, only grows in) until wave 3 wakes it, alive at
+ * once, holding still while it uncurls over `UNCURL_S`. Allocation-free.
  */
 import {
   DEFEAT_DRIFT, JET_RADIUS, JET_RANGE, JET_S, TARDIGRADE_ATTACK_EVERY, TARDIGRADE_CHARGE_S, TARDIGRADE_DEFEAT_S,
   TARDIGRADE_HIT_POSE_S, TARDIGRADE_HITS, TARDIGRADE_SPEED, TARDIGRADE_STANDOFF, TARDIGRADE_TURN_RATE,
+  SLEEP_GROW_S, UNCURL_S,
 } from "./constants";
 import {
   T_EPS, driftHome, faceToward, flinch, moveLeashed, roll, slewFacing, startFade, steer, stepFade, takeHit,
@@ -13,7 +16,7 @@ import {
 } from "./monsterMotion";
 import type { FightView, NestSink, V3 } from "./types";
 
-export type TardigradePhase = "swim" | "charge" | "jet" | "defeated" | "leaving" | "gone";
+export type TardigradePhase = "asleep" | "swim" | "charge" | "jet" | "defeated" | "leaving" | "gone";
 
 export interface Tardigrade extends MonsterBody {
   phase: TardigradePhase; phaseT: number; hp: number;
@@ -64,6 +67,36 @@ export function spawnTardigrade(t: Tardigrade, x: number, y: number, z: number, 
   t.scale = 1;
 }
 
+/**
+ * Parks a sleeping tardigrade at (x, y, z), facing (fx, fy, fz) (any length),
+ * curled (curl 1): not alive (no target, no attack), scale 0, growing in over `SLEEP_GROW_S`.
+ */
+export function sleepTardigrade(t: Tardigrade, x: number, y: number, z: number, fx: number, fy: number, fz: number): void {
+  t.x = x; t.y = y; t.z = z; t.vx = 0; t.vy = 0; t.vz = 0;
+  t.alive = false; t.phase = "asleep"; t.phaseT = 0; t.hp = TARDIGRADE_HITS;
+  t.attackIn = 0; t.hitT = 0;
+  t.fx = 0; t.fy = 0; t.fz = 1;
+  faceToward(t, fx, fy, fz);
+  t.jx = x; t.jy = y; t.jz = z; t.jdx = t.fx; t.jdy = t.fy; t.jdz = t.fz;
+  t.pose.swim = 0; t.pose.charge = 0; t.pose.recoil = 0; t.pose.hit = 0; t.pose.curl = 1;
+  t.scale = 0;
+}
+
+/**
+ * Wave 3 wakes the sleeper in place: alive (a target) from the start of the
+ * uncurl, swimming once `curl` reaches 0. Still a ball, it turns to face the
+ * ship at once (the tun hides the turn).
+ */
+export function wakeTardigrade(t: Tardigrade, rnd: () => number, ship: V3): void {
+  t.alive = true; t.phase = "swim"; t.phaseT = 0; t.hp = TARDIGRADE_HITS;
+  t.vx = 0; t.vy = 0; t.vz = 0;
+  t.attackIn = roll(TARDIGRADE_ATTACK_EVERY, rnd);
+  t.hitT = 0;
+  faceToward(t, ship.x - t.x, ship.y - t.y, ship.z - t.z);
+  t.jx = t.x; t.jy = t.y; t.jz = t.z; t.jdx = t.fx; t.jdy = t.fy; t.jdz = t.fz;
+  t.scale = 1;
+}
+
 function backToSwim(t: Tardigrade, rnd: () => number): void {
   t.phase = "swim"; t.phaseT = 0;
   t.attackIn = roll(TARDIGRADE_ATTACK_EVERY, rnd);
@@ -71,6 +104,10 @@ function backToSwim(t: Tardigrade, rnd: () => number): void {
 
 export function stepTardigrade(t: Tardigrade, v: FightView, dt: number, rnd: () => number, sink: NestSink): void {
   if (t.phase === "gone") return;
+  if (t.phase === "asleep") {
+    t.scale = Math.min(1, t.scale + dt / SLEEP_GROW_S);
+    return;
+  }
   t.phaseT += dt;
   t.pose.hit = flinch(t, dt, TARDIGRADE_HIT_POSE_S);
 
@@ -86,6 +123,16 @@ export function stepTardigrade(t: Tardigrade, v: FightView, dt: number, rnd: () 
   if (!v.shipIn && (t.phase === "charge" || t.phase === "jet")) backToSwim(t, rnd);
 
   const ship = v.ship;
+  if (t.phase === "swim" && t.pose.curl > 0) {
+    // Just woken: hold still and uncurl; no swimming, no attack clock.
+    t.pose.curl -= dt / UNCURL_S;
+    if (t.pose.curl <= T_EPS) t.pose.curl = 0;
+    t.vx = 0; t.vy = 0; t.vz = 0;
+    t.pose.swim = 0;
+    easeOut(t, dt);
+    slewFacing(t, ship.x - t.x, ship.y - t.y, ship.z - t.z, TARDIGRADE_TURN_RATE * dt);
+    return;
+  }
   if (t.phase === "jet") {
     // Held still while it fires, so the jet stays on the mouth.
     t.vx = 0; t.vy = 0; t.vz = 0;
@@ -142,9 +189,12 @@ export function hitTardigrade(t: Tardigrade): boolean {
   return true;
 }
 
-/** The fight ended: a live tardigrade shrinks away over `LEAVE_S`. A defeated one finishes its own fade. */
+/**
+ * The fight ended (or the sleepers are dismissed): a live or sleeping
+ * tardigrade shrinks away over `LEAVE_S`. A defeated one finishes its own fade.
+ */
 export function leaveTardigrade(t: Tardigrade): void {
-  if (!t.alive) return;
+  if (!t.alive && t.phase !== "asleep") return;
   t.phase = "leaving";
   startFade(t);
 }

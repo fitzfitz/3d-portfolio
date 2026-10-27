@@ -7,7 +7,7 @@
 import { NEST_BREACH_LINE, NEST_CLEARED_LINE, NEST_RUMOUR_LINE } from "../../data/chatterLines";
 import { contactCount, resetNestEvents, type NestEvents, type NestState } from "./nest";
 import { rumourDue } from "./nestRadio";
-import type { V3 } from "./types";
+import type { ClickShot, V3 } from "./types";
 
 /** The parts of store/combatState.ts's `combat` the director reads and writes. */
 export interface NestCombat {
@@ -15,7 +15,8 @@ export interface NestCombat {
   inArea: boolean;
   hits: number;
   towRequest: boolean;
-  click: { pending: boolean; x: number; y: number; z: number };
+  /** A click's aim point and camera ray, pending until the director takes it. */
+  click: { pending: boolean } & ClickShot;
   warm: boolean;
   enteredAt: number;
   flashAt: number;
@@ -112,19 +113,22 @@ export function noseFrom(heading: number, pitch: number, out: V3): V3 {
 }
 
 /**
- * A pending click's aim point into `out` (consumed), else null. A click
+ * A pending click (its aim point and camera ray) into `out` (consumed), else null. A click
  * while the fight is paused is dropped (`paused`). One inside the fire
  * cooldown stays pending, as the one queued click (a later click only moves
  * its aim), and is taken on the step whose cooldown ends (stepNest counts
  * `fireIn` down by `dt` before it fires), so a fast clicker loses no shot
  * (Ruling C18).
  */
-export function takeClick(c: NestCombat, out: V3, paused = false, dt = 0): V3 | null {
-  if (!c.click.pending) return null;
-  if (paused) { c.click.pending = false; return null; }
+export function takeClick(c: NestCombat, out: ClickShot, paused = false, dt = 0): ClickShot | null {
+  const k = c.click;
+  if (!k.pending) return null;
+  if (paused) { k.pending = false; return null; }
   if (c.nest.fireIn - dt > 1e-9) return null;
-  c.click.pending = false;
-  out.x = c.click.x; out.y = c.click.y; out.z = c.click.z;
+  k.pending = false;
+  out.x = k.x; out.y = k.y; out.z = k.z;
+  out.ox = k.ox; out.oy = k.oy; out.oz = k.oz;
+  out.dx = k.dx; out.dy = k.dy; out.dz = k.dz;
   return out;
 }
 

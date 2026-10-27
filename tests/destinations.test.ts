@@ -12,6 +12,10 @@ import { recruiterWaypoint } from "../src/utils/recruiterWaypoint";
 import { PORTAL_POS, PORTAL_LOCK_R, projects } from "../src/constants";
 import { PROBE_IDS } from "../src/data/probes";
 import { probePos } from "../src/store/probeState";
+import { useSpaceStore } from "../src/store/spaceStore";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { NEST_JUMP_ID, NEST_JUMP_LABEL, NEST_RED, NEST_SCAN_ID } from "../src/data/nest";
 
 const dist3 = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
@@ -47,8 +51,8 @@ describe("destination table", () => {
 });
 
 describe("jump order", () => {
-  it("is every probe in project order, then every destination in table order", () => {
-    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id)]);
+  it("is every probe in project order, then every destination in table order, then the Nest", () => {
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, ...DESTINATIONS.map((d) => d.id), "the_nest"]);
     PROBE_IDS.forEach((id, i) => {
       const proj = projects.find((p) => p.id === id)!;
       expect(JUMP_TARGETS[i]).toMatchObject({ id, label: proj.title, color: proj.color });
@@ -56,6 +60,37 @@ describe("jump order", () => {
     for (const d of DESTINATIONS) {
       expect(JUMP_TARGETS.find((t) => t.id === d.id)).toMatchObject({ label: d.jumpLabel, color: d.color });
     }
+  });
+});
+
+describe("the Nest jump target (spec 2026-10-27-nest-playable §1)", () => {
+  it("is the last row: id the_nest, label The Nest, the Nest's red", () => {
+    expect(NEST_JUMP_ID).toBe(NEST_SCAN_ID);
+    expect(NEST_JUMP_ID).toBe("the_nest");
+    expect(NEST_JUMP_LABEL).toBe("The Nest");
+    expect(JUMP_TARGETS.at(-1)).toEqual({ id: "the_nest", label: "The Nest", color: "#ff3b4a" });
+    expect(NEST_RED).toBe("#ff3b4a");
+  });
+
+  it("keeps every jump id unique", () => {
+    expect(new Set(JUMP_TARGETS.map((t) => t.id)).size).toBe(JUMP_TARGETS.length);
+  });
+
+  it("is not a destination: no dock, zone, lock or waypoint", () => {
+    expect(destinationById(NEST_JUMP_ID)).toBeUndefined();
+    expect(RESERVED_ZONE_IDS).not.toContain(NEST_JUMP_ID);
+  });
+
+  it("is accepted by requestJump", () => {
+    useSpaceStore.setState({ jumpRequest: null });
+    useSpaceStore.getState().requestJump("the_nest");
+    expect(useSpaceStore.getState().jumpRequest?.id).toBe("the_nest");
+    useSpaceStore.setState({ jumpRequest: null });
+  });
+
+  it("lands where the breach tow does (Spaceship)", () => {
+    const s = readFileSync(join(process.cwd(), "src/components/canvas/Spaceship.tsx"), "utf8");
+    expect(s).toMatch(/NEST_JUMP_ID[\s\S]*NEST_TOW_POSE/);
   });
 });
 
@@ -98,8 +133,9 @@ describe("shipyard row", () => {
 });
 
 describe("jump keys", () => {
-  it("are probes 1-3, career 4, shipyard 5, contact 6", () => {
-    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, "career", "shipyard", "contact"]);
+  it("are probes 1-3, career 4, shipyard 5, contact 6, the Nest 7", () => {
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual([...PROBE_IDS, "career", "shipyard", "contact", "the_nest"]);
+    expect(jumpKey(NEST_JUMP_ID)).toBe(7);
     expect(jumpKey("career")).toBe(4);
     expect(jumpKey("shipyard")).toBe(5);
     expect(jumpKey("contact")).toBe(6);
@@ -135,9 +171,9 @@ describe("career station row", () => {
  * portal) is unchanged by the bodies: no jump key, no waypoint, no zone.
  */
 describe("the bodies stay off the recruiter path", () => {
-  it("JUMP_TARGETS names no body, and keys 1-6 map exactly as before", () => {
+  it("JUMP_TARGETS names no body, keys 1-6 map exactly as before, and the Nest is 7", () => {
     for (const t of JUMP_TARGETS) expect(isBodyId(t.id), t.id).toBe(false);
-    expect(JUMP_TARGETS.map((t) => t.id)).toEqual(["ruangrapi", "portfolio", "fuxx", "career", "shipyard", "contact"]);
+    expect(JUMP_TARGETS.map((t) => t.id)).toEqual(["ruangrapi", "portfolio", "fuxx", "career", "shipyard", "contact", "the_nest"]);
     for (const id of BODY_IDS) expect(jumpKey(id)).toBe(0);
   });
 

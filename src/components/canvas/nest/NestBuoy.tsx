@@ -7,6 +7,7 @@ import { bakeNodeTransform } from "../../../utils/bakeNodeTransform";
 import { setScannable, removeScannable } from "../../../utils/scannables";
 import { useSpaceStore } from "../../../store/spaceStore";
 import { NEST_BUOY_POS, NEST_LABEL, NEST_RED, NEST_SCAN_ID } from "../../../data/nest";
+import { glowScale } from "../../../utils/sunLight";
 
 /** As the career buoys (CareerTrail BUOY_SCALE): the model is ~3.3 tall. */
 const NEST_BUOY_SCALE = 1.8;
@@ -64,12 +65,14 @@ export default function NestBuoy() {
   }, []);
 
   useFrame((state) => {
+    // × glowScale: the warning light is self-lit, so it holds its 1 AU glow far out.
+    const g = glowScale.value;
     if (useSpaceStore.getState().reducedMotion) {
-      material.emissiveIntensity = BLINK_STEADY;
+      material.emissiveIntensity = BLINK_STEADY * g;
       return;
     }
     const phase = state.clock.getElapsedTime() % 1;
-    material.emissiveIntensity = phase < BLINK_ON ? BLINK_HIGH : BLINK_LOW;
+    material.emissiveIntensity = (phase < BLINK_ON ? BLINK_HIGH : BLINK_LOW) * g;
   });
 
   return <instancedMesh name="NestBuoy" ref={meshRef} args={[geometry, material, 1]} />;

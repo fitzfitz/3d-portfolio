@@ -28,6 +28,7 @@ import { guideOfferBlocked, nestKeepOut } from "../../utils/jellyNest";
 import { fitzDebug, type JellyGuideDebug } from "../../debug/bridge";
 import { soundManager } from "../../audio/soundManager";
 import { LOG_DEPTH_FRAG, LOG_DEPTH_FRAG_PARS, LOG_DEPTH_VERT, LOG_DEPTH_VERT_PARS } from "./logDepth";
+import { glowScaleUnmapped } from "../../utils/sunLight";
 
 /**
  * Full streak: the tentacles stretch by this much per unit of depth, so the
@@ -109,6 +110,7 @@ const vertexShader = /* glsl */ `
 
 const fragmentShader = /* glsl */ `
   uniform float uTime;
+  uniform float uGlow;  // glowScaleUnmapped: bioluminescence holds its 1 AU brightness far out
   varying float vY;
   varying vec3 vNormal;
   varying vec3 vViewDir;
@@ -136,7 +138,7 @@ const fragmentShader = /* glsl */ `
     // fading toward the tips.
     float tipFade = 1.0 - smoothstep(1.2, 4.2, -vY);
     float tentAlpha = (0.34 + ring * 0.22) * tipFade;
-    gl_FragColor = vec4(col + ring * vec3(0.5, 0.9, 1.0) * 0.4, mix(tentAlpha, bellAlpha, bellMask));
+    gl_FragColor = vec4((col + ring * vec3(0.5, 0.9, 1.0) * 0.4) * uGlow, mix(tentAlpha, bellAlpha, bellMask));
   }
 `;
 
@@ -250,7 +252,8 @@ export default function SpaceJellyfish() {
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uSwim: { value: 0 }, uBeat: { value: 0 }, uStreak: { value: 0 } },
+        // uGlow is the shared object itself (sunLight.ts), written once a frame.
+        uniforms: { uTime: { value: 0 }, uSwim: { value: 0 }, uBeat: { value: 0 }, uStreak: { value: 0 }, uGlow: glowScaleUnmapped },
         vertexShader,
         fragmentShader,
         transparent: true,

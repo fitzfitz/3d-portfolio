@@ -4,9 +4,24 @@
  * allocation-free: the pools are built once in `createNest` and reused, and
  * every vector is module scratch.
  *
- * Phases: ready → (inward crossing of the 70 u zone) countdown → (3 s, warm)
- * fighting ⇄ gap (5 s after the last defeat) → (wave 3 cleared) rest → (2 min)
- * ready. A breach or 20 s out of the fighting area ends the fight (ready).
+ * Phases: ready → (inward crossing of the 70 u zone) countdown → (3 s, warm,
+ * the ship in the fighting area) fighting ⇄ gap (5 s after the last defeat) →
+ * (wave 3 cleared) rest → (2 min) ready. A breach or 20 s out of the fighting
+ * area ends the fight (ready).
+ *
+ * At home (spec 2026-10-27-nest-playable §2): while ready, warm and within
+ * `NEST_LOAD_R`, once every slot is gone, wave 1's saucers sleep at the
+ * sleeper offsets and the tardigrade at the centre; they are dropped beyond
+ * `SLEEP_DROP_R`. Sleepers are never alive: no target, no attack, no
+ * contact. The crossing wakes the saucers, wave 1 takes them in place, and
+ * wave 3 wakes the tardigrade; every other spawn is in front of the ship
+ * (`frontSpawn`), never within `SPAWN_MIN_SHIP` of the ship.
+ *
+ * Shooting (§4): held fire locks the nearest live monster within 25° of the
+ * nose and keeps it while it is alive and within 40°, in the area and in a
+ * fight (`lock`); held shots lead it, else go down the nose. A click leads
+ * the monster within 6° of its camera ray, else goes at the click point, and
+ * never locks. Every ship-bolt hit writes its point into the `strikes` ring.
  *
  * Events are written into a caller's `NestEvents` and never cleared here: the
  * caller reads them after `stepNest` and then calls `resetNestEvents` (so the
@@ -14,19 +29,26 @@
  */
 import {
   BOLT_POOL, BOLT_R, BOLT_RANGE, BOLT_SPEED, CONTACT_DELAY_S, FIRE_INTERVAL_S, HIT_FEEDBACK_MIN_S, JET_DPS,
-  MAX_SAUCERS, MAX_TARDIGRADES, NEST_REST_S, NEST_ZONE_R, NOSE_OFFSET, OUT_LIMIT_S, SAUCER_HIT_R, SHIP_HIT_R,
-  SPAWN_R, TARDIGRADE_HIT_R, WAVE_GAP_S, WAVES, WAVES_LOW_PERF,
+  MAX_SAUCERS, MAX_TARDIGRADES, NEST_LOAD_R, NEST_REST_S, NEST_ZONE_R, NOSE_OFFSET, OUT_LIMIT_S, SAUCER_HIT_R,
+  SHIP_HIT_R, SLEEP_DROP_R, SPAWN_CONE_RAD, SPAWN_DIST, SPAWN_MAX_R, STRIKE_RING, TARDIGRADE_HIT_R, WAVE_GAP_S,
+  WAVES, WAVES_LOW_PERF,
 } from "./constants";
-import { advanceBolt, clearBolts, createBoltPool, fireBolt, segmentHitsSphere, type BoltPool } from "./bolts";
+import { advanceBolt, clearBolts, createBoltPool, fireBolt, segmentHitsSphere, type Bolt, type BoltPool } from "./bolts";
 import { createHull, damageHull, regenHull, restoreAfterBreach, type Hull } from "./hull";
-import { aimAssist, leadAim } from "./aim";
+import { acquireLock, clickAssist, leadAim, lockHolds, spreadDir } from "./aim";
 import { inNestArea } from "./controls";
-import { T_EPS, faceToward, type MonsterBody } from "./monsterMotion";
-import { createSaucer, hitSaucer, leaveSaucer, spawnSaucer, stepSaucer, type Saucer } from "./saucerAi";
+import { T_EPS, faceToward, roll, type MonsterBody } from "./monsterMotion";
 import {
-  createTardigrade, hitTardigrade, jetHit, leaveTardigrade, spawnTardigrade, stepTardigrade, type Tardigrade,
+  createSaucer, hitSaucer, leaveSaucer, sleepSaucer, spawnSaucer, stepSaucer, wakeSaucer, type Saucer,
+} from "./saucerAi";
+import {
+  createTardigrade, hitTardigrade, jetHit, leaveTardigrade, sleepTardigrade, spawnTardigrade, stepTardigrade,
+  wakeTardigrade, type Tardigrade,
 } from "./tardigradeAi";
-import type { AimTarget, FightView, NestSink, V3 } from "./types";
+import type { AimTarget, ClickShot, FightView, NestSink, V3 } from "./types";
+
+/** A front spawn is never closer than this to the ship (Ruling N5: no point-blank pop-ins). */
+export const SPAWN_MIN_SHIP = 20;
 
 export type NestPhase = "ready" | "countdown" | "fighting" | "gap" | "rest";
 
@@ -57,8 +79,16 @@ export interface NestState {
   tardigrades: Tardigrade[];
   /** `BOLT_POOL` reused bolts, the ship's and the monsters'. */
   bolts: BoltPool;
-  /** Every monster, saucers then tardigrades, for the aim assist (built once; Ruling C2). */
+  /** Every monster, saucers then tardigrades, for the lock-on and click assist (built once; Ruling C2). */
   targets: AimTarget[];
+  /** The locked monster: an index into `targets`, -1 for none. */
+  lock: number;
+  /** `STRIKE_RING` reused points: where the latest ship bolts hit. */
+  strikes: V3[];
+  /** Hits so far; the latest is `strikes[(strikeSeq - 1) % STRIKE_RING]`. */
+  strikeSeq: number;
+  /** Sleepers have been placed and not yet dropped or dismissed: the drop loop's guard (Ruling N5). */
+  sleepersPlaced: boolean;
 }
 
 export interface NestInput {
@@ -70,8 +100,10 @@ export interface NestInput {
   /** The monsters' shader programs are compiled: wave 1 waits for it. */
   warm: boolean;
   fireHeld: boolean;
-  /** A click's aim point this step (`clickAimPoint`), else null. */
-  click: V3 | null;
+  /** A click this step: its aim point (`clickAimPoint`) and camera ray, else null. */
+  click: ClickShot | null;
+  /** Where wave 1's saucers sleep: offsets from `centre` (data/nest.ts NEST_SLEEPERS), built once. */
+  sleepers: readonly V3[];
 }
 
 export interface NestEvents {
@@ -95,10 +127,13 @@ export function createNest(): NestState {
   const tardigrades: Tardigrade[] = [];
   for (let i = 0; i < MAX_TARDIGRADES; i++) tardigrades.push(createTardigrade());
   const targets: AimTarget[] = [...saucers, ...tardigrades];
+  const strikes: V3[] = [];
+  for (let i = 0; i < STRIKE_RING; i++) strikes.push({ x: 0, y: 0, z: 0 });
   return {
     phase: "ready", phaseT: 0, wave: 0, outFor: 0, prevDist: Infinity, clock: 0,
     hull: createHull(), fireIn: 0, feedbackAt: -Infinity, seeds: 0, frozen: false,
     saucers, tardigrades, bolts: createBoltPool(BOLT_POOL), targets,
+    lock: -1, strikes, strikeSeq: 0, sleepersPlaced: false,
   };
 }
 
@@ -128,40 +163,106 @@ const _origin: V3 = { x: 0, y: 0, z: 0 };
 const _dir: V3 = { x: 0, y: 0, z: 0 };
 const _tPos: V3 = { x: 0, y: 0, z: 0 };
 const _tVel: V3 = { x: 0, y: 0, z: 0 };
+const _cone: V3 = { x: 0, y: 0, z: 0 };
+const _rayO: V3 = { x: 0, y: 0, z: 0 };
+const _rayD: V3 = { x: 0, y: 0, z: 0 };
 
 // ── Waves ──────────────────────────────────────────────────────────────────
 
-/** A spawn point: `SPAWN_R` from the centre away from the ship (+Y when on it), ±10 u per axis. */
-function spawnPoint(inp: NestInput, rnd: () => number, out: V3): V3 {
-  const c = inp.centre;
-  let ux = c.x - inp.ship.x, uy = c.y - inp.ship.y, uz = c.z - inp.ship.z;
-  const l = Math.hypot(ux, uy, uz);
-  if (l < 1e-9) { ux = 0; uy = 1; uz = 0; } else { ux /= l; uy /= l; uz /= l; }
-  out.x = c.x + ux * SPAWN_R + (rnd() * 2 - 1) * 10;
-  out.y = c.y + uy * SPAWN_R + (rnd() * 2 - 1) * 10;
-  out.z = c.z + uz * SPAWN_R + (rnd() * 2 - 1) * 10;
+/**
+ * A spawn point in front of the ship: a direction uniform over the
+ * `SPAWN_CONE_RAD` cone round the nose, `SPAWN_DIST` out; pulled in radially
+ * to `SPAWN_MAX_R` from the centre when it lands beyond, so it is always
+ * inside the fighting area. A pulled-in point closer than `SPAWN_MIN_SHIP` to
+ * the ship (a ship near the edge, nose outward) slides along that sphere,
+ * away from the ship, until it is that far (Ruling N5).
+ */
+export function frontSpawn(inp: NestInput, rnd: () => number, out: V3): V3 {
+  const ship = inp.ship, c = inp.centre;
+  spreadDir(inp.nose, SPAWN_CONE_RAD, rnd, _cone);
+  const d = roll(SPAWN_DIST, rnd);
+  out.x = ship.x + _cone.x * d; out.y = ship.y + _cone.y * d; out.z = ship.z + _cone.z * d;
+  const rx = out.x - c.x, ry = out.y - c.y, rz = out.z - c.z;
+  const r = Math.hypot(rx, ry, rz);
+  if (r > SPAWN_MAX_R) {
+    const k = SPAWN_MAX_R / r;
+    out.x = c.x + rx * k; out.y = c.y + ry * k; out.z = c.z + rz * k;
+    keepFromShip(c, ship, out);
+  }
   return out;
 }
 
 /**
- * Spawns wave k (sizes from `inp.lowPerf` now) into the non-alive slots
- * (dying and leaving ones included; Ruling C1), and starts the fight on it.
+ * `p` on the `SPAWN_MAX_R` sphere round `c`: if it is within `SPAWN_MIN_SHIP`
+ * of the ship, it turns about `c`, in the plane of the ship's and its own
+ * direction, away from the ship's, to the nearest angle where it is that far
+ * (|p − ship|² = R² + s² − 2Rs·cos θ). Straight along the ship's direction,
+ * it turns toward any side.
+ */
+function keepFromShip(c: V3, ship: V3, p: V3): void {
+  const R = SPAWN_MAX_R, min = SPAWN_MIN_SHIP;
+  if (Math.hypot(p.x - ship.x, p.y - ship.y, p.z - ship.z) >= min) return;
+  const sx = ship.x - c.x, sy = ship.y - c.y, sz = ship.z - c.z;
+  const s = Math.hypot(sx, sy, sz);
+  // Within min of p on the sphere means s > R − min > 0.
+  const ux = sx / s, uy = sy / s, uz = sz / s;
+  // p's part across the ship's direction.
+  const px = p.x - c.x, py = p.y - c.y, pz = p.z - c.z;
+  const along = px * ux + py * uy + pz * uz;
+  let ex = px - ux * along, ey = py - uy * along, ez = pz - uz * along;
+  let el = Math.hypot(ex, ey, ez);
+  if (el < 1e-9) {
+    // Any side: u × (world X, or world Y when u is near X).
+    const useX = Math.abs(ux) < 0.9;
+    ex = useX ? 0 : -uz; ey = useX ? uz : 0; ez = useX ? -uy : ux;
+    el = Math.hypot(ex, ey, ez);
+  }
+  ex /= el; ey /= el; ez /= el;
+  const cosT = Math.min(1, Math.max(-1, (R * R + s * s - min * min) / (2 * R * s)));
+  const sinT = Math.sqrt(1 - cosT * cosT);
+  p.x = c.x + R * (ux * cosT + ex * sinT);
+  p.y = c.y + R * (uy * cosT + ey * sinT);
+  p.z = c.z + R * (uz * cosT + ez * sinT);
+}
+
+const sleeping = (s: Saucer) => s.phase === "asleep" || s.phase === "waking";
+
+/**
+ * Spawns wave k (sizes from `inp.lowPerf` now) and starts the fight on it.
+ * Each wanted monster takes a sleeping (or waking) slot of its kind first,
+ * spawned in place (a saucer keeps its tint; the tardigrade wakes and
+ * uncurls); the rest take the other non-alive slots (dying and leaving ones
+ * included; Ruling C1) at `frontSpawn`. Sleeping saucers left over (wave 1
+ * after a low-perf flip) leave; the tardigrade sleeps on until a wave wants it.
  */
 function startWave(n: NestState, k: number, inp: NestInput, rnd: () => number, ev: NestEvents): void {
   const spec = (inp.lowPerf ? WAVES_LOW_PERF : WAVES)[k - 1];
   let want = spec.saucers;
   for (let i = 0; i < n.saucers.length && want > 0; i++) {
     const s = n.saucers[i];
-    if (s.alive) continue;
-    spawnPoint(inp, rnd, _tPos);
+    if (!sleeping(s)) continue;
+    spawnSaucer(s, s.seed, s.x, s.y, s.z, rnd, inp.ship);
+    want--;
+  }
+  for (let i = 0; i < n.saucers.length && want > 0; i++) {
+    const s = n.saucers[i];
+    if (s.alive || sleeping(s)) continue;
+    frontSpawn(inp, rnd, _tPos);
     spawnSaucer(s, n.seeds++, _tPos.x, _tPos.y, _tPos.z, rnd, inp.ship);
     want--;
   }
+  for (let i = 0; i < n.saucers.length; i++) if (sleeping(n.saucers[i])) leaveSaucer(n.saucers[i]);
   want = spec.tardigrades;
   for (let i = 0; i < n.tardigrades.length && want > 0; i++) {
     const t = n.tardigrades[i];
-    if (t.alive) continue;
-    spawnPoint(inp, rnd, _tPos);
+    if (t.phase !== "asleep") continue;
+    wakeTardigrade(t, rnd, inp.ship);
+    want--;
+  }
+  for (let i = 0; i < n.tardigrades.length && want > 0; i++) {
+    const t = n.tardigrades[i];
+    if (t.alive || t.phase === "asleep") continue;
+    frontSpawn(inp, rnd, _tPos);
     spawnTardigrade(t, _tPos.x, _tPos.y, _tPos.z, rnd, inp.ship);
     want--;
   }
@@ -170,14 +271,67 @@ function startWave(n: NestState, k: number, inp: NestInput, rnd: () => number, e
   ev.waveStarted = k;
 }
 
-/** The fight is over: live monsters leave, enemy bolts vanish, wave 0, ready. */
+// ── At home ────────────────────────────────────────────────────────────────
+
+/** Sends every sleeping and waking monster away (they shrink over `LEAVE_S`); fresh ones grow back once all are gone. */
+export function dismissSleepers(n: NestState): void {
+  n.sleepersPlaced = false;
+  for (let i = 0; i < n.saucers.length; i++) if (sleeping(n.saucers[i])) leaveSaucer(n.saucers[i]);
+  for (let i = 0; i < n.tardigrades.length; i++) if (n.tardigrades[i].phase === "asleep") leaveTardigrade(n.tardigrades[i]);
+}
+
+function allGone(n: NestState): boolean {
+  for (let i = 0; i < n.saucers.length; i++) if (n.saucers[i].phase !== "gone") return false;
+  for (let i = 0; i < n.tardigrades.length; i++) if (n.tardigrades[i].phase !== "gone") return false;
+  return true;
+}
+
+/**
+ * While ready: beyond `SLEEP_DROP_R` the sleepers are dropped at once; within
+ * `NEST_LOAD_R`, warm, with every slot gone, they are placed: wave 1's
+ * saucers for this tier (at most one per offset) at `centre + offset`,
+ * facing out along it, and the tardigrade at the centre, facing the offsets'
+ * mean (+Y when that is zero).
+ */
+function tendSleepers(n: NestState, inp: NestInput, dist: number): void {
+  if (dist > SLEEP_DROP_R) {
+    // Nothing placed: no work outside the Nest (the idle budget).
+    if (!n.sleepersPlaced) return;
+    n.sleepersPlaced = false;
+    for (let i = 0; i < n.saucers.length; i++) {
+      const s = n.saucers[i];
+      if (s.phase === "asleep") { s.phase = "gone"; s.scale = 0; }
+    }
+    for (let i = 0; i < n.tardigrades.length; i++) {
+      const t = n.tardigrades[i];
+      if (t.phase === "asleep") { t.phase = "gone"; t.scale = 0; }
+    }
+    return;
+  }
+  if (dist > NEST_LOAD_R || !inp.warm || !allGone(n)) return;
+  const c = inp.centre, off = inp.sleepers;
+  const count = Math.min(off.length, n.saucers.length, (inp.lowPerf ? WAVES_LOW_PERF : WAVES)[0].saucers);
+  let mx = 0, my = 0, mz = 0;
+  for (let i = 0; i < count; i++) {
+    const o = off[i];
+    sleepSaucer(n.saucers[i], n.seeds++, c.x + o.x, c.y + o.y, c.z + o.z, o.x, o.y, o.z);
+  }
+  for (let i = 0; i < off.length; i++) { mx += off[i].x; my += off[i].y; mz += off[i].z; }
+  if (Math.hypot(mx, my, mz) < 1e-9) { mx = 0; my = 1; mz = 0; }
+  for (let i = 0; i < n.tardigrades.length; i++) sleepTardigrade(n.tardigrades[i], c.x, c.y, c.z, mx, my, mz);
+  n.sleepersPlaced = true;
+}
+
+/** The fight is over: live, sleeping and waking monsters leave, enemy bolts vanish, wave 0, ready. */
 export function endFight(n: NestState): void {
+  dismissSleepers(n);
   for (let i = 0; i < n.saucers.length; i++) leaveSaucer(n.saucers[i]);
   for (let i = 0; i < n.tardigrades.length; i++) leaveTardigrade(n.tardigrades[i]);
   clearBolts(n.bolts, "enemy");
   n.wave = 0;
   n.phase = "ready"; n.phaseT = 0;
   n.outFor = 0;
+  n.lock = -1;
   // Leaving monsters must be stepped to fade.
   n.frozen = false;
 }
@@ -257,12 +411,16 @@ export function stepNest(
   // 2. An inward crossing of the zone (once per crossing, however fast).
   if (!inp.racing && n.prevDist >= NEST_ZONE_R && dist < NEST_ZONE_R) {
     ev.entered = true;
-    if (n.phase === "ready") { n.phase = "countdown"; n.phaseT = 0; }
+    if (n.phase === "ready") {
+      n.phase = "countdown"; n.phaseT = 0;
+      for (let i = 0; i < n.saucers.length; i++) wakeSaucer(n.saucers[i]);
+    }
   }
 
-  // 3. The phase timers.
+  // 3. The phase timers. Wave 1 also waits for the ship in the fighting area:
+  // monsters never come alive while it is outside (Review Focus 2).
   if (n.phase === "countdown") {
-    if (n.phaseT >= CONTACT_DELAY_S - T_EPS && inp.warm) startWave(n, 1, inp, rnd, ev);
+    if (n.phaseT >= CONTACT_DELAY_S - T_EPS && inp.warm && inArea) startWave(n, 1, inp, rnd, ev);
   } else if (n.phase === "gap") {
     if (n.phaseT >= WAVE_GAP_S - T_EPS) startWave(n, n.wave + 1, inp, rnd, ev);
   } else if (n.phase === "fighting") {
@@ -270,6 +428,7 @@ export function stepNest(
       if (n.wave >= 3) {
         ev.cleared = true;
         n.phase = "rest"; n.wave = 0;
+        dismissSleepers(n);
       } else {
         n.phase = "gap";
       }
@@ -278,6 +437,7 @@ export function stepNest(
   } else if (n.phase === "rest") {
     if (n.phaseT >= NEST_REST_S - T_EPS) { n.phase = "ready"; n.phaseT = 0; }
   }
+  if (n.phase === "ready") tendSleepers(n, inp, dist);
 
   // 4. The out timer.
   if (n.phase === "countdown" || n.phase === "fighting" || n.phase === "gap") {
@@ -310,6 +470,7 @@ export function stepNest(
       const k = shipBoltTarget(n, b.px, b.py, b.pz, b.x, b.y, b.z, mdt);
       if (k >= 0) {
         b.live = false;
+        recordStrike(n, k, b, mdt);
         const ns = n.saucers.length;
         if (k < ns ? hitSaucer(n.saucers[k]) : hitTardigrade(n.tardigrades[k - ns])) ev.defeats++;
         continue;
@@ -330,7 +491,14 @@ export function stepNest(
     }
   }
 
-  // 7. The player's fire.
+  // 7. The lock (only in the area, in a fight; nothing else outside), then the player's fire.
+  if (!inArea || !(n.phase === "countdown" || n.phase === "fighting" || n.phase === "gap")) {
+    n.lock = -1;
+  } else {
+    noseOrigin(inp, _origin);
+    if (n.lock >= 0 && !lockHolds(_origin, inp.nose, n.targets[n.lock])) n.lock = -1;
+    if (n.lock < 0 && inp.fireHeld) n.lock = acquireLock(_origin, inp.nose, n.targets);
+  }
   n.fireIn = Math.max(0, n.fireIn - dt);
   if (inArea && n.fireIn <= 1e-9 && (inp.click !== null || inp.fireHeld)) fire(n, inp, ev);
 
@@ -339,24 +507,74 @@ export function stepNest(
   n.prevDist = dist;
 }
 
-/** One bolt from the nose: at the click's point, else held fire's assist (leading the locked monster). */
-function fire(n: NestState, inp: NestInput, ev: NestEvents): void {
+/** The bolts' origin: the ship's nose, `NOSE_OFFSET` ahead of its centre. */
+function noseOrigin(inp: NestInput, out: V3): V3 {
   const ship = inp.ship, nose = inp.nose;
   const nl = Math.hypot(nose.x, nose.y, nose.z) || 1;
-  _origin.x = ship.x + (nose.x / nl) * NOSE_OFFSET;
-  _origin.y = ship.y + (nose.y / nl) * NOSE_OFFSET;
-  _origin.z = ship.z + (nose.z / nl) * NOSE_OFFSET;
+  out.x = ship.x + (nose.x / nl) * NOSE_OFFSET;
+  out.y = ship.y + (nose.y / nl) * NOSE_OFFSET;
+  out.z = ship.z + (nose.z / nl) * NOSE_OFFSET;
+  return out;
+}
+
+/**
+ * A ship bolt hit target k: where, into the strike ring's next slot (no
+ * allocation). Ruling N6: the sparks burst on the monster's surface, not at
+ * the bolt's step end (inside it, or past it). In the monster's frame (as
+ * boltHits sweeps it) the point is the segment's closest approach to the
+ * centre; when that lies inside the hit sphere (a solid hit, not a graze),
+ * it is pulled back along the segment to where the bolt entered the sphere.
+ * Placed about the monster's position now.
+ */
+function recordStrike(n: NestState, k: number, b: Bolt, mdt: number): void {
+  const m = n.targets[k];
+  const r = k < n.saucers.length ? SAUCER_HIT_R : TARDIGRADE_HIT_R;
+  // The segment a → a + d relative to the centre (at the origin).
+  const ax = b.px - (m.x - m.vx * mdt), ay = b.py - (m.y - m.vy * mdt), az = b.pz - (m.z - m.vz * mdt);
+  const dx = b.x - m.x - ax, dy = b.y - m.y - ay, dz = b.z - m.z - az;
+  const dd = dx * dx + dy * dy + dz * dz;
+  const ad = ax * dx + ay * dy + az * dz;
+  let t = dd > 0 ? -ad / dd : 0;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const qx = ax + dx * t, qy = ay + dy * t, qz = az + dz * t;
+  if (dd > 0 && qx * qx + qy * qy + qz * qz < r * r) {
+    // |a + d·s| = r, the smaller root (the entry), clamped to the segment.
+    const aa = ax * ax + ay * ay + az * az;
+    const disc = ad * ad - dd * (aa - r * r);
+    const s = (-ad - Math.sqrt(Math.max(0, disc))) / dd;
+    t = s < 0 ? 0 : s > t ? t : s;
+  }
+  const p = n.strikes[n.strikeSeq % n.strikes.length];
+  p.x = m.x + ax + dx * t; p.y = m.y + ay + dy * t; p.z = m.z + az + dz * t;
+  n.strikeSeq++;
+}
+
+/** `_dir` toward target k, leading it (`leadAim`) from `_origin`. */
+function leadTarget(n: NestState, k: number): void {
+  const t = n.targets[k];
+  _tPos.x = t.x; _tPos.y = t.y; _tPos.z = t.z;
+  _tVel.x = t.vx; _tVel.y = t.vy; _tVel.z = t.vz;
+  leadAim(_origin, _tPos, _tVel, BOLT_SPEED, _dir);
+}
+
+/**
+ * One bolt from the nose. A click leads the monster its camera ray passes
+ * within 6° of, else goes at the click point; held fire leads the locked
+ * monster, else goes down the nose.
+ */
+function fire(n: NestState, inp: NestInput, ev: NestEvents): void {
+  noseOrigin(inp, _origin);
   const click = inp.click;
   if (click !== null) {
-    _dir.x = click.x - _origin.x; _dir.y = click.y - _origin.y; _dir.z = click.z - _origin.z;
+    _rayO.x = click.ox; _rayO.y = click.oy; _rayO.z = click.oz;
+    _rayD.x = click.dx; _rayD.y = click.dy; _rayD.z = click.dz;
+    const k = clickAssist(_rayO, _rayD, n.targets);
+    if (k >= 0) leadTarget(n, k);
+    else { _dir.x = click.x - _origin.x; _dir.y = click.y - _origin.y; _dir.z = click.z - _origin.z; }
+  } else if (n.lock >= 0) {
+    leadTarget(n, n.lock);
   } else {
-    const k = aimAssist(_origin, nose, n.targets, _dir);
-    if (k >= 0) {
-      const t = n.targets[k];
-      _tPos.x = t.x; _tPos.y = t.y; _tPos.z = t.z;
-      _tVel.x = t.vx; _tVel.y = t.vy; _tVel.z = t.vz;
-      leadAim(_origin, _tPos, _tVel, BOLT_SPEED, _dir);
-    }
+    _dir.x = inp.nose.x; _dir.y = inp.nose.y; _dir.z = inp.nose.z;
   }
   if (!fireBolt(n.bolts, "ship", _origin.x, _origin.y, _origin.z, _dir.x, _dir.y, _dir.z, BOLT_SPEED, BOLT_RANGE, 1)) return;
   n.fireIn = FIRE_INTERVAL_S;
@@ -365,11 +583,13 @@ function fire(n: NestState, inp: NestInput, ev: NestEvents): void {
 
 // ── Debug (the bridge's `nest` handle; dev and probes only) ────────────────
 
-/** Starts wave k now: live monsters leave first, then the wave spawns into the free slots. */
+/** Starts wave k now: live and sleeping monsters leave first, then the wave spawns into the free slots, in front. */
 export function debugStartWave(n: NestState, k: 1 | 2 | 3, inp: NestInput, rnd: () => number, ev: NestEvents): void {
+  dismissSleepers(n);
   for (let i = 0; i < n.saucers.length; i++) leaveSaucer(n.saucers[i]);
   for (let i = 0; i < n.tardigrades.length; i++) leaveTardigrade(n.tardigrades[i]);
   n.outFor = 0;
+  n.lock = -1;
   startWave(n, k, inp, rnd, ev);
 }
 
@@ -385,9 +605,11 @@ export function debugClearWave(n: NestState, ev: NestEvents): void {
   }
 }
 
-/** Wave 3, fighting, every live monster defeated: the next step clears the Nest. */
+/** Wave 3, fighting, every live monster defeated and the sleepers sent away: the next step clears the Nest. */
 export function debugClearAll(n: NestState, ev: NestEvents): void {
   debugClearWave(n, ev);
+  dismissSleepers(n);
+  n.lock = -1;
   n.wave = 3;
   n.phase = "fighting"; n.phaseT = 0;
 }

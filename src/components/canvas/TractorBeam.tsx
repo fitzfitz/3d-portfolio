@@ -12,6 +12,7 @@ import { tetherCount, tetherPos } from "../../utils/mining";
 import { makeBeamGeometry, makePlumeMaterial } from "./enginePlume";
 import { ambientTime } from "../../utils/ambientTime";
 import { soundManager } from "../../audio/soundManager";
+import { glowScale } from "../../utils/sunLight";
 
 const BEAM_TINT = new THREE.Color("#3ff2d0");
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -120,6 +121,8 @@ export default function TractorBeam() {
       lines.geometry.setDrawRange(0, n * 2);
       lines.geometry.attributes.position.needsUpdate = true;
       lines.visible = n > 0;
+      // Self-lit: the tethers hold their 1 AU glow far out (the cone does through its plume material).
+      (lines.material as THREE.LineBasicMaterial).color.copy(BEAM_TINT).multiplyScalar(glowScale.value);
     }
   });
 
