@@ -34,8 +34,9 @@ const BOLTS = BOLT_POOL + MAX_SAUCERS;
 const JETS = JET_PARTICLES * MAX_TARDIGRADES;
 
 /**
- * The Nest's effects (spec 2026-10-27-combat), mounted by NestGate within the
- * load radius. Three draw calls at most, each pooled and written every frame
+ * The Nest's effects (spec 2026-10-27-combat), in the lazily loaded
+ * NestMonsters chunk (Ruling C27), which NestGate mounts within the load
+ * radius. Three draw calls at most, each pooled and written every frame
  * from `combat.nest`, its count set to what is live, nothing allocated:
  *  - one additive InstancedMesh for every bolt, the ship's in its plume
  *    colour and the saucers' green-yellow, plus a thrust glow under each live

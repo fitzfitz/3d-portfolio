@@ -8,6 +8,7 @@ import { flight, useSpaceStore, bodies, selectRaceFlying, combat } from "../../s
 import { markShipTeleport } from "../../store/shipTeleport";
 import { NEST_TOW_POSE } from "../../data/nest";
 import { beamUse } from "../../utils/combat/controls";
+import { takeTowRequest } from "../../utils/combat/director";
 import { padRumble } from "../../utils/padRumble";
 import { shipStartPose, markShipStarted } from "../../store/flightState";
 import { moonPositions } from "../../store/moonState";
@@ -512,6 +513,8 @@ export default function Spaceship() {
       store.triggerTeleportFlash();
     }
     if (placed || flight.raceHold) {
+      // A breach tow asked for now is dropped, not kept for GO (C28).
+      takeTowRequest(combat, true);
       vel.current.set(0, 0, 0);
       zeroGravity();
       _total.set(0, 0, 0);
@@ -601,8 +604,7 @@ export default function Spaceship() {
 
     // The Nest's breach tow (NestDirector asks): like a jump, to just past the
     // buoy, nose on the Nest, at rest.
-    if (combat.towRequest) {
-      combat.towRequest = false;
+    if (takeTowRequest(combat, false)) {
       pos.current.set(NEST_TOW_POSE.x, NEST_TOW_POSE.y, NEST_TOW_POSE.z);
       vel.current.set(0, 0, 0);
       zeroGravity();

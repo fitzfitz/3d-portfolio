@@ -36,6 +36,19 @@ export interface NestEffects {
 }
 
 /**
+ * The breach tow, for Spaceship's frame: takes (clears) a pending request and
+ * says whether to tow now. While the race grid places or holds the ship
+ * (`gridHold`), a request is dropped, never kept: one latched on the frame a
+ * grid is placed (an R10 rejoin, say) would otherwise tow the racer to the
+ * buoy at GO (Ruling C28).
+ */
+export function takeTowRequest(c: { towRequest: boolean }, gridHold: boolean): boolean {
+  const tow = c.towRequest && !gridHold;
+  c.towRequest = false;
+  return tow;
+}
+
+/**
  * Applies one step's events, then clears them (`resetNestEvents`): read
  * every frame, so ENTERING THE NEST shows once per crossing (C12) and a
  * shot sounds once, not on every later frame. `now` is in seconds

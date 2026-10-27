@@ -54,6 +54,13 @@ const RENDERER = [
   "src/utils/monsters/buildMonsters.ts",
 ];
 
+/** The effects and the warm-up: in the lazily loaded chunk too (Ruling C27), trimming startup code. */
+const LAZY_FX = [
+  "src/components/canvas/nest/NestEffects.tsx",
+  "src/utils/combat/effects.ts",
+  "src/components/canvas/nest/nestWarmup.ts",
+];
+
 describe("the Nest's renderer loads on demand (C16)", () => {
   it("NestDirector's static imports reach the rig maths (monsterRig.ts), never the materials", () => {
     const loaded = graph("src/components/canvas/NestDirector.tsx");
@@ -62,13 +69,22 @@ describe("the Nest's renderer loads on demand (C16)", () => {
     for (const f of RENDERER) expect(loaded, f).not.toContain(f);
   });
 
-  it("the canvas's static graph (GlobalCanvas, NestGate, NestBuoy, NestEffects) holds none of them", () => {
+  it("the canvas's static graph (GlobalCanvas, NestGate, NestBuoy, NestDirector) holds none of them", () => {
     const loaded = graph("src/components/canvas/GlobalCanvas.tsx");
     for (const f of ["src/components/canvas/nest/NestGate.tsx", "src/components/canvas/nest/NestBuoy.tsx",
-      "src/components/canvas/nest/NestEffects.tsx", "src/components/canvas/NestDirector.tsx"]) expect(loaded, f).toContain(f);
-    for (const f of [...RENDERER, "src/components/canvas/nest/NestMonsters.tsx", "src/utils/monsters/monsterAssets.ts"]) {
+      "src/components/canvas/NestDirector.tsx"]) expect(loaded, f).toContain(f);
+    for (const f of [...RENDERER, ...LAZY_FX, "src/components/canvas/nest/NestMonsters.tsx", "src/utils/monsters/monsterAssets.ts"]) {
       expect(loaded, f).not.toContain(f);
     }
+  });
+
+  it("the effects and the warm-up load with the monsters, not at startup (C27)", () => {
+    for (const entry of ["src/components/canvas/nest/NestGate.tsx", "src/components/canvas/NestDirector.tsx"]) {
+      const loaded = graph(entry);
+      for (const f of LAZY_FX) expect(loaded, `${entry} -> ${f}`).not.toContain(f);
+    }
+    const chunk = graph("src/components/canvas/nest/NestMonsters.tsx");
+    for (const f of LAZY_FX) expect(chunk, f).toContain(f);
   });
 
   it("NestGate loads NestMonsters with a dynamic import, and NestMonsters holds the renderer", () => {

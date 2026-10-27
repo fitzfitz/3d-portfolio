@@ -47,9 +47,15 @@ describe("e2e affected-probe selection", () => {
       expect(picked, f).toContain("programs");
       expect(picked, f).not.toEqual(ALL);
     }
-    expect(affectedProbes(["src/utils/combat/nest.ts"])).toEqual(["smoke", "flight", "gameplay", "touch", "gamepad", "reactions", "combat"]);
+    expect(affectedProbes(["src/utils/combat/nest.ts"])).toEqual(["smoke", "flight", "gameplay", "touch", "gamepad", "reactions", "combat", "memory"]);
     for (const f of ["src/utils/combat/nestRadio.ts", "src/components/canvas/NestDirector.tsx", "src/data/nest.ts"]) expect(affectedProbes([f]), f).toContain("reactions");
     expect(affectedProbes(["src/components/layout/NestOverlay.tsx"])).toEqual(["smoke", "reducedmotion", "combat"]);
+  });
+
+  it("runs the idle-allocation probe for the Nest's per-frame code (C28)", () => {
+    for (const f of ["src/utils/combat/nest.ts", "src/utils/combat/effects.ts", "src/utils/combat/renderPose.ts", "src/utils/combat/monsterFrame.ts"]) {
+      expect(affectedProbes([f]), f).toContain("memory");
+    }
   });
 
   it("runs the budget probes with a canvas change, and nothing for docs", () => {

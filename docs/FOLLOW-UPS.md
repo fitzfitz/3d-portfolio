@@ -124,13 +124,35 @@ Delete an entry when it is fixed.
   - Shards as money, rewards on clearing the Nest, and the hull as an upgrade
     slot (with shields) are the next stage's; the Nest gives only the badge
     and the CRIMSON plume today.
-  - Release order: the `nest` plume fails the deployed beacon Worker's plume
-    check until it is redeployed, so live-sky poses from pilots wearing
-    CRIMSON are dropped. Redeploy `beacon-api` (`--config
-    beacon-api/wrangler.toml`) before the site release.
+  - **Merge gate:** redeploy `beacon-api` (with the owner's word, always
+    `--config beacon-api/wrangler.toml`) **before merging to main**, not just
+    before the site release: staging (Pages) uses the production Worker. Until
+    then the deployed Worker's plume check rejects `nest`, so every pose from a
+    pilot wearing CRIMSON is dropped: they are invisible in live sky and
+    cannot race (ring stamps read the stored pose, so each is refused). The
+    new Worker accepts a superset, so older clients are fine. At merge, also
+    update `assets-src/MANIFEST.md` (its own repo): the monsters now ship from
+    `public/models-ondemand/`, no longer dormant.
+  - Loading: a renderer chunk that fails to load is never retried: React.lazy
+    caches the failure for the page's life, so the Nest stays offline until a
+    reload (a remounted canvas refetches the glbs, not the chunk; within one
+    canvas a transient failure is not retried on a later approach either).
+    Create the lazy component per gate mount if that matters. Offline, the
+    GLTF loader's "Could not load /models-ondemand/…" also logs an unhandled
+    rejection in production (harmless: the HUD says NEST OFFLINE).
+  - Fight flow: the warm gate covers wave 1 only, so after a remount or a
+    PostFX flip mid-fight, waves 2 and 3 compile their variants on first use
+    (a one-time hitch; check `warm` in the gap too to fix). Wave 1 still
+    spawns when the ship left during the 3 s countdown (harmless: the monsters
+    hold fire while the ship is out and the fight ends after 20 s; optionally
+    stay in countdown while `!inArea`).
+  - Tests: watch `combat#2` (the perf page) for flakes under parallel load; it
+    read identically under suite load, but move it to SERIAL if it flakes.
   - Small leftovers from the build reviews: the hull regen applies a whole
     frame's regen at the 4 s mark; the bolt's 160 u range and the 12° assist
-    cone's exact boundaries are untested; the hot loops use `Math.hypot`;
+    cone's exact boundaries are untested; the hot loops use `Math.hypot`
+    (the jet's `nearFade` too: ~720 calls per frame, ~0.1 ms, only while a
+    jet fires);
     `monsterMatrix` can flip its up axis when a monster faces near-vertically;
     `debugStartWave` does not clear the debug formation's freeze and repeats
     `endFight`'s leave loops; a redundant `as MonsterBody` in `nest.ts`; the

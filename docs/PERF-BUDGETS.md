@@ -641,11 +641,23 @@ stage, PR 67; spec `docs/superpowers/specs/2026-10-27-combat-design.md`).
 Their two glbs live in `public/models-ondemand/` as loose files, outside
 `public/models/`, so they are in no asset pack: the Nest's load gate
 (`src/components/canvas/nest/NestGate.tsx`) downloads them, with the
-renderer's own lazily loaded chunk (the monster materials, ~23 kB min), only
-once the ship comes within 200 u of the Nest's centre, then compiles their
-programs and uploads their maps before wave 1 can start. A visitor who never
-goes near downloads none of it, and no other state's numbers change. The
-monster lab (`/monster-lab.html`, dev only) loads the same files.
+renderer's own lazily loaded chunk (`NestMonsters`: the monster materials, the
+effects and the warm-up, 34,643 B min / 12,035 B gzip), only once the ship
+comes within 200 u of the Nest's centre, then compiles their programs and
+uploads their maps before wave 1 can start. A visitor who never goes near
+downloads none of it, and no other state's numbers change. The monster lab
+(`/monster-lab.html`, dev only) loads the same files.
+
+**Startup code** (2026-10-27, Ruling C27): the combat stage adds 29,216 B
+minified / 12,060 B gzip to the startup JS (2,027,878 → 2,057,094 B min,
+641,089 → 653,149 B gzip; every `dist/assets/*.js` but the lazy `NestMonsters`
+chunk and the basis transcoder, gzip as Node's `zlib.gzipSync` default, both
+`vite build`s with the same `.env`). That is the always-on machine and
+director, the HUD overlay, the radar and HUD edits and the rig JSONs. Moving
+`NestEffects` (and `effects.ts`) into the lazy chunk saved 5,489 B min /
+2,294 B gzip (from +34,705 / +14,354); `nestWarmup` was already there. The
+final review's +42 kB figure built main without `.env`, which drops the
+contact form's code (~7.6 kB) from the base.
 
 In the game the monsters stay instanced: saucers draw 4 calls per LOD level in
 use (LOD1 3: no fur cards), the tardigrade 3, whatever the count; the bolts and

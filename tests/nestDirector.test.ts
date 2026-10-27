@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
-  applyNestEvents, createShipTrack, maybeRumour, noseFrom, takeClick, trackShip,
+  applyNestEvents, createShipTrack, maybeRumour, noseFrom, takeClick, takeTowRequest, trackShip,
   type NestCombat, type NestEffects,
 } from "../src/utils/combat/director";
 import {
@@ -352,5 +353,35 @@ describe("combat hit rumble (C3)", () => {
     expect(() => padRumble()).not.toThrow();
     await Promise.resolve();
     expect(rejected).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the breach tow and the race grid (C28)", () => {
+  it("a tow asked for while the grid places or holds the ship is dropped, never kept for GO", () => {
+    const c = { towRequest: false };
+    // The breach lands on the frame the grid places the ship.
+    c.towRequest = true;
+    expect(takeTowRequest(c, true)).toBe(false);
+    expect(c.towRequest).toBe(false);
+    // Held on the grid, then GO: no tow.
+    expect(takeTowRequest(c, true)).toBe(false);
+    expect(takeTowRequest(c, false)).toBe(false);
+  });
+
+  it("away from the grid a pending tow is taken once", () => {
+    const c = { towRequest: true };
+    expect(takeTowRequest(c, false)).toBe(true);
+    expect(c.towRequest).toBe(false);
+    expect(takeTowRequest(c, false)).toBe(false);
+  });
+
+  it("Spaceship drops the request in its race-grid branch and tows through takeTowRequest", () => {
+    const src = readFileSync("src/components/canvas/Spaceship.tsx", "utf8");
+    const grid = src.indexOf("if (placed || flight.raceHold) {");
+    expect(grid).toBeGreaterThan(0);
+    const branch = src.slice(grid, src.indexOf("return;", grid));
+    expect(branch).toMatch(/takeTowRequest\(combat, true\)/);
+    expect(src).toMatch(/if \(takeTowRequest\(combat, false\)\)/);
+    expect(src).not.toMatch(/combat\.towRequest = false/);
   });
 });

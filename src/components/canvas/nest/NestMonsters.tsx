@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type RefObject } from "react";
+import { Suspense, useEffect, useMemo, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { combat, flight, useSpaceStore } from "../../../store/spaceStore";
@@ -23,9 +23,39 @@ import { SAUCER_GLB, TARDIGRADE_GLB } from "../../../utils/monsters/monsterAsset
 import type { SaucerPose, SaucerRig, TardigradePose, TardigradeRig } from "../../../utils/monsters/monsterRig";
 import { warmNest } from "./nestWarmup";
 import { nestEffectMeshes } from "./nestEffectMeshes";
+import { markNestLoadFailed } from "../../../utils/combat/nestHud";
+import SafeErrorBoundary from "../SafeErrorBoundary";
+import NestEffects from "./NestEffects";
 
 const SAUCER_RIG = saucerRigJson as SaucerRig;
 const TARDIGRADE_RIG = tardigradeRigJson as TardigradeRig;
+
+const onLoadError = () => markNestLoadFailed(combat);
+
+/**
+ * The lazily loaded chunk's root, which NestGate mounts within the load
+ * radius (Ruling C27): the effects (NestEffects) and the warm-up
+ * (nestWarmup, called by Monsters) load in this chunk, not the canvas's
+ * startup code. The effects mount as soon as the chunk arrives, without
+ * waiting for the glbs, and stay if the glbs fail (offline, say), as they did
+ * when NestGate mounted them: the ship's own bolts still draw in the Nest.
+ * The monsters' own Suspense and error boundary keep their load from hiding
+ * the effects; a failed glb load marks `combat.loadFailed` (Ruling C22).
+ * Both sit under NestGate's Nest group (`warmRoot`), as before, so the
+ * warm-up walks the same tree.
+ */
+export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
+  return (
+    <>
+      <NestEffects />
+      <SafeErrorBoundary onError={onLoadError}>
+        <Suspense fallback={null}>
+          <Monsters warmRoot={warmRoot} />
+        </Suspense>
+      </SafeErrorBoundary>
+    </>
+  );
+}
 
 /**
  * The Nest's monsters (spec 2026-10-27-combat), the lazily loaded renderer:
@@ -43,7 +73,7 @@ const TARDIGRADE_RIG = tardigradeRigJson as TardigradeRig;
  * sets `combat.warm`, which lets wave 1 start; on unmount it clears it, so a
  * remounted canvas warms again before the next wave.
  */
-export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
+function Monsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);

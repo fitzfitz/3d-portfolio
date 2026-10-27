@@ -58,8 +58,9 @@ export const RULES = [
   [/^src\/audio\//, () => ["audio"]],
   [/^(public\/models|public\/basis)\//, () => ["assets", "memory", "sky", "startup", "basepath"]],
   [/^public\/sw\.js$/, () => ["basepath"]],
-  // The Nest's rules (fight, aim, HUD, radio): the probes that fly, fire and press its controls, and the radio's.
-  [/^src\/utils\/combat\//, () => ["smoke", "combat", "flight", "gameplay", "touch", "gamepad", "reactions"]],
+  // The Nest's rules (fight, aim, HUD, radio): the probes that fly, fire and press its controls, and the radio's;
+  // and the idle-allocation probe, as stepNest runs every frame for every visitor (C28).
+  [/^src\/utils\/combat\//, () => ["smoke", "combat", "flight", "gameplay", "touch", "gamepad", "reactions", "memory"]],
   // The space monsters: the game draws them in the Nest (loaded on demand), and the lab shows them.
   [/^(src\/utils\/monsters\/|src\/data\/(saucerRig|tardigradeRig)\.json$|public\/models-ondemand\/)/, () => ["monsterlab", "combat", ...BUDGETS]],
   // The monster lab (dev only); the game never imports src/lab (tests/labBoot.test.ts).
