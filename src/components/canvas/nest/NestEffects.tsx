@@ -5,11 +5,11 @@ import { combat, useSpaceStore } from "../../../store/spaceStore";
 import { exposureCompensation } from "../../../utils/sunLight";
 import { PLUME_COLORS } from "../../../data/plumeColors";
 import { softSprite } from "../softSprite";
-import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES, STRIKE_RING } from "../../../utils/combat/constants";
+import { BOLT_POOL, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES, STRIKE_RING } from "../../../utils/combat/constants";
 import { nestPaused } from "../../../utils/combat/nestRadio";
 import {
   ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, SPARK_POOL, THRUST_HEX, boltMatrix, createSmoke, createSparks,
-  emitSparks, jetGlow, jetParticle, nearFade, smokeAlpha, sparkMatrix, stepSmoke, stepSparks, thrustMatrix,
+  emitSparks, jetGlow, jetParticle, nearFade, boltCrossRadius, boltNearFade, smokeAlpha, sparkMatrix, stepSmoke, stepSparks, thrustMatrix,
 } from "../../../utils/combat/effects";
 import type { V3 } from "../../../utils/combat/types";
 import { nestEffectMeshes } from "./nestEffectMeshes";
@@ -22,8 +22,6 @@ const JET_GLOW = 0.75;
 /** A ship bolt's and an enemy bolt's glowing length (u): longer for the faster ship bolt. */
 const SHIP_BOLT_LENGTH = 1.8;
 const ENEMY_BOLT_LENGTH = 1.2;
-/** Glow radius: the bolt's hit radius and a little haze. */
-const BOLT_GLOW_R = BOLT_R + 0.08;
 /** The far end's share of the jet's brightness. */
 const JET_FAR = 0.35;
 /** The smoke's grey (lit dust, compensated like the overlays so it reads the same at any exposure) and puff size. */
@@ -51,7 +49,9 @@ const JETS = JET_PARTICLES * MAX_TARDIGRADES;
  *    drift (normal blending, vertex alphas).
  * A paused fight freezes them (dt 0). Each draws only while it has something
  * to show. The jet's and the smoke's sprites fade out within a few units of
- * the camera (effects.ts nearFade), so none fills the screen as it passes.
+ * the camera (effects.ts nearFade), so none fills the screen as it passes;
+ * a bolt near the camera is drawn thinner (boltCrossRadius) and faded
+ * (boltNearFade) for the same reason (ruling N7).
  */
 export default function NestEffects() {
   const bolts = useMemo(() => {
@@ -149,9 +149,11 @@ export default function NestEffects() {
       const b = pool[i];
       if (!b.live) continue;
       const ship = b.owner === "ship";
-      bolts.setMatrixAt(k, boltMatrix(b.x, b.y, b.z, b.dx, b.dy, b.dz, BOLT_GLOW_R,
+      // Near the camera a bolt is drawn thin and faded (ruling N7): no saturated disc on screen.
+      const d = Math.hypot(b.x - cam.x, b.y - cam.y, b.z - cam.z);
+      bolts.setMatrixAt(k, boltMatrix(b.x, b.y, b.z, b.dx, b.dy, b.dz, boltCrossRadius(d),
         ship ? SHIP_BOLT_LENGTH : ENEMY_BOLT_LENGTH, scratch.m));
-      bolts.setColorAt(k, scratch.c.copy(ship ? scratch.ship : scratch.enemy).multiplyScalar(BOLT_GLOW));
+      bolts.setColorAt(k, scratch.c.copy(ship ? scratch.ship : scratch.enemy).multiplyScalar(BOLT_GLOW * boltNearFade(d)));
       k++;
     }
     for (let i = 0; i < n.saucers.length; i++) {

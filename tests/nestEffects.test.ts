@@ -4,7 +4,7 @@ import {
   JET_PARTICLES, JET_STREAM_SPEED, SMOKE_EVERY_S, SMOKE_LIFE_S, SMOKE_POOL, THRUST_DROP, boltMatrix, createSmoke, emitSmoke,
   JET_CORE_R, JET_GLOW_SPREAD, JET_SIZE, NEAR_FADE_FAR, NEAR_FADE_NEAR, jetGlow, jetParticle, nearFade, smokeAlpha,
   stepSmoke, thrustMatrix, HIT_SPARKS, SPARK_POOL, SPARK_LIFE_S, SPARK_SPEED, SPARK_R, createSparks, emitSparks, stepSparks,
-  sparkMatrix,
+  sparkMatrix, BOLT_GLOW_R, BOLT_NEAR_K, BOLT_FADE_NEAR, BOLT_FADE_FAR, boltCrossRadius, boltNearFade,
 } from "../src/utils/combat/effects";
 import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "../src/utils/combat/constants";
 import { createSaucer, spawnSaucer, hitSaucer, sleepSaucer, wakeSaucer, type Saucer } from "../src/utils/combat/saucerAi";
@@ -147,6 +147,39 @@ describe("the sprites' near-camera fade", () => {
     // Smoothstep: flat at both ends.
     expect(nearFade(cam.x + 2.01, cam.y, cam.z, cam)).toBeLessThan(0.001);
     expect(nearFade(cam.x + 7.99, cam.y, cam.z, cam)).toBeGreaterThan(0.999);
+  });
+});
+
+describe("bolts near the camera (ruling N7)", () => {
+  /** Pixels across for a world size `w` at `d` u from a 60° (vertical) camera, 800 px tall (1280×800). */
+  const px = (w: number, d: number) => (w / (2 * d * Math.tan(Math.PI / 6))) * 800;
+
+  it("the cross radius is capped by distance: ~16 px across near the camera, the full glow further out", () => {
+    expect(BOLT_NEAR_K).toBe(0.012);
+    expect(boltCrossRadius(6)).toBeCloseTo(0.072, 12);
+    // A bolt 6 u from the chase camera (a fresh ship bolt): about 16 px across, not 60–90.
+    expect(px(2 * boltCrossRadius(6), 6)).toBeLessThanOrEqual(17);
+    expect(px(2 * BOLT_GLOW_R, 6)).toBeGreaterThan(60); // what it was
+    for (const d of [0.5, 1, 3, 6, 12, 20]) expect(px(2 * boltCrossRadius(d), d)).toBeLessThanOrEqual(17);
+    // Past BOLT_GLOW_R / 0.012 (≈ 32 u) the full glow radius.
+    expect(boltCrossRadius(40)).toBe(BOLT_GLOW_R);
+    expect(boltCrossRadius(500)).toBe(BOLT_GLOW_R);
+    expect(boltCrossRadius(0)).toBe(0);
+  });
+
+  it("the near fade: 0 at 3 u and inside, 1 at 12 u and out, rising in between", () => {
+    expect([BOLT_FADE_NEAR, BOLT_FADE_FAR]).toEqual([3, 12]);
+    expect(boltNearFade(0)).toBe(0);
+    expect(boltNearFade(3)).toBe(0);
+    expect(boltNearFade(12)).toBe(1);
+    expect(boltNearFade(80)).toBe(1);
+    expect(boltNearFade(7.5)).toBeCloseTo(0.5, 12);
+    let last = 0;
+    for (let d = 3; d <= 12; d += 0.25) {
+      const f = boltNearFade(d);
+      expect(f).toBeGreaterThanOrEqual(last);
+      last = f;
+    }
   });
 });
 

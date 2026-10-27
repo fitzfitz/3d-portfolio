@@ -8,6 +8,7 @@
  * Pure and allocation-free: projections write into scratch built once, and
  * the arrows into fixed typed arrays (tests/nestScreen.test.ts).
  */
+import { BOLT_R, SAUCER_HIT_R, TARDIGRADE_HIT_R } from "./constants";
 import { HIT_MARK_S } from "./nestHud";
 import type { NestState } from "./nest";
 
@@ -28,6 +29,10 @@ export interface NestScreen {
   hitAt: number;
   /** The `strikeSeq` last seen. */
   seenSeq: number;
+  /** The latest strike landed on the locked monster, locked since the frame before: HIT rides the reticle. */
+  hitOnLock: boolean;
+  /** `n.lock` at the last update (a kill moves the lock on in the strike's own step). */
+  prevLock: number;
   arrows: { count: number; x: Float32Array; y: Float32Array; angle: Float32Array };
 }
 
@@ -37,6 +42,8 @@ export function createNestScreen(): NestScreen {
     hit: { on: false, x: 0, y: 0 },
     hitAt: -Infinity,
     seenSeq: 0,
+    hitOnLock: false,
+    prevLock: -1,
     arrows: {
       count: 0,
       x: new Float32Array(MAX_EDGE_ARROWS), y: new Float32Array(MAX_EDGE_ARROWS),
@@ -104,23 +111,49 @@ const pxX = (nx: number, width: number) => (nx * 0.5 + 0.5) * width;
 const pxY = (ny: number, height: number) => (-ny * 0.5 + 0.5) * height;
 
 /**
+ * Whether the screen state has anything to do this frame: while `fighting`
+ * or in the `gap` (the arrows), or with a lock, an unseen strike or a HIT
+ * showing (the last kill's HIT outlives the fight into `rest`). Outside it
+ * updateNestScreen projects nothing, and NestDirector skips the camera
+ * matrix update: one predicate for both, so they cannot drift.
+ */
+export function nestScreenActive(n: NestState, out: NestScreen): boolean {
+  return n.phase === "fighting" || n.phase === "gap" || n.lock >= 0 || n.strikeSeq !== out.seenSeq || out.hit.on;
+}
+
+/** The strike sits on target k's hit sphere (with the bolt's radius and a little slack). */
+function strikeOn(n: NestState, k: number, sx: number, sy: number, sz: number): boolean {
+  const t = n.targets[k];
+  const r = (k < n.saucers.length ? SAUCER_HIT_R : TARDIGRADE_HIT_R) + BOLT_R + 0.5;
+  return Math.hypot(sx - t.x, sy - t.y, sz - t.z) <= r;
+}
+
+/**
  * One frame of the screen state, written into `out` (returned):
  * - the arrows: only while `fighting` or in the `gap`, one per alive monster
  *   (never a sleeper: `alive` is false) that is behind or past the screen's
  *   edge, at most MAX_EDGE_ARROWS;
  * - the lock: on while `n.lock` names an alive monster that projects on screen;
  * - HIT: a new `strikeSeq` stamps `hitAt = now`; it shows for HIT_MARK_S, at
- *   the lock's pixel when the reticle is on, else at the latest strike's
- *   projection when that is on screen.
- * Outside a fight with no lock and no recent strike it does no projection.
+ *   the lock's pixel when the strike landed on the locked monster (and the
+ *   lock did not change on that strike, as a kill moves it on) and the
+ *   reticle is on, else at the latest strike's projection when that is on
+ *   screen (ruling N7).
+ * Inactive (nestScreenActive false) it shows nothing and projects nothing.
  */
 export function updateNestScreen(
   n: NestState, view: ArrayLike<number>, proj: ArrayLike<number>, width: number, height: number, now: number,
   out: NestScreen,
 ): NestScreen {
-  const fight = n.phase === "fighting" || n.phase === "gap";
   const a = out.arrows;
   a.count = 0;
+  if (!nestScreenActive(n, out)) {
+    out.lock.on = false;
+    out.hit.on = false;
+    out.prevLock = n.lock;
+    return out;
+  }
+  const fight = n.phase === "fighting" || n.phase === "gap";
   if (fight) {
     const targets = n.targets;
     for (let i = 0; i < targets.length && a.count < MAX_EDGE_ARROWS; i++) {
@@ -148,12 +181,17 @@ export function updateNestScreen(
   if (n.strikeSeq !== out.seenSeq) {
     out.seenSeq = n.strikeSeq;
     out.hitAt = n.strikeSeq > 0 ? now : -Infinity;
+    const s = n.strikes[(n.strikeSeq - 1 + n.strikes.length) % n.strikes.length];
+    out.hitOnLock = n.strikeSeq > 0 && n.lock >= 0 && n.lock === out.prevLock && strikeOn(n, n.lock, s.x, s.y, s.z);
   }
+  // The lock moved on mid-HIT: the marker stays at the strike, not on the new target.
+  if (n.lock !== out.prevLock) out.hitOnLock = false;
+  out.prevLock = n.lock;
   const hit = out.hit;
   const age = now - out.hitAt;
   hit.on = false;
   if (age >= 0 && age < HIT_MARK_S - 1e-9) {
-    if (lock.on) {
+    if (out.hitOnLock && lock.on) {
       hit.on = true; hit.x = lock.x; hit.y = lock.y;
     } else {
       const s = n.strikes[(out.seenSeq - 1) % n.strikes.length];

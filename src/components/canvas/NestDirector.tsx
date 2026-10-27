@@ -13,7 +13,7 @@ import {
   applyNestEvents, createShipTrack, maybeRumour, noseFrom, takeClick, trackShip, type NestEffects,
 } from "../../utils/combat/director";
 import { nestPaused } from "../../utils/combat/nestRadio";
-import { nestScreen, updateNestScreen } from "../../utils/combat/nestScreen";
+import { nestScreen, nestScreenActive, updateNestScreen } from "../../utils/combat/nestScreen";
 import { saucerMuzzleWorld, tardigradeMouthWorld } from "../../utils/combat/monsterFrame";
 import type { ClickShot, NestSink, V3 } from "../../utils/combat/types";
 // The rig types only (Ruling C16): the renderer and its materials load on demand (nest/NestGate.tsx).
@@ -114,13 +114,11 @@ export default function NestDirector() {
     applyNestEvents(combat, ev, FX, now, nowMs);
     // The HUD's reticle, HIT and edge arrows (NestOverlay reads them). The
     // camera was placed this frame (Spaceship): bring its inverse up to date
-    // first, or the reticle trails the monster by a frame. At rest (ready,
-    // no lock, no HIT showing or due) updateNestScreen projects nothing, and
-    // the matrix update is skipped too.
+    // first, or the reticle trails the monster by a frame. When the screen
+    // state is inactive (nestScreenActive, the same test updateNestScreen
+    // early-outs on) it projects nothing, and the matrix update is skipped.
     const n = combat.nest;
-    if (n.phase !== "ready" || n.lock >= 0 || n.strikeSeq !== nestScreen.seenSeq || nestScreen.hit.on) {
-      camera.updateMatrixWorld();
-    }
+    if (nestScreenActive(n, nestScreen)) camera.updateMatrixWorld();
     updateNestScreen(n, camera.matrixWorldInverse.elements, camera.projectionMatrix.elements,
       size.width, size.height, now, nestScreen);
 

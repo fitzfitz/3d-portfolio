@@ -6,7 +6,7 @@
  * pools are built once, every function writes into a caller's object.
  */
 import type * as THREE from "three";
-import { JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
+import { BOLT_R, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "./constants";
 import { monsterMatrix } from "./monsterFrame";
 import type { Saucer } from "./saucerAi";
 import type { V3 } from "./types";
@@ -246,6 +246,30 @@ export const NEAR_FADE_NEAR = 2;
 export function nearFade(px: number, py: number, pz: number, cam: V3): number {
   const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
   const x = (d - NEAR_FADE_NEAR) / (NEAR_FADE_FAR - NEAR_FADE_NEAR);
+  return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+}
+
+// Bolts near the camera (ruling N7). A fresh ship bolt is ~6 u from the
+// chase camera, where a BOLT_GLOW_R sphere is a 60–90 px saturated disc for a
+// frame or two (enemy bolts passing close the same). Render only: the hit
+// tests keep the bolts' real radius.
+
+/** A bolt's glow radius: its hit radius and a little haze. */
+export const BOLT_GLOW_R = BOLT_R + 0.08;
+/** The cross radius is at most this × the distance to the camera: ~16 px across at 1280×800 (60° fov). */
+export const BOLT_NEAR_K = 0.012;
+/** A bolt's colour fades from 1 at BOLT_FADE_FAR to 0 at BOLT_FADE_NEAR from the camera (u). */
+export const BOLT_FADE_NEAR = 3;
+export const BOLT_FADE_FAR = 12;
+
+/** A bolt's drawn cross radius at `d` u from the camera: min(BOLT_GLOW_R, d × BOLT_NEAR_K). */
+export function boltCrossRadius(d: number): number {
+  return Math.min(BOLT_GLOW_R, d * BOLT_NEAR_K);
+}
+
+/** A bolt's colour factor at `d` u from the camera: 0 inside BOLT_FADE_NEAR, smoothstepping to 1 at BOLT_FADE_FAR. */
+export function boltNearFade(d: number): number {
+  const x = (d - BOLT_FADE_NEAR) / (BOLT_FADE_FAR - BOLT_FADE_NEAR);
   return x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 }
 

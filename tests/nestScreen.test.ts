@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   EDGE_INSET_PX, MAX_EDGE_ARROWS, createNestScreen, edgeArrow, nestScreen, projectNdc, updateNestScreen,
-  type EdgeSpot, type Ndc,
+  nestScreenActive, type EdgeSpot, type Ndc,
 } from "../src/utils/combat/nestScreen";
 import { createNest, type NestState } from "../src/utils/combat/nest";
 
@@ -162,6 +162,91 @@ describe("updateNestScreen", () => {
     n.strikes[2].x = 0; n.strikes[2].y = 0; n.strikes[2].z = 5;
     n.strikeSeq = 3;
     expect(updateNestScreen(n, V, P, W, H, t + 2, o).hit.on).toBe(false);
+  });
+
+  it("puts HIT at the strike, not the reticle, when the strike missed the locked monster", () => {
+    const n = fight();
+    const o = createNestScreen();
+    n.lock = 0;
+    updateNestScreen(n, V, P, W, H, 1, o);
+    // A strike on another monster (by saucer 2's place, ahead and left), the lock unchanged.
+    n.saucers[2].x = -6; n.saucers[2].y = 0; n.saucers[2].z = -20;
+    n.strikes[0].x = -6 + 2.6; n.strikes[0].y = 0; n.strikes[0].z = -20;
+    n.strikeSeq = 1;
+    updateNestScreen(n, V, P, W, H, 2, o);
+    expect(o.lock.on).toBe(true);
+    expect(o.hit.on).toBe(true);
+    expect(o.hit.x).toBeCloseTo((-3.4 / 20 / 2 + 0.5) * W, 9);
+    expect(o.hit.x).not.toBeCloseTo(o.lock.x, 3);
+    // It stays there for its 0.25 s, the reticle unmoved.
+    updateNestScreen(n, V, P, W, H, 2.1, o);
+    expect(o.hit.x).toBeCloseTo((-3.4 / 20 / 2 + 0.5) * W, 9);
+  });
+
+  it("a HIT on the locked monster stays at the strike if the lock moves on before it ends", () => {
+    const n = fight();
+    const o = createNestScreen();
+    n.saucers[2].x = -6; n.saucers[2].y = 0; n.saucers[2].z = -20;
+    n.lock = 0;
+    updateNestScreen(n, V, P, W, H, 1, o);
+    n.strikes[0].x = 7.6; n.strikes[0].y = 0; n.strikes[0].z = -20;
+    n.strikeSeq = 1;
+    updateNestScreen(n, V, P, W, H, 2, o);
+    expect([o.hit.x, o.hit.y]).toEqual([o.lock.x, o.lock.y]);
+    n.lock = 2;
+    updateNestScreen(n, V, P, W, H, 2.1, o);
+    expect(o.hit.on).toBe(true);
+    expect(o.hit.x).toBeCloseTo((7.6 / 20 / 2 + 0.5) * W, 9);
+  });
+
+  it("puts HIT at the strike when the lock changed on that strike (a kill moves the lock on)", () => {
+    const n = fight();
+    const o = createNestScreen();
+    n.saucers[2].x = -6; n.saucers[2].y = 0; n.saucers[2].z = -20;
+    n.lock = 0;
+    updateNestScreen(n, V, P, W, H, 1, o);
+    // The killing strike on saucer 0's surface; the lock moved on to saucer 2 in that step.
+    n.saucers[0].alive = false;
+    n.lock = 2;
+    n.strikes[0].x = 5 + 2.6; n.strikes[0].y = 0; n.strikes[0].z = -20;
+    n.strikeSeq = 1;
+    updateNestScreen(n, V, P, W, H, 2, o);
+    expect(o.lock.on).toBe(true);
+    expect(o.hit.on).toBe(true);
+    expect(o.hit.x).toBeCloseTo((7.6 / 20 / 2 + 0.5) * W, 9);
+    expect(o.hit.x).not.toBeCloseTo(o.lock.x, 3);
+  });
+
+  it("nestScreenActive: fighting or the gap, or a lock, an unseen strike or a HIT showing", () => {
+    const n = createNest();
+    const o = createNestScreen();
+    for (const ph of ["ready", "countdown", "rest"] as const) { n.phase = ph; expect(nestScreenActive(n, o), ph).toBe(false); }
+    for (const ph of ["fighting", "gap"] as const) { n.phase = ph; expect(nestScreenActive(n, o), ph).toBe(true); }
+    n.phase = "countdown"; n.lock = 0;
+    expect(nestScreenActive(n, o)).toBe(true);
+    n.lock = -1; n.phase = "rest"; n.strikeSeq = 4;
+    expect(nestScreenActive(n, o)).toBe(true); // the last kill's strike, as the Nest clears
+    o.seenSeq = 4;
+    expect(nestScreenActive(n, o)).toBe(false);
+    o.hit.on = true;
+    expect(nestScreenActive(n, o)).toBe(true);
+  });
+
+  it("the last kill's HIT still shows once the Nest has cleared (rest), then the screen goes idle", () => {
+    const n = fight();
+    const o = createNestScreen();
+    n.lock = 0;
+    updateNestScreen(n, V, P, W, H, 1, o);
+    n.saucers[0].alive = false; n.lock = -1; n.phase = "rest";
+    n.strikes[0].x = 7.6; n.strikes[0].y = 0; n.strikes[0].z = -20;
+    n.strikeSeq = 1;
+    expect(updateNestScreen(n, V, P, W, H, 2, o).hit.on).toBe(true);
+    expect(o.arrows.count).toBe(0);
+    expect(updateNestScreen(n, V, P, W, H, 2.3, o).hit.on).toBe(false);
+    expect(nestScreenActive(n, o)).toBe(false);
+    // Idle: nothing shows (and nothing is projected).
+    updateNestScreen(n, V, P, W, H, 2.4, o);
+    expect([o.lock.on, o.hit.on, o.arrows.count]).toEqual([false, false, 0]);
   });
 
   it("returns `out` and allocates no new arrays over 1,000 calls", () => {
