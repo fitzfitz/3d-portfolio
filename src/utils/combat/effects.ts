@@ -1,8 +1,8 @@
 /**
  * The Nest's effects, as pure maths the renderer (components/canvas/nest/
  * NestEffects.tsx) writes into its pooled buffers every frame: the plasma
- * jet's particles, the defeated saucers' smoke puffs, and the instance
- * matrices of the bolts and the saucers' thrust glows. Allocation-free:
+ * jet's particles, the defeated saucers' smoke puffs, the hit sparks, and the
+ * instance matrices of the bolts, the saucers' thrust glows and the sparks. Allocation-free:
  * pools are built once, every function writes into a caller's object.
  */
 import type * as THREE from "three";
@@ -162,6 +162,70 @@ export function stepSmoke(p: SmokePool, saucers: readonly Saucer[], dt: number, 
 export function smokeAlpha(age: number): number {
   const k = 1 - age / SMOKE_LIFE_S;
   return k > 0 ? SMOKE_ALPHA * k * k : 0;
+}
+
+// ── Hit sparks (extra instances in the bolt mesh) ─────────────────────────
+
+/** Sparks per ship-bolt hit… */
+export const HIT_SPARKS = 4;
+/** …from a fixed ring of this many (six strikes' worth; the oldest is reused). */
+export const SPARK_POOL = 24;
+/** A spark's life (s): it shrinks from SPARK_R to nothing over it. */
+export const SPARK_LIFE_S = 0.3;
+/** Sparks fly out from the hit point at this speed (u/s), each in a random direction. */
+export const SPARK_SPEED = 6;
+/** A spark's radius at birth (u). */
+export const SPARK_R = 0.12;
+
+export interface Spark { live: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number }
+
+/** A fixed ring of sparks; `next` is the oldest slot (sparks share one life). */
+export interface SparkPool { sparks: Spark[]; next: number }
+
+export function createSparks(n: number = SPARK_POOL): SparkPool {
+  const sparks: Spark[] = [];
+  for (let i = 0; i < n; i++) sparks.push({ live: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, age: 0 });
+  return { sparks, next: 0 };
+}
+
+/**
+ * A strike's burst: HIT_SPARKS sparks at (x, y, z) in the ring's oldest
+ * slots, flying out at SPARK_SPEED in random directions (uniform over the
+ * sphere); `still` (reduced motion): they burst and shrink but hold still.
+ */
+export function emitSparks(p: SparkPool, x: number, y: number, z: number, rnd: () => number, still: boolean): void {
+  for (let i = 0; i < HIT_SPARKS; i++) {
+    const s = p.sparks[p.next];
+    p.next = (p.next + 1) % p.sparks.length;
+    s.live = true; s.age = 0;
+    s.x = x; s.y = y; s.z = z;
+    const cz = 2 * rnd() - 1, a = 2 * Math.PI * rnd();
+    const k = still ? 0 : SPARK_SPEED * Math.sqrt(1 - cz * cz);
+    s.vx = k * Math.cos(a); s.vy = k * Math.sin(a); s.vz = still ? 0 : SPARK_SPEED * cz;
+  }
+}
+
+/** One step: sparks age, fly and expire at SPARK_LIFE_S. dt 0 (a paused fight) changes nothing. Returns the live sparks. */
+export function stepSparks(p: SparkPool, dt: number): number {
+  const sparks = p.sparks;
+  let live = 0;
+  for (let i = 0; i < sparks.length; i++) {
+    const s = sparks[i];
+    if (!s.live) continue;
+    if (dt > 0) {
+      s.age += dt;
+      if (s.age >= SPARK_LIFE_S) { s.live = false; continue; }
+      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+    }
+    live++;
+  }
+  return live;
+}
+
+/** A spark's instance: a sphere at its position, SPARK_R across at birth, shrinking linearly to nothing at SPARK_LIFE_S. */
+export function sparkMatrix(s: Spark, out: THREE.Matrix4): THREE.Matrix4 {
+  const k = SPARK_R * Math.max(0, 1 - s.age / SPARK_LIFE_S);
+  return out.makeScale(k, k, k).setPosition(s.x, s.y, s.z);
 }
 
 // ── Near the camera ────────────────────────────────────────────────────────

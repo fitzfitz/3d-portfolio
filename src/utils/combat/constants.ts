@@ -49,7 +49,16 @@ export const HULL_AFTER_BREACH = 60;
 export const FIRE_INTERVAL_S = 0.2;
 export const BOLT_SPEED = 140;
 export const BOLT_RANGE = 160;
-export const AIM_ASSIST_RAD = 12 * DEG;
+
+// ── Lock-on and click assist (spec 2026-10-27-nest-playable §4) ───────────
+/** Held fire locks the nearest live monster within this of the nose (and `BOLT_RANGE`)… */
+export const LOCK_ACQUIRE_RAD = 25 * DEG;
+/** …and keeps it while it stays alive and within this, fire held or not. */
+export const LOCK_HOLD_RAD = 40 * DEG;
+/** A click aims, with lead, at the live monster nearest its camera ray within this. */
+export const CLICK_ASSIST_RAD = 6 * DEG;
+/** The last ship-bolt hits' points, for the sparks (a fixed ring). */
+export const STRIKE_RING = 8;
 
 // ── Monsters ───────────────────────────────────────────────────────────────
 export const SAUCER_HITS = 3;
@@ -83,8 +92,10 @@ export const JET_RADIUS = 2.5;
 export const JET_DPS = 25;
 
 // ── Controller's values (not in the spec) ──────────────────────────────────
-export const SAUCER_HIT_R = 1.8;
-export const TARDIGRADE_HIT_R = 3.5;
+/** The monsters' hit spheres, grown for the player (spec 2026-10-27-nest-playable §4: 1.8 → 2.6, 3.5 → 4.5). */
+export const SAUCER_HIT_R = 2.6;
+export const TARDIGRADE_HIT_R = 4.5;
+/** The ship's own is unchanged, so the monsters' accuracy is too. */
 export const SHIP_HIT_R = 1.4;
 export const BOLT_R = 0.3;
 export const TARDIGRADE_HIT_POSE_S = 0.25;

@@ -15,8 +15,8 @@ export const combat = {
   hits: 0,
   /** A breach asks Spaceship to tow the ship. */
   towRequest: false,
-  /** A click's aim point inside the area. */
-  click: { pending: false, x: 0, y: 0, z: 0 },
+  /** A click inside the area: its aim point and the camera ray (for the click assist). */
+  click: { pending: false, x: 0, y: 0, z: 0, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 },
   /** The Nest's programs and maps are on the GPU. */
   warm: false,
   /**

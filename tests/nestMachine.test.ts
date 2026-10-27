@@ -2,14 +2,15 @@ import { describe, it, expect } from "vitest";
 import {
   BOLT_SPEED, BOLT_RANGE, ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE, ENEMY_BOLT_SPEED, HULL_AFTER_BREACH, JET_DPS,
   LEAVE_S, NEST_LEASH_R, NEST_REST_S, NOSE_OFFSET, SAUCER_HITS, SLEEP_GROW_S, SPAWN_CONE_RAD, SPAWN_MAX_R, WAVE_GAP_S,
+  STRIKE_RING,
 } from "../src/utils/combat/constants";
-import type { NestSink, V3 } from "../src/utils/combat/types";
+import type { ClickShot, NestSink, V3 } from "../src/utils/combat/types";
 import { fireBolt, type Bolt } from "../src/utils/combat/bolts";
-import { leadAim } from "../src/utils/combat/aim";
+import { clickAimPoint, leadAim } from "../src/utils/combat/aim";
 import { hitSaucer } from "../src/utils/combat/saucerAi";
 import {
   contactCount, createNest, createNestEvents, debugClearAll, debugClearWave, debugFormation, debugStartWave, endFight,
-  resetNestEvents, stepNest, type NestEvents, type NestInput, type NestState,
+  frontSpawn, resetNestEvents, stepNest, type NestEvents, type NestInput, type NestState,
 } from "../src/utils/combat/nest";
 import { monstersOnShow } from "../src/utils/combat/renderPose";
 import { mulberry32 } from "../src/utils/mulberry32";
@@ -29,6 +30,12 @@ const unit = (a: V3) => { const l = Math.hypot(a.x, a.y, a.z); return v(a.x / l,
 const expectDir = (b: { dx: number; dy: number; dz: number }, want: V3) => {
   expect(b.dx).toBeCloseTo(want.x, 9); expect(b.dy).toBeCloseTo(want.y, 9); expect(b.dz).toBeCloseTo(want.z, 9);
 };
+
+/** A click at `point`, seen from a camera at `cam` (the ray runs from the camera through the point). */
+const clickAt = (point: V3, cam: V3): ClickShot => ({
+  x: point.x, y: point.y, z: point.z, ox: cam.x, oy: cam.y, oz: cam.z,
+  dx: point.x - cam.x, dy: point.y - cam.y, dz: point.z - cam.z,
+});
 
 /** The test Nest's centre: off the origin so nothing passes by accident. */
 const C: V3 = v(40, -20, 10);
@@ -340,7 +347,8 @@ describe("the Nest: the plasma gun", () => {
     expect(racing.run(1).shots).toBe(0);
 
     const clicks = setup(100);
-    const aim = v(C.x, C.y + 40, C.z);
+    const aimPoint = v(C.x, C.y + 40, C.z);
+    const aim = clickAt(aimPoint, v(clicks.inp.ship.x + 10, C.y + 3, C.z));
     let shots = 0;
     for (let i = 0; i < 60; i++) {
       clicks.inp.click = i % 3 === 0 ? aim : null; // 20 clicks in 1 s
@@ -349,29 +357,7 @@ describe("the Nest: the plasma gun", () => {
     expect(shots).toBe(5);
     const b = liveBolts(clicks.n, "ship").reduce((a, c) => (c.left > a.left ? c : a));
     const origin = v(clicks.inp.ship.x - NOSE_OFFSET, C.y, C.z);
-    expectDir(b, unit(v(aim.x - origin.x, aim.y - origin.y, aim.z - origin.z)));
-  });
-
-  it("held fire leads the nearest monster in the cone", () => {
-    const { n, ev, inp, rnd, step } = setup(100);
-    debugStartWave(n, 1, inp, rnd, ev);
-    n.frozen = true;
-    const ship = inp.ship;
-    const [s, a, b] = n.saucers;
-    // 8° off the nose (−X), 40 u out, strafing at 12 u/s.
-    s.x = ship.x - 40 * Math.cos(8 * DEG); s.y = ship.y; s.z = ship.z + 40 * Math.sin(8 * DEG);
-    s.vx = 0; s.vy = 0; s.vz = 12;
-    // The others well outside the cone.
-    a.x = ship.x; a.y = ship.y + 60; a.z = ship.z;
-    b.x = ship.x; b.y = ship.y - 60; b.z = ship.z;
-    inp.fireHeld = true;
-    expect(step().shots).toBe(1);
-    const bolt = liveBolts(n, "ship")[0];
-    const origin = v(ship.x - NOSE_OFFSET, ship.y, ship.z);
-    const want = leadAim(origin, v(s.x, s.y, s.z), v(s.vx, s.vy, s.vz), BOLT_SPEED, v(0, 0, 0));
-    expectDir(bolt, want);
-    // And it is a lead, not a straight shot.
-    expect(angle(v(bolt.dx, bolt.dy, bolt.dz), v(s.x - origin.x, s.y - origin.y, s.z - origin.z))).toBeGreaterThan(1 * DEG);
+    expectDir(b, unit(v(aimPoint.x - origin.x, aimPoint.y - origin.y, aimPoint.z - origin.z)));
   });
 
   it("three ship bolts defeat a saucer even at dt 0.05 (Review Focus 3)", () => {
@@ -380,7 +366,7 @@ describe("the Nest: the plasma gun", () => {
     n.frozen = true;
     const ship = inp.ship;
     const [s, a, b] = n.saucers;
-    // 33 u ahead: bolt points at 1.3 + 7k u never land within 2.1 u of it; only the swept segment hits.
+    // 33 u ahead: bolt points at 1.3 + 7k u never land within 2.9 u of it; only the swept segment hits.
     s.x = ship.x - 33; s.y = ship.y; s.z = ship.z;
     a.x = ship.x; a.y = ship.y + 60; a.z = ship.z;
     b.x = ship.x; b.y = ship.y - 60; b.z = ship.z;
@@ -412,7 +398,7 @@ describe("the Nest: the plasma gun", () => {
     expect(s.hp).toBe(2);
     expect(liveBolts(n, "ship")).toHaveLength(0);
 
-    // A bolt that would reach the saucer only by overshooting its range misses.
+    // A bolt that would reach the saucer only by overshooting its range misses (3.1 u short of it, past 2.6 + 0.3).
     s.x = ship.x - 37.1;
     const bolt: Bolt = fireBolt(n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, 4, 1)!;
     step(0.05);
@@ -428,7 +414,7 @@ describe("the Nest: the plasma gun", () => {
     const ship = inp.ship;
     for (const s of n.saucers) { s.x = ship.x; s.y = ship.y + 60; s.z = ship.z; }
     const t = n.tardigrades[0];
-    // 3.6 u off the bolt's line: inside 3.5 + 0.3, outside a saucer's 1.8 + 0.3.
+    // 3.6 u off the bolt's line: inside 4.5 + 0.3, outside a saucer's 2.6 + 0.3.
     t.x = ship.x - 40; t.y = ship.y + 3.6; t.z = ship.z;
     fireBolt(n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1);
     step(0.05); step(0.05);
@@ -578,7 +564,7 @@ describe("the Nest: pause, debug and pools", () => {
     expect(liveBolts(n, "ship").length).toBeGreaterThan(0);
     const before = JSON.stringify(n);
     inp.paused = true;
-    inp.click = v(C.x, C.y + 30, C.z);
+    inp.click = clickAt(v(C.x, C.y + 30, C.z), v(inp.ship.x + 10, C.y + 3, C.z));
     for (let i = 0; i < 100; i++) {
       const e = step();
       expect(e).toEqual({
@@ -629,7 +615,7 @@ describe("the Nest: pause, debug and pools", () => {
   it("allocates nothing per step: the pools keep their objects", () => {
     const { n, ev, inp, at, step, run, startFight } = setup();
     const saucers = n.saucers.slice(), tardigrades = n.tardigrades.slice(), bolts = n.bolts.bolts.slice();
-    const targets = n.targets.slice(), hull = n.hull;
+    const targets = n.targets.slice(), hull = n.hull, strikes = n.strikes.slice();
     const poses = n.saucers.map((s) => s.pose);
     expect(saucers).toHaveLength(5);
     expect(tardigrades).toHaveLength(1);
@@ -646,7 +632,7 @@ describe("the Nest: pause, debug and pools", () => {
     }
     run(1);
     at(80); step(); at(69); step(); run(3.5);
-    inp.click = v(C.x, C.y, C.z + 5);
+    inp.click = clickAt(v(C.x, C.y, C.z + 5), v(inp.ship.x + 10, C.y + 3, C.z));
     run(2, DT, () => { n.hull.hp = 100; });
 
     expect(n.saucers).toHaveLength(5);
@@ -658,6 +644,9 @@ describe("the Nest: pause, debug and pools", () => {
     n.bolts.bolts.forEach((b, i) => expect(b).toBe(bolts[i]));
     n.targets.forEach((t, i) => expect(t).toBe(targets[i]));
     expect(n.hull).toBe(hull);
+    expect(n.strikeSeq).toBeGreaterThan(0);
+    expect(n.strikes).toHaveLength(STRIKE_RING);
+    n.strikes.forEach((k, i) => expect(k).toBe(strikes[i]));
   });
 });
 
@@ -886,5 +875,307 @@ describe("the Nest: spawning in front", () => {
     }
     // A front-spawned tardigrade is uncurled.
     expect(n.tardigrades[0].pose.curl).toBe(0);
+  });
+});
+
+describe("the Nest: front spawns keep their distance (Ruling N5)", () => {
+  it("a clamped spawn is never within 20 u of the ship, and stays on the 105 u sphere", () => {
+    const { inp } = setup();
+    const rnd = mulberry32(11);
+    const out = v(0, 0, 0);
+    let moved = 0;
+    for (const d of [85, 95, 100, 105, 108, 110, 115]) {
+      for (const nose of [v(1, 0, 0), v(1, 0.3, 0.2), v(0.6, 0, 0.8), v(0, 1, 0)]) {
+        inp.ship.x = C.x + d; inp.ship.y = C.y; inp.ship.z = C.z;
+        inp.nose = nose;
+        for (let i = 0; i < 400; i++) {
+          frontSpawn(inp, rnd, out);
+          expect(dist(out, inp.ship)).toBeGreaterThanOrEqual(20 - 1e-9);
+          expect(dist(out, C)).toBeLessThanOrEqual(SPAWN_MAX_R + 1e-9);
+          if (Math.abs(dist(out, inp.ship) - 20) < 1e-6) moved++;
+        }
+      }
+    }
+    expect(moved).toBeGreaterThan(0); // the rule really moved some
+    // Straight out along the ship's own radius (no sideways part to keep): still 20 u away, on the sphere.
+    inp.ship.x = C.x + 105; inp.nose = v(1, 0, 0);
+    frontSpawn(inp, () => 0, out); // the cone's axis
+    expect(dist(out, inp.ship)).toBeCloseTo(20, 9);
+    expect(dist(out, C)).toBeCloseTo(SPAWN_MAX_R, 9);
+  });
+
+  it("a ship 105 u out, nose outward, gets no wave spawn within 20 u", () => {
+    const { n, ev, inp, rnd, at } = setup();
+    at(105);
+    inp.nose = v(1, 0, 0);
+    for (let r = 0; r < 20; r++) {
+      debugStartWave(n, r % 2 === 0 ? 2 : 3, inp, rnd, ev);
+      for (const m of [...n.saucers, ...n.tardigrades]) {
+        if (!m.alive) continue;
+        expect(dist(m, inp.ship)).toBeGreaterThanOrEqual(20 - 1e-9);
+        expect(dist(m, C)).toBeLessThanOrEqual(SPAWN_MAX_R + 1e-9);
+      }
+    }
+  });
+});
+
+describe("the Nest: the sleepers' placed flag (Ruling N5)", () => {
+  it("is set on placement and cleared on drop or dismiss", () => {
+    expect(createNest().sleepersPlaced).toBe(false);
+    const { n, at, step } = setup(150);
+    step();
+    expect(n.sleepersPlaced).toBe(true);
+    at(230); step();
+    expect(n.sleepersPlaced).toBe(false);
+    for (const m of [...n.saucers, ...n.tardigrades]) expect(m.phase).toBe("gone");
+    at(190); step();
+    expect(n.sleepersPlaced).toBe(true);
+    endFight(n);
+    expect(n.sleepersPlaced).toBe(false);
+  });
+
+  it("guards the drop loop: with the flag down, nothing is touched beyond 220 u", () => {
+    const { n, at, step } = setup(150);
+    step();
+    n.sleepersPlaced = false; // as if no sleeper existed
+    at(230); step();
+    expect(n.saucers[0].phase).toBe("asleep");
+    expect(n.tardigrades[0].phase).toBe("asleep");
+  });
+});
+
+describe("the Nest: lock-on, click assist and strikes", () => {
+  /** The direction `deg`° off the −X nose, turning toward +Z, in the x–z plane. */
+  const dirAt = (deg: number) => v(-Math.cos(deg * DEG), 0, Math.sin(deg * DEG));
+  /** Wave 1 live and frozen, the ship 100 u out on +X, nose −X, every saucer parked 60 u above the ship. */
+  function lockSetup() {
+    const f = setup(100);
+    debugStartWave(f.n, 1, f.inp, f.rnd, f.ev);
+    f.n.frozen = true;
+    const ship = f.inp.ship;
+    for (const s of f.n.saucers) { s.x = ship.x; s.y = ship.y + 60; s.z = ship.z; s.vx = 0; s.vy = 0; s.vz = 0; }
+    /** The bolts' origin: the ship's nose. */
+    const origin = () => {
+      const u = unit(f.inp.nose);
+      return v(ship.x + u.x * NOSE_OFFSET, ship.y + u.y * NOSE_OFFSET, ship.z + u.z * NOSE_OFFSET);
+    };
+    /** Puts m `d` u from the nose origin, `deg`° off −X. */
+    const place = (m: V3, deg: number, d: number) => {
+      const o = origin(), u = dirAt(deg);
+      m.x = o.x + u.x * d; m.y = o.y + u.y * d; m.z = o.z + u.z * d;
+    };
+    /** The newest live ship bolt (the one with the most range left). */
+    const newest = () => liveBolts(f.n, "ship").reduce((a, c) => (c.left > a.left ? c : a));
+    return { ...f, origin, place, newest };
+  }
+
+  it("starts with no lock and an empty strike ring", () => {
+    const n = createNest();
+    expect(n.lock).toBe(-1);
+    expect(n.strikeSeq).toBe(0);
+    expect(n.strikes).toHaveLength(STRIKE_RING);
+    expect(new Set(n.strikes).size).toBe(STRIKE_RING);
+  });
+
+  it("held fire locks within 25°, the lock holds to 40°, and is lost past it (then fire goes down the nose)", () => {
+    const { n, inp, step, run, place, newest } = lockSetup();
+    const s = n.saucers[0];
+    place(s, 20, 40);
+    s.hp = 99; // the bolts never defeat it
+    inp.fireHeld = true;
+    step();
+    expect(n.lock).toBe(0);
+    // Turn the nose 15° the other way: the saucer sits 35° off it.
+    inp.nose = dirAt(-15);
+    run(0.5, DT, () => expect(n.lock).toBe(0));
+    // 45° off: lost on that step, and nothing else to lock.
+    inp.nose = dirAt(-25);
+    step();
+    expect(n.lock).toBe(-1);
+    let shots = 0;
+    for (let i = 0; i < 30 && shots === 0; i++) shots = step().shots;
+    expect(shots).toBe(1);
+    expectDir(newest(), unit(inp.nose));
+  });
+
+  it("acquires only with fire held, and holds after a tap (the reticle stays)", () => {
+    const { n, inp, step, run, place } = lockSetup();
+    const s = n.saucers[0];
+    place(s, 10, 40);
+    s.hp = 99;
+    run(0.5);
+    expect(n.lock).toBe(-1); // in the cone, but fire is not held
+    inp.fireHeld = true;
+    step();
+    expect(n.lock).toBe(0);
+    inp.fireHeld = false;
+    inp.nose = dirAt(-20); // 30° off: past acquiring, inside holding
+    run(1, DT, () => expect(n.lock).toBe(0));
+  });
+
+  it("when the locked monster falls, the lock moves on that step; no later bolt goes at the fallen one (Review Focus 1)", () => {
+    const { n, inp, step, origin, place, newest } = lockSetup();
+    const [s, a] = n.saucers;
+    place(s, 10, 30);
+    place(a, 20, 40);
+    inp.fireHeld = true;
+    step();
+    expect(n.lock).toBe(0);
+    let steps = 0;
+    let e = step();
+    while (s.alive && steps < 240) { e = step(); steps++; }
+    expect(s.alive).toBe(false);
+    // The defeat step.
+    expect(n.lock).toBe(1);
+    const fallen = v(s.x, s.y, s.z);
+    let checked = 0;
+    const check = () => {
+      const b = newest();
+      const o = origin();
+      expect(angle(v(b.dx, b.dy, b.dz), v(fallen.x - o.x, fallen.y - o.y, fallen.z - o.z))).toBeGreaterThan(1 * DEG);
+      checked++;
+    };
+    if (e.shots > 0) check();
+    for (let i = 0; i < 60; i++) if (step().shots > 0) check();
+    expect(checked).toBeGreaterThan(2);
+  });
+
+  it("the fight's end and leaving the area clear the lock", () => {
+    const a = lockSetup();
+    a.place(a.n.saucers[0], 10, 40);
+    a.n.saucers[0].hp = 99;
+    a.inp.fireHeld = true;
+    a.step();
+    expect(a.n.lock).toBe(0);
+    endFight(a.n);
+    expect(a.n.lock).toBe(-1);
+
+    const b = lockSetup();
+    b.place(b.n.saucers[0], 10, 40);
+    b.n.saucers[0].hp = 99;
+    b.inp.fireHeld = true;
+    b.step();
+    expect(b.n.lock).toBe(0);
+    b.at(115);
+    b.step();
+    expect(b.n.lock).toBe(-1);
+  });
+
+  it("held fire leads the locked monster", () => {
+    const { n, inp, step, origin, place, newest } = lockSetup();
+    const s = n.saucers[0];
+    place(s, 8, 40);
+    s.vx = 0; s.vy = 0; s.vz = 12; // strafing
+    inp.fireHeld = true;
+    expect(step().shots).toBe(1);
+    expect(n.lock).toBe(0);
+    const bolt = newest();
+    const o = origin();
+    const want = leadAim(o, v(s.x, s.y, s.z), v(s.vx, s.vy, s.vz), BOLT_SPEED, v(0, 0, 0));
+    expectDir(bolt, want);
+    // And it is a lead, not a straight shot.
+    expect(angle(v(bolt.dx, bolt.dy, bolt.dz), v(s.x - o.x, s.y - o.y, s.z - o.z))).toBeGreaterThan(1 * DEG);
+  });
+
+  it("a click within 6° of a monster leads it; one further off goes at the click point; clicks never lock", () => {
+    const { n, inp, step, run, origin, place, newest } = lockSetup();
+    const s = n.saucers[0];
+    place(s, 15, 40);
+    s.vx = 0; s.vy = 0; s.vz = 12;
+    s.hp = 99;
+    const ship = inp.ship;
+    const cam = v(ship.x + 10, ship.y + 3, ship.z);
+    /** A camera ray `deg`° off the line from the camera to the saucer (turned about world up). */
+    const rayOff = (deg: number) => {
+      const d = unit(v(s.x - cam.x, s.y - cam.y, s.z - cam.z));
+      const side = unit(v(-d.z, 0, d.x));
+      const c = Math.cos(deg * DEG), sn = Math.sin(deg * DEG);
+      return v(d.x * c + side.x * sn, d.y * c + side.y * sn, d.z * c + side.z * sn);
+    };
+    const click = (deg: number): ClickShot => {
+      const dir = rayOff(deg);
+      const p = clickAimPoint(cam, dir, ship, v(0, 0, 0));
+      return { x: p.x, y: p.y, z: p.z, ox: cam.x, oy: cam.y, oz: cam.z, dx: dir.x, dy: dir.y, dz: dir.z };
+    };
+    inp.click = click(4);
+    expect(step().shots).toBe(1);
+    inp.click = null;
+    expectDir(newest(), leadAim(origin(), v(s.x, s.y, s.z), v(s.vx, s.vy, s.vz), BOLT_SPEED, v(0, 0, 0)));
+    expect(n.lock).toBe(-1);
+    run(0.3);
+    const far = click(10);
+    inp.click = far;
+    expect(step().shots).toBe(1);
+    inp.click = null;
+    const o = origin();
+    expectDir(newest(), unit(v(far.x - o.x, far.y - o.y, far.z - o.z)));
+    expect(n.lock).toBe(-1);
+    // With a lock held, a click leaves it as it is.
+    inp.fireHeld = true; step(); inp.fireHeld = false;
+    expect(n.lock).toBe(0);
+    run(0.3);
+    inp.click = click(10);
+    step();
+    inp.click = null;
+    expect(n.lock).toBe(0);
+  });
+
+  it("the hit spheres: saucer 2.6, tardigrade 4.5 (+ the bolt's 0.3); the ship's is unchanged", () => {
+    /** One ship bolt along −X from 30 u ahead, `off` u above the monster's centre 40 u ahead: hit or not. */
+    const shipBoltHits = (wave: 1 | 3, off: number): boolean => {
+      const { n, inp, rnd, ev, step } = setup(100);
+      debugStartWave(n, wave, inp, rnd, ev);
+      n.frozen = true;
+      const ship = inp.ship;
+      for (const s of n.saucers) { s.x = ship.x; s.y = ship.y + 60; s.z = ship.z; s.vx = 0; s.vy = 0; s.vz = 0; }
+      const m = wave === 1 ? n.saucers[0] : n.tardigrades[0];
+      m.x = ship.x - 40; m.y = ship.y + off; m.z = ship.z; m.vx = 0; m.vy = 0; m.vz = 0;
+      const hp = m.hp;
+      fireBolt(n.bolts, "ship", ship.x - 30, ship.y, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1);
+      step(0.05); step(0.05);
+      return m.hp < hp;
+    };
+    expect(shipBoltHits(1, 2.85)).toBe(true);
+    expect(shipBoltHits(1, 2.95)).toBe(false);
+    expect(shipBoltHits(3, 4.75)).toBe(true);
+    expect(shipBoltHits(3, 4.85)).toBe(false);
+
+    const enemyBoltHits = (off: number): boolean => {
+      const { n, inp, step, startFight } = setup();
+      startFight();
+      n.frozen = true;
+      for (const b of n.bolts.bolts) b.live = false;
+      const ship = inp.ship;
+      fireBolt(n.bolts, "enemy", ship.x - 3, ship.y + off, ship.z, 1, 0, 0, ENEMY_BOLT_SPEED, ENEMY_BOLT_RANGE, ENEMY_BOLT_DAMAGE);
+      step(0.05); step(0.05);
+      return n.hull.hp < 100;
+    };
+    expect(enemyBoltHits(1.65)).toBe(true);
+    expect(enemyBoltHits(1.75)).toBe(false);
+  });
+
+  it("every hit writes its point into the 8-slot strike ring; nine wrap it without growing it", () => {
+    const { n, step, inp } = lockSetup();
+    const s = n.saucers[0];
+    const ship = inp.ship;
+    s.x = ship.x - 33; s.y = ship.y; s.z = ship.z;
+    s.hp = 99;
+    const ring = n.strikes.slice();
+    const points: V3[] = [];
+    for (let i = 0; i < 9; i++) {
+      const b = fireBolt(n.bolts, "ship", ship.x - 30, ship.y + 0.1 * i, ship.z, -1, 0, 0, BOLT_SPEED, BOLT_RANGE, 1)!;
+      step(0.05);
+      expect(b.live).toBe(false);
+      expect(n.strikeSeq).toBe(i + 1);
+      const k = n.strikes[(n.strikeSeq - 1) % STRIKE_RING];
+      expect([k.x, k.y, k.z]).toEqual([b.x, b.y, b.z]);
+      points.push(v(b.x, b.y, b.z));
+    }
+    expect(s.hp).toBe(90);
+    expect(n.strikes).toHaveLength(STRIKE_RING);
+    n.strikes.forEach((k, i) => expect(k).toBe(ring[i]));
+    // The ninth overwrote the first slot; the rest hold hits 2–8.
+    expect([n.strikes[0].x, n.strikes[0].y, n.strikes[0].z]).toEqual([points[8].x, points[8].y, points[8].z]);
+    for (let i = 1; i < 8; i++) expect(n.strikes[i].y).toBe(points[i].y);
   });
 });

@@ -3,7 +3,8 @@ import * as THREE from "three";
 import {
   JET_PARTICLES, JET_STREAM_SPEED, SMOKE_EVERY_S, SMOKE_LIFE_S, SMOKE_POOL, THRUST_DROP, boltMatrix, createSmoke, emitSmoke,
   JET_CORE_R, JET_GLOW_SPREAD, JET_SIZE, NEAR_FADE_FAR, NEAR_FADE_NEAR, jetGlow, jetParticle, nearFade, smokeAlpha,
-  stepSmoke, thrustMatrix,
+  stepSmoke, thrustMatrix, HIT_SPARKS, SPARK_POOL, SPARK_LIFE_S, SPARK_SPEED, SPARK_R, createSparks, emitSparks, stepSparks,
+  sparkMatrix,
 } from "../src/utils/combat/effects";
 import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "../src/utils/combat/constants";
 import { createSaucer, spawnSaucer, hitSaucer, sleepSaucer, wakeSaucer, type Saucer } from "../src/utils/combat/saucerAi";
@@ -355,5 +356,78 @@ describe("the sleepers' bob", () => {
     expect(max).toBeGreaterThan(0.34);
     // Slots bob out of step.
     expect(sleepBob(1, nestPhase(0), false)).not.toBeCloseTo(sleepBob(1, nestPhase(1), false), 3);
+  });
+});
+
+describe("the hit sparks", () => {
+  const live = (p: ReturnType<typeof createSparks>) => p.sparks.filter((s) => s.live);
+
+  it("pins the sparks' values", () => {
+    expect([HIT_SPARKS, SPARK_POOL, SPARK_LIFE_S, SPARK_SPEED, SPARK_R]).toEqual([4, 24, 0.3, 6, 0.12]);
+    expect(createSparks().sparks).toHaveLength(SPARK_POOL);
+    expect(createSparks().sparks.every((s) => !s.live)).toBe(true);
+  });
+
+  it("a strike makes 4 live sparks at the hit point, flying out at 6 u/s for 0.3 s", () => {
+    const p = createSparks();
+    emitSparks(p, 10, -5, 3, mulberry32(4), false);
+    const sp = live(p);
+    expect(sp).toHaveLength(4);
+    for (const s of sp) {
+      expect([s.x, s.y, s.z, s.age]).toEqual([10, -5, 3, 0]);
+      expect(Math.hypot(s.vx, s.vy, s.vz)).toBeCloseTo(SPARK_SPEED, 9);
+    }
+    expect(stepSparks(p, 0.29)).toBe(4);
+    for (const s of live(p)) expect(Math.hypot(s.x - 10, s.y + 5, s.z - 3)).toBeCloseTo(SPARK_SPEED * 0.29, 9);
+    expect(stepSparks(p, 0.02)).toBe(0);
+    expect(live(p)).toHaveLength(0);
+  });
+
+  it("under reduced motion they burst but hold still", () => {
+    const p = createSparks();
+    emitSparks(p, 1, 2, 3, mulberry32(5), true);
+    expect(live(p)).toHaveLength(4);
+    for (let i = 0; i < 5; i++) stepSparks(p, 0.05);
+    for (const s of live(p)) expect([s.x, s.y, s.z]).toEqual([1, 2, 3]);
+    expect(stepSparks(p, 0.1)).toBe(0);
+  });
+
+  it("dt 0 (a paused fight) freezes them", () => {
+    const p = createSparks();
+    emitSparks(p, 0, 0, 0, mulberry32(6), false);
+    const before = p.sparks.map((s) => [s.x, s.y, s.z, s.age]);
+    expect(stepSparks(p, 0)).toBe(4);
+    expect(p.sparks.map((s) => [s.x, s.y, s.z, s.age])).toEqual(before);
+  });
+
+  it("the pool is fixed at 24: a 7th strike reuses the oldest slots", () => {
+    const p = createSparks();
+    const objs = p.sparks.slice();
+    const rnd = mulberry32(7);
+    for (let k = 0; k < 6; k++) { emitSparks(p, k, 0, 0, rnd, true); stepSparks(p, 0.01); }
+    expect(live(p)).toHaveLength(24);
+    emitSparks(p, 100, 0, 0, rnd, true);
+    expect(p.sparks).toHaveLength(24);
+    p.sparks.forEach((s, i) => expect(s).toBe(objs[i]));
+    expect(live(p)).toHaveLength(24);
+    // The first strike's four (the oldest) now sit at the 7th's point.
+    for (let i = 0; i < 4; i++) expect([p.sparks[i].x, p.sparks[i].age]).toEqual([100, 0]);
+    for (let i = 4; i < 24; i++) expect(p.sparks[i].x).toBe(Math.floor(i / 4));
+  });
+
+  it("a spark's instance is a sphere of 0.12 at birth, shrinking to half at half life", () => {
+    const p = createSparks();
+    emitSparks(p, 4, 5, 6, mulberry32(8), false);
+    const s = live(p)[0];
+    const m = new THREE.Matrix4();
+    const pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+    expect(sparkMatrix(s, m)).toBe(m);
+    m.decompose(pos, q, sc);
+    expect([pos.x, pos.y, pos.z]).toEqual([4, 5, 6]);
+    for (const k of [sc.x, sc.y, sc.z]) expect(k).toBeCloseTo(0.12, 12);
+    stepSparks(p, SPARK_LIFE_S / 2);
+    sparkMatrix(s, m).decompose(pos, q, sc);
+    for (const k of [sc.x, sc.y, sc.z]) expect(k).toBeCloseTo(0.06, 12);
+    expect(pos.distanceTo(new THREE.Vector3(4, 5, 6))).toBeCloseTo(SPARK_SPEED * SPARK_LIFE_S / 2, 9);
   });
 });

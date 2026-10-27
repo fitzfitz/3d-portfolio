@@ -14,7 +14,7 @@ import {
 } from "../../utils/combat/director";
 import { nestPaused } from "../../utils/combat/nestRadio";
 import { saucerMuzzleWorld, tardigradeMouthWorld } from "../../utils/combat/monsterFrame";
-import type { NestSink, V3 } from "../../utils/combat/types";
+import type { ClickShot, NestSink, V3 } from "../../utils/combat/types";
 // The rig types only (Ruling C16): the renderer and its materials load on demand (nest/NestGate.tsx).
 import type { SaucerRig, TardigradeRig } from "../../utils/monsters/monsterRig";
 import saucerRigJson from "../../data/saucerRig.json";
@@ -36,7 +36,7 @@ const SLEEPERS: readonly V3[] = NEST_SLEEPERS.map(([x, y, z]) => ({ x, y, z }));
 // ── Reused every frame (the loop allocates nothing) ────────────────────────
 const ev = createNestEvents();
 const track = createShipTrack();
-const clickAim: V3 = { x: 0, y: 0, z: 0 };
+const clickAim: ClickShot = { x: 0, y: 0, z: 0, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 };
 const inp: NestInput = {
   ship: { x: flight.x, y: flight.y, z: flight.z }, shipVel: { x: 0, y: 0, z: 0 }, nose: { x: 0, y: 0, z: 1 },
   centre: CENTRE, racing: false, paused: false, lowPerf: false, warm: false, fireHeld: false, click: null,

@@ -5,11 +5,11 @@ import { combat, useSpaceStore } from "../../../store/spaceStore";
 import { exposureCompensation } from "../../../utils/sunLight";
 import { PLUME_COLORS } from "../../../data/plumeColors";
 import { softSprite } from "../softSprite";
-import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
+import { BOLT_POOL, BOLT_R, JET_RANGE, MAX_SAUCERS, MAX_TARDIGRADES, STRIKE_RING } from "../../../utils/combat/constants";
 import { nestPaused } from "../../../utils/combat/nestRadio";
 import {
-  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, THRUST_HEX, boltMatrix, createSmoke, jetGlow, jetParticle, nearFade, smokeAlpha,
-  stepSmoke, thrustMatrix,
+  ENEMY_BOLT_HEX, JET_HEX, JET_PARTICLES, JET_SIZE, SMOKE_POOL, SPARK_POOL, THRUST_HEX, boltMatrix, createSmoke, createSparks,
+  emitSparks, jetGlow, jetParticle, nearFade, smokeAlpha, sparkMatrix, stepSmoke, stepSparks, thrustMatrix,
 } from "../../../utils/combat/effects";
 import type { V3 } from "../../../utils/combat/types";
 import { nestEffectMeshes } from "./nestEffectMeshes";
@@ -30,7 +30,8 @@ const JET_FAR = 0.35;
 const SMOKE_GREY: readonly [number, number, number] = [0.42, 0.4, 0.38];
 const SMOKE_SIZE = 2.2;
 
-const BOLTS = BOLT_POOL + MAX_SAUCERS;
+/** Bolts, thrust glows and hit sparks share the one instanced mesh. */
+const BOLTS = BOLT_POOL + MAX_SAUCERS + SPARK_POOL;
 const JETS = JET_PARTICLES * MAX_TARDIGRADES;
 
 /**
@@ -40,7 +41,9 @@ const JETS = JET_PARTICLES * MAX_TARDIGRADES;
  * from `combat.nest`, its count set to what is live, nothing allocated:
  *  - one additive InstancedMesh for every bolt, the ship's in its plume
  *    colour and the saucers' green-yellow, plus a thrust glow under each live
- *    saucer scaled by its speed. RaceCourse's ring material configuration
+ *    saucer scaled by its speed, and the hit sparks (a few per ship-bolt
+ *    hit, in the plume colour, shrinking away over 0.3 s; still under
+ *    reduced motion). RaceCourse's ring material configuration
  *    (MeshBasic, additive, instance colours, toneMapped off), so its program;
  *  - one Points for the tardigrade's plasma jet (the ship sparks' exact
  *    PointsMaterial settings, so their program);
@@ -107,6 +110,10 @@ export default function NestEffects() {
     bolts.dispose();
   }, [bolts, jet, smoke]);
 
+  // The hit sparks' pool, and the strikes already turned into sparks: from the
+  // count at mount, so a remount never replays old hits.
+  const sparks = useMemo(() => ({ pool: createSparks(SPARK_POOL), seen: combat.nest.strikeSeq }), []);
+
   // Per-frame scratch.
   const scratch = useMemo(() => ({
     m: new THREE.Matrix4(), c: new THREE.Color(), ship: new THREE.Color(), enemy: new THREE.Color(ENEMY_BOLT_HEX),
@@ -153,6 +160,22 @@ export default function NestEffects() {
       bolts.setMatrixAt(k, thrustMatrix(sc, scratch.m));
       bolts.setColorAt(k, scratch.c.copy(scratch.thrust).multiplyScalar(THRUST_GLOW));
       k++;
+    }
+    // New strikes (at most the ring's worth) burst into sparks; they freeze while paused.
+    const seq = n.strikeSeq;
+    for (let q = Math.max(sparks.seen, seq - STRIKE_RING); q < seq; q++) {
+      const p = n.strikes[q % STRIKE_RING];
+      emitSparks(sparks.pool, p.x, p.y, p.z, Math.random, s.reducedMotion);
+    }
+    sparks.seen = seq;
+    if (stepSparks(sparks.pool, dt) > 0) {
+      const spk = sparks.pool.sparks;
+      for (let i = 0; i < spk.length; i++) {
+        if (!spk[i].live) continue;
+        bolts.setMatrixAt(k, sparkMatrix(spk[i], scratch.m));
+        bolts.setColorAt(k, scratch.c.copy(scratch.ship).multiplyScalar(BOLT_GLOW));
+        k++;
+      }
     }
     bolts.count = k;
     bolts.visible = k > 0;

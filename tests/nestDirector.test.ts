@@ -12,12 +12,13 @@ import { fireBolt } from "../src/utils/combat/bolts";
 import { noseDirection } from "../src/utils/pitchFlight";
 import { NEST_BREACH_LINE, NEST_CLEARED_LINE, NEST_RUMOUR_LINE } from "../src/data/chatterLines";
 import { mulberry32 } from "../src/utils/mulberry32";
-import type { NestSink, V3 } from "../src/utils/combat/types";
+import type { ClickShot, NestSink, V3 } from "../src/utils/combat/types";
 import { markShipTeleport, shipTeleport } from "../src/store/shipTeleport";
 import { padRumble } from "../src/utils/padRumble";
 
 const DT = 1 / 60;
 const v = (x: number, y: number, z: number): V3 => ({ x, y, z });
+const shot = (): ClickShot => ({ x: 0, y: 0, z: 0, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 });
 const C = v(40, -20, 10);
 const sink: NestSink = {
   muzzle: (s, o) => { o.x = s.x; o.y = s.y; o.z = s.z; return o; },
@@ -45,7 +46,8 @@ function fakeEffects() {
 
 function fakeCombat(): NestCombat {
   return {
-    nest: createNest(), inArea: false, hits: 0, towRequest: false, click: { pending: false, x: 0, y: 0, z: 0 },
+    nest: createNest(), inArea: false, hits: 0, towRequest: false,
+    click: { pending: false, x: 0, y: 0, z: 0, ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 1 },
     warm: true, enteredAt: -Infinity, flashAt: -Infinity, clearedAt: -Infinity, breachAt: -Infinity,
   };
 }
@@ -242,13 +244,13 @@ describe("the director: nose, click and rumour", () => {
     }
   });
 
-  it("a pending click is taken once", () => {
+  it("a pending click is taken once, with its point and its camera ray", () => {
     const c = fakeCombat();
-    const out = v(0, 0, 0);
+    const out = shot();
     expect(takeClick(c, out)).toBeNull();
-    c.click.pending = true; c.click.x = 1; c.click.y = 2; c.click.z = 3;
+    Object.assign(c.click, { pending: true, x: 1, y: 2, z: 3, ox: 4, oy: 5, oz: 6, dx: 7, dy: 8, dz: 9 });
     expect(takeClick(c, out)).toBe(out);
-    expect(out).toEqual(v(1, 2, 3));
+    expect(out).toEqual({ x: 1, y: 2, z: 3, ox: 4, oy: 5, oz: 6, dx: 7, dy: 8, dz: 9 });
     expect(c.click.pending).toBe(false);
     expect(takeClick(c, out)).toBeNull();
   });
@@ -256,7 +258,7 @@ describe("the director: nose, click and rumour", () => {
   it("a click during the fire cooldown stays pending and fires when it ends; one queued click at most (C18)", () => {
     const { c, ev, fx, log, inp, rnd, at } = setup();
     at(30); // inside the fighting area, no fight needed to fire
-    const aim = v(0, 0, 0);
+    const aim = shot();
     let now = 0;
     const frame = () => {
       now += DT;
@@ -264,7 +266,10 @@ describe("the director: nose, click and rumour", () => {
       stepNest(c.nest, inp, DT, rnd, sink, ev);
       applyNestEvents(c, ev, fx, now, now * 1000);
     };
-    const click = (x: number) => { c.click.pending = true; c.click.x = x; c.click.y = C.y; c.click.z = C.z; };
+    // The ray fields set too: a camera behind the ship looking down −x (no monster near it).
+    const click = (x: number) => {
+      Object.assign(c.click, { pending: true, x, y: C.y, z: C.z, ox: C.x + 50, oy: C.y + 3, oz: C.z, dx: -1, dy: 0, dz: 0 });
+    };
     const shipBolts = () => c.nest.bolts.bolts.filter((b) => b.live && b.owner === "ship");
     // A first click fires at once.
     click(C.x - 100);
@@ -294,14 +299,14 @@ describe("the director: nose, click and rumour", () => {
   it("a click while the fight is paused is dropped, not fired on resume (C18)", () => {
     const { c, ev, fx, log, inp, rnd, at } = setup();
     at(30);
-    const aim = v(0, 0, 0);
+    const aim = shot();
     const frame = () => {
       inp.click = takeClick(c, aim, inp.paused, DT);
       stepNest(c.nest, inp, DT, rnd, sink, ev);
       applyNestEvents(c, ev, fx, 0, 0);
     };
     inp.paused = true;
-    c.click.pending = true; c.click.x = C.x - 100; c.click.y = C.y; c.click.z = C.z;
+    Object.assign(c.click, { pending: true, x: C.x - 100, y: C.y, z: C.z, ox: C.x + 50, oy: C.y, oz: C.z, dx: -1, dy: 0, dz: 0 });
     frame();
     expect(c.click.pending).toBe(false);
     inp.paused = false;
