@@ -9,8 +9,9 @@ import {
   SAUCER_BURST, SAUCER_BURST_GAP_S, SAUCER_HIT_POSE_S, SAUCER_DEFEAT_S,
   TARDIGRADE_SPEED, TARDIGRADE_STANDOFF, TARDIGRADE_ATTACK_EVERY,
   SAUCER_HIT_R, TARDIGRADE_HIT_R, SHIP_HIT_R, BOLT_R, TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S,
-  LEAVE_S, DEFEAT_DRIFT, SPAWN_R, SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S,
+  LEAVE_S, DEFEAT_DRIFT, SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S,
   CLICK_AIM_DEPTH, NOSE_OFFSET, MAX_SAUCERS, MAX_TARDIGRADES, BOLT_POOL, NEST_RUMOUR_R, TOW_PAST_BUOY,
+  SPAWN_CONE_RAD, SPAWN_DIST, SPAWN_MAX_R, SLEEP_GROW_S, SLEEP_DROP_R, WAKE_RISE_SPEED, UNCURL_S,
 } from "../src/utils/combat/constants";
 import type { AimTarget, V3 } from "../src/utils/combat/types";
 import { createHull, damageHull, regenHull, restoreAfterBreach } from "../src/utils/combat/hull";
@@ -53,10 +54,16 @@ describe("constants", () => {
   });
   it("pins the controller's values", () => {
     expect([SAUCER_HIT_R, TARDIGRADE_HIT_R, SHIP_HIT_R, BOLT_R]).toEqual([1.8, 3.5, 1.4, 0.3]);
-    expect([TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S, LEAVE_S, DEFEAT_DRIFT, SPAWN_R]).toEqual([0.25, 4, 2, 4, 30]);
+    expect([TARDIGRADE_HIT_POSE_S, TARDIGRADE_DEFEAT_S, LEAVE_S, DEFEAT_DRIFT]).toEqual([0.25, 4, 2, 4]);
     expect([SAUCER_TURN_RATE, TARDIGRADE_TURN_RATE, HIT_FEEDBACK_MIN_S, CLICK_AIM_DEPTH, NOSE_OFFSET])
       .toEqual([3, 1.5, 0.25, 80, 1.3]);
     expect([MAX_SAUCERS, MAX_TARDIGRADES, BOLT_POOL, NEST_RUMOUR_R, TOW_PAST_BUOY]).toEqual([5, 1, 48, 400, 8]);
+  });
+  it("pins the sleepers' and the front spawn's values (spec 2026-10-27-nest-playable §2–3)", () => {
+    expect([SPAWN_DIST, SPAWN_MAX_R, SLEEP_GROW_S, SLEEP_DROP_R, WAKE_RISE_SPEED, UNCURL_S]).toEqual([[30, 40], 105, 1, 220, 2, 1]);
+    expect(SPAWN_CONE_RAD).toBeCloseTo(50 * Math.PI / 180, 12);
+    expect(SPAWN_MAX_R).toBe(NEST_LEASH_R - 5);
+    expect(SLEEP_DROP_R).toBe(NEST_LOAD_R + 20);
   });
   it("sizes the monster slots for the biggest wave", () => {
     for (const w of [...WAVES, ...WAVES_LOW_PERF]) {

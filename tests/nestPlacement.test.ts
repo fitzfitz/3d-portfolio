@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { NEST_CENTRE, NEST_BUOY_POS, NEST_TOW_POSE, NEST_SCAN_ID, NEST_LABEL, NEST_RED } from "../src/data/nest";
+import {
+  NEST_CENTRE, NEST_BUOY_POS, NEST_TOW_POSE, NEST_SCAN_ID, NEST_LABEL, NEST_RED, NEST_SLEEPERS, NEST_SLEEPER_R,
+} from "../src/data/nest";
 import { NEST_LEASH_R, NEST_BUOY_R, NEST_LOAD_R, NEST_ZONE_R, TOW_PAST_BUOY, TOW_SIDE } from "../src/utils/combat/constants";
 import {
   buildNestRocks, NEST_ROCK_SEED, NEST_ROCKS, NEST_ROCK_COLLIDERS, NEST_GLOW, NEST_GLOW_R,
@@ -143,5 +145,30 @@ describe("the Nest's rock cluster", () => {
     expect(NEST_GLOW_R).toBe(7);
     expect(NEST_GLOW).toHaveLength(40);
     for (const g of NEST_GLOW) expect(Math.hypot(...g)).toBeLessThanOrEqual(NEST_GLOW_R);
+  });
+});
+
+describe("the Nest's sleepers", () => {
+  /** The buoy direction from the centre. */
+  const L = unit(sub(NEST_BUOY_POS, NEST_CENTRE));
+
+  it("are three, 22 u out, 45° off the buoy axis, 120° apart round it", () => {
+    expect(NEST_SLEEPER_R).toBe(22);
+    expect(NEST_SLEEPERS).toHaveLength(3);
+    for (const o of NEST_SLEEPERS) {
+      expect(Math.abs(Math.hypot(...o) - NEST_SLEEPER_R)).toBeLessThan(1e-9);
+      expect(Math.abs(angle(o, L) - 45 * DEG)).toBeLessThan(1e-9);
+    }
+    const [a, b, c] = NEST_SLEEPERS;
+    expect(Math.abs(dist(a, b) - dist(b, c))).toBeLessThan(1e-9);
+    expect(Math.abs(dist(b, c) - dist(c, a))).toBeLessThan(1e-9);
+  });
+
+  it("each sits clear of every rock and inside the zone", () => {
+    for (const o of NEST_SLEEPERS) {
+      const p: Vec3 = [NEST_CENTRE[0] + o[0], NEST_CENTRE[1] + o[1], NEST_CENTRE[2] + o[2]];
+      for (const c of NEST_ROCK_COLLIDERS) expect(dist(p, [c.x, c.y, c.z])).toBeGreaterThanOrEqual(c.r + 2.6);
+      expect(dist(p, NEST_CENTRE)).toBeLessThan(NEST_ZONE_R);
+    }
   });
 });

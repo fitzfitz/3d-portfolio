@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useSpaceStore, flight, combat } from "../../store/spaceStore";
 import { shipTeleport } from "../../store/shipTeleport";
-import { NEST_CENTRE } from "../../data/nest";
+import { NEST_CENTRE, NEST_SLEEPERS } from "../../data/nest";
 import { soundManager } from "../../audio/soundManager";
 import { fitzDebug } from "../../debug/bridge";
 import { RADIO_BUSY_S } from "../../utils/cargoReaction";
@@ -30,6 +30,8 @@ const SINK: NestSink = {
 };
 
 const CENTRE: V3 = { x: NEST_CENTRE[0], y: NEST_CENTRE[1], z: NEST_CENTRE[2] };
+/** Where wave 1's saucers sleep, from the centre (built once). */
+const SLEEPERS: readonly V3[] = NEST_SLEEPERS.map(([x, y, z]) => ({ x, y, z }));
 
 // ── Reused every frame (the loop allocates nothing) ────────────────────────
 const ev = createNestEvents();
@@ -38,6 +40,7 @@ const clickAim: V3 = { x: 0, y: 0, z: 0 };
 const inp: NestInput = {
   ship: { x: flight.x, y: flight.y, z: flight.z }, shipVel: { x: 0, y: 0, z: 0 }, nose: { x: 0, y: 0, z: 1 },
   centre: CENTRE, racing: false, paused: false, lowPerf: false, warm: false, fireHeld: false, click: null,
+  sleepers: SLEEPERS,
 };
 /** The rumour plays once per page visit. */
 const rumour = { told: false };

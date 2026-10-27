@@ -58,6 +58,7 @@ function setup() {
   const inp: NestInput = {
     ship: v(C.x + 200, C.y, C.z), shipVel: v(0, 0, 0), nose: v(-1, 0, 0), centre: C,
     racing: false, paused: false, lowPerf: false, warm: true, fireHeld: false, click: null,
+    sleepers: [v(0, 0, 22), v(19.05, 0, -11), v(-19.05, 0, -11)],
   };
   const rnd = mulberry32(5);
   let now = 100;

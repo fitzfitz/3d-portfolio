@@ -45,3 +45,33 @@ export const NEST_RED = "#ff3b4a";
  */
 export const NEST_JUMP_ID = NEST_SCAN_ID;
 export const NEST_JUMP_LABEL = "The Nest";
+
+/** The sleeping saucers sit this far from the centre (u), clear of the rocks (tests/nestPlacement.test.ts). */
+export const NEST_SLEEPER_R = 22;
+/** …this far off the buoy axis, so they flank the cluster's mouth as seen from the buoy. */
+const SLEEPER_TILT = 45 * Math.PI / 180;
+/** …at these angles round the buoy axis, 120° apart. */
+const SLEEPER_ROUND = [90, 210, 330].map((d) => d * Math.PI / 180);
+
+/**
+ * Where wave 1's saucers sleep: offsets from NEST_CENTRE (spec
+ * 2026-10-27-nest-playable §2). f is the buoy direction (TO_SUN), s = f × Y
+ * and u = s × f; offset i is NEST_SLEEPER_R · unit(f + tan 45° · (s cos φᵢ + u sin φᵢ)).
+ * The tardigrade sleeps at the centre.
+ */
+export const NEST_SLEEPERS: readonly Vec3[] = (() => {
+  const f = TO_SUN;
+  const sx = -f[2], sz = f[0];
+  const sl = Math.hypot(sx, sz);
+  const s: Vec3 = [sx / sl, 0, sz / sl];
+  const u: Vec3 = [s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0]];
+  const k = Math.tan(SLEEPER_TILT);
+  return SLEEPER_ROUND.map((phi): Vec3 => {
+    const c = Math.cos(phi), n = Math.sin(phi);
+    const d: Vec3 = [
+      f[0] + k * (s[0] * c + u[0] * n), f[1] + k * (s[1] * c + u[1] * n), f[2] + k * (s[2] * c + u[2] * n),
+    ];
+    const l = Math.hypot(d[0], d[1], d[2]);
+    return [d[0] / l * NEST_SLEEPER_R, d[1] / l * NEST_SLEEPER_R, d[2] / l * NEST_SLEEPER_R];
+  });
+})();

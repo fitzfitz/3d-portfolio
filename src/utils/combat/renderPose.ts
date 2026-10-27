@@ -33,7 +33,8 @@ export function idleBlink(t: number, phase: number): number {
  * A saucer's pose for this frame. `m` is its instance matrix (monsterMatrix);
  * the eyes look at the ship, the barrel aims along the AI's world aim
  * (s.ax, s.ay, s.az), both in model space. Idle blinks only while motion is
- * on and the saucer is alive (R20); the rest come from the AI.
+ * on and the saucer is alive (R20), and held shut while it sleeps; the rest
+ * come from the AI.
  */
 export function saucerRenderPose(s: Saucer, m: THREE.Matrix4, ship: V3, t: number, phase: number, reduced: boolean,
   out: SaucerPose): SaucerPose {
@@ -44,8 +45,23 @@ export function saucerRenderPose(s: Saucer, m: THREE.Matrix4, ship: V3, t: numbe
   out.fire = s.pose.fire;
   out.hit = s.pose.hit;
   out.defeat = s.pose.defeat;
-  out.blink = reduced || !s.alive ? 0 : idleBlink(t, phase);
+  // Asleep: eyes shut (held, reduced motion or not). Waking: open, no idle blinks until it is alive.
+  out.blink = s.phase === "asleep" ? 1 : reduced || !s.alive ? 0 : idleBlink(t, phase);
   return out;
+}
+
+/** The sleepers' bob (u): ±SLEEP_BOB_AMP, render-only. */
+export const SLEEP_BOB_AMP = 0.35;
+/** The bob's period (s). */
+export const SLEEP_BOB_PERIOD_S = 4;
+
+/**
+ * A sleeping monster's height offset at `t`: a slow sine, offset per slot by
+ * `phase` (nestPhase), so the sleepers bob out of step. 0 under reduced motion.
+ */
+export function sleepBob(t: number, phase: number, reduced: boolean): number {
+  if (reduced) return 0;
+  return SLEEP_BOB_AMP * Math.sin(2 * Math.PI * (t / SLEEP_BOB_PERIOD_S + phase));
 }
 
 /** A tardigrade's pose for this frame: the AI's state poses and the slot's phase. */

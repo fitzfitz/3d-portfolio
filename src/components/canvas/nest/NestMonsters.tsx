@@ -11,7 +11,7 @@ import tardigradeRigJson from "../../../data/tardigradeRig.json";
 import { MAX_SAUCERS, MAX_TARDIGRADES } from "../../../utils/combat/constants";
 import { monsterMatrix } from "../../../utils/combat/monsterFrame";
 import {
-  monsterFrameNeeded, monstersOnShow, nestPhase, saucerRenderPose, tardigradeRenderPose,
+  monsterFrameNeeded, monstersOnShow, nestPhase, saucerRenderPose, sleepBob, tardigradeRenderPose,
 } from "../../../utils/combat/renderPose";
 import { MONSTER_UNIFORMS } from "../../../utils/monsters/monsterShading";
 import { beginMonsterFrame, createLodState, endMonsterFrame } from "../../../utils/monsters/monsterInstances";
@@ -74,7 +74,8 @@ export default function NestMonsters({ warmRoot }: { warmRoot: RefObject<THREE.G
  * time, uMotion 0 under reduced motion), then beginMonsterFrame, one
  * addSaucer / addTardigrade per monster still on show (alive, defeated or
  * leaving: not gone), endMonsterFrame. Poses come from the AI
- * (utils/combat/renderPose.ts adds phase, look and blink, in model space).
+ * (utils/combat/renderPose.ts adds phase, look and blink, in model space);
+ * sleepers (asleep: blink held shut) bob by sleepBob.
  * Saucers draw 4 calls per LOD level in use, the tardigrade 3.
  *
  * On mount it compiles its programs and uploads its maps (warmNest), then
@@ -158,7 +159,9 @@ function Monsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
       if (s.phase === "gone" || !(s.scale > 0)) continue;
       const slot = S.saucers[i];
       if (slot.seed !== s.seed) { slot.seed = s.seed; saucerTint(s.seed, slot.tint); }
-      monsterMatrix(s.x, s.y, s.z, s.fx, s.fy, s.fz, s.scale, S.m);
+      // A sleeper bobs (render-only; none under reduced motion).
+      const bob = s.phase === "asleep" ? sleepBob(t, slot.phase, reduced) : 0;
+      monsterMatrix(s.x, s.y + bob, s.z, s.fx, s.fy, s.fz, s.scale, S.m);
       const distance = S.p.set(s.x, s.y, s.z).distanceTo(cam);
       saucerRenderPose(s, S.m, S.ship, t, slot.phase, reduced, slot.pose);
       addSaucer(saucer.lods, SAUCER_RIG, S.m, distance, slot.pose, slot.tint, slot.lod);
@@ -167,7 +170,8 @@ function Monsters({ warmRoot }: { warmRoot: RefObject<THREE.Group | null> }) {
       const g = n.tardigrades[i];
       if (g.phase === "gone" || !(g.scale > 0)) continue;
       const slot = S.tardigrades[i];
-      monsterMatrix(g.x, g.y, g.z, g.fx, g.fy, g.fz, g.scale, S.m);
+      const bob = g.phase === "asleep" ? sleepBob(t, slot.phase, reduced) : 0;
+      monsterMatrix(g.x, g.y + bob, g.z, g.fx, g.fy, g.fz, g.scale, S.m);
       const distance = S.p.set(g.x, g.y, g.z).distanceTo(cam);
       tardigradeRenderPose(g, slot.phase, slot.pose);
       addTardigrade(tardigrade.lods, TARDIGRADE_RIG, S.m, distance, slot.pose, slot.lod);

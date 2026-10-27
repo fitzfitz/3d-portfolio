@@ -2,14 +2,17 @@ import { describe, it, expect } from "vitest";
 import * as THREE from "three";
 import {
   NEST_LEASH_R, SAUCER_SPEED, TARDIGRADE_SPEED, ENEMY_BOLT_SPEED, ENEMY_BOLT_RANGE, ENEMY_BOLT_DAMAGE,
-  SAUCER_SPREAD_RAD, DEFEAT_DRIFT,
+  SAUCER_SPREAD_RAD, DEFEAT_DRIFT, LEAVE_S, SLEEP_GROW_S, UNCURL_S, WAKE_RISE_SPEED, TARDIGRADE_HITS,
 } from "../src/utils/combat/constants";
 import type { FightView, NestSink, V3 } from "../src/utils/combat/types";
 import { createBoltPool, type BoltPool } from "../src/utils/combat/bolts";
 import { leadAim } from "../src/utils/combat/aim";
-import { createSaucer, spawnSaucer, stepSaucer, hitSaucer, leaveSaucer, type Saucer } from "../src/utils/combat/saucerAi";
 import {
-  createTardigrade, spawnTardigrade, stepTardigrade, hitTardigrade, leaveTardigrade, jetHit, type Tardigrade,
+  createSaucer, spawnSaucer, stepSaucer, hitSaucer, leaveSaucer, sleepSaucer, wakeSaucer, type Saucer,
+} from "../src/utils/combat/saucerAi";
+import {
+  createTardigrade, spawnTardigrade, stepTardigrade, hitTardigrade, leaveTardigrade, jetHit, sleepTardigrade, wakeTardigrade,
+  type Tardigrade,
 } from "../src/utils/combat/tardigradeAi";
 import {
   monsterMatrix, worldDirToModel, saucerMuzzleWorld, tardigradeMouthWorld,
@@ -639,5 +642,75 @@ describe("monster frames", () => {
     close(tardigradeMouthWorld(t, TARDIGRADE_RIG, w), mouth);
     t.fx = 1; t.fz = 0;
     close(tardigradeMouthWorld(t, TARDIGRADE_RIG, w), rotY90(mouth));
+  });
+});
+
+describe("sleeping and waking", () => {
+  const ship = v(0, 0, 80);
+  const run = (seconds: number, f: () => void) => { for (let i = 0, k = Math.round(seconds / DT); i < k; i++) f(); };
+
+  it("a sleeping saucer only grows in; awake, it rises and turns to the ship; neither is a target nor fires", () => {
+    const s = createSaucer();
+    const pool = createBoltPool(8);
+    sleepSaucer(s, 7, 3, 4, 5, 1, 0, 0);
+    expect([s.alive, s.phase, s.scale, s.seed, s.x, s.y, s.z, s.fx, s.fy, s.fz]).toEqual([false, "asleep", 0, 7, 3, 4, 5, 1, 0, 0]);
+    run(0.5, () => stepSaucer(s, view(ship), DT, Math.random, sink, pool));
+    expect(s.scale).toBeCloseTo(0.5 / SLEEP_GROW_S, 9);
+    expect([s.x, s.y, s.z, s.vx, s.vy, s.vz, s.fx]).toEqual([3, 4, 5, 0, 0, 0, 1]);
+    run(1, () => stepSaucer(s, view(ship), DT, Math.random, sink, pool));
+    expect(s.scale).toBe(1);
+    wakeSaucer(s);
+    expect([s.alive, s.phase]).toEqual([false, "waking"]);
+    run(1, () => stepSaucer(s, view(ship), DT, Math.random, sink, pool));
+    expect(s.y).toBeCloseTo(4 + WAKE_RISE_SPEED, 9);
+    expect([s.x, s.z]).toEqual([3, 5]);
+    expect(facingDot(s, ship)).toBeGreaterThan(0.99);
+    expect(pool.bolts.some((b) => b.live)).toBe(false);
+    expect(hitSaucer(s)).toBe(false);
+  });
+
+  it("a sleeping or waking saucer leaves when sent away", () => {
+    for (const wake of [false, true]) {
+      const s = createSaucer();
+      sleepSaucer(s, 1, 0, 0, 0, 0, 0, 1);
+      run(1.2, () => stepSaucer(s, view(ship), DT, Math.random, sink, createBoltPool(1)));
+      if (wake) wakeSaucer(s);
+      leaveSaucer(s);
+      expect(s.phase).toBe("leaving");
+      run(LEAVE_S + 0.05, () => stepSaucer(s, view(ship), DT, Math.random, sink, createBoltPool(1)));
+      expect([s.phase, s.scale, s.alive]).toEqual(["gone", 0, false]);
+    }
+  });
+
+  it("a sleeping tardigrade grows in curled; woken, it holds still and uncurls over 1 s, then swims", () => {
+    const t = createTardigrade();
+    sleepTardigrade(t, 1, 2, 3, 0, 1, 0);
+    expect([t.alive, t.phase, t.scale, t.pose.curl, t.fy]).toEqual([false, "asleep", 0, 1, 1]);
+    run(1.5, () => stepTardigrade(t, view(ship), DT, Math.random, sink));
+    expect([t.scale, t.pose.curl, t.x, t.y, t.z]).toEqual([1, 1, 1, 2, 3]);
+    expect(hitTardigrade(t)).toBe(false);
+    wakeTardigrade(t, mulberry32(1), ship);
+    expect([t.alive, t.phase, t.hp, t.pose.curl]).toEqual([true, "swim", TARDIGRADE_HITS, 1]);
+    run(UNCURL_S / 2, () => {
+      stepTardigrade(t, view(ship), DT, Math.random, sink);
+      expect(speed(t)).toBe(0);
+    });
+    expect(t.pose.curl).toBeCloseTo(0.5, 9);
+    run(UNCURL_S / 2, () => stepTardigrade(t, view(ship), DT, Math.random, sink));
+    expect(t.pose.curl).toBe(0);
+    expect([t.x, t.y, t.z]).toEqual([1, 2, 3]);
+    expect(t.phase).toBe("swim"); // no charge while uncurling
+    run(0.5, () => stepTardigrade(t, view(ship), DT, Math.random, sink));
+    expect(speed(t)).toBeGreaterThan(0);
+  });
+
+  it("a sleeping tardigrade leaves when sent away", () => {
+    const t = createTardigrade();
+    sleepTardigrade(t, 0, 0, 0, 0, 0, 1);
+    run(1, () => stepTardigrade(t, view(ship), DT, Math.random, sink));
+    leaveTardigrade(t);
+    expect(t.phase).toBe("leaving");
+    run(LEAVE_S + 0.05, () => stepTardigrade(t, view(ship), DT, Math.random, sink));
+    expect([t.phase, t.scale]).toEqual(["gone", 0]);
   });
 });

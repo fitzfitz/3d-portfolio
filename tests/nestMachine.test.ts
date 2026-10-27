@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   BOLT_SPEED, BOLT_RANGE, ENEMY_BOLT_DAMAGE, ENEMY_BOLT_RANGE, ENEMY_BOLT_SPEED, HULL_AFTER_BREACH, JET_DPS,
-  NEST_LEASH_R, NOSE_OFFSET, SPAWN_R,
+  LEAVE_S, NEST_LEASH_R, NEST_REST_S, NOSE_OFFSET, SAUCER_HITS, SLEEP_GROW_S, SPAWN_CONE_RAD, SPAWN_MAX_R, WAVE_GAP_S,
 } from "../src/utils/combat/constants";
 import type { NestSink, V3 } from "../src/utils/combat/types";
 import { fireBolt, type Bolt } from "../src/utils/combat/bolts";
@@ -11,6 +11,7 @@ import {
   contactCount, createNest, createNestEvents, debugClearAll, debugClearWave, debugFormation, debugStartWave, endFight,
   resetNestEvents, stepNest, type NestEvents, type NestInput, type NestState,
 } from "../src/utils/combat/nest";
+import { monstersOnShow } from "../src/utils/combat/renderPose";
 import { mulberry32 } from "../src/utils/mulberry32";
 
 const DT = 1 / 60;
@@ -32,6 +33,10 @@ const expectDir = (b: { dx: number; dy: number; dz: number }, want: V3) => {
 /** The test Nest's centre: off the origin so nothing passes by accident. */
 const C: V3 = v(40, -20, 10);
 
+/** The sleepers' offsets from the centre: 22 u out, 120° apart round Y (the test's own; the scene's are NEST_SLEEPERS). */
+const SLEEPERS: V3[] = [v(0, 0, 22), v(19.05, 0, -11), v(-19.05, 0, -11)];
+const home = (i: number): V3 => v(C.x + SLEEPERS[i].x, C.y + SLEEPERS[i].y, C.z + SLEEPERS[i].z);
+
 /** The test sink: the muzzle is the saucer's position, the mouth 3.5 u ahead of the tardigrade. */
 const sink: NestSink = {
   muzzle: (s, o) => { o.x = s.x; o.y = s.y; o.z = s.z; return o; },
@@ -49,7 +54,7 @@ function setup(d = 200) {
   const ev = createNestEvents();
   const inp: NestInput = {
     ship: v(C.x + d, C.y, C.z), shipVel: v(0, 0, 0), nose: v(-1, 0, 0), centre: C,
-    racing: false, paused: false, lowPerf: false, warm: true, fireHeld: false, click: null,
+    racing: false, paused: false, lowPerf: false, warm: true, fireHeld: false, click: null, sleepers: SLEEPERS,
   };
   const rnd = mulberry32(3);
   /** Puts the ship `d` u from the centre on the +X line (negative: the −X side). */
@@ -152,43 +157,6 @@ describe("the Nest: starting a fight", () => {
     expect(n.phase).toBe("fighting");
     expect(n.wave).toBe(1);
     expect(contactCount(n)).toBe(3);
-  });
-
-  it("monsters spawn 30 u from the centre on the side away from the ship, ±10 u", () => {
-    const { n, startFight } = setup();
-    startFight(); // the ship is 69 u out on +X
-    const base = v(C.x - SPAWN_R, C.y, C.z);
-    const live = n.saucers.filter((s) => s.alive);
-    expect(live).toHaveLength(3);
-    for (const s of live) {
-      // ±10 u of jitter per axis, plus the one step of motion on the spawn step.
-      expect(Math.abs(s.x - base.x)).toBeLessThanOrEqual(10.1);
-      expect(Math.abs(s.y - base.y)).toBeLessThanOrEqual(10.1);
-      expect(Math.abs(s.z - base.z)).toBeLessThanOrEqual(10.1);
-    }
-    expect(new Set(live.map((s) => s.seed)).size).toBe(3);
-
-    // At the spawn step itself, and with the ship sitting on the centre (+Y side).
-    const c = setup();
-    c.at(0);
-    debugStartWave(c.n, 1, c.inp, c.rnd, c.ev);
-    const up = v(C.x, C.y + SPAWN_R, C.z);
-    for (const s of c.n.saucers.filter((m) => m.alive)) {
-      expect(Math.abs(s.x - up.x)).toBeLessThanOrEqual(10);
-      expect(Math.abs(s.y - up.y)).toBeLessThanOrEqual(10);
-      expect(Math.abs(s.z - up.z)).toBeLessThanOrEqual(10);
-    }
-    const f = setup();
-    f.at(-90);
-    debugStartWave(f.n, 3, f.inp, f.rnd, f.ev);
-    const far = v(C.x + SPAWN_R, C.y, C.z);
-    const spawned = [...f.n.saucers.filter((m) => m.alive), ...f.n.tardigrades.filter((m) => m.alive)];
-    expect(spawned).toHaveLength(4);
-    for (const m of spawned) {
-      expect(Math.abs(m.x - far.x)).toBeLessThanOrEqual(10);
-      expect(Math.abs(m.y - far.y)).toBeLessThanOrEqual(10);
-      expect(Math.abs(m.z - far.z)).toBeLessThanOrEqual(10);
-    }
   });
 });
 
@@ -299,9 +267,11 @@ describe("the Nest: leaving", () => {
     expect([n.wave, n.phase, n.outFor, contactCount(n)]).toEqual([0, "ready", 0, 0]);
     for (const s of wasAlive) expect(s.phase).toBe("leaving");
     expect(liveBolts(n, "enemy")).toHaveLength(0);
-    // They shrink away over 2 s.
-    run(2.1);
-    for (const s of wasAlive) expect(s.phase).toBe("gone");
+    // They shrink away over 2 s; then, every slot gone and the ship within 200 u, fresh sleepers are placed.
+    const goneSeen = new Set<number>();
+    run(2.1, DT, () => wasAlive.forEach((s, i) => { if (s.phase === "gone") goneSeen.add(i); }));
+    expect(goneSeen.size).toBe(3);
+    for (const s of wasAlive) expect(s.phase).toBe("asleep");
     // Back in: a fresh fight from wave 1.
     at(75); step(); at(69);
     expect(step().entered).toBe(true);
@@ -688,5 +658,233 @@ describe("the Nest: pause, debug and pools", () => {
     n.bolts.bolts.forEach((b, i) => expect(b).toBe(bolts[i]));
     n.targets.forEach((t, i) => expect(t).toBe(targets[i]));
     expect(n.hull).toBe(hull);
+  });
+});
+
+describe("the Nest: sleepers", () => {
+  const ALL = 3;
+  const sleepersOf = (n: NestState) => n.saucers.slice(0, ALL);
+
+  it("appear in ready once warm and within 200 u, growing in over 1 s", () => {
+    const { n, step, run } = setup(150);
+    step();
+    sleepersOf(n).forEach((s, i) => {
+      expect([s.phase, s.alive]).toEqual(["asleep", false]);
+      expect([s.x, s.y, s.z]).toEqual([home(i).x, home(i).y, home(i).z]);
+      expect(s.scale).toBeCloseTo(DT / SLEEP_GROW_S, 9);
+      // Facing out along the offset.
+      const u = unit(SLEEPERS[i]);
+      expect(s.fx).toBeCloseTo(u.x, 9); expect(s.fy).toBeCloseTo(u.y, 9); expect(s.fz).toBeCloseTo(u.z, 9);
+    });
+    expect([n.saucers[3].phase, n.saucers[4].phase]).toEqual(["gone", "gone"]);
+    const t = n.tardigrades[0];
+    expect([t.phase, t.alive, t.x, t.y, t.z, t.pose.curl]).toEqual(["asleep", false, C.x, C.y, C.z, 1]);
+    // The offsets' mean is zero here: it faces +Y.
+    expect([t.fx, t.fy, t.fz]).toEqual([0, 1, 0]);
+    expect(t.scale).toBeCloseTo(DT / SLEEP_GROW_S, 9);
+    expect(contactCount(n)).toBe(0);
+    run(1);
+    for (const s of sleepersOf(n)) expect(s.scale).toBe(1);
+    expect(t.scale).toBe(1);
+
+    const far = setup(250);
+    far.run(1);
+    expect(monstersOnShow(far.n)).toBe(false);
+    for (const m of [...far.n.saucers, ...far.n.tardigrades]) expect(m.phase).toBe("gone");
+
+    const cold = setup(150);
+    cold.inp.warm = false;
+    cold.run(1);
+    for (const m of [...cold.n.saucers, ...cold.n.tardigrades]) expect(m.phase).toBe("gone");
+  });
+
+  it("are harmless and untargetable", () => {
+    const { n, ev, inp, step, run } = setup(80);
+    step();
+    // 10 s in the area, outside the zone: nothing fires at the ship.
+    run(10, DT, (e) => {
+      expect(e.entered).toBe(false);
+      expect(liveBolts(n, "enemy")).toHaveLength(0);
+    });
+    expect(n.hull.hp).toBe(100);
+    expect(n.phase).toBe("ready");
+    // Held fire with the nose on sleeper 0: no assist, the bolt goes straight down the nose.
+    const s = n.saucers[0];
+    inp.nose = v(s.x - inp.ship.x, s.y - inp.ship.y, s.z - inp.ship.z);
+    inp.fireHeld = true;
+    expect(step().shots).toBe(1);
+    inp.fireHeld = false;
+    expectDir(liveBolts(n, "ship")[0], unit(inp.nose));
+    // A ship bolt fired straight through sleeper 0 flies on.
+    for (const b of n.bolts.bolts) b.live = false;
+    const b = fireBolt(n.bolts, "ship", s.x, s.y, s.z - 10, 0, 0, 1, BOLT_SPEED, BOLT_RANGE, 1)!;
+    resetNestEvents(ev);
+    const t = run(0.3);
+    expect(b.live).toBe(true);
+    expect(b.z).toBeGreaterThan(s.z + 20);
+    expect(t.defeats).toBe(0);
+    expect(s.hp).toBe(SAUCER_HITS);
+    expect([s.phase, s.alive]).toEqual(["asleep", false]);
+  });
+
+  it("crossing wakes the saucers; they rise through the countdown and become wave 1 in place", () => {
+    const { n, at, step, run } = setup(150);
+    step(); run(1);
+    at(75); step(); at(69); step();
+    expect(n.phase).toBe("countdown");
+    for (const s of sleepersOf(n)) expect([s.phase, s.alive]).toEqual(["waking", false]);
+    expect(n.tardigrades[0].phase).toBe("asleep");
+    const t = run(3, DT, (e) => { if (!e.waveStarted) expect(contactCount(n)).toBe(0); });
+    expect(t.waveStarted).toEqual([1]);
+    expect(aliveSaucers(n)).toBe(3);
+    sleepersOf(n).forEach((s, i) => {
+      expect([s.phase, s.alive]).toEqual(["idle", true]);
+      expect(Math.abs(s.y - home(i).y - 6)).toBeLessThanOrEqual(0.2);
+      expect(Math.abs(s.x - home(i).x)).toBeLessThanOrEqual(0.01);
+      expect(Math.abs(s.z - home(i).z)).toBeLessThanOrEqual(0.01);
+    });
+    expect([n.saucers[3].phase, n.saucers[4].phase]).toEqual(["gone", "gone"]);
+    // The sleepers keep their tints (their seeds).
+    expect(new Set(sleepersOf(n).map((s) => s.seed)).size).toBe(3);
+  });
+
+  it("the tardigrade sleeps through waves 1 and 2, then wakes in place at wave 3 and uncurls over 1 s", () => {
+    const { n, ev, step, run, startFight } = setup(150);
+    step(); run(1);
+    startFight();
+    const t = n.tardigrades[0];
+    expect([n.wave, t.phase]).toEqual([1, "asleep"]);
+    debugClearWave(n, ev); step();
+    expect(run(WAVE_GAP_S).waveStarted).toEqual([2]);
+    expect([t.phase, contactCount(n)]).toEqual(["asleep", 5]);
+    debugClearWave(n, ev); step();
+    expect(run(WAVE_GAP_S).waveStarted).toEqual([3]);
+    expect([t.alive, t.phase, t.hp]).toEqual([true, "swim", 18]);
+    expect(dist(t, C)).toBeLessThan(1e-9);
+    expect(t.pose.curl).toBeCloseTo(1 - DT, 9);
+    expect(contactCount(n)).toBe(4);
+    const still = () => { if (t.pose.curl > 0) expect([t.vx, t.vy, t.vz]).toEqual([0, 0, 0]); };
+    run(0.5, DT, still);
+    expect(t.pose.curl).toBeCloseTo(0.5, 1);
+    expect(dist(t, C)).toBeLessThan(1e-9);
+    run(0.5, DT, still);
+    expect(t.pose.curl).toBe(0);
+  });
+
+  it("a fight ended during the countdown sends the waking saucers away, then fresh sleepers grow back (Review Focus 2)", () => {
+    const { n, at, step, run } = setup(150);
+    step(); run(1);
+    at(75); step(); at(69); step();
+    const waking = sleepersOf(n);
+    at(130); // outside the 110 u area, inside 200 u
+    let everAlive = false;
+    const t = run(20, DT, () => { if (n.saucers.some((s) => s.alive) || n.tardigrades.some((g) => g.alive)) everAlive = true; });
+    expect(t.ended).toBe(1);
+    expect(t.waveStarted).toEqual([]);
+    expect(everAlive).toBe(false);
+    expect(n.phase).toBe("ready");
+    for (const s of waking) expect(s.phase).toBe("leaving");
+    expect(n.tardigrades[0].phase).toBe("leaving");
+    run(LEAVE_S + SLEEP_GROW_S + 0.1, DT, () => { if (n.saucers.some((s) => s.alive)) everAlive = true; });
+    expect(everAlive).toBe(false);
+    sleepersOf(n).forEach((s, i) => {
+      expect([s.phase, s.scale]).toEqual(["asleep", 1]);
+      expect(dist(s, home(i))).toBeLessThan(1e-9);
+    });
+    expect([n.tardigrades[0].phase, n.tardigrades[0].scale]).toEqual(["asleep", 1]);
+  });
+
+  it("are dropped beyond 220 u and come back within 200 u (Review Focus 3)", () => {
+    const { n, at, step, run } = setup(150);
+    step(); run(1);
+    expect(monstersOnShow(n)).toBe(true);
+    at(230); step();
+    for (const m of [...n.saucers, ...n.tardigrades]) expect([m.phase, m.scale]).toEqual(["gone", 0]);
+    expect(monstersOnShow(n)).toBe(false);
+    at(210); step();
+    for (const m of [...n.saucers, ...n.tardigrades]) expect(m.phase).toBe("gone");
+    at(190); step();
+    for (const s of sleepersOf(n)) expect(s.phase).toBe("asleep");
+    expect(n.tardigrades[0].phase).toBe("asleep");
+  });
+
+  it("wave 1 keeps the tier's size if low-perf flips after they settle (Review Focus 4)", () => {
+    const a = setup(150);
+    a.step(); a.run(1);
+    expect(sleepersOf(a.n).every((s) => s.phase === "asleep")).toBe(true);
+    a.inp.lowPerf = true;
+    a.startFight();
+    expect(aliveSaucers(a.n)).toBe(2);
+    expect([a.n.saucers[0].alive, a.n.saucers[1].alive]).toEqual([true, true]);
+    expect(a.n.saucers[2].phase).toBe("leaving");
+
+    const b = setup(150);
+    b.inp.lowPerf = true;
+    b.step(); b.run(1);
+    expect(b.n.saucers.map((s) => s.phase)).toEqual(["asleep", "asleep", "gone", "gone", "gone"]);
+    b.inp.lowPerf = false;
+    b.startFight();
+    expect(aliveSaucers(b.n)).toBe(3);
+    for (const i of [0, 1]) {
+      const s = b.n.saucers[i];
+      expect(s.alive).toBe(true);
+      expect(Math.abs(s.x - home(i).x)).toBeLessThanOrEqual(0.01);
+      expect(Math.abs(s.z - home(i).z)).toBeLessThanOrEqual(0.01);
+    }
+    const extra = b.n.saucers[2];
+    expect(extra.alive).toBe(true);
+    const ship = b.inp.ship;
+    // In the front cone at the spawn step, then one step of motion.
+    expect(angle(b.inp.nose, v(extra.x - ship.x, extra.y - ship.y, extra.z - ship.z))).toBeLessThanOrEqual(SPAWN_CONE_RAD + 0.5 * DEG);
+    expect(dist(extra, ship)).toBeGreaterThanOrEqual(30 - 0.05);
+    expect(dist(extra, ship)).toBeLessThanOrEqual(40 + 0.05);
+  });
+
+  it("clearing wave 3 leaves no sleeper during the rest; they return at ready", () => {
+    const { n, ev, step, run, startFight } = setup(150);
+    step(); run(1);
+    startFight();
+    debugClearAll(n, ev);
+    expect(step().cleared).toBe(true);
+    expect(n.phase).toBe("rest");
+    const asleep = () => [...n.saucers, ...n.tardigrades].filter((m) => m.phase === "asleep" || m.phase === "waking").length;
+    run(NEST_REST_S - 0.5, DT, () => expect(asleep()).toBe(0));
+    expect(n.phase).toBe("rest");
+    run(0.5 + SLEEP_GROW_S + 0.1);
+    expect(n.phase).toBe("ready");
+    for (const s of sleepersOf(n)) expect([s.phase, s.scale]).toEqual(["asleep", 1]);
+    expect(n.tardigrades[0].phase).toBe("asleep");
+  });
+});
+
+describe("the Nest: spawning in front", () => {
+  it("waves 2 and 3 spawn within 50° of the nose, 30–40 u out, inside 105 u of the centre", () => {
+    const { n, ev, inp, rnd, at } = setup(60);
+    at(60);
+    inp.nose = v(-1, 0, 0);
+    const alive = () => [...n.saucers.filter((s) => s.alive), ...n.tardigrades.filter((t) => t.alive)];
+    for (const k of [2, 3] as const) {
+      debugStartWave(n, k, inp, rnd, ev);
+      const live = alive();
+      expect(live).toHaveLength(k === 2 ? 5 : 4);
+      for (const m of live) {
+        const d = v(m.x - inp.ship.x, m.y - inp.ship.y, m.z - inp.ship.z);
+        expect(angle(inp.nose, d)).toBeLessThanOrEqual(SPAWN_CONE_RAD + 1e-9);
+        expect(dist(m, inp.ship)).toBeGreaterThanOrEqual(30 - 1e-9);
+        expect(dist(m, inp.ship)).toBeLessThanOrEqual(40 + 1e-9);
+      }
+    }
+    // Facing away, near the edge: pulled in radially to SPAWN_MAX_R.
+    at(100);
+    inp.nose = v(1, 0, 0);
+    for (const k of [2, 3] as const) {
+      debugStartWave(n, k, inp, rnd, ev);
+      for (const m of alive()) {
+        expect(dist(m, C)).toBeLessThanOrEqual(SPAWN_MAX_R + 1e-9);
+        expect(dist(m, C)).toBeCloseTo(SPAWN_MAX_R, 9); // every cone point there is beyond it
+      }
+    }
+    // A front-spawned tardigrade is uncurled.
+    expect(n.tardigrades[0].pose.curl).toBe(0);
   });
 });

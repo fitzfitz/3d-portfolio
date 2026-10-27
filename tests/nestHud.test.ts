@@ -156,6 +156,7 @@ describe("C22: the on-demand models fail to load", () => {
     const inp: NestInput = {
       ship: { x: 100, y: 0, z: 0 }, shipVel: { x: 0, y: 0, z: 0 }, nose: { x: -1, y: 0, z: 0 },
       centre: { x: 0, y: 0, z: 0 }, racing: false, paused: false, lowPerf: false, warm: false, fireHeld: false, click: null,
+      sleepers: [{ x: 0, y: 0, z: 22 }],
     };
     stepNest(n, inp, 1 / 60, Math.random, sink, ev);
     inp.ship.x = 40; // an inward crossing

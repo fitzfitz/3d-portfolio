@@ -6,9 +6,11 @@ import {
   stepSmoke, thrustMatrix,
 } from "../src/utils/combat/effects";
 import { JET_RADIUS, JET_RANGE, MAX_SAUCERS, SAUCER_DEFEAT_S, SAUCER_SPEED } from "../src/utils/combat/constants";
-import { createSaucer, spawnSaucer, hitSaucer, type Saucer } from "../src/utils/combat/saucerAi";
+import { createSaucer, spawnSaucer, hitSaucer, sleepSaucer, wakeSaucer, type Saucer } from "../src/utils/combat/saucerAi";
 import { createTardigrade } from "../src/utils/combat/tardigradeAi";
-import { idleBlink, nestPhase, saucerRenderPose, tardigradeRenderPose } from "../src/utils/combat/renderPose";
+import {
+  idleBlink, nestPhase, saucerRenderPose, sleepBob, SLEEP_BOB_AMP, SLEEP_BOB_PERIOD_S, tardigradeRenderPose,
+} from "../src/utils/combat/renderPose";
 import { monsterMatrix } from "../src/utils/combat/monsterFrame";
 import { mulberry32 } from "../src/utils/mulberry32";
 import type { SaucerPose, TardigradePose } from "../src/utils/monsters/monsterRig";
@@ -315,5 +317,43 @@ describe("the monsters' render poses", () => {
     for (const p of phases) { expect(p).toBeGreaterThanOrEqual(0); expect(p).toBeLessThan(1); }
     expect(new Set(phases).size).toBe(6);
     expect(nestPhase(3)).toBe(phases[3]);
+  });
+
+  it("holds the eyes shut while asleep and opens them on waking", () => {
+    const s = createSaucer();
+    sleepSaucer(s, 2, 0, 0, 0, 0, 0, 1);
+    const m = monsterMatrix(0, 0, 0, s.fx, s.fy, s.fz, 1, new THREE.Matrix4());
+    const pose: SaucerPose = { phase: 0, look: new THREE.Vector3(), aim: new THREE.Vector3(), chase: -1, fire: 0, hit: 0, defeat: 0, blink: 0 };
+    for (const reduced of [false, true]) {
+      for (let k = 0; k < 100; k++) {
+        saucerRenderPose(s, m, v(0, 0, 50), k * 0.05, 0.6, reduced, pose);
+        expect(pose.blink).toBe(1);
+      }
+    }
+    wakeSaucer(s);
+    for (let k = 0; k < 100; k++) {
+      saucerRenderPose(s, m, v(0, 0, 50), k * 0.05, 0.6, false, pose);
+      expect(pose.blink).toBe(0);
+    }
+  });
+});
+
+describe("the sleepers' bob", () => {
+  it("bobs ±0.35 u with a 4 s period, and not at all under reduced motion", () => {
+    expect([SLEEP_BOB_AMP, SLEEP_BOB_PERIOD_S]).toEqual([0.35, 4]);
+    let max = 0;
+    for (const phase of [0, 0.3, 0.77]) {
+      for (let k = 0; k < 400; k++) {
+        const t = k * 0.037;
+        const y = sleepBob(t, phase, false);
+        expect(Math.abs(y)).toBeLessThanOrEqual(SLEEP_BOB_AMP + 1e-12);
+        expect(sleepBob(t + 4, phase, false)).toBeCloseTo(y, 9);
+        expect(sleepBob(t, phase, true)).toBe(0);
+        max = Math.max(max, Math.abs(y));
+      }
+    }
+    expect(max).toBeGreaterThan(0.34);
+    // Slots bob out of step.
+    expect(sleepBob(1, nestPhase(0), false)).not.toBeCloseTo(sleepBob(1, nestPhase(1), false), 3);
   });
 });

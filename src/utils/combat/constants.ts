@@ -93,8 +93,6 @@ export const TARDIGRADE_DEFEAT_S = 4;
 export const LEAVE_S = 2;
 /** Defeated monsters drift at this speed (u/s). */
 export const DEFEAT_DRIFT = 4;
-/** Monsters spawn this far from the centre, on the side away from the ship. */
-export const SPAWN_R = 30;
 /** Facing slew, rad/s. */
 export const SAUCER_TURN_RATE = 3;
 export const TARDIGRADE_TURN_RATE = 1.5;
@@ -114,3 +112,19 @@ export const NEST_RUMOUR_R = 400;
 export const TOW_PAST_BUOY = 8;
 /** …and this far to the side of the buoy's line, so the buoy never stands in front of the Nest (Ruling N3). */
 export const TOW_SIDE = 16;
+
+// ── At home and spawning in front (spec 2026-10-27-nest-playable §2–3) ─────
+/** Waves 2 and 3 (and any wave-1 saucer without a sleeper) spawn within this of the ship's nose… */
+export const SPAWN_CONE_RAD = 50 * DEG;
+/** …this far from the ship (u)… */
+export const SPAWN_DIST: readonly [number, number] = [30, 40];
+/** …pulled in radially to at most this far from the centre, inside the fighting area. */
+export const SPAWN_MAX_R = NEST_LEASH_R - 5;
+/** Sleepers grow in (scale 0 → 1) over this long. */
+export const SLEEP_GROW_S = 1;
+/** Beyond this from the centre the sleepers are dropped at once (C21's frame skip then holds). */
+export const SLEEP_DROP_R = NEST_LOAD_R + 20;
+/** Waking saucers rise at this speed (u/s) through the countdown. */
+export const WAKE_RISE_SPEED = 2;
+/** A woken tardigrade uncurls (curl 1 → 0) over this long, holding still. */
+export const UNCURL_S = 1;
